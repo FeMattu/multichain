@@ -261,6 +261,7 @@ libbitcoin_server_a_SOURCES = \
   utils/timedata.cpp \
   storage/txdb.cpp \
   chain/txmempool.cpp \
+  poas/wpoa_state.cpp \
   $(JSON_H) \
   $(BITCOIN_CORE_H)
 

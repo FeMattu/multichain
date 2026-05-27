@@ -10,6 +10,10 @@
 #include "wallet/wallettxs.h"
 #include "community/community.h"
 
+/* wPoA */
+#include "poas/wpoa_selector.h"
+#include "poas/wpoa_state.h"
+
 #include <boost/assign/list_of.hpp>
 
 extern mc_WalletTxs* pwalletTxsMain;
@@ -961,7 +965,7 @@ bool CheckBlockPermissions(const CBlock& block,CBlockIndex* prev_block,unsigned 
                     checked = false;
                 }
                 if(checked)
-                {    
+                {
                     CKeyID pubKeyHash=pubKeyOut.GetID();
                     memcpy(lpMinerAddress,pubKeyHash.begin(),20);
                     if(!mc_gState->m_Permissions->CanMine(NULL,pubKeyHash.begin()))
@@ -970,7 +974,37 @@ bool CheckBlockPermissions(const CBlock& block,CBlockIndex* prev_block,unsigned 
                         LogPrintf("mchn: Permission denied for miner %s received in block signature\n",CBitcoinAddress(pubKeyHash).ToString().c_str());
                         checked = false;
                     }
-                }                
+
+                    /* wPoA: verifica che il blocco venga dal vincitore atteso.
+                     * Usiamo la lista g_wPoAEligibleMiners aggiornata da miner.cpp.
+                     * Il check si applica solo quando:
+                     *   - La lista è non vuota (wPoA attivo)
+                     *   - Il prevHash corrisponde (lista non stale)
+                     *   - Ci sono almeno 2 miner (con 1 solo non serve)
+                     */
+                    if (checked &&
+                        !g_wPoAEligibleMiners.empty() &&
+                        g_wPoAEligibleMiners.size() > 1 &&
+                        prev_block != NULL &&
+                        g_wPoAPrevHash == prev_block->GetBlockHash())
+                    {
+                        std::string actualMiner =
+                            CBitcoinAddress(pubKeyHash).ToString();
+
+                        std::string expectedWinner = WPoASelector::selectWinner(
+                            g_wPoAEligibleMiners,
+                            prev_block->GetBlockHash()
+                        );
+
+                        if (!expectedWinner.empty() && actualMiner != expectedWinner)
+                        {
+                            LogPrintf("wPoA: VIOLAZIONE — blocco da %s, atteso %s\n",
+                                      actualMiner, expectedWinner);
+                            checked = false;
+                        }
+                    }
+                    /* fine wPoA */
+                }
             }
         }
         else

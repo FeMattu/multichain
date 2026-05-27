@@ -23,6 +23,11 @@
 
 #include "multichain/multichain.h"
 
+/* wPoA */
+#include "poas/wpoa_selector.h"
+#include "poas/weight_registry.h"
+#include "poas/wpoa_state.h"
+
 #include <boost/thread.hpp>
 #include <boost/tuple/tuple.hpp>
 
@@ -1286,6 +1291,34 @@ uint32_t mc_GetMiningStatus(CPubKey &miner)
     return nMiningStatus;
 }
 
+/* wPoA: Selezione pesata del prossimo miner.
+ *
+ * Decide se QUESTO nodo è il vincitore del turno per l'altezza corrente.
+ * Viene chiamata dopo che il meccanismo nativo di MultiChain ha già
+ * verificato mining-diversity e permessi.
+ *
+ * @param hashPrevBlock    Hash del blocco sulla cima della chain.
+ * @param myAddress        Indirizzo Base58 di questo nodo (da kMiner).
+ * @param eligibleMiners   Lista di indirizzi con permesso mine che
+ *                         soddisfano già il vincolo mining-diversity.
+ * @return true  → siamo il vincitore, procediamo col blocco.
+ *         false → non è il nostro turno, saltiamo.
+ */
+static bool ShouldIMineNextBlock(
+    const uint256&                  hashPrevBlock,
+    const std::string&              myAddress,
+    const std::vector<std::string>& eligibleMiners)
+{
+    if (eligibleMiners.empty())  return true;   // nessun candidato: lascia decidere il meccanismo nativo
+    if (eligibleMiners.size() == 1) return (eligibleMiners[0] == myAddress);
+
+    std::string winner = WPoASelector::selectWinner(eligibleMiners, hashPrevBlock);
+    bool iAmWinner = (winner == myAddress);
+    LogPrintf("wPoA: sono il vincitore? %s  (mio=%s  vincitore=%s)\n",
+              iAmWinner ? "SI" : "NO", myAddress, winner);
+    return iAmWinner;
+}
+
 void static BitcoinMiner(CWallet *pwallet)
 {
     LogPrintf("MultiChainMiner started\n");
@@ -1563,8 +1596,43 @@ void static BitcoinMiner(CWallet *pwallet)
 //                const unsigned char *pubkey_hash=(unsigned char *)Hash160(kMiner.begin(),kMiner.end()).begin();
                 unsigned char pubkey_hash[20];
                 uint160 pkhash=Hash160(kMiner.begin(),kMiner.end());
-                memcpy(pubkey_hash,&pkhash,20);    
+                memcpy(pubkey_hash,&pkhash,20);
                 CScript scriptPubKey = CScript() << OP_DUP << OP_HASH160 << vector<unsigned char>(pubkey_hash, pubkey_hash + 20) << OP_EQUALVERIFY << OP_CHECKSIG;
+
+                /* wPoA: costruisci la lista degli eleggibili e verifica il turno */
+                {
+                    std::string myAddressStr =
+                        CBitcoinAddress(kMiner.GetID()).ToString();
+
+                    std::vector<std::string> eligibleMiners;
+                    BOOST_FOREACH(const PAIRTYPE(CBitcoinAddress, CAddressBookData)& item,
+                                  pwallet->mapAddressBook)
+                    {
+                        CKeyID keyID;
+                        if (item.first.GetKeyID(keyID))
+                        {
+                            if (mc_gState->m_Permissions->CanMine(NULL, keyID.begin()))
+                            {
+                                eligibleMiners.push_back(item.first.ToString());
+                            }
+                        }
+                    }
+
+                    /* Aggiorna lo stato globale condiviso con multichainblock.cpp */
+                    g_wPoAEligibleMiners = eligibleMiners;
+                    g_wPoAPrevHash       = pindexPrev ? pindexPrev->GetBlockHash() : uint256(0);
+
+                    if (!ShouldIMineNextBlock(g_wPoAPrevHash, myAddressStr, eligibleMiners))
+                    {
+                        /* Non è il nostro turno: attendiamo e riproviamo */
+                        canMine = 0;
+                        MilliSleep(200);
+                        boost::this_thread::interruption_point();
+                        goto wpoa_skip_block;
+                    }
+                }
+                /* fine wPoA */
+
                 canMine=prevCanMine;
                 auto_ptr<CBlockTemplate> pblocktemplate(CreateNewBlock(scriptPubKey,pwallet,&kMiner,&canMine,&pindexPrev));            
                 prevCanMine=canMine;
@@ -1711,12 +1779,11 @@ void static BitcoinMiner(CWallet *pwallet)
                     break;
 
                 // Update nTime every few seconds
-                
                 if(UpdateTime(pblock, pindexPrev))
                 {
-/* MCHN START */                    
+/* MCHN START */
                     CreateBlockSignature(pblock,BLOCKSIGHASH_NO_SIGNATURE_AND_NONCE,pwallet,NULL);
-/* MCHN END */                    
+/* MCHN END */
                 }
                 if (Params().AllowMinDifficultyBlocks())
                 {
@@ -1724,7 +1791,7 @@ void static BitcoinMiner(CWallet *pwallet)
                     hashTarget.SetCompact(pblock->nBits);
                 }
             }
-/* MCHN START */    
+/* MCHN START */
             double wTimeNow=mc_TimeNowAsDouble();
 //            if(wTimeNow>wStartTime+100)
             if(wTimeNow>wStartTime+0.01)
@@ -1734,17 +1801,18 @@ void static BitcoinMiner(CWallet *pwallet)
                 wPos=(wPos+1)%wSize;
                 dHashesPerSec=wThisCount/(wTimeNow-wStartTime);
             }
-            
-            } 
+
+            }
             else
             {
                 if( (mc_gState->m_Permissions->m_Block > 1) || !kMiner.IsValid() )
                 {
-                    __US_Sleep(100);                
+                    __US_Sleep(100);
                 }
             }
+            wpoa_skip_block:  /* wPoA: punto di salto quando non è il nostro turno */
             nLastStatus=nMiningStatus;
-/* MCHN END */    
+/* MCHN END */
         }
     }
     catch (boost::thread_interrupted)

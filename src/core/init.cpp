@@ -41,6 +41,9 @@
 #include "protocol/relay.h"
 #include "filters/filter.h"
 
+/* wPoA */
+#include "poas/weight_registry.h"
+
 std::string BurnAddress(const std::vector<unsigned char>& vchVersion);
 std::string SetBannedTxs(std::string txlist);
 std::string SetLockedBlock(std::string hash);
@@ -3083,7 +3086,13 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
 #ifdef ENABLE_WALLET
     // Generate coins in the background
         if (pwalletMain)
+        {
+            /* wPoA: carica i pesi da <datadir>/weights.json prima di avviare il miner.
+             * Se il file non esiste tutti i nodi avranno peso 1.0 (comportamento nativo). */
+            WeightRegistry::getInstance().loadFromFile();
+
             GenerateBitcoins(GetBoolArg("-gen", true), pwalletMain, GetArg("-genproclimit", 1));
+        }
 #endif
 
     // ********************************************************* Step 11: finished
