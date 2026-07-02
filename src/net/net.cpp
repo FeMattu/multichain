@@ -1332,15 +1332,33 @@ void ThreadMapPort()
     struct UPNPDev * devlist = 0;
     char lanaddr[64];
 
-#ifndef UPNPDISCOVER_SUCCESS
-    /* miniupnpc 1.5 */
-    devlist = upnpDiscover(2000, multicastif, minissdpdpath, 0);
-#else
-    /* miniupnpc 1.6 */
-    int error = 0;
-    devlist = upnpDiscover(2000, multicastif, minissdpdpath, 0, 0, &error);
-#endif
-
+	#ifndef UPNPDISCOVER_SUCCESS
+	    /* miniupnpc 1.5 */
+	    devlist = upnpDiscover(2000, multicastif, minissdpdpath, 0);
+	#else
+	    /* miniupnpc 1.6 */
+	    int error = 0;
+	    devlist = upnpDiscover(2000, multicastif, minissdpdpath, 0, 0, &error);
+	#endif
+	#ifndef UPNPDISCOVER_SUCCESS
+	    /* miniupnpc 1.5 */
+	    devlist = upnpDiscover(2000, multicastif, minissdpdpath, 0);
+	#else
+	    /* miniupnpc 1.6 and 1.9 */
+	    int error = 0;
+	    #ifdef MINIUPNPC_API_VERSION
+	        #if MINIUPNPC_API_VERSION >= 17
+	            /* miniupnpc 1.9+ (7 parameters) */
+	            devlist = upnpDiscover(2000, multicastif, minissdpdpath, 0, 0, 0, &error);
+	        #else
+	            /* miniupnpc 1.6-1.8 (6 parameters) */
+	            devlist = upnpDiscover(2000, multicastif, minissdpdpath, 0, 0, &error);
+	        #endif
+	    #else
+	        /* fallback for miniupnpc 1.6 */
+	        devlist = upnpDiscover(2000, multicastif, minissdpdpath, 0, 0, &error);
+	    #endif
+	#endif
     struct UPNPUrls urls;
     struct IGDdatas data;
     int r;
