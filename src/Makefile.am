@@ -100,6 +100,7 @@ BITCOIN_CORE_H = \
   checkqueue.h \
   version/clientversion.h \
   coincontrol.h \
+  poas/stream_weight_registry.h \
   storage/coins.h \
   utils/compat.h \
   utils/compressor.h \
@@ -291,6 +292,7 @@ libbitcoin_wallet_a_SOURCES = \
   wallet/wallettxs.cpp \
   wallet/wallet_ismine.cpp \
   wallet/walletdb.cpp \
+  poas/stream_weight_registry.cpp \
   $(BITCOIN_CORE_H)
 
 # crypto primitives library

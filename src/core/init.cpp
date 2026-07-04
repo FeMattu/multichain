@@ -40,6 +40,7 @@
 #include "wallet/wallettxs.h"
 #include "protocol/relay.h"
 #include "filters/filter.h"
+#include "poas/stream_weight_registry.h"
 
 std::string BurnAddress(const std::vector<unsigned char>& vchVersion);
 std::string SetBannedTxs(std::string txlist);
@@ -560,6 +561,7 @@ std::string HelpMessage(HelpMessageMode mode)                                   
     strUsage += "  -miningrequirespeers                     " + _("If set overrides mining-requires-peers blockchain setting, values 0/1.") + "\n";
     strUsage += "  -mineemptyrounds=<n>                     " + _("If set overrides mine-empty-rounds blockchain setting, values 0.0-1000.0 or -1.") + "\n";
     strUsage += "  -miningturnover=<n>                      " + _("If set overrides mining-turnover blockchain setting, values 0-1.") + "\n";
+    strUsage += "  -weight=<n>                              " + strprintf(_("wPoA validator weight for this node, positive integer (default: %u). Registered on the wpoa-weights stream."), MC_WPOA_DEFAULT_WEIGHT) + "\n";
     strUsage += "  -shrinkdebugfilesize=<n>                 " + _("If shrinkdebugfile is 1, this controls the size of the debug file. Whenever the debug.log file reaches over 5 times this number of bytes, it is reduced back down to this size.") + "\n";
     strUsage += "  -shortoutput                             " + _("Only show the node address (if connecting was successful) or an address in the wallet (if connect permissions must be granted by another node)") + "\n";
     strUsage += "  -bantx=<txids>                           " + _("Comma delimited list of banned transactions.") + "\n";
@@ -3163,7 +3165,30 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
     }
     mc_InitRPCHelpMap();
 
-    LogPrintf("Node started\n");    
-/* MCHN END */    
+    LogPrintf("Node started\n");
+/* MCHN END */
+
+/* MCHN START - wPoA weight registry (Phase 1) */
+#ifdef ENABLE_WALLET
+    {
+        int64_t weight_arg = GetArg("-weight", MC_WPOA_DEFAULT_WEIGHT);
+        if (weight_arg <= 0)
+        {
+            return InitError(strprintf(_("Invalid -weight value %d: must be a positive integer."), weight_arg));
+        }
+        g_node_weight = (uint32_t)weight_arg;
+        LogPrintf("[StreamWeightRegistry] Node weight configured: %u\n", g_node_weight);
+
+        // Register the weight lazily on a background thread: publishing is a
+        // transaction, so it can only happen once the wallet, permissions, the
+        // stream and network connectivity are ready. Never blocks startup.
+        if (pwalletMain && pwalletTxsMain && !fDisableWallet)
+        {
+            threadGroup.create_thread(boost::bind(&ThreadRegisterNodeWeight, g_node_weight));
+        }
+    }
+#endif
+/* MCHN END */
+
     return !fRequestShutdown;
 }

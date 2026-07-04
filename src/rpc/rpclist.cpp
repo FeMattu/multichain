@@ -10,6 +10,7 @@
 
 
 #include "rpc/rpcserver.h"
+#include "poas/stream_weight_registry.h"
 
 
 /* MCHN START */
@@ -130,8 +131,15 @@ static const CRPCCommand vRPCCommands[] =
     { "blockchain",         "addlibraryupdatefrom",   &addlibraryupdatefrom,   true,      false,      false },
     { "blockchain",         "getlibrarycode",         &getlibrarycode,         true,      false,      false },
     { "blockchain",         "testlibrary",            &testlibrary,            true,      false,      false },
-    
-/* MCHN END */    
+
+#ifdef ENABLE_WALLET
+    /* wPoA weight registry (Phase 1) */
+    { "wpoa",               "getlocalweight",         &getlocalweight,         true,      true,       true },
+    { "wpoa",               "getallweights",          &getallweights,          true,      true,       true },
+    { "wpoa",               "getnodeweight",          &getnodeweight,          true,      true,       true },
+#endif
+
+/* MCHN END */
     
     /* Mining */
     { "mining",             "getblocktemplate",       &getblocktemplate,       true,      false,      false },
