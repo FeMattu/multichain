@@ -11,9 +11,9 @@
 #include "structs/base58.h"     // CBitcoinAddress
 #include "core/init.h"          // pwalletMain, pwalletTxsMain, ShutdownRequested
 #include "core/main.h"          // chainActive, cs_main, IsInitialBlockDownload
-#include "net/net.h"            // vNodes, cs_vNodes
 #include "utils/util.h"         // GetArg, LogPrintf, RenameThread, GetBoolArg
 #include "utils/utiltime.h"     // MilliSleep, GetTime
+#include "poas/weight_record.h" // mc_ParseWeightRecordJson, mc_AccumulateLatestWeight
 
 #include <boost/foreach.hpp>
 
@@ -25,6 +25,9 @@ uint32_t g_node_weight = MC_WPOA_DEFAULT_WEIGHT;
 // Retry pacing for the deferred registration thread.
 static const int MC_WPOA_RETRY_INTERVAL_MS = 3000;
 static const int MC_WPOA_MAX_ATTEMPTS      = 200;   // ~10 minutes worst case
+// After a successful publish, how long to wait for the tx to be mined & imported
+// before printing the debug dump (so it shows the confirmed value, not 0).
+static const int MC_WPOA_CONFIRM_ATTEMPTS  = 20;    // 20 * 3s = up to ~60s
 
 // ---------------------------------------------------------------------------
 // Construction
@@ -335,56 +338,18 @@ static bool DecodeWeightRecord(const CWalletTx& wtx, const unsigned char* stream
             continue;
         }
 
-        // Decode into a JSON value: {"json": {...}} for UBJSON-formatted items.
-        Value v = OpReturnFormatEntry(data, data_size, wtx.GetHash(), j, format);
-        if (v.type() != obj_type)
+        // Decode into a JSON value. Use the *6-argument* overload (with a
+        // format_text_out): it returns the raw formatted value — {"json": {...}}
+        // for a UBJSON item — exactly like StreamItemEntry (and liststreamitems).
+        //
+        // Do NOT use the 3-argument overload here: it wraps the value as
+        // {"format":"json","formatdata":{"json":{...}}}, which mc_ParseWeightRecordJson
+        // would (correctly) reject because there is no top-level "json" key. That
+        // mismatch is exactly why decoding silently failed for every item.
+        string format_text;
+        Value v = OpReturnFormatEntry(data, data_size, wtx.GetHash(), j, format, &format_text);
+        if (mc_ParseWeightRecordJson(v, out_addr, out_weight))
         {
-            continue;
-        }
-
-        // Find the "json" member.
-        Value json_val;
-        bool have_json = false;
-        BOOST_FOREACH(const Pair& p, v.get_obj())
-        {
-            if (p.name_ == "json")
-            {
-                json_val = p.value_;
-                have_json = true;
-                break;
-            }
-        }
-        if (!have_json || json_val.type() != obj_type)
-        {
-            continue;
-        }
-
-        // Pull node_address + weight from the record.
-        string addr;
-        int64_t w = -1;
-        BOOST_FOREACH(const Pair& p, json_val.get_obj())
-        {
-            if (p.name_ == "node_address" && p.value_.type() == str_type)
-            {
-                addr = p.value_.get_str();
-            }
-            else if (p.name_ == "weight")
-            {
-                if (p.value_.type() == int_type)
-                {
-                    w = p.value_.get_int64();
-                }
-                else if (p.value_.type() == real_type)
-                {
-                    w = (int64_t)p.value_.get_real();
-                }
-            }
-        }
-
-        if (!addr.empty() && w > 0)
-        {
-            out_addr = addr;
-            out_weight = (uint32_t)w;
             return true;
         }
     }
@@ -396,16 +361,22 @@ static bool DecodeWeightRecord(const CWalletTx& wtx, const unsigned char* stream
 // (does not exist yet, or this node is not subscribed).
 bool StreamWeightRegistry::ReadAllRecords(std::map<std::string, uint32_t>& out_latest)
 {
+    // Verbose, per-read tracing of the stream read path. Off by default; enable
+    // with -wpoadebug for troubleshooting (see src/poas/TESTING.md).
+    static const bool dbg = GetBoolArg("-wpoadebug", false);
+
     out_latest.clear();
 
     if (m_pWalletTxs == NULL)
     {
+        if (dbg) LogPrintf("[wpoa-dbg] ReadAllRecords: m_pWalletTxs == NULL\n");
         return false;
     }
 
     mc_EntityDetails entity;
     if (!GetStreamEntity(&entity))
     {
+        if (dbg) LogPrintf("[wpoa-dbg] ReadAllRecords: GetStreamEntity FAILED (stream not found)\n");
         return false; // stream not created yet
     }
 
@@ -413,25 +384,66 @@ bool StreamWeightRegistry::ReadAllRecords(std::map<std::string, uint32_t>& out_l
     entStat.Zero();
     memcpy(&entStat, entity.GetTxID() + MC_AST_SHORT_TXID_OFFSET, MC_AST_SHORT_TXID_SIZE);
     entStat.m_Entity.m_EntityType = MC_TET_STREAM | MC_TET_CHAINPOS;
-    if (!m_pWalletTxs->WRPFindEntity(&entStat))
+
+    if (dbg)
     {
+        const unsigned char* st = entity.GetTxID() + MC_AST_SHORT_TXID_OFFSET;
+        LogPrintf("[wpoa-dbg] ReadAllRecords: stream found, short-txid=%02x%02x%02x%02x%02x%02x%02x%02x, type=0x%08x\n",
+                  st[0], st[1], st[2], st[3], st[4], st[5], st[6], st[7],
+                  (unsigned)entStat.m_Entity.m_EntityType);
+    }
+
+    // IMPORTANT: use the *non-WRP* wallet read API here, not the WRP* family.
+    //
+    // The WRP* methods (WRPGetListSize/WRPGetList/WRPGetWalletTx) return data from
+    // a read snapshot whose list position (m_ReadLastPos) is only refreshed for the
+    // RPC read-lock protocol: a reader must hold WRPReadLock() and the snapshot is
+    // advanced by the writer side via WRPSync() (on CommitTransaction / mempool
+    // changes / import completion — NOT on plain block connect). A self-contained
+    // reader that does not participate in that protocol (this background thread, and
+    // our read RPCs which do not take the WRP read lock) observes a stale snapshot
+    // and would report 0 items forever, even after the publish tx is mined.
+    //
+    // The non-WRP methods self-lock via Lock(0,0) and read the live list position
+    // (m_LastPos), so they see every confirmed item as soon as its block connects.
+    // FindEntity does not lock internally, so guard it with the wallet-txs DB lock.
+    bool found;
+    m_pWalletTxs->Lock();
+    found = m_pWalletTxs->FindEntity(&entStat);
+    m_pWalletTxs->UnLock();
+    if (!found)
+    {
+        if (dbg) LogPrintf("[wpoa-dbg] ReadAllRecords: FindEntity(STREAM|CHAINPOS) FAILED (not subscribed)\n");
         return false; // not subscribed
     }
 
-    int total = m_pWalletTxs->WRPGetListSize(&entStat.m_Entity, entStat.m_Generation, NULL);
-    if (total <= 0)
+    // Read only CONFIRMED items. GetListSize's out-param returns the number of
+    // confirmed items (m_LastClearedPos); the return value would also count
+    // unconfirmed mempool items (m_LastPos). Confirmed items occupy the first
+    // `confirmed` chain positions. We deliberately ignore mempool items: a weight
+    // registry that feeds consensus must be identical on every node, and mempool
+    // contents differ per node — so a weight only "counts" once it is on-chain.
+    int confirmed = 0;
+    int total = m_pWalletTxs->GetListSize(&entStat.m_Entity, entStat.m_Generation, &confirmed);
+    if (dbg) LogPrintf("[wpoa-dbg] ReadAllRecords: FindEntity OK, generation=%d, total=%d confirmed=%d\n",
+                       entStat.m_Generation, total, confirmed);
+    if (confirmed <= 0)
     {
-        return true; // subscribed but empty -> empty map
+        return true; // subscribed, but no confirmed items yet -> empty map
     }
 
     mc_Buffer rows;
     rows.Initialize(MC_TDB_ENTITY_KEY_SIZE, sizeof(mc_TxEntityRow), MC_BUF_MODE_DEFAULT);
 
-    // Ascending order (from=1). Overwriting per address makes the newest win.
-    if (m_pWalletTxs->WRPGetList(&entStat.m_Entity, entStat.m_Generation, 1, total, &rows) != MC_ERR_NOERROR)
+    // Ascending order (from=1), confirmed prefix only. Overwriting per address
+    // makes the newest confirmed record win.
+    int list_err = m_pWalletTxs->GetList(&entStat.m_Entity, entStat.m_Generation, 1, confirmed, &rows);
+    if (list_err != MC_ERR_NOERROR)
     {
+        if (dbg) LogPrintf("[wpoa-dbg] ReadAllRecords: GetList FAILED err=%d\n", list_err);
         return false;
     }
+    if (dbg) LogPrintf("[wpoa-dbg] ReadAllRecords: GetList OK, rows=%d\n", rows.GetCount());
 
     const unsigned char* stream_short_txid = entity.GetTxID() + MC_AST_SHORT_TXID_OFFSET;
 
@@ -439,22 +451,36 @@ bool StreamWeightRegistry::ReadAllRecords(std::map<std::string, uint32_t>& out_l
     {
         mc_TxEntityRow* er = (mc_TxEntityRow*)rows.GetRow(i);
 
+        // Chunked/off-chain items are split across extension rows; we only ever
+        // publish tiny on-chain JSON, so those never occur here — skip defensively
+        // (a plain m_TxId copy would be the wrong hash for an extension row).
+        if (er->m_Flags & MC_TFL_IS_EXTENSION)
+        {
+            if (dbg) LogPrintf("[wpoa-dbg]   row %d: extension row, skipped\n", i);
+            continue;
+        }
+
         uint256 hash;
         memcpy(hash.begin(), er->m_TxId, MC_TDB_TXID_SIZE);
 
         int err = MC_ERR_NOERROR;
         mc_TxDefRow txdef;
-        CWalletTx wtx = m_pWalletTxs->WRPGetWalletTx(hash, &txdef, &err);
+        CWalletTx wtx = m_pWalletTxs->GetWalletTx(hash, &txdef, &err);
         if (err != MC_ERR_NOERROR)
         {
+            if (dbg) LogPrintf("[wpoa-dbg]   row %d: GetWalletTx err=%d hash=%s\n", i, err, hash.ToString().c_str());
             continue;
         }
 
         string addr;
         uint32_t w = 0;
-        if (DecodeWeightRecord(wtx, stream_short_txid, addr, w))
+        bool decoded = DecodeWeightRecord(wtx, stream_short_txid, addr, w);
+        if (dbg) LogPrintf("[wpoa-dbg]   row %d: hash=%s vout=%d decode=%s addr=%s w=%u\n",
+                           i, hash.ToString().c_str(), (int)wtx.vout.size(),
+                           decoded ? "OK" : "FAIL", addr.c_str(), w);
+        if (decoded)
         {
-            out_latest[addr] = w; // newest wins (ascending iteration)
+            mc_AccumulateLatestWeight(out_latest, addr, w); // newest wins (ascending iteration)
         }
     }
     return true;
@@ -511,6 +537,29 @@ bool StreamWeightRegistry::IsLocalWeightRegistered()
     return weights.find(m_LocalAddress) != weights.end();
 }
 
+bool StreamWeightRegistry::WaitForLocalWeight(uint32_t weight, int max_attempts, int interval_ms)
+{
+    for (int i = 0; i < max_attempts; i++)
+    {
+        if (ShutdownRequested())
+        {
+            return false;
+        }
+
+        // Quiet read (no per-attempt warning logging).
+        std::map<std::string, uint32_t> weights;
+        ReadAllRecords(weights);
+        std::map<std::string, uint32_t>::const_iterator it = weights.find(m_LocalAddress);
+        if (it != weights.end() && it->second == weight)
+        {
+            return true;
+        }
+
+        MilliSleep(interval_ms);
+    }
+    return false;
+}
+
 void StreamWeightRegistry::DebugPrintWeights()
 {
     std::map<std::string, uint32_t> weights;
@@ -549,9 +598,13 @@ void StreamWeightRegistry::DebugPrintWeights()
 // Deferred registration thread (launched from AppInit2)
 // ---------------------------------------------------------------------------
 
-// True once the node is ready to create/publish and reliably read: chain tip
-// present, initial block download finished, and (unless offline) at least one
-// peer so transactions can propagate and be mined.
+// True once the node is ready to create/publish and reliably read: a chain tip
+// exists and (unless offline) the initial block download has finished.
+//
+// We deliberately do NOT require peers: a single permitted miner produces blocks
+// on its own, so a peerless chain is still able to confirm the create/publish
+// transactions. If this node can neither mine nor reach a miner, RegisterLocalWeight
+// simply keeps returning false and eventually gives up — no harm done.
 static bool NodeReadyForWeightRegistration()
 {
     {
@@ -564,16 +617,10 @@ static bool NodeReadyForWeightRegistration()
 
     if (GetBoolArg("-offline", false))
     {
-        return true; // offline node mines its own blocks locally
+        return true;
     }
 
-    if (IsInitialBlockDownload())
-    {
-        return false;
-    }
-
-    LOCK(cs_vNodes);
-    return !vNodes.empty();
+    return !IsInitialBlockDownload();
 }
 
 void ThreadRegisterNodeWeight(uint32_t weight)
@@ -606,6 +653,18 @@ void ThreadRegisterNodeWeight(uint32_t weight)
         attempts++;
         if (registry.RegisterLocalWeight(weight))
         {
+            // The publish tx may still be in the mempool; reads only see confirmed
+            // items. Wait until the record is mined & imported so the debug dump
+            // shows the committed value instead of 0.
+            if (registry.WaitForLocalWeight(weight, MC_WPOA_CONFIRM_ATTEMPTS, MC_WPOA_RETRY_INTERVAL_MS))
+            {
+                LogPrintf("[StreamWeightRegistry] Weight confirmed on-chain\n");
+            }
+            else
+            {
+                LogPrintf("[StreamWeightRegistry] Weight submitted; awaiting a block "
+                          "(will become visible once mined)\n");
+            }
             registry.DebugPrintWeights();
             LogPrintf("[StreamWeightRegistry] Weight registration completed\n");
             return;

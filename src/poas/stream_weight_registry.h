@@ -33,9 +33,13 @@ struct mc_EntityDetails;
  * Thin, opaque facade over the "wpoa-weights" MultiChain stream.
  *
  * Reads are implemented with the low-level, self-locking wallet read API
- * (mc_WalletTxs WRP*), so every read method is safe to call from ANY thread
- * (no RPC slot required). Writes reuse MultiChain's in-process RPC handlers
- * (create / subscribe / publish), which build and broadcast real transactions.
+ * (mc_WalletTxs GetListSize / GetList / GetWalletTx, which lock the wallet-txs DB
+ * internally), so every read method is safe to call from ANY thread and always
+ * observes the live confirmed state. We deliberately do NOT use the WRP* read
+ * family: those return positions from a snapshot that is only valid inside the
+ * RPC read-lock protocol, so an off-thread reader would see a stale (0-item) view.
+ * Writes reuse MultiChain's in-process RPC handlers (create / subscribe / publish),
+ * which build and broadcast real transactions.
  *
  * Because a published record is only visible once its transaction is mined and
  * imported into the local subscription, the read methods degrade gracefully:
@@ -73,6 +77,15 @@ public:
     /** Logs the full registry state in the format documented in the spec. */
     void DebugPrintWeights();
 
+    /**
+     * Block until this node's confirmed weight equals `weight` (i.e. the publish
+     * transaction has been mined and imported into the subscription), or until
+     * `max_attempts` polls of `interval_ms` each have elapsed, or shutdown is
+     * requested. Returns true if confirmed. Used by the deferred thread so the
+     * debug dump reflects the committed state rather than the pending mempool tx.
+     */
+    bool WaitForLocalWeight(uint32_t weight, int max_attempts, int interval_ms);
+
     /** The resolved local node address (mine/connect/default key). */
     std::string GetLocalAddress() const { return m_LocalAddress; }
 
@@ -94,9 +107,9 @@ private:
 
 /**
  * Deferred registration entry point. Launched as a background thread from
- * AppInit2. Waits until the node is ready (chain tip present, initial sync
- * done, peers connected unless -offline) and then registers the node weight,
- * retrying until it succeeds or a bounded number of attempts elapse.
+ * AppInit2. Waits until the node is ready (chain tip present and, unless
+ * -offline, the initial block download finished) and then registers the node
+ * weight, retrying until it succeeds or a bounded number of attempts elapse.
  */
 void ThreadRegisterNodeWeight(uint32_t weight);
 

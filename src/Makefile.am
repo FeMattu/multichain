@@ -101,6 +101,7 @@ BITCOIN_CORE_H = \
   version/clientversion.h \
   coincontrol.h \
   poas/stream_weight_registry.h \
+  poas/weight_record.h \
   storage/coins.h \
   utils/compat.h \
   utils/compressor.h \

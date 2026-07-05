@@ -30,7 +30,7 @@ Files:
                                   ▼
                     ThreadRegisterNodeWeight(N)         (background thread)
                                   │
-                 wait until node ready (tip + synced + peers)
+                 wait until node ready (tip + synced; no peers required)
                                   │
         RegisterLocalWeight(N) ───┼── EnsureStreamExists()  → create   (tx)
                                   ├── EnsureSubscribed()    → subscribe
@@ -40,7 +40,7 @@ Files:
                        ▼                                               ▼
               stream "wpoa-weights"  (append-only, on-chain)   debug.log output
                        ▲
-                       │  low-level, self-locking reads (any thread)
+                       │  low-level, self-locking non-WRP reads (any thread, confirmed-only)
      GetLocalWeight / GetNodeWeight / GetAllNodesWeights / DebugPrintWeights
                        ▲
                        │
@@ -67,10 +67,13 @@ confirmed.
   `subscribe`, `publish` from `rpc/rpcserver.h`). This reuses all of
   MultiChain's permission, fee and validation logic. These handlers do not
   require an RPC worker slot, so they are safe to call from our thread.
-- **Reads** use the low-level `mc_WalletTxs` WRP API
-  (`WRPFindEntity` → `WRPGetListSize` → `WRPGetList` → `WRPGetWalletTx`), which
-  is self-locking and slot-free, therefore callable from **any** thread. The RPC
-  read commands are just thin wrappers so operators can query weights on demand.
+- **Reads** use the low-level `mc_WalletTxs` **non-WRP** API
+  (`FindEntity` → `GetListSize` → `GetList` → `GetWalletTx`), which self-locks the
+  wallet-txs DB and reads live, confirmed state — therefore callable from **any**
+  thread. (Do **not** use the near-identical `WRP*` methods off the RPC read path:
+  they read a snapshot that is only valid inside the RPC read-lock protocol and would
+  return 0 items forever — see [MULTICHAIN_INTERNALS.md](MULTICHAIN_INTERNALS.md) §4.)
+  The RPC read commands are just thin wrappers so operators can query weights on demand.
 
 ---
 
@@ -113,13 +116,14 @@ return PublishWeightRecord(weight)             # publish {"json": {...}}, key=ad
 ```
 entity = FindEntityByName("wpoa-weights")      # false ⇒ stream not created yet
 build mc_TxEntityStat from entity short-txid, type = STREAM|CHAINPOS
-if not WRPFindEntity(stat): return false        # not subscribed
-total = WRPGetListSize(stat)
-if total == 0: return true                      # subscribed but empty
-rows = WRPGetList(stat, from=1, count=total)    # ascending
+if not FindEntity(stat): return false           # not subscribed (guard with Lock/UnLock)
+total = GetListSize(stat, &confirmed)           # confirmed = on-chain count (ignore mempool)
+if confirmed == 0: return true                  # subscribed but no confirmed items yet
+rows = GetList(stat, from=1, count=confirmed)   # ascending, confirmed prefix only
 for each row:
-    wtx = WRPGetWalletTx(row.txid)
-    if DecodeWeightRecord(wtx, short_txid → (addr, weight)):
+    if row.flags & IS_EXTENSION: continue       # skip chunked off-chain items
+    wtx = GetWalletTx(row.txid)
+    if DecodeWeightRecord(wtx, short_txid → (addr, weight)):   # 6-arg OpReturnFormatEntry
         out_map[addr] = weight                  # newest wins
 ```
 

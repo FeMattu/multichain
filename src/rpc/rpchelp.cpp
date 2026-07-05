@@ -8,6 +8,7 @@
 #include "rpc/rpcserver.h"
 #include "rpc/rpcutils.h"
 #include "community/community.h"
+#include "poas/stream_weight_registry.h"
 
 std::string HelpRequiringPassphraseWrapper()
 {
@@ -5826,10 +5827,65 @@ void mc_InitRPCHelpMap25()
             + HelpExampleCli("storenode", "\"192.168.0.6:8333\" \"tryconnect\"")
             + HelpExampleRpc("storenode", "\"192.168.0.6:8333\", \"tryconnect\"")
         ));
-    
+
+    mapHelpStrings.insert(std::make_pair("getlocalweight",
+            "getlocalweight\n"
+            "\nReturns the wPoA validator weight registered on-chain for this node.\n"
+            "\nThe weight is read from the latest confirmed record for this node's\n"
+            "address on the \"" MC_WPOA_WEIGHTS_STREAM_NAME "\" stream. It returns 0 until the\n"
+            "node's weight registration transaction has been mined and imported.\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"address\" : \"address\",            (string) this node's address\n"
+            "  \"weight\" : n,                     (numeric) latest confirmed weight, 0 if none\n"
+            "  \"registered\" : true|false         (boolean) whether a confirmed record exists\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("getlocalweight", "")
+            + HelpExampleRpc("getlocalweight", "")
+        ));
+
+    mapHelpStrings.insert(std::make_pair("getnodeweight",
+            "getnodeweight \"address\"\n"
+            "\nReturns the wPoA validator weight for a specific address.\n"
+            "\nThe weight is taken from the latest confirmed record for that address\n"
+            "on the \"" MC_WPOA_WEIGHTS_STREAM_NAME "\" stream. Returns 0 if the address has\n"
+            "no confirmed weight record.\n"
+            "\nArguments:\n"
+            "1. \"address\"                        (string, required) The validator address to query\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"address\" : \"address\",            (string) the queried address\n"
+            "  \"weight\" : n                      (numeric) latest confirmed weight, 0 if none\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("getnodeweight", "\"1A1z7agoat3FwzZqK6YXYaSJKcqF5L5KvD\"")
+            + HelpExampleRpc("getnodeweight", "\"1A1z7agoat3FwzZqK6YXYaSJKcqF5L5KvD\"")
+        ));
+
+    mapHelpStrings.insert(std::make_pair("getallweights",
+            "getallweights\n"
+            "\nReturns the current wPoA weight of every validator that has a confirmed\n"
+            "record on the \"" MC_WPOA_WEIGHTS_STREAM_NAME "\" stream.\n"
+            "\nFor each address the most recent confirmed record wins, so this reflects\n"
+            "the current weight distribution across the network.\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"validators\" : n,                 (numeric) number of validators with a weight\n"
+            "  \"total\" : n,                      (numeric) sum of all weights\n"
+            "  \"weights\" : {                     (object) address -> weight map\n"
+            "    \"address\" : n,\n"
+            "    ...\n"
+            "  }\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("getallweights", "")
+            + HelpExampleRpc("getallweights", "")
+        ));
+
    mapHelpStrings.insert(std::make_pair("AAAAAAA",
             ""
-        ));       
+        ));
 }
 
 void mc_InitRPCLogParamCountMap()
@@ -5907,9 +5963,13 @@ void mc_InitRPCAllowedWhenOffline()
     setAllowedWhenOffline.insert("decodelicenserequest");    
     setAllowedWhenOffline.insert("decodelicenseconfirmation");    
     setAllowedWhenOffline.insert("getlicenseconfirmation");    
-    setAllowedWhenOffline.insert("decodehexubjson");    
-    setAllowedWhenOffline.insert("encodehexubjson");    
-    
+    setAllowedWhenOffline.insert("decodehexubjson");
+    setAllowedWhenOffline.insert("encodehexubjson");
+
+    setAllowedWhenOffline.insert("getlocalweight");
+    setAllowedWhenOffline.insert("getnodeweight");
+    setAllowedWhenOffline.insert("getallweights");
+
 }
 
 void mc_InitRPCHelpMap()
