@@ -154,3 +154,6 @@ x86_64-w64-mingw32
 
 # vscode
 .vscode/
+
+#testing
+conftest.*
