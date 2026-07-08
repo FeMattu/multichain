@@ -1,11 +1,38 @@
 # MultiChain Internals Used by the wPoA Weight Registry
 
-A focused reference to the host-codebase symbols this module depends on, with exact
-`file:line` pointers so you can navigate and modify with confidence. Line numbers
-are accurate as of this branch; if the tree moves, `grep` the symbol name.
+> Reference to the MultiChain host-codebase symbols this module depends on, with exact
+> `file:line` pointers so you can navigate and modify with confidence. Line numbers
+> are accurate as of this branch; if the tree moves, `grep` the symbol name.
 
-Read [IMPL.md](IMPL.md) first for the design; this document is the "where does this
-come from in MultiChain?" companion.
+Read [implementation-guide.md](implementation-guide.md) first for the design; this
+document is the "where does this come from in MultiChain?" companion. See the
+[entry point](../README.md) for the feature overview.
+
+---
+
+## Where these APIs sit in the two data paths
+
+The module touches the host codebase along exactly two paths — a **write** path that
+reuses RPC handlers, and a **read** path that goes straight to the wallet-tx store.
+Each box below is detailed in the numbered section that follows.
+
+```mermaid
+flowchart LR
+    subgraph write [Write path - section 3 and 6]
+        direction TB
+        CR[createcmd / publish / subscribe<br/>rpc/rpcserver.h] --> SM[SendMoneyToSeveralAddresses<br/>rpc/rpcwalletutils.cpp] --> TX[CreateTransaction + CommitTransaction]
+    end
+
+    subgraph read [Read path - section 4 and 5]
+        direction TB
+        FE[FindEntity / GetListSize / GetList / GetWalletTx<br/>non-WRP, wallet/wallettxs.cpp] --> DEC[mc_Script + OpReturnFormatEntry<br/>protocol + rpc/rpcutils.cpp]
+    end
+
+    ENT[mc_AssetDB::FindEntityByName<br/>entities/asset.h - section 2] --> write
+    ENT --> read
+    TX -->|tx mined into block| STREAM[(wpoa-weights stream)]
+    STREAM --> FE
+```
 
 ---
 
@@ -249,7 +276,7 @@ record is only visible to §4 reads after the block containing its tx is connect
 Chain parameters live in `chainparams/paramlist.h` (`target-block-time` default 15s,
 `setup-first-blocks` 60, `mining-diversity` 0.3, `mining-requires-peers` true but
 ignored with a single miner, `mine-empty-rounds` 10). Full explanation and timeline:
-[TESTING.md](TESTING.md) §3 and §6.
+[testing.md](testing.md) §3 and §6.
 
 ---
 
@@ -274,3 +301,13 @@ ignored with a single miner, `mine-empty-rounds` 10). Full explanation and timel
 | Node key by permission | `CWallet::GetKeyFromAddressBook` | `wallet/wallet.h:537` |
 | Permission bits | `MC_PTP_MINE`, `MC_PTP_CONNECT` | `permissions/permission.h:18,11` |
 | Chain height/tip | `chainActive.Height()/Tip()` | `chain/chain.h:431/400` |
+
+---
+
+## Related documents
+
+- [../README.md](../README.md) — feature entry point and architecture diagram.
+- [implementation-guide.md](implementation-guide.md) — the design these APIs implement.
+- [stream-weight-registry.md](stream-weight-registry.md) — how the core class calls
+  these APIs, line by line.
+- [testing.md](testing.md) — the mining model behind "reads lag writes" (§8 above).

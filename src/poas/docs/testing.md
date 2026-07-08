@@ -1,5 +1,8 @@
 # wPoA Weight Registry — Testing Guide
 
+> How to build, unit-test and functionally test the module — plus the MultiChain
+> mining model that explains why reads lag writes.
+
 This document covers:
 
 1. [Building](#1-building)
@@ -13,6 +16,22 @@ This document covers:
 
 Throughout, `CHAIN` is the blockchain name and the binaries are in `./src`
 (`multichaind`, `multichain-cli`, `multichain-util`).
+
+## Test layers at a glance
+
+```mermaid
+flowchart TD
+    subgraph unit [Node-free]
+        U[run_unit_tests.sh<br/>Boost.Test on weight_record.h<br/>parsing + newest-wins aggregation]
+    end
+    subgraph func [Requires a built node]
+        S[functional_test_wpoa.sh<br/>single node, fast blocks, assert weight]
+        M[functional_test_wpoa_multinode.sh<br/>multiple nodes]
+        MAN[Manual tests<br/>single node §4 / three nodes §5]
+    end
+    BUILD[make: multichaind / multichain-cli / multichain-util] --> func
+    U -.no build needed.-> UOK([pure logic verified])
+```
 
 ---
 
@@ -255,12 +274,19 @@ And in each node's `debug.log` (after its own successful registration):
 Timeline after a node broadcasts its `publish` transaction (single-miner or with
 a miner peer available), with `T` = `target-block-time`:
 
-```
-t=0     publish tx enters the mempool          getallweights: node NOT shown yet
-                                                (reads see only confirmed items)
-0<t≤T   a permitted miner includes it in a block
-t≈T     block is mined & connected             getallweights: node now shown
-        + wallet updates its stream index
+```mermaid
+sequenceDiagram
+    participant N as Node (publish tx)
+    participant MP as Mempool
+    participant M as Miner
+    participant IDX as Wallet stream index
+    participant Q as getallweights
+
+    N->>MP: t=0 publish tx enters mempool
+    Note over Q: node NOT shown yet (reads see only confirmed items)
+    MP->>M: 0 < t ≤ T miner includes it in a block
+    M->>IDX: t ≈ T block mined & connected → index updated
+    Note over Q: node now shown
 ```
 
 Notes:
@@ -326,8 +352,20 @@ the per-item decode result, e.g.:
 [wpoa-dbg]   row 0: hash=8f9e2f… vout=2 decode=OK addr=1U6Wtf… w=137
 ```
 
-This is what pinpointed the two read-path bugs fixed in this module (see IMPL.md §5.3):
+This is what pinpointed the two read-path bugs fixed in this module (see
+[implementation-guide.md](implementation-guide.md) §5.3):
 using the WRP snapshot API off the RPC thread (list size always 0), and calling the
 wrong `OpReturnFormatEntry` overload (every item `decode=FAIL`). If you ever see
 `GetListSize` non-zero but `decode=FAIL`, compare your decode against the reference
 `liststreamitems <stream> true`, which prints the item MultiChain actually stored.
+
+---
+
+## Related documents
+
+- [../README.md](../README.md) — feature entry point and architecture diagram.
+- [implementation-guide.md](implementation-guide.md) — the design, including the two
+  read-path bugs these tests helped find (§5.3).
+- [multichain-internals.md](multichain-internals.md) §8 — the mining model referenced
+  in §3.
+- [stream-weight-registry.md](stream-weight-registry.md) — the code under test.

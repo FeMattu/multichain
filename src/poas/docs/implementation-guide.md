@@ -4,10 +4,46 @@ This document explains **how the code works, why every choice was made, and how 
 change it**. It is written so you can maintain and extend the module on your own.
 
 Companion documents:
-- [MULTICHAIN_INTERNALS.md](MULTICHAIN_INTERNALS.md) — the MultiChain host APIs this
+- [../README.md](../README.md) — feature entry point: introduction, architecture
+  diagram, table of contents and implementation status.
+- [multichain-internals.md](multichain-internals.md) — the MultiChain host APIs this
   module builds on, with exact `file:line` pointers into the codebase.
-- [README.md](README.md) — short design overview & data model.
-- [TESTING.md](TESTING.md) — build, unit tests, manual/automated testing, mining.
+- [stream-weight-registry.md](stream-weight-registry.md) — line-by-line walkthrough
+  of the core class and background thread.
+- [weight-record.md](weight-record.md) — walkthrough of the pure parsing helpers.
+- [node-startup.md](node-startup.md) — how `-weight` is wired into `AppInit2`.
+- [rpc-registration.md](rpc-registration.md) — how the RPC commands are registered.
+- [testing.md](testing.md) — build, unit tests, manual/automated testing, mining.
+
+---
+
+## Module structure at a glance
+
+```mermaid
+flowchart TD
+    INIT[core/init.cpp<br/>AppInit2: validate -weight,<br/>launch background thread] -->|ThreadRegisterNodeWeight| THREAD
+
+    subgraph swr [stream_weight_registry.h / .cpp]
+        THREAD[Background thread<br/>readiness gate + retry loop]
+        RPCH[RPC handlers<br/>getlocalweight / getnodeweight / getallweights]
+        SWR[StreamWeightRegistry facade]
+        THREAD --> SWR
+        RPCH --> SWR
+    end
+
+    SWR -->|writes: reuse RPC handlers| WRIT[createcmd / subscribe / publish]
+    SWR -->|reads: non-WRP wallet API + decoder| WREC[weight_record.h<br/>mc_ParseWeightRecordJson<br/>mc_AccumulateLatestWeight]
+
+    RPCLIST[rpc/rpclist.cpp command table] -.registers.-> RPCH
+
+    WRIT -->|tx mined| STREAM[(wpoa-weights stream)]
+    STREAM -->|confirmed items| SWR
+```
+
+This guide walks the whole subsystem; the per-file walkthroughs
+([stream-weight-registry.md](stream-weight-registry.md),
+[weight-record.md](weight-record.md), [node-startup.md](node-startup.md),
+[rpc-registration.md](rpc-registration.md)) zoom into each box.
 
 ---
 
@@ -50,22 +86,22 @@ bias block production. That is Phase 2 (see §12).
 
 | File | Role |
 |------|------|
-| [`weight_record.h`](weight_record.h) | Pure, dependency-light helpers (`mc_ParseWeightRecordJson`, `mc_AccumulateLatestWeight`). Depends only on json_spirit, so it is unit-testable in isolation. |
-| [`stream_weight_registry.h`](stream_weight_registry.h) | Public API: the `StreamWeightRegistry` class, the deferred-thread entry point, the RPC declarations, `g_node_weight`, and the two `#define`s. |
-| [`stream_weight_registry.cpp`](stream_weight_registry.cpp) | Implementation: class methods, the low-level decoder, the background thread, and the three RPC command handlers. |
-| [`README.md`](README.md) / [`TESTING.md`](TESTING.md) / [`IMPL.md`](IMPL.md) / [`MULTICHAIN_INTERNALS.md`](MULTICHAIN_INTERNALS.md) | Docs. |
-| [`test/wpoa_weight_tests.cpp`](test/wpoa_weight_tests.cpp) | Boost.Test unit tests for the pure logic. |
-| [`test/run_unit_tests.sh`](test/run_unit_tests.sh) | Build + run the unit tests (no node build needed). |
-| [`test/functional_test_wpoa.sh`](test/functional_test_wpoa.sh) | End-to-end smoke test driving a real single node. |
+| [`weight_record.h`](../weight_record.h) | Pure, dependency-light helpers (`mc_ParseWeightRecordJson`, `mc_AccumulateLatestWeight`). Depends only on json_spirit, so it is unit-testable in isolation. |
+| [`stream_weight_registry.h`](../stream_weight_registry.h) | Public API: the `StreamWeightRegistry` class, the deferred-thread entry point, the RPC declarations, `g_node_weight`, and the two `#define`s. |
+| [`stream_weight_registry.cpp`](../stream_weight_registry.cpp) | Implementation: class methods, the low-level decoder, the background thread, and the three RPC command handlers. |
+| Docs | [../README.md](../README.md) (entry point), this guide, [multichain-internals.md](multichain-internals.md), [stream-weight-registry.md](stream-weight-registry.md), [weight-record.md](weight-record.md), [node-startup.md](node-startup.md), [rpc-registration.md](rpc-registration.md), [testing.md](testing.md). |
+| [`test/wpoa_weight_tests.cpp`](../test/wpoa_weight_tests.cpp) | Boost.Test unit tests for the pure logic. |
+| [`test/run_unit_tests.sh`](../test/run_unit_tests.sh) | Build + run the unit tests (no node build needed). |
+| [`test/functional_test_wpoa.sh`](../test/functional_test_wpoa.sh) | End-to-end smoke test driving a real single node. |
 
 Files **modified** in the host tree (integration points):
 
 | File | Change |
 |------|--------|
-| [`../core/init.cpp`](../core/init.cpp) | `-weight` help line; validate `-weight`; launch the deferred thread at the end of `AppInit2`. |
-| [`../rpc/rpclist.cpp`](../rpc/rpclist.cpp) | Register the three RPC commands (category `wpoa`). |
-| [`../rpc/rpchelp.cpp`](../rpc/rpchelp.cpp) | Help text for the three commands; allow them offline. |
-| [`../Makefile.am`](../Makefile.am) | Compile `stream_weight_registry.cpp` into `libbitcoin_wallet`; list the two headers. |
+| [`../core/init.cpp`](../../core/init.cpp) | `-weight` help line; validate `-weight`; launch the deferred thread at the end of `AppInit2`. |
+| [`../rpc/rpclist.cpp`](../../rpc/rpclist.cpp) | Register the three RPC commands (category `wpoa`). |
+| [`../rpc/rpchelp.cpp`](../../rpc/rpchelp.cpp) | Help text for the three commands; allow them offline. |
+| [`../Makefile.am`](../../Makefile.am) | Compile `stream_weight_registry.cpp` into `libbitcoin_wallet`; list the two headers. |
 
 ---
 
@@ -94,7 +130,7 @@ that is not an RPC worker — so they cannot be reused from our background threa
 We therefore hand-roll the read from the low-level `mc_WalletTxs` API — using its
 **non-WRP** methods (`GetListSize`/`GetList`/`GetWalletTx`), which self-lock and read
 live state on any thread. (The *WRP* methods look similar but are a trap off the RPC
-read path — see §5.3 and [MULTICHAIN_INTERNALS.md](MULTICHAIN_INTERNALS.md) §4.)
+read path — see §5.3 and [multichain-internals.md](multichain-internals.md) §4.)
 
 The consequences:
 - **Writes** reuse the in-process RPC handlers `createcmd`/`subscribe`/`publish`
@@ -159,7 +195,7 @@ was rejected.
   re-implementing transaction building. They also do **not** call `GetRPCSlot()`,
   so they are safe from our thread (Fact 4).
 - **Rejected:** replicating the low-level `SendMoneyToSeveralAddresses` +
-  `mc_Script` OP_RETURN assembly (see [MULTICHAIN_INTERNALS.md](MULTICHAIN_INTERNALS.md) §3).
+  `mc_Script` OP_RETURN assembly (see [multichain-internals.md](multichain-internals.md) §3).
   More control, but a lot of fragile duplicated code.
 
 ### 5.3 Reads use the low-level **non-WRP** API, not the RPC read handlers or the WRP API
@@ -180,7 +216,7 @@ was rejected.
   read lock) sees the snapshot **stuck at 0** and reports "0 items" forever, even
   after the publish tx is mined. Symptom: `getallweights` returned `total:0`
   indefinitely. Fix: use the non-WRP methods, which read live `m_LastPos`/
-  `m_LastClearedPos`. See [MULTICHAIN_INTERNALS.md](MULTICHAIN_INTERNALS.md) §4.
+  `m_LastClearedPos`. See [multichain-internals.md](multichain-internals.md) §4.
 - **Confirmed-only:** `GetListSize`'s out-param gives the confirmed count; we read
   exactly that prefix and ignore mempool items, so every node computes the same
   registry from the same on-chain state (mempool differs per node).
@@ -348,7 +384,7 @@ Top of file:
 - Includes are annotated with *why* each is needed. `rpc/rpcwallet.h` transitively
   pulls `rpcserver.h` (the write/RPC handler decls), `wallet.h`, `wallettxs.h`, and
   `multichain/multichain.h` (which pulls `mc_gState`, `mc_Script`, `mc_EntityDetails`,
-  `mc_AssetDB`, permission constants). See [MULTICHAIN_INTERNALS.md](MULTICHAIN_INTERNALS.md) §1.
+  `mc_AssetDB`, permission constants). See [multichain-internals.md](multichain-internals.md) §1.
 - `g_node_weight` is defined here (declared `extern` in the header).
 - `MC_WPOA_RETRY_INTERVAL_MS` (3000) and `MC_WPOA_MAX_ATTEMPTS` (200) are file-local.
 
@@ -404,7 +440,7 @@ retry loop does.
   overload) → `{"json": {...}}` for UBJSON; hand it to `mc_ParseWeightRecordJson`.
   (The 5-arg overload returns a wrapped shape — see §5.3.)
 This mirrors how the host's `StreamItemEntry` decodes items (see
-[MULTICHAIN_INTERNALS.md](MULTICHAIN_INTERNALS.md) §5) but uses a local script buffer and needs no RPC slot.
+[multichain-internals.md](multichain-internals.md) §5) but uses a local script buffer and needs no RPC slot.
 
 **`ReadAllRecords`** — the read core (uses the **non-WRP** wallet API; see §5.3):
 - fail fast if no wallet, or the stream doesn't exist, or we're not subscribed
@@ -493,38 +529,36 @@ because they need the wallet/tx store.
 
 ## 8. End-to-end control flow
 
-```
-multichaind CHAIN -weight=N
-        │
-        ▼
-AppInit2  ── validate N>0 ── store g_node_weight ── create_thread(ThreadRegisterNodeWeight, N)
-        │                                                        │
-   (startup returns, node runs)                                  ▼
-                                              loop every 3s:  NodeReadyForWeightRegistration()?
-                                                                 │ no → keep waiting
-                                                                 │ yes
-                                                                 ▼
-                                                     RegisterLocalWeight(N)
-                                          ┌───────────────┼───────────────────────────┐
-                                          ▼               ▼                           ▼
-                                 EnsureStreamExists  EnsureSubscribed        GetNodeWeight==N ? done
-                                   │ missing→create      │ subscribe               │ else
-                                   │ (tx)  →false        │ →maybe false            ▼
-                                   ▼                     ▼                   PublishWeightRecord(N)
-                            (next loop sees it     (next loop reads it)        publish (tx) →true
-                             once confirmed)                                        │
-                                                                                    ▼
-                                                            WaitForLocalWeight (until mined)
-                                                                        DebugPrintWeights(); return
-        ┌───────────────────────────────────────────────────────────────────────────────┐
-        │ Reads (any time, any thread): ReadAllRecords → FindEntity → GetList(confirmed) →  │
-        │ GetWalletTx → DecodeWeightRecord → mc_ParseWeightRecordJson → newest-wins map     │
-        └───────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    START([multichaind CHAIN -weight=N]) --> INIT
+    INIT[AppInit2: validate N greater than 0,<br/>store g_node_weight,<br/>create_thread ThreadRegisterNodeWeight N] --> RET[startup returns, node runs]
+    INIT -.launches.-> LOOP
+
+    LOOP{Every 3s:<br/>NodeReadyForWeightRegistration?}
+    LOOP -->|no| LOOP
+    LOOP -->|yes| REG[RegisterLocalWeight N]
+
+    REG --> ESE[EnsureStreamExists]
+    REG --> ESUB[EnsureSubscribed]
+    REG --> IDEM{GetNodeWeight == N?}
+
+    ESE -->|missing: create tx, return false| NEXT1[next loop sees it once confirmed]
+    ESUB -->|subscribe, maybe false| NEXT2[next loop reads it]
+    IDEM -->|yes| DONE1[already registered: done]
+    IDEM -->|no| PUB[PublishWeightRecord N<br/>publish tx, return true]
+
+    PUB --> WAIT[WaitForLocalWeight until mined]
+    WAIT --> DUMP[DebugPrintWeights, then return]
+
+    subgraph reads [Reads: any time, any thread]
+        R[ReadAllRecords] --> R1[FindEntity] --> R2[GetList confirmed] --> R3[GetWalletTx] --> R4[DecodeWeightRecord] --> R5[mc_ParseWeightRecordJson] --> R6[newest-wins map]
+    end
 ```
 
-The two "→false, next loop sees it" arrows are the crux: the create and publish
+The two "return false, next loop sees it" arrows are the crux: the create and publish
 transactions must be **mined** before the following step can proceed. On a single
-miner this is a few seconds per block; see [TESTING.md](TESTING.md) §3/§6.
+miner this is a few seconds per block; see [testing.md](testing.md) §3/§6.
 
 ---
 
@@ -569,7 +603,7 @@ miner this is a few seconds per block; see [TESTING.md](TESTING.md) §3/§6.
 ## 11. How to modify
 
 ### 11.1 Change the stream name or default weight
-Edit the two `#define`s in [`stream_weight_registry.h`](stream_weight_registry.h)
+Edit the two `#define`s in [`stream_weight_registry.h`](../stream_weight_registry.h)
 (`MC_WPOA_WEIGHTS_STREAM_NAME`, `MC_WPOA_DEFAULT_WEIGHT`). They flow into the module,
 `init.cpp` (help/validation) and `rpchelp.cpp` automatically.
 
@@ -580,25 +614,25 @@ In `ResolveLocalAddress`, reorder the `GetKeyFromAddressBook` calls: try
 ### 11.3 Add a field to the record (e.g. a version tag)
 1. In `PublishWeightRecord`, add `record.push_back(Pair("version", (int64_t)1));`.
 2. If you need to read it back, extend `mc_ParseWeightRecordJson` in
-   [`weight_record.h`](weight_record.h) to pull the new member, and add a unit test in
-   [`test/wpoa_weight_tests.cpp`](test/wpoa_weight_tests.cpp).
+   [`weight_record.h`](../weight_record.h) to pull the new member, and add a unit test in
+   [`test/wpoa_weight_tests.cpp`](../test/wpoa_weight_tests.cpp).
 Old records without the field still parse (the reader only requires address+weight).
 
 ### 11.4 Make the stream read-restricted (only admins may set weights)
 Change the `create` call in `EnsureStreamExists` from `true` to a restrict object,
 e.g. `{"restrict":"write"}`, and grant explicit per-stream write permission to the
 allowed addresses. See MultiChain's `create stream ... {"restrict":...}` docs and
-`createstreamfromcmd` ([MULTICHAIN_INTERNALS.md](MULTICHAIN_INTERNALS.md) §3).
+`createstreamfromcmd` ([multichain-internals.md](multichain-internals.md) §3).
 
 ### 11.5 Tune retry pacing / give-up budget
 Edit `MC_WPOA_RETRY_INTERVAL_MS` and `MC_WPOA_MAX_ATTEMPTS` at the top of the `.cpp`.
 
 ### 11.6 Add a new read RPC (e.g. `gettotalweight`)
-1. Declare it in [`stream_weight_registry.h`](stream_weight_registry.h).
+1. Declare it in [`stream_weight_registry.h`](../stream_weight_registry.h).
 2. Implement it in the `.cpp` (construct a registry, call `GetAllNodesWeights`, sum).
-3. Register it in [`../rpc/rpclist.cpp`](../rpc/rpclist.cpp) (category `wpoa`,
+3. Register it in [`../rpc/rpclist.cpp`](../../rpc/rpclist.cpp) (category `wpoa`,
    `true,true,true`).
-4. Add help in [`../rpc/rpchelp.cpp`](../rpc/rpchelp.cpp) and, if it should work
+4. Add help in [`../rpc/rpchelp.cpp`](../../rpc/rpchelp.cpp) and, if it should work
    offline, add it to `setAllowedWhenOffline`.
 
 ### 11.7 Consume the weights elsewhere in the node (Phase 2 starting point)

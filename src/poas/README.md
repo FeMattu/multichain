@@ -1,268 +1,161 @@
-# wPoA — Phase 1: Stream Weight Registry
+# wPoA — Stream Weight Registry (Phase 1)
 
-This module implements **Phase 1** of a Weighted Proof-of-Authority (wPoA)
-selector for MultiChain: an append-only registry of per-validator *weights*,
-stored on a native MultiChain stream and exposed through a small, opaque API.
-
-Nodes never see the internal mechanism (stream layout, transaction plumbing,
-indexes). They only use:
-
-- the startup parameter `-weight=<n>`, and
-- the RPC commands `getlocalweight`, `getallweights`, `getnodeweight`.
-
-Files:
-
-| File | Purpose |
-|------|---------|
-| `stream_weight_registry.h`   | Public API (`StreamWeightRegistry`, deferred thread, RPC decls) |
-| `stream_weight_registry.cpp` | Implementation |
-| `README.md`                  | This document |
+> Per-validator **weight** registry for a Weighted Proof-of-Authority selector in
+> MultiChain — recorded on a native append-only stream and exposed through a small,
+> opaque API. This file is the entry point; the deep documentation lives in
+> [`docs/`](docs/).
 
 ---
 
-## 1. High-level design
+## What POAS is
 
-```
-                          startup (-weight=N)
-                                  │
-        AppInit2 ─────────────────┼──── validates N>0, stores g_node_weight
-                                  │
-                                  ▼
-                    ThreadRegisterNodeWeight(N)         (background thread)
-                                  │
-                 wait until node ready (tip + synced; no peers required)
-                                  │
-        RegisterLocalWeight(N) ───┼── EnsureStreamExists()  → create   (tx)
-                                  ├── EnsureSubscribed()    → subscribe
-                                  └── PublishWeightRecord() → publish   (tx)
-                                              │
-                       ┌──────────────────────┴───────────────────────┐
-                       ▼                                               ▼
-              stream "wpoa-weights"  (append-only, on-chain)   debug.log output
-                       ▲
-                       │  low-level, self-locking non-WRP reads (any thread, confirmed-only)
-     GetLocalWeight / GetNodeWeight / GetAllNodesWeights / DebugPrintWeights
-                       ▲
-                       │
-        RPC: getlocalweight · getnodeweight · getallweights
-```
+**POAS** (*Proof-of-Authority Stake / weighted PoA*) extends MultiChain's
+round-robin Proof-of-Authority with a notion of **validator weight**. Every
+validator advertises a positive integer weight; the set of weights is the raw
+material a future selector will use to bias block production toward higher-weight
+validators.
 
-### Why a background thread instead of a synchronous startup publish?
+**Phase 1 — the scope of this module — is registry only.** It:
 
-Writing to a stream is a **blockchain transaction**. It requires a loaded and
-unlocked wallet, an address with the right permissions, funds for the fee, the
-target stream to already exist and be confirmed, and network connectivity so the
-transaction can propagate and be mined. None of that is guaranteed the moment
-`AppInit2` finishes. Equally, a record only becomes *readable* once its
-transaction is mined **and** imported into the local stream subscription.
+- records each node's weight on an append-only MultiChain stream (`wpoa-weights`),
+- keeps that record current (newest wins) and identical on every node
+  (confirmed-on-chain data only), and
+- exposes read access through three RPC commands and a `StreamWeightRegistry`
+  class.
 
-So registration is **deferred**: a background thread waits until the node is
-ready and then registers, retrying as needed. Startup is never blocked, and the
-read API degrades gracefully (returns `0` / an empty map) until data is
-confirmed.
+Weights are **not yet** used to bias mining — that is Phase 2 (see
+[Implementation status](#implementation-status)).
 
-### Two mechanisms, chosen deliberately
+Operators only ever touch two things:
 
-- **Writes** reuse MultiChain's in-process RPC handlers (`createcmd`,
-  `subscribe`, `publish` from `rpc/rpcserver.h`). This reuses all of
-  MultiChain's permission, fee and validation logic. These handlers do not
-  require an RPC worker slot, so they are safe to call from our thread.
-- **Reads** use the low-level `mc_WalletTxs` **non-WRP** API
-  (`FindEntity` → `GetListSize` → `GetList` → `GetWalletTx`), which self-locks the
-  wallet-txs DB and reads live, confirmed state — therefore callable from **any**
-  thread. (Do **not** use the near-identical `WRP*` methods off the RPC read path:
-  they read a snapshot that is only valid inside the RPC read-lock protocol and would
-  return 0 items forever — see [MULTICHAIN_INTERNALS.md](MULTICHAIN_INTERNALS.md) §4.)
-  The RPC read commands are just thin wrappers so operators can query weights on demand.
+- the startup parameter **`-weight=<n>`** (positive integer, default `100`), and
+- the RPC commands **`getlocalweight`**, **`getnodeweight`**, **`getallweights`**.
+
+Everything else — stream layout, transaction plumbing, wallet indexes — is hidden
+behind the `StreamWeightRegistry` facade.
 
 ---
 
-## 2. Data model
+## Architecture at a glance
 
-One stream, `wpoa-weights` (created on first use). Each item:
+> This is the macro view of the whole feature. Each box maps to a document in the
+> [table of contents](#documentation) below. **Keep this diagram in sync whenever
+> the architecture changes.**
 
-- **key** = the publishing node's address (enables per-node lookups),
-- **data** = a JSON object:
+```mermaid
+flowchart TD
+    OP([Operator: multichaind -weight=N]):::ext --> INIT
 
-```json
-{
-  "timestamp": 1751630400,
-  "node_address": "1A1z7agoat3FwzZqK6YXYaSJKcqF5L5KvD",
-  "weight": 100,
-  "height": 42
-}
+    subgraph startup [Startup: core/init.cpp - see node-startup.md]
+        INIT[AppInit2<br/>validate N greater than 0<br/>set g_node_weight<br/>launch background thread]
+    end
+
+    INIT -->|ThreadRegisterNodeWeight N| REG
+
+    subgraph facade [StreamWeightRegistry facade: stream-weight-registry.md]
+        REG[Deferred registration loop<br/>wait until node ready, then retry]
+        READ[ReadAllRecords<br/>single read core]
+    end
+
+    REG -->|writes reuse in-process RPC handlers| W
+    W[createcmd / subscribe / publish] -->|tx mined| STREAM[(wpoa-weights stream<br/>append-only, on-chain)]
+
+    STREAM -->|non-WRP reads: FindEntity / GetList / GetWalletTx| READ
+    READ -->|decode and aggregate| WR[weight-record.h helpers<br/>mc_ParseWeightRecordJson<br/>mc_AccumulateLatestWeight]
+    WR --> MAP[map address to weight<br/>newest record wins]
+    MAP --> READ
+
+    CLI([multichain-cli getlocalweight / getnodeweight / getallweights]):::ext --> RPCLIST
+    subgraph rpc [RPC layer: rpc/rpclist.cpp - see rpc-registration.md]
+        RPCLIST[3 command handlers]
+    end
+    RPCLIST --> READ
+
+    classDef ext fill:#eee,stroke:#999,color:#333;
 ```
 
-The stream is **append-only**. The *current* weight of a node is the value in
-its **most recent** record. Because `GetList` returns items in chain order
-(oldest → newest), the reader simply overwrites a per-address map while
-iterating, so the newest record wins.
+**Two mechanisms, chosen deliberately:**
+
+- **Writes** reuse MultiChain's in-process RPC handlers (`createcmd`, `subscribe`,
+  `publish`), inheriting all of its permission, fee and validation logic. They need
+  no RPC worker slot, so they are safe to call from the background thread.
+- **Reads** use the low-level `mc_WalletTxs` **non-WRP** API, which self-locks and
+  reads live confirmed state from **any** thread. (The near-identical `WRP*` methods
+  are a trap off the RPC read path — see
+  [`multichain-internals.md`](docs/multichain-internals.md) §4.)
+
+Registration is **deferred** to a background thread because writing to a stream is a
+blockchain transaction: it needs an unlocked wallet, permissions, a fee, a confirmed
+target stream and connectivity — none of which is guaranteed the instant `AppInit2`
+finishes. Startup is never blocked, and reads degrade gracefully (return `0` / an
+empty map) until data is confirmed.
 
 ---
 
-## 3. Critical functions (pseudocode)
+## Documentation
 
-### RegisterLocalWeight(weight)
-```
-if weight == 0: log error; return false
-if not EnsureStreamExists(): return false      # created now or awaiting confirmation
-if not EnsureSubscribed():   return false      # subscription import in progress
-if GetNodeWeight(local) == weight:             # idempotent: nothing changed
-    return true
-return PublishWeightRecord(weight)             # publish {"json": {...}}, key=address
-```
+All detailed documentation lives in [`docs/`](docs/). Start with the
+**implementation guide**.
 
-### ReadAllRecords(out_map)  — the read core
-```
-entity = FindEntityByName("wpoa-weights")      # false ⇒ stream not created yet
-build mc_TxEntityStat from entity short-txid, type = STREAM|CHAINPOS
-if not FindEntity(stat): return false           # not subscribed (guard with Lock/UnLock)
-total = GetListSize(stat, &confirmed)           # confirmed = on-chain count (ignore mempool)
-if confirmed == 0: return true                  # subscribed but no confirmed items yet
-rows = GetList(stat, from=1, count=confirmed)   # ascending, confirmed prefix only
-for each row:
-    if row.flags & IS_EXTENSION: continue       # skip chunked off-chain items
-    wtx = GetWalletTx(row.txid)
-    if DecodeWeightRecord(wtx, short_txid → (addr, weight)):   # 6-arg OpReturnFormatEntry
-        out_map[addr] = weight                  # newest wins
-```
+| Document | What it covers |
+|----------|----------------|
+| [implementation-guide.md](docs/implementation-guide.md) | **Start here.** How the code works and *why* every choice was made — mental model, data model, design decisions, threading & locking, full walkthrough, control flow, and concrete "how to modify" recipes. |
+| [multichain-internals.md](docs/multichain-internals.md) | Reference to the MultiChain host APIs this module builds on, with exact `file:line` pointers — entities, the wallet-tx store, script decoding, RPC-handler reuse, permissions, mining. |
+| [stream-weight-registry.md](docs/stream-weight-registry.md) | Line-by-line walkthrough of the core class and background thread (`stream_weight_registry.h` + `.cpp`). |
+| [weight-record.md](docs/weight-record.md) | Walkthrough of the pure, dependency-light parsing/aggregation helpers (`weight_record.h`) that are unit-tested in isolation. |
+| [node-startup.md](docs/node-startup.md) | How `-weight` is wired into `AppInit2` and how the background thread is launched (`core/init.h` + `.cpp`, wPoA parts). |
+| [rpc-registration.md](docs/rpc-registration.md) | How the three RPC commands are added to the dispatch table (`rpc/rpclist.cpp`). |
+| [testing.md](docs/testing.md) | Build steps, unit tests, the MultiChain mining model, manual single-/multi-node tests, the automated smoke test, and troubleshooting. |
 
-### DecodeWeightRecord(wtx, stream_short_txid → addr, weight)
-```
-for each vout:
-    parse scriptPubKey into mc_Script
-    if not OP_RETURN: continue
-    ExtractAndDeleteDataFormat()                 # strip format meta element
-    if element[0] entity != stream_short_txid: continue
-    data = element[last]                          # on-chain item payload
-    value = OpReturnFormatEntry(data, format)     # {"json": {...}} for UBJSON
-    addr, weight = value.json.node_address, value.json.weight
-```
+### Source & test files
+
+| File | Role |
+|------|------|
+| [`stream_weight_registry.h`](stream_weight_registry.h) / [`.cpp`](stream_weight_registry.cpp) | Public API + implementation of the registry, background thread and RPC handlers. |
+| [`weight_record.h`](weight_record.h) | Pure parsing/aggregation helpers (json_spirit-only, unit-testable). |
+| [`test/wpoa_weight_tests.cpp`](test/wpoa_weight_tests.cpp) | Boost.Test unit tests for the pure logic. |
+| [`test/run_unit_tests.sh`](test/run_unit_tests.sh) | Build + run the unit tests (no node build needed). |
+| [`test/functional_test_wpoa.sh`](test/functional_test_wpoa.sh) | End-to-end smoke test driving a real single node. |
+| [`test/functional_test_wpoa_multinode.sh`](test/functional_test_wpoa_multinode.sh) | End-to-end test across multiple nodes. |
+
+Integration points in the host tree: [`../core/init.cpp`](../core/init.cpp),
+[`../rpc/rpclist.cpp`](../rpc/rpclist.cpp), [`../rpc/rpchelp.cpp`](../rpc/rpchelp.cpp),
+[`../Makefile.am`](../Makefile.am). See
+[implementation-guide.md](docs/implementation-guide.md) §7 for details.
 
 ---
 
-## 4. Public API (`StreamWeightRegistry`)
+## Implementation status
 
-| Method | Meaning |
-|--------|---------|
-| `RegisterLocalWeight(w)` | Ensure stream + subscription, then publish the local weight if changed. |
-| `GetLocalWeight()` | Latest confirmed weight for this node (`0` if none). |
-| `GetNodeWeight(addr)` | Latest confirmed weight for `addr` (`0` if none). |
-| `GetAllNodesWeights()` | `map<address, weight>` for every validator. |
-| `IsLocalWeightRegistered()` | Whether this node has a confirmed record. |
-| `DebugPrintWeights()` | Log the full registry state. |
+| Phase | Area | Status | Notes |
+|:-----:|------|--------|-------|
+| **1** | Weight configuration (`-weight`) & validation | Done | Validated in `AppInit2`; startup fails on `-weight <= 0`. |
+| **1** | Deferred registration (background thread) | Done | Waits for readiness, retries, bounded budget before giving up. |
+| **1** | On-chain append-only registry (`wpoa-weights`) | Done | Create + subscribe + publish via reused RPC handlers; idempotent re-registration. |
+| **1** | Opaque read API (`GetLocalWeight`, `GetAllNodesWeights`, `GetNodeWeight`) | Done | Backward-search per address; hides stream mechanics from callers. |
+| **1** | RPC surface (`getlocalweight`, `getnodeweight`, `getallweights`) | Done | Confirmed-only, thread-safe. |
+| **1** | Read-path correctness fixes | Done | non-WRP read family (WRP snapshot bug) and 6-arg `OpReturnFormatEntry` overload. |
+| **1** | Unit tests (pure parsing / aggregation) | Done | Boost.Test suite, node-free. |
+| **1** | Single-node functional smoke test | Done | [`test/functional_test_wpoa.sh`](test/functional_test_wpoa.sh). |
+| **1** | Multi-node functional smoke test | In progress | [`test/functional_test_wpoa_multinode.sh`](test/functional_test_wpoa_multinode.sh) — bootstraps `connect`/`send`/`receive`/`mine`/`wpoa-weights.write` from node 0; asserts per-node weight. |
 
-The node's own address is resolved as: mining address (`MC_PTP_MINE`) →
-connect address (`MC_PTP_CONNECT`) → wallet default key.
-
----
-
-## 5. RPC commands
-
-```
-getlocalweight
-  → { "address": "...", "weight": n, "registered": true|false }
-
-getnodeweight "address"
-  → { "address": "...", "weight": n }
-
-getallweights
-  → { "validators": n, "total": n, "weights": { "addr": w, ... } }
-```
+See [implementation-guide.md §12](docs/implementation-guide.md#12-limitations--phase-2-hooks)
+for the full limitations & Phase 2 hooks.
 
 ---
 
-## 6. Building
-
-The module is compiled into `libbitcoin_wallet`. Because `src/Makefile.am` was
-changed, regenerate the build files before compiling:
+## Quick start
 
 ```bash
+# Build (Makefile.am changed, so regenerate first):
 cd /home/mattu/multichain
-./autogen.sh          # or: autoreconf -i
-./configure           # your usual flags
-make
+./autogen.sh && ./configure && make
+
+# Run a node with a weight:
+./src/multichaind <chain> -weight=100
+
+# Query weights:
+./src/multichain-cli <chain> getallweights
 ```
 
----
-
-## 7. Manual test (3 nodes: weights 100, 80, 50)
-
-1. Start node A (chain admin) with `-weight=100`. It creates `wpoa-weights`,
-   subscribes, and — once a block confirms the create — publishes its record.
-2. Start nodes B (`-weight=80`) and C (`-weight=50`), each connected to the
-   chain and granted `connect,send,receive` (and `mine` if they validate).
-3. After the registration transactions are mined, on any node:
-
-```bash
-multichain-cli <chain> getallweights
-```
-
-Expected (order may vary):
-
-```json
-{
-  "validators": 3,
-  "total": 230,
-  "weights": {
-    "1A1z7agoat3FwzZqK6YXYaSJKcqF5L5KvD": 100,
-    "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2": 80,
-    "1dice8EMCQAqQxWhZgWmwBYz4MPnPCfQNV": 50
-  }
-}
-```
-
-`DebugPrintWeights()` (emitted to `debug.log` after successful registration)
-prints:
-
-```
-[StreamWeightRegistry] ════════════════════════════════════════
-[StreamWeightRegistry] === WEIGHT REGISTRY DEBUG LOG ===
-[StreamWeightRegistry] Stream: wpoa-weights
-[StreamWeightRegistry] Local Node Address: 1A1z7agoat3FwzZqK6YXYaSJKcqF5L5KvD
-[StreamWeightRegistry] Local Weight: 100
-[StreamWeightRegistry] ────────────────────────────────────────
-[StreamWeightRegistry] All Registered Nodes:
-[StreamWeightRegistry]   1A1z7agoat3FwzZqK6YXYaSJKcqF5L5KvD: 100
-[StreamWeightRegistry]   1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2: 80
-[StreamWeightRegistry]   1dice8EMCQAqQxWhZgWmwBYz4MPnPCfQNV: 50
-[StreamWeightRegistry] Total Weight (sum): 230
-[StreamWeightRegistry] Number of Validators: 3
-[StreamWeightRegistry] ════════════════════════════════════════
-```
-
-### Notes / expected behaviour
-- Weights **do not change on restart** unless `-weight` is changed: the
-  idempotency check skips re-publishing an unchanged weight; a changed value
-  appends a new record that then wins.
-- Immediately after a fresh publish, the record is unconfirmed and may not yet
-  appear in reads — this is expected; it shows up once mined and imported.
-
----
-
-## 8. Edge cases handled
-
-| Situation | Behaviour |
-|-----------|-----------|
-| Stream does not exist | Created automatically (once) on first registration. |
-| Node not subscribed | Subscribed automatically before reads. |
-| Stream empty | `GetAllNodesWeights()` returns an empty map. |
-| Node never registered | `GetLocalWeight()` returns `0` with a warning. |
-| `-weight <= 0` | Startup fails with `InitError`. |
-| No valid node address | Placeholder address + warning; registration is skipped. |
-| Concurrent writers | Stream order is preserved by the chain; newest record wins. |
-
----
-
-## 9. Limitations & future work
-
-- **Phase 1 is registry-only** — weights are recorded and queried, but not yet
-  used to bias block production / validator selection (that is Phase 2).
-- On-chain records only (no off-chain / large payloads).
-- No authorization beyond MultiChain stream write permissions: any writer can
-  publish its own weight. A future phase should restrict who may set weights
-  (e.g. admin-signed updates) and add **dynamic weights**, **slashing**, and
-  weight decay.
-- Re-registration appends a new record rather than mutating in place (inherent
-  to append-only streams); a trimming/checkpoint strategy may be added later.
-```
+Full build and test instructions are in [testing.md](docs/testing.md).
