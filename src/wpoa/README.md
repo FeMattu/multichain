@@ -92,14 +92,36 @@ empty map) until data is confirmed.
 
 ---
 
+## Documentation Structure
+
+This project contains multiple levels of documentation:
+
+1. **[Thesis Project Overview](docs/thesis-project-overview.md)**
+   - For researchers & students: Theory, threat modeling, literature review, mathematical foundations
+   - Learn WHY we use Efraimidis–Spirakis and what security properties it provides
+
+2. **[Implementation Roadmap](docs/implementation-roadmap.md)**
+   - For developers & contributors: Phased plan, current status, components, vulnerabilities
+   - Understand what's implemented, what's planned, and how pieces connect
+
+3. **[Technical Implementation Guide](docs/implementation-guide.md)**
+   - For deep dives: API details, code walkthroughs, debugging, MultiChain internals
+   - Start here only after reading the overview and roadmap
+
+---
+
 ## Documentation
 
 All detailed documentation lives in [`docs/`](docs/). Start with the
-**implementation guide**.
+**implementation guide** for code-level detail, or the
+**[Documentation Structure](#documentation-structure)** above if you're new
+to the project.
 
 | Document | What it covers |
 |----------|----------------|
-| [implementation-guide.md](docs/implementation-guide.md) | **Start here.** How the code works and *why* every choice was made — mental model, data model, design decisions, threading & locking, full walkthrough, control flow, and concrete "how to modify" recipes. |
+| [thesis-project-overview.md](docs/thesis-project-overview.md) | Research companion: problem statement, threat model, literature review, theoretical contributions behind the wPoA design (bachelor's thesis, Università di Pisa). |
+| [implementation-roadmap.md](docs/implementation-roadmap.md) | Engineering companion: phased plan, rationale for private (Efraimidis) sortition over public WRS, current status, vulnerabilities & mitigations. |
+| [implementation-guide.md](docs/implementation-guide.md) | **Start here for code.** How the code works and *why* every choice was made — mental model, data model, design decisions, threading & locking, full walkthrough, control flow, and concrete "how to modify" recipes. |
 | [multichain-internals.md](docs/multichain-internals.md) | Reference to the MultiChain host APIs this module builds on, with exact `file:line` pointers — entities, the wallet-tx store, script decoding, RPC-handler reuse, permissions, mining. |
 | [stream-weight-registry.md](docs/stream-weight-registry.md) | Line-by-line walkthrough of the core class and background thread (`stream_weight_registry.h` + `.cpp`). |
 | [weight-record.md](docs/weight-record.md) | Walkthrough of the pure, dependency-light parsing/aggregation helpers (`weight_record.h`) that are unit-tested in isolation. |
