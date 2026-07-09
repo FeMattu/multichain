@@ -35,21 +35,7 @@ flowchart TD
 
 ---
 
-## 1. Building
-
-The module lives in `libbitcoin_wallet`. Because `src/Makefile.am` changed,
-regenerate the build files first:
-
-```bash
-cd /home/mattu/multichain
-./autogen.sh            # or: autoreconf -i
-./configure             # your usual flags
-make                    # produces src/multichaind, src/multichain-cli, src/multichain-util
-```
-
----
-
-## 2. Automated unit tests
+## 1. Automated unit tests
 
 The pure record-parsing / aggregation logic (`src/poas/weight_record.h`) has a
 self-contained Boost.Test suite that does **not** require the node to be built:
@@ -73,14 +59,14 @@ aggregation used by `GetAllNodesWeights`.
 
 ---
 
-## 3. How MultiChain mining works
+## 2. How MultiChain mining works
 
 This matters because **registering a weight is a transaction**, and a
 transaction is only visible to the read API once it is **mined into a block**.
 
-### 3.1 Proof-of-Authority round-robin
+### 2.1 Proof-of-Authority round-robin
 MultiChain does not use hash-based PoW. Blocks are produced by addresses that
-hold the **`mine` permission**, in a **round-robin** fashion. The relevant chain
+hold the **`mine` permission**, in a **round-robin** fashion (at this state of implementation of wPoA). The relevant chain
 parameters (defaults shown) are:
 
 | Parameter | Default | Meaning |
@@ -91,7 +77,7 @@ parameters (defaults shown) are:
 | `mining-diversity` | 0.3 | A miner must wait `mining-diversity × (active miners)` blocks before mining again (prevents one miner monopolising). |
 | `mine-empty-rounds` | 10 | Mine at most this many rounds of **empty** blocks, then pause and wait for a transaction. |
 
-### 3.2 The lifecycle of a weight registration
+### 2.2 The lifecycle of a weight registration
 
 When a node starts with `-weight=N`, `AppInit2` validates `N` and launches a
 background thread (`ThreadRegisterNodeWeight`). That thread:
@@ -111,7 +97,7 @@ Each of steps 2–4 is a transaction that a miner must include in a block. With
 transaction **wakes mining up**, so the next block (within ~`target-block-time`)
 includes it.
 
-### 3.3 Confirmed vs. unconfirmed — the key point
+### 2.3 Confirmed vs. unconfirmed — the key point
 The read API (`getlocalweight` / `getallweights` / `getnodeweight`) reads from
 the wallet's **confirmed stream index** (chain-position index), which is updated
 when a block is **connected**. A freshly broadcast transaction sits in the
@@ -196,34 +182,24 @@ mkdir -p ~/wpoa/A ~/wpoa/B ~/wpoa/C
 # and registers weight 100.
 ./multichaind wpoa3 -datadir=$HOME/wpoa/A -port=7471 -rpcport=7481 -weight=100 -daemon
 
-# Note node A's own address and the connect string:
-./multichain-cli -datadir=$HOME/wpoa/A -rpcport=7481 wpoa3 getinfo
-#   -> "nodeaddress" : "wpoa3@<ip>:7471"
+# Note node A's own address:
 A_ADDR=$(./multichain-cli -datadir=$HOME/wpoa/A -rpcport=7481 wpoa3 getaddresses | head)
 ```
 
-### 5.2 Start node B, get its address, grant permissions
+### 5.2 Start node B, grant permissions
 
 ```bash
 # First launch of B connects to A; it prints B's address and waits for permission.
-./multichaind wpoa3@<A-ip>:7471 -datadir=$HOME/wpoa/B -port=7472 -rpcport=7482 -weight=80 -daemon
-
-# Read B's address from its log / getinfo:
-./multichain-cli -datadir=$HOME/wpoa/B -rpcport=7482 wpoa3 getinfo   # "burnaddress"? use the printed address
-#   The daemon log prints: "... grant <B-ADDRESS> connect ..."
+./multichaind wpoa3@<A-ip>:7471 -datadir=$HOME/wpoa/B -weight=80
 
 # On node A, grant B connect/send/receive, and mine (to make it a validator):
-./multichain-cli -datadir=$HOME/wpoa/A -rpcport=7481 wpoa3 grant <B-ADDRESS> connect,send,receive
-./multichain-cli -datadir=$HOME/wpoa/A -rpcport=7481 wpoa3 grant <B-ADDRESS> mine
+./multichain-cli -datadir=$HOME/wpoa/A -rpcport=7481 wpoa3 grant <B-ADDRESS> connect,send,receive,mine
+
+# Start node B
+./multichaind wpoa3@<A-ip>:7471 -datadir=$HOME/wpoa/B -port=7472 -rpcport=7482 -weight=80 -daemon
 ```
 
-### 5.3 Start node C, grant permissions
-
-```bash
-./multichaind wpoa3@<A-ip>:7471 -datadir=$HOME/wpoa/C -port=7473 -rpcport=7483 -weight=50 -daemon
-./multichain-cli -datadir=$HOME/wpoa/A -rpcport=7481 wpoa3 grant <C-ADDRESS> connect,send,receive
-./multichain-cli -datadir=$HOME/wpoa/A -rpcport=7481 wpoa3 grant <C-ADDRESS> mine
-```
+### 5.3 Start node C, (same steps of node B)
 
 Once B and C have `connect,send`, their background threads publish their weights;
 once they also have `mine`, they join the round-robin miner set.
@@ -312,15 +288,22 @@ Notes:
 
 ## 7. Automated functional smoke test
 
-`src/poas/test/functional_test_wpoa.sh` drives a **real single node** end to end:
+`src/poas/test/functional_test_wpoa.sh` drives a **real single node** end to end, `src/poas/test/functional_test_wpoa_multinode.sh` drives a **multinode** end to end:
 it creates a throwaway chain with fast blocks, starts `multichaind -weight=<N>`,
 polls `getallweights` until the weight is confirmed, asserts the value, then
 stops the node and cleans up. It requires the node to be built first (§1).
 
 ```bash
-# after `make`:
-./src/poas/test/functional_test_wpoa.sh              # uses ./src binaries, weight 137
-BINDIR=./src WEIGHT=200 ./src/poas/test/functional_test_wpoa.sh
+cd ./src/poas/test
+# single node
+./functional_test_wpoa.sh              # uses ./src binaries, weight 137
+BINDIR=./src WEIGHT=200 ./functional_test_wpoa.sh
+
+# multinode
+./functional_test_wpoa_multinode.sh                       # 3 nodes, default weights
+NODES=1 ./functional_test_wpoa_multinode.sh                # single-node mode (legacy behavior)
+NODES=5 WEIGHTS="10 20 30 40 50" ./functional_test_wpoa_multinode.sh
+BINDIR=./src NODES=4 TIMEOUT=240 ./functional_test_wpoa_multinode.sh
 ```
 
 Exit code `0` and `FUNCTIONAL TEST PASSED` on success; non-zero with diagnostics
