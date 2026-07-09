@@ -3,14 +3,14 @@
 # Build and run the wPoA weight-registry unit tests.
 #
 # These tests exercise the pure record parsing / aggregation logic
-# (src/poas/weight_record.h) and depend only on json_spirit headers and
+# (src/wpoa/weight_record.h) and depend only on json_spirit headers and
 # Boost.Test (header-only). They do NOT require the node to be built.
 #
-# Usage:  ./src/poas/test/run_unit_tests.sh
+# Usage:  ./src/wpoa/test/run_unit_tests.sh
 #
 set -euo pipefail
 
-# Resolve the src/ directory (this script lives in src/poas/test/).
+# Resolve the src/ directory (this script lives in src/wpoa/test/).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"   # .../src
 OUT="${TMPDIR:-/tmp}/wpoa_weight_tests"

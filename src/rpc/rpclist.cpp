@@ -10,7 +10,7 @@
 
 
 #include "rpc/rpcserver.h"
-#include "poas/stream_weight_registry.h"
+#include "wpoa/stream_weight_registry.h"
 
 
 /* MCHN START */

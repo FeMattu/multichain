@@ -8,7 +8,7 @@
 #include "rpc/rpcserver.h"
 #include "rpc/rpcutils.h"
 #include "community/community.h"
-#include "poas/stream_weight_registry.h"
+#include "wpoa/stream_weight_registry.h"
 
 std::string HelpRequiringPassphraseWrapper()
 {

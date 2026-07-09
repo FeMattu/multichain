@@ -118,7 +118,7 @@ the wrong one silently returns **zero items**. This bit us — see the box below
   on plain block connect) **and** only observed correctly by a caller inside the RPC
   read-lock protocol (`WRPReadLock()` on an RPC-worker thread with a slot).
 
-> ⚠️ **Pitfall (real bug we hit).** A self-contained reader (a background thread, or
+> **Pitfall (real bug we hit).** A self-contained reader (a background thread, or
 > an RPC handler that does not itself call `WRPReadLock()`) that uses the WRP methods
 > sees a **stale snapshot stuck at 0** — `WRPGetListSize` returns `m_ReadLastPos`
 > which is never advanced for that caller, so every read reports "0 items" *forever*,

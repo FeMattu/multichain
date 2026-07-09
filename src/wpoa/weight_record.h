@@ -5,10 +5,10 @@
 //
 // This header intentionally depends only on json_spirit (plus <string>), so the
 // parsing/aggregation logic can be unit-tested in isolation, without linking the
-// wallet / node runtime. See src/poas/test/wpoa_weight_tests.cpp.
+// wallet / node runtime. See src/wpoa/test/wpoa_weight_tests.cpp.
 
-#ifndef MC_POAS_WEIGHT_RECORD_H
-#define MC_POAS_WEIGHT_RECORD_H
+#ifndef MC_WPOA_WEIGHT_RECORD_H
+#define MC_WPOA_WEIGHT_RECORD_H
 
 #include <map>
 #include <string>
@@ -122,4 +122,4 @@ inline void mc_AccumulateLatestWeight(std::map<std::string, uint32_t>& latest,
     latest[node_address] = weight;
 }
 
-#endif // MC_POAS_WEIGHT_RECORD_H
+#endif // MC_WPOA_WEIGHT_RECORD_H

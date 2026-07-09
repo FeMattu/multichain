@@ -22,7 +22,7 @@
 #   4. Relaunch the node with -daemon; it now joins because the address is
 #      permitted, and serves RPC.
 #
-# Requires the node to be built first (see src/poas/TESTING.md §1).
+# Requires the node to be built first (see src/wpoa/TESTING.md §1).
 #
 # Usage:
 #   ./functional_test_wpoa_multinode.sh                       # 3 nodes, default weights

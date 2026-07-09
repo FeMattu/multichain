@@ -53,7 +53,7 @@ thread will be attached.
 ### 2.1 The include (line 43)
 
 ```cpp
-#include "poas/stream_weight_registry.h"
+#include "wpoa/stream_weight_registry.h"
 ```
 This brings into `init.cpp` the constant `MC_WPOA_DEFAULT_WEIGHT`, the variable
 `g_node_weight` and the function `ThreadRegisterNodeWeight` — everything needed to start

@@ -192,7 +192,7 @@ json_spirit::Value getnodeweight(const json_spirit::Array& params, bool fHelp);
 ### 2.1 Includes and what they bring
 
 ```cpp
-#include "poas/stream_weight_registry.h"
+#include "wpoa/stream_weight_registry.h"
 #include "rpc/rpcwallet.h"      // create/publish/subscribe, wallet.h, wallettxs.h, multichain.h
 #include "rpc/rpcutils.h"       // OpReturnFormatEntry
 #include "structs/base58.h"     // CBitcoinAddress
@@ -200,7 +200,7 @@ json_spirit::Value getnodeweight(const json_spirit::Array& params, bool fHelp);
 #include "core/main.h"          // chainActive, cs_main, IsInitialBlockDownload
 #include "utils/util.h"         // GetArg, LogPrintf, RenameThread, GetBoolArg
 #include "utils/utiltime.h"     // MilliSleep, GetTime
-#include "poas/weight_record.h" // mc_ParseWeightRecordJson, mc_AccumulateLatestWeight
+#include "wpoa/weight_record.h" // mc_ParseWeightRecordJson, mc_AccumulateLatestWeight
 #include <boost/foreach.hpp>
 ```
 

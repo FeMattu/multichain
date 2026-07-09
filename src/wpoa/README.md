@@ -7,9 +7,9 @@
 
 ---
 
-## What POAS is
+## What wPoA is
 
-**POAS** (*Proof-of-Authority Stake / weighted PoA*) extends MultiChain's
+**wPoA** (*Weighted Proof-of-Authority*) extends MultiChain's
 round-robin Proof-of-Authority with a notion of **validator weight**. Every
 validator advertises a positive integer weight; the set of weights is the raw
 material a future selector will use to bias block production toward higher-weight

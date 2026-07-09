@@ -2,9 +2,9 @@
 // MultiChain code distributed under the GPLv3 license, see COPYING file.
 //
 // wPoA Phase 1 — Weight Registry implementation. See stream_weight_registry.h
-// and src/poas/README.md for the design.
+// and src/wpoa/README.md for the design.
 
-#include "poas/stream_weight_registry.h"
+#include "wpoa/stream_weight_registry.h"
 
 #include "rpc/rpcwallet.h"      // pulls rpcserver.h (create/publish/subscribe), wallet.h, wallettxs.h, multichain.h
 #include "rpc/rpcutils.h"       // OpReturnFormatEntry
@@ -13,7 +13,7 @@
 #include "core/main.h"          // chainActive, cs_main, IsInitialBlockDownload
 #include "utils/util.h"         // GetArg, LogPrintf, RenameThread, GetBoolArg
 #include "utils/utiltime.h"     // MilliSleep, GetTime
-#include "poas/weight_record.h" // mc_ParseWeightRecordJson, mc_AccumulateLatestWeight
+#include "wpoa/weight_record.h" // mc_ParseWeightRecordJson, mc_AccumulateLatestWeight
 
 #include <boost/foreach.hpp>
 
@@ -362,7 +362,7 @@ static bool DecodeWeightRecord(const CWalletTx& wtx, const unsigned char* stream
 bool StreamWeightRegistry::ReadAllRecords(std::map<std::string, uint32_t>& out_latest)
 {
     // Verbose, per-read tracing of the stream read path. Off by default; enable
-    // with -wpoadebug for troubleshooting (see src/poas/TESTING.md).
+    // with -wpoadebug for troubleshooting (see src/wpoa/TESTING.md).
     static const bool dbg = GetBoolArg("-wpoadebug", false);
 
     out_latest.clear();

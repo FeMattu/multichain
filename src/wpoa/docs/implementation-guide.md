@@ -206,7 +206,7 @@ was rejected.
   slot-indexed temp buffers. The non-WRP wallet methods self-lock (`Lock(0,0)`) and
   read the live list, so they run correctly on any thread — the background thread
   *and* the RPC command threads.
-- **⚠️ Trap we fell into (and why NOT the WRP methods):** the near-identical `WRP*`
+- **Trap we fell into (and why NOT the WRP methods):** the near-identical `WRP*`
   methods (`WRPGetListSize`, …) are what `liststreamitems` uses, so they look like the
   obvious choice. But when the read-lock feature is on (`WRPUsed()==1`, the default)
   `WRPGetListSize` returns a **snapshot** position (`m_ReadLastPos`) that is only
@@ -482,7 +482,7 @@ construct a registry, call the matching method(s), return a `json_spirit::Object
 
 ### 7.4 `../core/init.cpp` integration
 
-- Include added: `#include "poas/stream_weight_registry.h"`.
+- Include added: `#include "wpoa/stream_weight_registry.h"`.
 - Help line for `-weight` added in `HelpMessage` (uses `MC_WPOA_DEFAULT_WEIGHT`).
 - At the **end of `AppInit2`**, just before `return !fRequestShutdown;`, inside
   `#ifdef ENABLE_WALLET`:
@@ -519,9 +519,9 @@ because they need the wallet/tx store.
 
 ### 7.7 `../Makefile.am`
 
-- `poas/stream_weight_registry.cpp` added to `libbitcoin_wallet_a_SOURCES` (it uses
+- `wpoa/stream_weight_registry.cpp` added to `libbitcoin_wallet_a_SOURCES` (it uses
   wallet + RPC-handler symbols that live in that lib).
-- `poas/stream_weight_registry.h` and `poas/weight_record.h` added to
+- `wpoa/stream_weight_registry.h` and `wpoa/weight_record.h` added to
   `BITCOIN_CORE_H` (tracked headers for the dist).
 - After editing `Makefile.am` you must regenerate: `./autogen.sh && ./configure`.
 

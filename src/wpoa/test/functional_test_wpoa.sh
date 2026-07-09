@@ -6,11 +6,11 @@
 # blocks, starts the node with -weight=<N>, waits until the weight is confirmed
 # on-chain, asserts it via `getallweights`, then stops the node and cleans up.
 #
-# Requires the node to be built first (see src/poas/TESTING.md §1).
+# Requires the node to be built first (see src/wpoa/TESTING.md §1).
 #
 # Usage:
-#   ./src/poas/test/functional_test_wpoa.sh
-#   BINDIR=./src WEIGHT=200 TIMEOUT=180 ./src/poas/test/functional_test_wpoa.sh
+#   ./src/wpoa/test/functional_test_wpoa.sh
+#   BINDIR=./src WEIGHT=200 TIMEOUT=180 ./src/wpoa/test/functional_test_wpoa.sh
 #
 set -uo pipefail
 

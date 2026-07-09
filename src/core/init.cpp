@@ -40,7 +40,7 @@
 #include "wallet/wallettxs.h"
 #include "protocol/relay.h"
 #include "filters/filter.h"
-#include "poas/stream_weight_registry.h"
+#include "wpoa/stream_weight_registry.h"
 
 std::string BurnAddress(const std::vector<unsigned char>& vchVersion);
 std::string SetBannedTxs(std::string txlist);

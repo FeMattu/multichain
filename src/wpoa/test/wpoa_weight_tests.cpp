@@ -2,11 +2,11 @@
 // MultiChain code distributed under the GPLv3 license, see COPYING file.
 //
 // wPoA Phase 1 — unit tests for the pure weight-record parsing/aggregation
-// helpers (src/poas/weight_record.h).
+// helpers (src/wpoa/weight_record.h).
 //
 // These tests are self-contained: they depend only on json_spirit headers and
 // Boost.Test (header-only "included" variant), NOT on the wallet / node runtime.
-// Build & run with src/poas/test/run_unit_tests.sh.
+// Build & run with src/wpoa/test/run_unit_tests.sh.
 
 #define BOOST_TEST_MODULE wPoAWeightTests
 #include <boost/test/included/unit_test.hpp>
@@ -14,7 +14,7 @@
 #include <map>
 #include <string>
 
-#include "poas/weight_record.h"
+#include "wpoa/weight_record.h"
 
 using namespace json_spirit;
 

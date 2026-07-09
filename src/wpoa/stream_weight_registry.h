@@ -8,7 +8,7 @@
 // and global weights. Nodes never touch the internal mechanism, only
 // the public methods below.
 //
-// See src/poas/README.md for the design, data model and manual test steps.
+// See src/wpoa/README.md for the design, data model and manual test steps.
 
 #ifndef STREAM_WEIGHT_REGISTRY_H
 #define STREAM_WEIGHT_REGISTRY_H

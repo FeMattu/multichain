@@ -31,7 +31,7 @@ In other words: the **parsing logic** is isolated from the rest of the system.
 `stream_weight_registry.cpp` depends on the entire node runtime (wallet, chain,
 transaction DB). If the parsing lived there, testing it would require booting half a
 node. By extracting it into a header that depends **only** on `json_spirit` +
-`<string>` + `<map>`, the unit test (`src/poas/test/wpoa_weight_tests.cpp`) can include
+`<string>` + `<map>`, the unit test (`src/wpoa/test/wpoa_weight_tests.cpp`) can include
 only this header, hand-build a `json_spirit::Value` and verify the parsing — without
 linking the wallet, network or database.
 
@@ -218,11 +218,11 @@ Extracting this line into its own function makes it:
 ## 5. Links to the other files
 
 - **`stream_weight_registry.cpp`** includes this header
-  (`#include "poas/weight_record.h"`) and uses:
+  (`#include "wpoa/weight_record.h"`) and uses:
   - `mc_ParseWeightRecordJson` inside `DecodeWeightRecord` to extract `(addr, weight)`
     from the `Value` produced by `OpReturnFormatEntry`;
   - `mc_AccumulateLatestWeight` inside `ReadAllRecords` to build the address→weight map.
-- **`src/poas/test/wpoa_weight_tests.cpp`** includes **only** this header to test the
+- **`src/wpoa/test/wpoa_weight_tests.cpp`** includes **only** this header to test the
   parsing in isolation — which is the entire reason the file exists.
 - It depends on no other wPoA file: it is the pure "leaf" of the subsystem.
 

@@ -44,7 +44,7 @@ flowchart LR
 ### 2.1 The include (line 13)
 
 ```cpp
-#include "poas/stream_weight_registry.h"
+#include "wpoa/stream_weight_registry.h"
 ```
 This is the only link needed: it brings the **prototypes** of the three handler functions
 declared in the registry's header into `rpclist.cpp`:

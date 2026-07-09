@@ -37,11 +37,11 @@ flowchart TD
 
 ## 1. Automated unit tests
 
-The pure record-parsing / aggregation logic (`src/poas/weight_record.h`) has a
+The pure record-parsing / aggregation logic (`src/wpoa/weight_record.h`) has a
 self-contained Boost.Test suite that does **not** require the node to be built:
 
 ```bash
-./src/poas/test/run_unit_tests.sh
+./src/wpoa/test/run_unit_tests.sh
 ```
 
 Expected tail:
@@ -288,13 +288,13 @@ Notes:
 
 ## 7. Automated functional smoke test
 
-`src/poas/test/functional_test_wpoa.sh` drives a **real single node** end to end, `src/poas/test/functional_test_wpoa_multinode.sh` drives a **multinode** end to end:
+`src/wpoa/test/functional_test_wpoa.sh` drives a **real single node** end to end, `src/wpoa/test/functional_test_wpoa_multinode.sh` drives a **multinode** end to end:
 it creates a throwaway chain with fast blocks, starts `multichaind -weight=<N>`,
 polls `getallweights` until the weight is confirmed, asserts the value, then
 stops the node and cleans up. It requires the node to be built first (§1).
 
 ```bash
-cd ./src/poas/test
+cd ./src/wpoa/test
 # single node
 ./functional_test_wpoa.sh              # uses ./src binaries, weight 137
 BINDIR=./src WEIGHT=200 ./functional_test_wpoa.sh
