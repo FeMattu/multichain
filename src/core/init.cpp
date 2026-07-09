@@ -41,6 +41,7 @@
 #include "protocol/relay.h"
 #include "filters/filter.h"
 #include "wpoa/stream_weight_registry.h"
+#include "wpoa/wpoa_selector.h"
 
 std::string BurnAddress(const std::vector<unsigned char>& vchVersion);
 std::string SetBannedTxs(std::string txlist);
@@ -3178,6 +3179,12 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
         }
         g_node_weight = (uint32_t)weight_arg;
         LogPrintf("[StreamWeightRegistry] Node weight configured: %u\n", g_node_weight);
+
+        // wPoA Phase 2: weighted proposer selection. Default off — when unset the
+        // node keeps its native round-robin mining-diversity behavior unchanged.
+        g_wpoa_enabled = GetBoolArg("-enablewpoa", false);
+        LogPrintf("[wPoA] Weighted proposer selection %s\n",
+                  g_wpoa_enabled ? "ENABLED (-enablewpoa=1)" : "disabled (native mining-diversity)");
 
         // Register the weight lazily on a background thread: publishing is a
         // transaction, so it can only happen once the wallet, permissions, the

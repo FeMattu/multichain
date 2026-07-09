@@ -1,0 +1,170 @@
+// Copyright (c) 2014-2019 Coin Sciences Ltd
+// MultiChain code distributed under the GPLv3 license, see COPYING file.
+//
+// wPoA (Weighted Proof of Authority) — Phase 2: Weighted Miner Selection
+// -----------------------------------------------------------------------
+// Elects the proposer of the next block in proportion to the on-chain
+// validator weights (StreamWeightRegistry, Phase 1) using the
+// Efraimidis–Spirakis weighted-sampling transform.
+//
+//   digest_i = HMAC-SHA256(key = prev_block_hash, msg = validator_address)
+//   u_i      = (top-64-bits(digest_i) + 1) / 2^64          ∈ (0, 1]
+//   E_i      = -ln(u_i)                                     ∈ [0, +∞)   (Exp(1))
+//   score_i  = E_i / w_i                                    (Exp(w_i))
+//   proposer = argmin_i(score_i)   [ties: lexicographically smallest address]
+//
+// Pr[i elected] = w_i / Σ_j w_j  (Efraimidis & Spirakis, 2006; see
+// docs/thesis-project-overview.md §7.4 for the probability-preservation proof).
+//
+// PHASE 2 IS PUBLIC AND PREDICTABLE BY DESIGN. The seed is the plain previous
+// block hash and every u_i is a public function of it, so any observer can
+// compute the next proposer a full block in advance. This is an accepted,
+// documented property of this phase (docs/implementation-roadmap.md §9); the
+// privacy fix — evaluating u_i under a per-validator VRF secret key — is
+// Phase 3/4 and swaps only the randomness source, not the scoring/argmin logic
+// below. See docs/phase2-weighted-selection.md.
+//
+// The scoring core (WPoASelector) is intentionally free of node/wallet
+// dependencies so it can be unit-tested in isolation; the node-coupled glue
+// (registry read, activation predicate, runtime flag) is declared at the
+// bottom and defined in wpoa_selector.cpp.
+
+#ifndef WPOA_SELECTOR_H
+#define WPOA_SELECTOR_H
+
+#include <cmath>
+#include <limits>
+#include <map>
+#include <string>
+#include <stdint.h>
+
+#include "crypto/hmac_sha256.h"
+
+/**
+ * WPoASelector — pure, deterministic, node-free proposer election.
+ *
+ * All methods are static and depend only on the C++ standard library and the
+ * HMAC-SHA256 primitive, so they can be exercised by the Boost.Test unit suite
+ * without linking the wallet / node runtime (see test/wpoa_selector_tests.cpp).
+ */
+class WPoASelector
+{
+public:
+    /**
+     * Efraimidis–Spirakis score for one validator.
+     *
+     * @param seed      Raw seed bytes (Phase 2: the previous block hash).
+     * @param seed_len  Length of `seed` in bytes.
+     * @param address   Validator address string (the StreamWeightRegistry key).
+     * @param weight    Validator weight (> 0; a weight of 0 yields +inf so the
+     *                  node can never win).
+     * @return score_i = -ln(u_i) / weight, where u_i ∈ (0,1] is derived from
+     *         HMAC-SHA256(seed, address). Smaller wins.
+     */
+    static double ComputeScore(const unsigned char* seed, size_t seed_len,
+                               const std::string& address, uint32_t weight)
+    {
+        if (weight == 0)
+        {
+            return std::numeric_limits<double>::infinity();
+        }
+
+        // u_i = HMAC-SHA256(key = seed, msg = address).
+        unsigned char mac[CHMAC_SHA256::OUTPUT_SIZE];
+        CHMAC_SHA256(seed, seed_len)
+            .Write(reinterpret_cast<const unsigned char*>(address.data()), address.size())
+            .Finalize(mac);
+
+        // Fold the top 64 bits (big-endian) of the digest into an integer. 64 bits
+        // of entropy is far more than a double's 53-bit mantissa can resolve, so
+        // this is not a precision bottleneck; using more bytes would not change
+        // the outcome.
+        uint64_t d = 0;
+        for (int i = 0; i < 8; i++)
+        {
+            d = (d << 8) | (uint64_t)mac[i];
+        }
+
+        // Normalize to (0, 1]. The "+ 1.0" (done in double, so it never wraps the
+        // uint64) guarantees u > 0 and therefore that -ln(u) is finite; u == 1 is
+        // a legitimate minimum (score 0) reached only when d == 2^64 - 1.
+        const double two64 = 18446744073709551616.0; // 2^64, exact in double
+        double u = ((double)d + 1.0) / two64;
+
+        double E = -std::log(u);          // Exp(1)-distributed
+        return E / (double)weight;         // Exp(weight)-distributed
+    }
+
+    /**
+     * Elect the proposer from an explicit weight map.
+     *
+     * The result depends ONLY on the (address, weight) set and the seed — never
+     * on iteration order — because the winner is the global argmin of an
+     * independent per-node score, with a lexicographic-address tie-break on the
+     * (cryptographically negligible) event of a bit-exact score collision. This
+     * ordering-independence is the reason Phase 2 uses the argmin form rather
+     * than a cumulative-range walk over an "opaque" map (see
+     * docs/phase2-weighted-selection.md).
+     *
+     * @return the winning validator address, or "" if `weights` has no
+     *         positive-weight entries.
+     */
+    static std::string SelectProposer(const unsigned char* seed, size_t seed_len,
+                                      const std::map<std::string, uint32_t>& weights)
+    {
+        std::string best_addr;
+        double best_score = 0.0;
+        bool have = false;
+
+        for (std::map<std::string, uint32_t>::const_iterator it = weights.begin();
+             it != weights.end(); ++it)
+        {
+            if (it->second == 0)
+            {
+                continue; // defensive: registry never stores weight 0
+            }
+
+            double s = ComputeScore(seed, seed_len, it->first, it->second);
+
+            // Total order: lower score wins; on an exact tie the lexicographically
+            // smaller address wins (docs/implementation-roadmap.md §9). Written so
+            // the outcome is independent of the container's iteration order.
+            if (!have || s < best_score || (s == best_score && it->first < best_addr))
+            {
+                best_score = s;
+                best_addr = it->first;
+                have = true;
+            }
+        }
+
+        return best_addr;
+    }
+};
+
+// ---------------------------------------------------------------------------
+// Node-coupled glue (defined in wpoa_selector.cpp; NOT compiled into the
+// node-free unit test, which only uses the WPoASelector core above).
+// ---------------------------------------------------------------------------
+
+/** Set once from -enablewpoa in AppInit2. Default false = no behavioral change. */
+extern bool g_wpoa_enabled;
+
+/**
+ * True when the weighted-selection path should govern the block at `height`.
+ * Requires -enablewpoa, a MultiChain-protocol chain, a permissioned miner set
+ * (not anyone-can-mine), and a height at or past the setup period — so both the
+ * miner and the validator agree, from the height alone, on when wPoA engages.
+ */
+bool WPoAActiveAtHeight(int height);
+
+/**
+ * Registry-backed convenience wrapper: reads the current confirmed weight map
+ * from the wpoa-weights stream and returns WPoASelector::SelectProposer for the
+ * given seed. Returns "" if the wallet or weight map is unavailable.
+ *
+ * `height` is carried for logging and Phase 4 forward-compatibility; in Phase 2
+ * the seed is the previous block hash alone (see header comment).
+ */
+std::string WPoASelectProposer(const unsigned char* seed, size_t seed_len, int height);
+
+#endif // WPOA_SELECTOR_H

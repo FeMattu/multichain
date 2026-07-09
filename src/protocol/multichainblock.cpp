@@ -9,6 +9,8 @@
 #include "multichain/multichain.h"
 #include "wallet/wallettxs.h"
 #include "community/community.h"
+#include "structs/base58.h"
+#include "wpoa/wpoa_selector.h"
 
 #include <boost/assign/list_of.hpp>
 
@@ -703,6 +705,79 @@ bool ReadTxFromDisk(CBlockIndex* pindex,int32_t offset,CTransaction& tx)
     return true;
 }
 
+/* MCHN START - wPoA Phase 2: weighted proposer validation */
+// Receiving-side check for the weighted-selection path: the miner that signed
+// the block at this height must equal the proposer elected (in proportion to
+// on-chain weight, seeded by the previous block hash) from the current
+// confirmed weight registry. Replaces the native mining-diversity replay for
+// wPoA-governed blocks. Returns false to reject; sets fPassedMinerPrecheck on
+// acceptance, exactly as the native path does.
+static bool VerifyBlockMinerWPoA(CBlock *block_in,CBlockIndex* pindexNew)
+{
+    CBlock block_disk;
+    CBlock *pblock=block_in;
+    if(pblock == NULL)
+    {
+        if( ((pindexNew->nStatus & BLOCK_HAVE_DATA) == 0) || !ReadBlockFromDisk(block_disk,pindexNew) )
+        {
+            // Block data not available locally: mirror the native "not found"
+            // leniency rather than neglecting subsequent blocks.
+            LogPrintf("VerifyBlockMinerWPoA: Block %s (height %d) not available, miner check skipped\n",
+                      pindexNew->GetBlockHash().ToString().c_str(),pindexNew->nHeight);
+            pindexNew->fPassedMinerPrecheck=true;
+            return true;
+        }
+        pblock=&block_disk;
+    }
+
+    if(pblock->vSigner[0] == 0)
+    {
+        LogPrintf("VerifyBlockMinerWPoA: REJECT block %s (height %d): block has no signer\n",
+                  pindexNew->GetBlockHash().ToString().c_str(),pindexNew->nHeight);
+        return false;
+    }
+
+    std::vector<unsigned char> vchPubKey(pblock->vSigner+1, pblock->vSigner+1+pblock->vSigner[0]);
+    CPubKey pubKeyMiner(vchPubKey);
+    if(!pubKeyMiner.IsValid())
+    {
+        LogPrintf("VerifyBlockMinerWPoA: REJECT block %s (height %d): invalid signer pubkey\n",
+                  pindexNew->GetBlockHash().ToString().c_str(),pindexNew->nHeight);
+        return false;
+    }
+    std::string sMinerAddr=CBitcoinAddress(pubKeyMiner.GetID()).ToString();
+
+    uint256 hSeed=pindexNew->pprev->GetBlockHash();
+    std::string sProposer=WPoASelectProposer(hSeed.begin(),hSeed.size(),pindexNew->nHeight);
+
+    if(sProposer.empty())
+    {
+        // No local weight view (e.g. the wpoa-weights stream is not yet synced):
+        // we cannot recompute the election, so accept rather than stall. Honest
+        // blocks originate from the deterministic elected proposer and remain
+        // valid on any node that HAS synced weights, so this does not let an
+        // invalid proposer through on a fully-synced node.
+        LogPrintf("VerifyBlockMinerWPoA: Block %s (height %d): empty weight registry, miner check skipped\n",
+                  pindexNew->GetBlockHash().ToString().c_str(),pindexNew->nHeight);
+        pindexNew->fPassedMinerPrecheck=true;
+        return true;
+    }
+
+    if(sMinerAddr != sProposer)
+    {
+        LogPrintf("VerifyBlockMinerWPoA: REJECT block %s (height %d): miner %s is not the elected proposer %s\n",
+                  pindexNew->GetBlockHash().ToString().c_str(),pindexNew->nHeight,
+                  sMinerAddr.c_str(),sProposer.c_str());
+        return false;
+    }
+
+    LogPrint("wpoa","VerifyBlockMinerWPoA: OK block %s (height %d) miner==proposer==%s\n",
+             pindexNew->GetBlockHash().ToString().c_str(),pindexNew->nHeight,sProposer.c_str());
+    pindexNew->fPassedMinerPrecheck=true;
+    return true;
+}
+/* MCHN END */
+
 bool VerifyBlockMiner(CBlock *block_in,CBlockIndex* pindexNew)
 {
     if( (mc_gState->m_NetworkParams->IsProtocolMultichain() == 0) ||
@@ -716,9 +791,17 @@ bool VerifyBlockMiner(CBlock *block_in,CBlockIndex* pindexNew)
     if(pindexNew->pprev == NULL)
     {
         pindexNew->fPassedMinerPrecheck=true;
-        return true;        
+        return true;
     }
-    
+
+    // wPoA Phase 2: when weighted selection governs this height, validate the
+    // miner against the weighted election instead of the round-robin diversity
+    // replay below.
+    if(WPoAActiveAtHeight(pindexNew->nHeight))
+    {
+        return VerifyBlockMinerWPoA(block_in,pindexNew);
+    }
+
     bool fReject=false;
     const CBlockIndex *pindexFork = chainActive.FindFork(pindexNew);
     

@@ -102,6 +102,7 @@ BITCOIN_CORE_H = \
   coincontrol.h \
   wpoa/stream_weight_registry.h \
   wpoa/weight_record.h \
+  wpoa/wpoa_selector.h \
   storage/coins.h \
   utils/compat.h \
   utils/compressor.h \
@@ -294,6 +295,7 @@ libbitcoin_wallet_a_SOURCES = \
   wallet/wallet_ismine.cpp \
   wallet/walletdb.cpp \
   wpoa/stream_weight_registry.cpp \
+  wpoa/wpoa_selector.cpp \
   $(BITCOIN_CORE_H)
 
 # crypto primitives library

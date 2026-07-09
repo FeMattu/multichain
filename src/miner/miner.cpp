@@ -22,6 +22,7 @@
 #endif
 
 #include "multichain/multichain.h"
+#include "wpoa/wpoa_selector.h"
 
 #include <boost/thread.hpp>
 #include <boost/tuple/tuple.hpp>
@@ -1052,15 +1053,60 @@ double GetMinerAndExpectedMiningStartTime(CWallet *pwallet,CPubKey *lpkMiner,set
     *lphLastBlockHash=pindexTip->GetBlockHash();
     *lpnMemPoolSize=mempool.hashList->m_Count;
     
-    if( (Params().Interval() > 0) ||                                            // POW 
-        (mc_gState->m_Permissions->m_Block <= 1) )    
+    if( (Params().Interval() > 0) ||                                            // POW
+        (mc_gState->m_Permissions->m_Block <= 1) )
     {
         pwallet->GetKeyFromAddressBook(kThisMiner,MC_PTP_MINE);
         *lpkMiner=kThisMiner;
         *lpdMiningStartTime=mc_TimeNowAsDouble();                               // start mining immediately
         return *lpdMiningStartTime;
-    }        
-    
+    }
+
+/* MCHN START - wPoA Phase 2: weighted proposer election */
+    // Replace the round-robin mining-diversity timing gate with a weighted
+    // election: for the next height exactly one validator (elected in proportion
+    // to its on-chain weight, seeded by the previous block hash) is the valid
+    // proposer; every other node waits. This branch runs once per new tip —
+    // subsequent polls on the same tip return via the caching path above.
+    if(WPoAActiveAtHeight(pindexTip->nHeight + 1))
+    {
+        pwallet->GetKeyFromAddressBook(kThisMiner,MC_PTP_MINE);
+        *lpkMiner=kThisMiner;
+
+        int nWPoAHeight=pindexTip->nHeight+1;
+        if(!kThisMiner.IsValid())
+        {
+            // No local mining key — nothing to elect. Sleep; the caching return
+            // above keeps us idle until the tip (and thus this decision) changes.
+            *lpdMiningStartTime=mc_TimeNowAsDouble()+3600;
+            LogPrint("wpoa","mchn-miner: wPoA height=%d no local mining key, waiting\n",nWPoAHeight);
+            return *lpdMiningStartTime;
+        }
+
+        std::string sLocalAddr=CBitcoinAddress(kThisMiner.GetID()).ToString();
+        uint256 hWPoASeed=pindexTip->GetBlockHash();
+        std::string sProposer=WPoASelectProposer(hWPoASeed.begin(),hWPoASeed.size(),nWPoAHeight);
+
+        if(!sProposer.empty() && sProposer==sLocalAddr)
+        {
+            // Elected: mine now. Phase 2 is deterministic (one proposer per
+            // height, chained via the prev-block hash), so there is no proposer
+            // contention that would require per-miner time staggering.
+            *lpdMiningStartTime=mc_TimeNowAsDouble();
+            LogPrint("wpoa","mchn-miner: wPoA height=%d elected LOCAL proposer %s, mining now\n",
+                             nWPoAHeight,sLocalAddr.c_str());
+        }
+        else
+        {
+            // Not our slot this height — wait for the tip to advance.
+            *lpdMiningStartTime=mc_TimeNowAsDouble()+3600;
+            LogPrint("wpoa","mchn-miner: wPoA height=%d proposer=%s (local=%s), waiting\n",
+                             nWPoAHeight,sProposer.empty()?"(none)":sProposer.c_str(),sLocalAddr.c_str());
+        }
+        return *lpdMiningStartTime;
+    }
+/* MCHN END */
+
     nMiningStatus &= MC_MST_PROC_MASK;
     
     dMinerDrift=Params().MiningTurnover();
