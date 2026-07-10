@@ -4,8 +4,8 @@
 > `file:line` pointers so you can navigate and modify with confidence. Line numbers
 > are accurate as of this branch; if the tree moves, `grep` the symbol name.
 
-Read [implementation-guide.md](implementation-guide.md) first for the design; this
-document is the "where does this come from in MultiChain?" companion. See the
+Read [phase1-implementation-guide.md](phase1-implementation-guide.md) first for the design;
+this document is the "where does this come from in MultiChain?" companion. See the
 [entry point](../README.md) for the feature overview.
 
 ---
@@ -307,7 +307,7 @@ ignored with a single miner, `mine-empty-rounds` 10). Full explanation and timel
 ## Related documents
 
 - [../README.md](../README.md) — feature entry point and architecture diagram.
-- [implementation-guide.md](implementation-guide.md) — the design these APIs implement.
+- [phase1-implementation-guide.md](phase1-implementation-guide.md) — the design these APIs implement.
 - [stream-weight-registry.md](stream-weight-registry.md) — how the core class calls
   these APIs, line by line.
 - [testing.md](testing.md) — the mining model behind "reads lag writes" (§8 above).

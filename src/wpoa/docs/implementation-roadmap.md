@@ -5,10 +5,10 @@
 > known risks — self-contained. For the research background, formal model,
 > and mathematical justification, see
 > [thesis-project-overview.md](thesis-project-overview.md). For code-level
-> walkthroughs of what is already built, see
-> [implementation-guide.md](implementation-guide.md) — this document
-> summarizes what that guide covers rather than duplicating it, and remains
-> understandable on its own if that guide is not read.
+> walkthroughs of what is already built, see the per-phase guides linked from
+> the master [implementation-guide.md](implementation-guide.md) — this document
+> summarizes what those guides cover rather than duplicating them, and remains
+> understandable on its own if they are not read.
 
 ---
 
@@ -62,8 +62,8 @@ flowchart TD
 
 | Phase | Layer | Deliverable | Status |
 |:-----:|---|---|---|
-| 1 | 1 | `StreamWeightRegistry` — on-chain weight registry, backward-search read path | **Current — implemented** |
-| 2 | 1 (consumer) | Weighted miner selection via an intentionally **public** baseline WRS, to validate the registry substrate before adding privacy | Planned |
+| 1 | 1 | `StreamWeightRegistry` — on-chain weight registry, backward-search read path | Implemented |
+| 2 | 1 (consumer) | Weighted miner selection via an intentionally **public** baseline WRS, to validate the registry substrate before adding privacy | **Current — implemented** |
 | 3 | 2 | RANDAO beacon + VRF integration (the randomness *generation* half) | Planned |
 | 4 | 3 + 4 | Efraimidis private sortition — local scoring, gossip reveal, tie-break, fallback (the *security fix* — randomness *consumption* half) | Planned |
 | 5 | Cross-cutting | Weight inizialization, update, slashing mechanisms | Planned |
@@ -162,15 +162,21 @@ chooses to broadcast).
 | 1 | Unit tests (pure parsing / aggregation) | Done | Boost.Test suite, node-free — [`test/wpoa_weight_tests.cpp`](../test/wpoa_weight_tests.cpp). |
 | 1 | Single-node functional smoke test | Done | [`test/functional_test_wpoa.sh`](../test/functional_test_wpoa.sh). |
 | 1 | Multi-node functional smoke test | Done | [`test/functional_test_wpoa_multinode.sh`](../test/functional_test_wpoa_multinode.sh). |
-| 2 | Weighted miner selection (`WPoASelector` + miner hook) | Pending | See [§6.1](#61-phase-2--weighted-miner-selection-public-baseline). |
-| 2 | `-enablewpoa` runtime toggle | Pending | See [§6.1](#61-phase-2--weighted-miner-selection-public-baseline). |
+| 2 | Weighted miner selection (`WPoASelector` + miner hook) | Done | Efraimidis–Spirakis argmin seeded by prev-block hash, consuming `GetAllNodesWeights()`. [phase2-implementation-guide.md](phase2-implementation-guide.md). |
+| 2 | `-enablewpoa` runtime toggle | Done | Default off; native round-robin unchanged when unset. Gates the miner + validation hooks via `WPoAActiveAtHeight`. |
+| 2 | Proposer validation (`VerifyBlockMiner` hook) | Done | Recomputes the election on receipt; rejects blocks whose miner ≠ elected proposer. |
+| 2 | Deterministic tie-break | Done | Lexicographically smallest address on exact score collision (§9). |
+| 2 | Unit tests (pure selector math) | Done | [`test/wpoa_selector_tests.cpp`](../test/wpoa_selector_tests.cpp); probability preservation over 200k seeds. |
+| 2 | Multi-node distribution test (chi-square) | Done | [`test/functional_test_wpoa_multinode.sh`](../test/functional_test_wpoa_multinode.sh) + [`test/analyze_distribution.py`](../test/analyze_distribution.py); ~1000 blocks, observed vs. expected. |
 | 3 | RANDAO accumulator + VRF integration | Pending | See [§6.2](#62-phase-3--randao-beacon--vrf-integration). |
 | **4** | **Efraimidis private sortition** | Pending | **The security fix.** See [§6.3](#63-phase-4--efraimidis-private-sortition-the-security-fix). |
 | 5 | VDF over beacon seed | Future | See [§6.4](#64-phase-5--vdf-future). |
 
 Phase 1 is fully merged into `master` (see [§5](#5-branches--branch-strategy)).
-Phases 2–5 are not yet implemented; no source files for them exist in the
-tree today (see [§4](#4-directory-structure)).
+Phase 2 is implemented on `feature/wpoa-miner-integration`
+(`wpoa/wpoa_selector.{h,cpp}` plus the miner/validation hooks); see
+[phase2-implementation-guide.md](phase2-implementation-guide.md). Phases 3–5
+are not yet implemented (see [§4](#4-directory-structure)).
 
 ---
 
@@ -187,8 +193,14 @@ src/wpoa/
 ├── stream_weight_registry.cpp                (Phase 1, implemented)
 ├── weight_record.h                           (Phase 1, implemented — pure
 │                                                parsing/aggregation helpers)
+├── wpoa_selector.h                           (Phase 2, implemented — pure
+│                                                Efraimidis–Spirakis selector core)
+├── wpoa_selector.cpp                         (Phase 2, implemented — flag +
+│                                                activation predicate + registry glue)
 ├── docs/
-│   ├── implementation-guide.md               ← full engineering reference
+│   ├── implementation-guide.md               ← master index (phase map + links + process)
+│   ├── phase1-implementation-guide.md         ← Phase 1 full technical guide
+│   ├── phase2-implementation-guide.md         ← Phase 2 full technical guide
 │   ├── thesis-project-overview.md             ← research companion (self-contained)
 │   ├── implementation-roadmap.md              ← this document
 │   ├── multichain-internals.md                ← MultiChain host-API reference
@@ -198,23 +210,29 @@ src/wpoa/
 │   ├── rpc-registration.md                    ← RPC dispatch-table wiring
 │   └── testing.md                             ← build/test instructions
 └── test/
-    ├── wpoa_weight_tests.cpp                  ← Boost.Test unit suite
-    ├── run_unit_tests.sh                       ← unit test runner (no node build)
+    ├── wpoa_weight_tests.cpp                  ← Phase 1 Boost.Test unit suite
+    ├── wpoa_selector_tests.cpp                ← Phase 2 Boost.Test unit suite
+    ├── run_unit_tests.sh                       ← Phase 1 unit test runner
+    ├── run_selector_unit_tests.sh             ← Phase 2 unit test runner
+    ├── analyze_distribution.py                ← chi-square proposer-distribution analyzer
     ├── functional_test_wpoa.sh                 ← single-node smoke test
-    └── functional_test_wpoa_multinode.sh       ← N-node smoke test
+    └── functional_test_wpoa_multinode.sh       ← N-node smoke + distribution test
 ```
 
 **Integration points outside `src/wpoa/`** (per
-[implementation-guide.md §7](implementation-guide.md)): `../core/init.cpp`
-(startup wiring), `../rpc/rpclist.cpp` / `../rpc/rpchelp.cpp` (RPC dispatch),
-`../Makefile.am` (build).
+[phase1-implementation-guide.md §7](phase1-implementation-guide.md) for Phase 1
+and [phase2-implementation-guide.md §5](phase2-implementation-guide.md) for
+Phase 2): `../core/init.cpp` (startup wiring), `../rpc/rpclist.cpp` /
+`../rpc/rpchelp.cpp` (RPC dispatch), `../miner/miner.cpp` (Phase 2 mining hook),
+`../protocol/multichainblock.cpp` (Phase 2 validation hook), `../Makefile.am`
+(build).
 
-**Note on planned filenames.** Future phases are expected to add
-`wpoa_selector.{h,cpp}` (Phase 2, the `WPoASelector` class), `vrf_wrapper.h`
-(Phase 3), and `randao_accumulator.h` (Phase 3). **None of these files exist
-yet** — they are targets for future phases, not current structure. This
-section reports the tree **as it actually stands today**; §6 marks every
-forward-looking filename as planned.
+**Note on filenames.** Phase 2 has added `wpoa/wpoa_selector.{h,cpp}` (the
+`WPoASelector` class + node-coupled glue), `wpoa/test/wpoa_selector_tests.cpp`
+(+ `run_selector_unit_tests.sh`), and `wpoa/test/analyze_distribution.py`, and
+`wpoa/docs/phase2-implementation-guide.md`. Future phases are expected to add
+`vrf_wrapper.h` (Phase 3) and `randao_accumulator.h` (Phase 3) — **those do not
+exist yet**. §6 marks every forward-looking filename as planned.
 
 ---
 
@@ -264,9 +282,9 @@ hash — intentionally public, as a substrate-validation step before privacy
 is added in Phase 4. The `mining-diversity` round-robin gate is bypassed for
 authorized wPoA validators.
 
-**Planned substeps:**
-1. Implement `WPoASelector::SelectProposer(prev_block_hash, height)` in
-   `src/wpoa/wpoa_selector.{h,cpp}` (planned filenames — do not exist yet).
+**Substeps (all implemented — see
+[phase2-implementation-guide.md](phase2-implementation-guide.md)):**
+1. Implement `WPoASelector::SelectProposer` in `src/wpoa/wpoa_selector.{h,cpp}`.
 2. Introduce a runtime toggle `-enablewpoa=1` guarding the new code path.
 3. Modify the mining loop so a node only attempts to mine when it is the
    elected proposer for the current height.
@@ -395,7 +413,7 @@ predictability-fix track (Phases 1–5) and are not phase-numbered here:
   selector would.
 
 No RPC or API call signatures are shown here; see
-[implementation-guide.md](implementation-guide.md) for the concrete,
+[phase1-implementation-guide.md](phase1-implementation-guide.md) for the concrete,
 code-level treatment of the registry.
 
 ---

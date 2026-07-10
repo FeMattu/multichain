@@ -1,9 +1,9 @@
 # `core/init.h` + `core/init.cpp` (wPoA parts)
 
-> Documentation of the **node-startup integration** for wPoA weight management.
-> `init.cpp` is huge (it drives the entire MultiChain node bootstrap); here we document
-> **only** the parts that concern the weight registry. The rest is the standard
-> MultiChain/Bitcoin startup engine.
+> Documentation of the **node-startup integration** for wPoA. `init.cpp` is huge (it
+> drives the entire MultiChain node bootstrap); here we document **only** the wPoA parts:
+> the Phase 1 `-weight` handling + registration thread (§2.1-2.3) and the Phase 2
+> `-enablewpoa` flag (§2.4). The rest is the standard MultiChain/Bitcoin startup engine.
 
 `init.h` and `init.cpp` are documented together because they form the classic
 interface/implementation pair: `init.h` declares the global symbols that the other
@@ -152,6 +152,51 @@ Line-by-line analysis:
 - **`/* MCHN START */ ... /* MCHN END */`** — marker comments used throughout the
   MultiChain codebase to delimit MultiChain additions from the original Bitcoin code.
 
+### 2.4 wPoA Phase 2: the `-enablewpoa` flag (lines 3183-3187)
+
+Phase 2 adds a second `#include` and one more parse step **inside the same
+`#ifdef ENABLE_WALLET` block**, right after the `-weight` handling and before the
+registration thread is launched:
+
+```cpp
+#include "wpoa/wpoa_selector.h"   // init.cpp:44 — g_wpoa_enabled
+
+// ... inside AppInit2, after the -weight handling:
+// wPoA Phase 2: weighted proposer selection. Default off — when unset the
+// node keeps its native round-robin mining-diversity behavior unchanged.
+g_wpoa_enabled = GetBoolArg("-enablewpoa", false);
+LogPrintf("[wPoA] Weighted proposer selection %s\n",
+          g_wpoa_enabled ? "ENABLED (-enablewpoa=1)" : "disabled (native mining-diversity)");
+```
+
+Line-by-line:
+
+- **`#include "wpoa/wpoa_selector.h"`** — brings in the declaration
+  `extern bool g_wpoa_enabled;` (and the selector functions, though `init.cpp` only
+  writes the flag).
+- **`GetBoolArg("-enablewpoa", false)`** — reads the boolean flag from the command
+  line / config file, defaulting to `false`. `GetBoolArg` treats `-enablewpoa`,
+  `-enablewpoa=1`, `-enablewpoa=true` as true and an absent flag as the default.
+- **`g_wpoa_enabled = ...`** — sets the global defined in `wpoa_selector.cpp`. This is
+  the **single** write of the flag; it happens on the init thread before any miner or
+  validator thread reads it, so it needs no lock. From here on
+  `WPoAActiveAtHeight` (and therefore the miner and validator) can see whether wPoA is
+  enabled.
+- **`LogPrintf("[wPoA] ...")`** — records the effective mode at startup, so an operator
+  can confirm from `debug.log` whether the node is running the weighted-selection path or
+  the native one.
+
+Why here, next to `-weight`? Both are the node's wPoA configuration knobs, both are
+wallet-gated (`#ifdef ENABLE_WALLET`), and both must be resolved before the node starts
+mining/validating. Note there is currently **no `HelpMessage` line** for `-enablewpoa`
+(unlike `-weight`); adding one is a trivial improvement — see
+[phase2-implementation-guide.md §11.4](phase2-implementation-guide.md#11-how-to-modify).
+
+Unlike `-weight`, `-enablewpoa` launches **no thread**: it only flips a boolean that the
+miner (`miner/miner.cpp`) and validator (`protocol/multichainblock.cpp`) consult at
+runtime. See [miner-integration.md](miner-integration.md) and
+[block-validation.md](block-validation.md).
+
 ## 3. The complete startup flow
 
 ```mermaid
@@ -179,10 +224,13 @@ flowchart TD
   `ShutdownRequested()` used by the registry.
 - **`stream_weight_registry.h` → `init.cpp`**: provides `MC_WPOA_DEFAULT_WEIGHT`,
   `g_node_weight` and `ThreadRegisterNodeWeight` used in the startup block.
-- **`init.cpp`** is the **only** place that launches the thread and sets `g_node_weight`;
-  it is the bridge between the user's configuration (`-weight`) and the weight subsystem.
+- **`init.cpp`** is the **only** place that launches the thread and sets `g_node_weight`
+  (Phase 1) and `g_wpoa_enabled` (Phase 2); it is the bridge between the user's
+  configuration (`-weight`, `-enablewpoa`) and the wPoA subsystem.
 - The read RPCs (in `rpclist.cpp`) are **independent** of this startup: they work even if
   the thread has not registered anything yet (they simply return 0 / an empty map).
+- **`wpoa_selector.cpp`** defines `g_wpoa_enabled`; `init.cpp` writes it. The miner and
+  validator read it via `WPoAActiveAtHeight`.
 
 ---
 
@@ -190,7 +238,12 @@ flowchart TD
 
 - [../README.md](../README.md) — feature entry point and architecture diagram.
 - [stream-weight-registry.md](stream-weight-registry.md) — the thread and class this
-  startup launches.
+  startup launches (Phase 1).
+- [wpoa-selector.md](wpoa-selector.md) — the selector core that reads `g_wpoa_enabled`
+  (Phase 2).
+- [miner-integration.md](miner-integration.md) / [block-validation.md](block-validation.md)
+  — the runtime consumers of the `-enablewpoa` flag.
 - [rpc-registration.md](rpc-registration.md) — the (independent) RPC-command path.
-- [implementation-guide.md](implementation-guide.md) §7.4 — the same integration from the
-  design guide's perspective.
+- [phase1-implementation-guide.md](phase1-implementation-guide.md) §7.4 /
+  [phase2-implementation-guide.md](phase2-implementation-guide.md) §7.5 — the same
+  integration from the design guides' perspective.

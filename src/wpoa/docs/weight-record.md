@@ -242,6 +242,6 @@ flowchart TD
 - [../README.md](../README.md) — feature entry point and architecture diagram.
 - [stream-weight-registry.md](stream-weight-registry.md) — the class that uses these
   helpers on the read path.
-- [implementation-guide.md](implementation-guide.md) §5.6 — why the pure logic is
+- [phase1-implementation-guide.md](phase1-implementation-guide.md) §5.6 — why the pure logic is
   extracted for unit testing.
 - [testing.md](testing.md) §2 — the Boost.Test suite that exercises these functions.

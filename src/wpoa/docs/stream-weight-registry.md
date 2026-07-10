@@ -847,6 +847,6 @@ flowchart TD
 ## Related documents
 
 - [../README.md](../README.md) — feature entry point and architecture diagram.
-- [implementation-guide.md](implementation-guide.md) — the design rationale (the "why").
+- [phase1-implementation-guide.md](phase1-implementation-guide.md) — the design rationale (the "why").
 - [multichain-internals.md](multichain-internals.md) — the host APIs this class calls.
 - [weight-record.md](weight-record.md) — the pure helpers used on the read path.

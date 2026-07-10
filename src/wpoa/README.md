@@ -1,94 +1,94 @@
-# wPoA — Stream Weight Registry (Phase 1)
+# wPoA — Weighted Proof-of-Authority for MultiChain
 
-> Per-validator **weight** registry for a Weighted Proof-of-Authority selector in
-> MultiChain — recorded on a native append-only stream and exposed through a small,
-> opaque API. This file is the entry point; the deep documentation lives in
-> [`docs/`](docs/).
+> A **Weighted Proof-of-Authority** consensus extension for MultiChain: every
+> validator advertises a positive integer **weight** on a native append-only
+> stream (Phase 1), and block proposers are elected in **proportion to that
+> weight** via the Efraimidis–Spirakis weighted-sampling transform (Phase 2).
+> This file is the entry point; the deep, per-phase documentation lives in
+> [`docs/`](docs/) — start at the master
+> [implementation-guide.md](docs/implementation-guide.md).
 
 ---
 
 ## What wPoA is
 
-**wPoA** (*Weighted Proof-of-Authority*) extends MultiChain's
-round-robin Proof-of-Authority with a notion of **validator weight**. Every
-validator advertises a positive integer weight; the set of weights is the raw
-material a future selector will use to bias block production toward higher-weight
-validators.
+**wPoA** (*Weighted Proof-of-Authority*) extends MultiChain's round-robin
+Proof-of-Authority with a notion of **validator weight**, so that block
+production is biased toward higher-weight validators instead of being uniform.
 
-**Phase 1 — the scope of this module — is registry only.** It:
+Two phases are implemented today:
 
-- records each node's weight on an append-only MultiChain stream (`wpoa-weights`),
-- keeps that record current (newest wins) and identical on every node
-  (confirmed-on-chain data only), and
-- exposes read access through three RPC commands and a `StreamWeightRegistry`
-  class.
+- **Phase 1 — Weight registry.** Each node records its weight on an append-only
+  MultiChain stream (`wpoa-weights`), kept current (newest wins) and identical on
+  every node (confirmed-on-chain data only), exposed through three RPC commands
+  and a `StreamWeightRegistry` class.
+- **Phase 2 — Weighted miner selection.** When `-enablewpoa=1`, the miner and
+  the block validator elect each height's proposer in proportion to weight via
+  the Efraimidis–Spirakis argmin, seeded by the previous block hash, bypassing
+  the native round-robin mining-diversity gate. This phase is intentionally
+  public/predictable — the substrate-validation baseline before privacy is added
+  in later phases.
 
-Weights are **not yet** used to bias mining — that is Phase 2 (see
-[Implementation status](#implementation-status)).
+Phases 3–5 (RANDAO+VRF beacon, private sortition, VDF) are planned — see the
+[Implementation status](#implementation-status) and the master
+[implementation-guide.md](docs/implementation-guide.md).
 
-Operators only ever touch two things:
+Operators only ever touch a few things:
 
-- the startup parameter **`-weight=<n>`** (positive integer, default `100`), and
+- the startup parameters **`-weight=<n>`** (positive integer, default `100`) and
+  **`-enablewpoa`** (default off; enables weighted selection), and
 - the RPC commands **`getlocalweight`**, **`getnodeweight`**, **`getallweights`**.
 
-Everything else — stream layout, transaction plumbing, wallet indexes — is hidden
-behind the `StreamWeightRegistry` facade.
+Everything else — stream layout, transaction plumbing, wallet indexes, the
+election math — is hidden behind the `StreamWeightRegistry` facade and the
+`WPoASelector`.
 
 ---
 
 ## Architecture at a glance
 
-> This is the macro view of the whole feature. Each box maps to a document in the
-> [table of contents](#documentation) below. **Keep this diagram in sync whenever
-> the architecture changes.**
+> Macro view of the whole feature across phases. This is deliberately
+> high-level; the per-phase mechanics live in the phase guides linked from the
+> master [implementation-guide.md](docs/implementation-guide.md). **Keep this
+> diagram in sync whenever the architecture changes** (see the
+> [Documentation Maintenance](docs/implementation-guide.md#documentation-maintenance)
+> process).
 
 ```mermaid
 flowchart TD
-    OP([Operator: multichaind -weight=N]):::ext --> INIT
+    OP([Operator: multichaind -weight=N -enablewpoa]):::ext --> INIT
+    INIT["AppInit2<br/>validate weight; set g_node_weight, g_wpoa_enabled<br/>launch registration thread"]
 
-    subgraph startup [Startup: core/init.cpp - see node-startup.md]
-        INIT[AppInit2<br/>validate N greater than 0<br/>set g_node_weight<br/>launch background thread]
+    subgraph P1 [Phase 1 — Weight registry]
+        REG["StreamWeightRegistry<br/>deferred register + read core"]
+        STREAM[(wpoa-weights stream<br/>append-only, on-chain)]
+        REG -->|write via in-process RPC handlers| STREAM
+        STREAM -->|non-WRP confirmed reads| REG
     end
 
-    INIT -->|ThreadRegisterNodeWeight N| REG
-
-    subgraph facade [StreamWeightRegistry facade: stream-weight-registry.md]
-        REG[Deferred registration loop<br/>wait until node ready, then retry]
-        READ[ReadAllRecords<br/>single read core]
+    subgraph P2 [Phase 2 — Weighted selection]
+        SEL["WPoASelector<br/>score_i = -ln(u_i)/w_i; argmin"]
+        MINE["miner.cpp<br/>mine only if elected"]
+        VAL["multichainblock.cpp<br/>reject non-elected proposer"]
+        SEL --> MINE
+        SEL --> VAL
     end
 
-    REG -->|writes reuse in-process RPC handlers| W
-    W[createcmd / subscribe / publish] -->|tx mined| STREAM[(wpoa-weights stream<br/>append-only, on-chain)]
-
-    STREAM -->|non-WRP reads: FindEntity / GetList / GetWalletTx| READ
-    READ -->|decode and aggregate| WR[weight-record.h helpers<br/>mc_ParseWeightRecordJson<br/>mc_AccumulateLatestWeight]
-    WR --> MAP[map address to weight<br/>newest record wins]
-    MAP --> READ
-
-    CLI([multichain-cli getlocalweight / getnodeweight / getallweights]):::ext --> RPCLIST
-    subgraph rpc [RPC layer: rpc/rpclist.cpp - see rpc-registration.md]
-        RPCLIST[3 command handlers]
-    end
-    RPCLIST --> READ
+    INIT --> REG
+    REG -->|"GetAllNodesWeights()"| SEL
+    CLI([multichain-cli getlocalweight / getnodeweight / getallweights]):::ext --> REG
 
     classDef ext fill:#eee,stroke:#999,color:#333;
 ```
 
-**Two mechanisms, chosen deliberately:**
-
-- **Writes** reuse MultiChain's in-process RPC handlers (`createcmd`, `subscribe`,
-  `publish`), inheriting all of its permission, fee and validation logic. They need
-  no RPC worker slot, so they are safe to call from the background thread.
-- **Reads** use the low-level `mc_WalletTxs` **non-WRP** API, which self-locks and
-  reads live confirmed state from **any** thread. (The near-identical `WRP*` methods
-  are a trap off the RPC read path — see
-  [`multichain-internals.md`](docs/multichain-internals.md) §4.)
-
-Registration is **deferred** to a background thread because writing to a stream is a
-blockchain transaction: it needs an unlocked wallet, permissions, a fee, a confirmed
-target stream and connectivity — none of which is guaranteed the instant `AppInit2`
-finishes. Startup is never blocked, and reads degrade gracefully (return `0` / an
-empty map) until data is confirmed.
+- **Phase 1** records and serves weights on the `wpoa-weights` stream via the
+  `StreamWeightRegistry` facade (deferred background registration; confirmed-only
+  reads that are safe from any thread). Full detail:
+  [phase1-implementation-guide.md](docs/phase1-implementation-guide.md).
+- **Phase 2** consumes `GetAllNodesWeights()` and elects each height's proposer
+  in proportion to weight, gating the miner and the block validator behind
+  `-enablewpoa`. Full detail:
+  [phase2-implementation-guide.md](docs/phase2-implementation-guide.md).
 
 ---
 
@@ -104,28 +104,36 @@ This project contains multiple levels of documentation:
    - For developers & contributors: Phased plan, current status, components, vulnerabilities
    - Understand what's implemented, what's planned, and how pieces connect
 
-3. **[Technical Implementation Guide](docs/implementation-guide.md)**
-   - For deep dives: API details, code walkthroughs, debugging, MultiChain internals
-   - Start here only after reading the overview and roadmap
+3. **[Implementation Guide (master index)](docs/implementation-guide.md)**
+   - The high-level map of all phases + links to each phase's dedicated technical
+     guide, and the **Documentation Maintenance** process for future features
+   - Start here for code, then dive into the phase guide you need:
+     [Phase 1](docs/phase1-implementation-guide.md) ·
+     [Phase 2](docs/phase2-implementation-guide.md)
 
 ---
 
 ## Documentation
 
-All detailed documentation lives in [`docs/`](docs/). Start with the
-**implementation guide** for code-level detail, or the
-**[Documentation Structure](#documentation-structure)** above if you're new
-to the project.
+All detailed documentation lives in [`docs/`](docs/). Start at the master
+**[implementation-guide.md](docs/implementation-guide.md)** (phase map + links),
+or the **[Documentation Structure](#documentation-structure)** above if you're
+new to the project.
 
 | Document | What it covers |
 |----------|----------------|
+| [implementation-guide.md](docs/implementation-guide.md) | **Master index.** High-level map of all phases, how they build on each other, links to every per-phase guide, and the Documentation Maintenance process. |
+| [phase1-implementation-guide.md](docs/phase1-implementation-guide.md) | **Phase 1 — full technical guide.** Weight registry: mental model, data model, design decisions, threading & locking, full code walkthrough, control flow, "how to modify" recipes. |
+| [phase2-implementation-guide.md](docs/phase2-implementation-guide.md) | **Phase 2 — full technical guide.** Weighted miner selection: mental model, algorithm, design decisions, threading, full code walkthrough, control flow, edge cases, "how to modify" recipes, tests, and accepted risks / Phase 3-4 hooks. |
 | [thesis-project-overview.md](docs/thesis-project-overview.md) | Research companion: problem statement, threat model, literature review, theoretical contributions behind the wPoA design (bachelor's thesis, Università di Pisa). |
 | [implementation-roadmap.md](docs/implementation-roadmap.md) | Engineering companion: phased plan, rationale for private (Efraimidis) sortition over public WRS, current status, vulnerabilities & mitigations. |
-| [implementation-guide.md](docs/implementation-guide.md) | **Start here for code.** How the code works and *why* every choice was made — mental model, data model, design decisions, threading & locking, full walkthrough, control flow, and concrete "how to modify" recipes. |
 | [multichain-internals.md](docs/multichain-internals.md) | Reference to the MultiChain host APIs this module builds on, with exact `file:line` pointers — entities, the wallet-tx store, script decoding, RPC-handler reuse, permissions, mining. |
-| [stream-weight-registry.md](docs/stream-weight-registry.md) | Line-by-line walkthrough of the core class and background thread (`stream_weight_registry.h` + `.cpp`). |
+| [stream-weight-registry.md](docs/stream-weight-registry.md) | Line-by-line walkthrough of the Phase 1 registry class and background thread (`stream_weight_registry.h` + `.cpp`). |
 | [weight-record.md](docs/weight-record.md) | Walkthrough of the pure, dependency-light parsing/aggregation helpers (`weight_record.h`) that are unit-tested in isolation. |
-| [node-startup.md](docs/node-startup.md) | How `-weight` is wired into `AppInit2` and how the background thread is launched (`core/init.h` + `.cpp`, wPoA parts). |
+| [wpoa-selector.md](docs/wpoa-selector.md) | Line-by-line walkthrough of the Phase 2 selector core and node glue (`wpoa_selector.h` + `.cpp`): scoring, argmin, activation gate, registry read. |
+| [miner-integration.md](docs/miner-integration.md) | How the weighted election is wired into block production (`miner/miner.cpp`, `GetMinerAndExpectedMiningStartTime`). |
+| [block-validation.md](docs/block-validation.md) | How the election is enforced on the receiving side (`protocol/multichainblock.cpp`, `VerifyBlockMiner` → `VerifyBlockMinerWPoA`). |
+| [node-startup.md](docs/node-startup.md) | How `-weight` (Phase 1) and `-enablewpoa` (Phase 2) are wired into `AppInit2` and how the background thread is launched (`core/init.h` + `.cpp`, wPoA parts). |
 | [rpc-registration.md](docs/rpc-registration.md) | How the three RPC commands are added to the dispatch table (`rpc/rpclist.cpp`). |
 | [testing.md](docs/testing.md) | Build steps, unit tests, the MultiChain mining model, manual single-/multi-node tests, the automated smoke test, and troubleshooting. |
 
@@ -133,17 +141,24 @@ to the project.
 
 | File | Role |
 |------|------|
-| [`stream_weight_registry.h`](stream_weight_registry.h) / [`.cpp`](stream_weight_registry.cpp) | Public API + implementation of the registry, background thread and RPC handlers. |
-| [`weight_record.h`](weight_record.h) | Pure parsing/aggregation helpers (json_spirit-only, unit-testable). |
-| [`test/wpoa_weight_tests.cpp`](test/wpoa_weight_tests.cpp) | Boost.Test unit tests for the pure logic. |
-| [`test/run_unit_tests.sh`](test/run_unit_tests.sh) | Build + run the unit tests (no node build needed). |
+| [`stream_weight_registry.h`](stream_weight_registry.h) / [`.cpp`](stream_weight_registry.cpp) | Phase 1: public API + implementation of the registry, background thread and RPC handlers. |
+| [`weight_record.h`](weight_record.h) | Phase 1: pure parsing/aggregation helpers (json_spirit-only, unit-testable). |
+| [`wpoa_selector.h`](wpoa_selector.h) / [`.cpp`](wpoa_selector.cpp) | Phase 2: pure Efraimidis–Spirakis selector core (header-only) + node-coupled glue (flag, activation predicate, registry-backed election). |
+| [`test/wpoa_weight_tests.cpp`](test/wpoa_weight_tests.cpp) | Phase 1: Boost.Test unit tests for the pure registry logic. |
+| [`test/wpoa_selector_tests.cpp`](test/wpoa_selector_tests.cpp) | Phase 2: Boost.Test unit tests for the pure selector math (determinism, order-independence, probability preservation). |
+| [`test/run_unit_tests.sh`](test/run_unit_tests.sh) / [`test/run_selector_unit_tests.sh`](test/run_selector_unit_tests.sh) | Build + run the unit tests (no node build needed). |
 | [`test/functional_test_wpoa.sh`](test/functional_test_wpoa.sh) | End-to-end smoke test driving a real single node. |
-| [`test/functional_test_wpoa_multinode.sh`](test/functional_test_wpoa_multinode.sh) | End-to-end test across multiple nodes. |
+| [`test/functional_test_wpoa_multinode.sh`](test/functional_test_wpoa_multinode.sh) / [`test/analyze_distribution.py`](test/analyze_distribution.py) | End-to-end multi-node test + chi-square proposer-distribution analyzer. |
 
-Integration points in the host tree: [`../core/init.cpp`](../core/init.cpp),
-[`../rpc/rpclist.cpp`](../rpc/rpclist.cpp), [`../rpc/rpchelp.cpp`](../rpc/rpchelp.cpp),
-[`../Makefile.am`](../Makefile.am). See
-[implementation-guide.md](docs/implementation-guide.md) §7 for details.
+Integration points in the host tree: [`../core/init.cpp`](../core/init.cpp)
+(startup flags), [`../rpc/rpclist.cpp`](../rpc/rpclist.cpp) /
+[`../rpc/rpchelp.cpp`](../rpc/rpchelp.cpp) (RPCs),
+[`../miner/miner.cpp`](../miner/miner.cpp) (Phase 2 mining hook),
+[`../protocol/multichainblock.cpp`](../protocol/multichainblock.cpp) (Phase 2
+validation hook), [`../Makefile.am`](../Makefile.am) (build). See
+[phase1-implementation-guide.md §7](docs/phase1-implementation-guide.md) and
+[phase2-implementation-guide.md §5](docs/phase2-implementation-guide.md) for
+details.
 
 ---
 
@@ -159,10 +174,25 @@ Integration points in the host tree: [`../core/init.cpp`](../core/init.cpp),
 | **1** | Read-path correctness fixes | Done | non-WRP read family (WRP snapshot bug) and 6-arg `OpReturnFormatEntry` overload. |
 | **1** | Unit tests (pure parsing / aggregation) | Done | Boost.Test suite, node-free. |
 | **1** | Single-node functional smoke test | Done | [`test/functional_test_wpoa.sh`](test/functional_test_wpoa.sh). |
-| **1** | Multi-node functional smoke test | In progress | [`test/functional_test_wpoa_multinode.sh`](test/functional_test_wpoa_multinode.sh) — bootstraps `connect`/`send`/`receive`/`mine`/`wpoa-weights.write` from node 0; asserts per-node weight. |
+| **1** | Multi-node functional smoke test | Done | [`test/functional_test_wpoa_multinode.sh`](test/functional_test_wpoa_multinode.sh) — bootstraps `connect`/`send`/`receive`/`mine`/`wpoa-weights.write` from node 0; asserts per-node weight. |
+| **2** | Weighted miner selection (`WPoASelector` + `miner.cpp` hook) | Done | Efraimidis–Spirakis argmin seeded by prev-block hash; consumes `GetAllNodesWeights()`. See [docs/phase2-implementation-guide.md](docs/phase2-implementation-guide.md). |
+| **2** | `-enablewpoa` runtime toggle | Done | Default off (native round-robin unchanged); gates miner + validation hooks. |
+| **2** | Proposer validation (`VerifyBlockMiner` hook) | Done | Recomputes the election on receipt; rejects blocks not from the elected proposer. |
+| **2** | Deterministic tie-break | Done | Lexicographically smallest address on exact score collision. |
+| **2** | Unit tests (pure selector math) | Done | [`test/wpoa_selector_tests.cpp`](test/wpoa_selector_tests.cpp); probability preservation over 200k seeds. |
+| **2** | Multi-node distribution test (chi-square) | Done | [`test/functional_test_wpoa_multinode.sh`](test/functional_test_wpoa_multinode.sh) + [`test/analyze_distribution.py`](test/analyze_distribution.py); ~1000 blocks, observed vs. expected. |
 
-See [implementation-guide.md §12](docs/implementation-guide.md#12-limitations--phase-2-hooks)
-for the full limitations & Phase 2 hooks.
+**Phases 1 and 2 are complete and validated end-to-end.** The multi-node
+functional test bootstraps a permissioned network with distinct per-node
+weights, confirms the weight map converges on every node, then mines a long run
+of wPoA-governed blocks and verifies the observed proposer distribution matches
+the configured weight ratios via a chi-square goodness-of-fit test (with the
+observed-vs-expected table printed as evidence). Phases 3–5 are planned.
+
+See [docs/phase2-implementation-guide.md](docs/phase2-implementation-guide.md)
+for the Phase 2 design, and
+[phase1-implementation-guide.md §12](docs/phase1-implementation-guide.md#12-limitations--phase-2-hooks)
+for the full limitations register.
 
 ---
 

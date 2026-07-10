@@ -336,7 +336,7 @@ the per-item decode result, e.g.:
 ```
 
 This is what pinpointed the two read-path bugs fixed in this module (see
-[implementation-guide.md](implementation-guide.md) §5.3):
+[phase1-implementation-guide.md](phase1-implementation-guide.md) §5.3):
 using the WRP snapshot API off the RPC thread (list size always 0), and calling the
 wrong `OpReturnFormatEntry` overload (every item `decode=FAIL`). If you ever see
 `GetListSize` non-zero but `decode=FAIL`, compare your decode against the reference
@@ -347,7 +347,7 @@ wrong `OpReturnFormatEntry` overload (every item `decode=FAIL`). If you ever see
 ## Related documents
 
 - [../README.md](../README.md) — feature entry point and architecture diagram.
-- [implementation-guide.md](implementation-guide.md) — the design, including the two
+- [phase1-implementation-guide.md](phase1-implementation-guide.md) — the design, including the two
   read-path bugs these tests helped find (§5.3).
 - [multichain-internals.md](multichain-internals.md) §8 — the mining model referenced
   in §3.
