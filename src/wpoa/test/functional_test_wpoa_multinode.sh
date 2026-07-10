@@ -42,6 +42,25 @@ RPC_TIMEOUT="${RPC_TIMEOUT:-30}"   # seconds to wait for each node's RPC to come
 CONNECT_TIMEOUT="${CONNECT_TIMEOUT:-30}"  # seconds to wait for a bootstrap node to be granted+reconnect
 CHAIN="wpoamn$$"                    # unique-ish chain name
 
+# ---- wPoA Phase 2 (weighted proposer selection) knobs -----------------------
+# ENABLEWPOA=1 starts every node with -enablewpoa so the weighted election
+# governs mining after the setup period. DIST_BLOCKS>0 additionally runs the
+# proposer-distribution / chi-square assertion (the Phase 2 thesis artifact);
+# DIST_BLOCKS=0 keeps the legacy behavior (assert aggregate weight, then stop).
+ENABLEWPOA="${ENABLEWPOA:-1}"
+DIST_BLOCKS="${DIST_BLOCKS:-1000}"      # wPoA-governed blocks to sample
+DIST_TOLERANCE="${DIST_TOLERANCE:-0.05}" # per-validator ±relative tolerance (±5%)
+DIST_TIMEOUT="${DIST_TIMEOUT:-600}"     # seconds to wait for the sample to accrue
+# wPoA engages at height >= setup-first-blocks. Kept comfortably above the time
+# it takes every node to join and get its weight confirmed, so the whole sample
+# is elected from a converged, identical weight map on every node.
+SETUP_BLOCKS="${SETUP_BLOCKS:-40}"
+
+WPOA_ARGS=""
+if [ "$ENABLEWPOA" = "1" ]; then
+    WPOA_ARGS="-enablewpoa=1 -debug=wpoa"
+fi
+
 MCUTIL="$BINDIR/multichain-util"
 MCD="$BINDIR/multichaind"
 
@@ -126,10 +145,12 @@ PARAMS="${DATADIRS[0]}/$CHAIN/params.dat"
 [ -f "$PARAMS" ] || fail "params.dat not found at $PARAMS"
 sed -i -E "s/^(target-block-time[[:space:]]*=[[:space:]]*)[0-9]+/\12/"      "$PARAMS" || true
 sed -i -E "s/^(mine-empty-rounds[[:space:]]*=[[:space:]]*)[-0-9.]+/\11000/" "$PARAMS" || true
+# wPoA engages at height >= setup-first-blocks; give weights time to converge.
+sed -i -E "s/^(setup-first-blocks[[:space:]]*=[[:space:]]*)[0-9]+/\1$SETUP_BLOCKS/" "$PARAMS" || true
 
 echo "Starting node 0 (seed, weight=${WEIGHTS_ARR[0]})..."
 "$MCD" "$CHAIN" -datadir="${DATADIRS[0]}" -port="${P2PPORTS[0]}" -rpcport="${RPCPORTS[0]}" \
-       -weight="${WEIGHTS_ARR[0]}" -daemon >/dev/null 2>&1 \
+       -weight="${WEIGHTS_ARR[0]}" $WPOA_ARGS -daemon >/dev/null 2>&1 \
     || fail "multichaind failed to launch node 0"
 
 wait_for_rpc 0 || fail "RPC did not come up on node 0"
@@ -159,7 +180,7 @@ bootstrap_node() {
     # (it forks before discovering the rejection), so the exit code is NOT a
     # reliable join signal. We detect a real join by probing RPC instead.
     "$MCD" "$SEED_ADDR" -datadir="${DATADIRS[i]}" -port="${P2PPORTS[i]}" -rpcport="${RPCPORTS[i]}" \
-           -weight="$weight" -daemon > "$log" 2>&1
+           -weight="$weight" $WPOA_ARGS -daemon > "$log" 2>&1
 
     # Fast path: node came up on its own (anyone-can-connect) -> nothing to grant.
     for ((t = 0; t < 5; t++)); do
@@ -193,7 +214,7 @@ bootstrap_node() {
     # failed attempt exits on its own, so re-launching on the same port is safe.
     for ((t = 0; t < CONNECT_TIMEOUT; t += 2)); do
         "$MCD" "$SEED_ADDR" -datadir="${DATADIRS[i]}" -port="${P2PPORTS[i]}" -rpcport="${RPCPORTS[i]}" \
-               -weight="$weight" -daemon > "$log" 2>&1
+               -weight="$weight" $WPOA_ARGS -daemon > "$log" 2>&1
         if wait_for_rpc "$i"; then
             return 0
         fi
@@ -208,26 +229,106 @@ for ((i = 1; i < NODES; i++)); do
     wait_for_rpc "$i" || fail "RPC did not come up on node $i"
 done
 
-# ---- poll node 0 until the aggregate weight is confirmed on-chain -----------
-echo "Waiting for aggregate weight $TOTAL_WEIGHT across $NODES node(s) to be confirmed (timeout ${TIMEOUT}s)..."
+# ---- wait until EVERY node has the full weight map confirmed -----------------
+# The whole distribution sample must be elected from a converged, identical
+# weight map on every node, so we require the aggregate on all nodes (not just
+# node 0) before proceeding.
+node_total() {
+    cli "$1" getallweights 2>/dev/null \
+        | sed -nE 's/.*"total"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' | head -n1
+}
+tip_height() { cli "$1" getblockcount 2>/dev/null; }
+tip_hash()   { cli "$1" getbestblockhash 2>/dev/null; }
+
+echo "Waiting for aggregate weight $TOTAL_WEIGHT to be confirmed on ALL $NODES node(s) (timeout ${TIMEOUT}s)..."
 deadline=$(( SECONDS + TIMEOUT ))
-last=""
+converged=0
 while [ "$SECONDS" -lt "$deadline" ]; do
-    out="$(cli 0 getallweights 2>/dev/null)"
-    last="$out"
-    if echo "$out" | grep -qE "\"total\"[[:space:]]*:[[:space:]]*$TOTAL_WEIGHT([^0-9]|$)"; then
-        echo "----------------------------------------"
-        echo "$out"
-        echo "----------------------------------------"
-        echo "FUNCTIONAL TEST PASSED (aggregate weight $TOTAL_WEIGHT confirmed across $NODES node(s))."
-        exit 0
-    fi
+    all_ok=1
+    for ((i = 0; i < NODES; i++)); do
+        [ "$(node_total "$i")" = "$TOTAL_WEIGHT" ] || { all_ok=0; break; }
+    done
+    if [ "$all_ok" = "1" ]; then converged=1; break; fi
     sleep 3
 done
 
-echo "---- last getallweights (node 0) ----"
-echo "$last"
-echo "---- debug.log tail (node 0) ----"
-tail -n 40 "${DATADIRS[0]}/$CHAIN/debug.log" 2>/dev/null | grep -i "StreamWeightRegistry" \
-    || tail -n 20 "${DATADIRS[0]}/$CHAIN/debug.log" 2>/dev/null
-fail "aggregate weight $TOTAL_WEIGHT was not confirmed within ${TIMEOUT}s"
+if [ "$converged" != "1" ]; then
+    echo "---- last getallweights per node ----"
+    for ((i = 0; i < NODES; i++)); do echo "node $i: total=$(node_total "$i")"; done
+    echo "---- debug.log tail (node 0) ----"
+    tail -n 30 "${DATADIRS[0]}/$CHAIN/debug.log" 2>/dev/null | grep -iE "StreamWeightRegistry|wpoa" \
+        || tail -n 20 "${DATADIRS[0]}/$CHAIN/debug.log" 2>/dev/null
+    fail "aggregate weight $TOTAL_WEIGHT was not confirmed on all nodes within ${TIMEOUT}s"
+fi
+
+echo "----------------------------------------"
+cli 0 getallweights
+echo "----------------------------------------"
+echo "Aggregate weight $TOTAL_WEIGHT confirmed across all $NODES node(s)."
+
+# Legacy mode: no distribution phase requested (or wPoA disabled) -> done.
+if [ "$ENABLEWPOA" != "1" ] || [ "$DIST_BLOCKS" -le 0 ]; then
+    echo "FUNCTIONAL TEST PASSED (aggregate weight confirmed; distribution phase skipped)."
+    exit 0
+fi
+
+# ---- Phase 2: proposer-distribution / chi-square goodness-of-fit ------------
+# Weights are globally confirmed, so from here every height is elected from the
+# same weight map on every node. Sample only heights that are (a) wPoA-governed
+# (>= setup-first-blocks) and (b) strictly after this convergence point.
+cur="$(tip_height 0)"; cur="${cur:-0}"
+SAMPLE_START=$(( cur + 1 ))
+[ "$SAMPLE_START" -lt "$SETUP_BLOCKS" ] && SAMPLE_START=$SETUP_BLOCKS
+SAMPLE_END=$(( SAMPLE_START + DIST_BLOCKS - 1 ))
+
+echo
+echo "== wPoA Phase 2 proposer-distribution test =="
+echo "  sampling heights $SAMPLE_START..$SAMPLE_END ($DIST_BLOCKS blocks), tolerance ±$(awk "BEGIN{printf \"%.1f\",$DIST_TOLERANCE*100}")%"
+echo "  waiting for the chain to reach height $SAMPLE_END (timeout ${DIST_TIMEOUT}s)..."
+
+deadline=$(( SECONDS + DIST_TIMEOUT ))
+last_h=-1; stall_since=$SECONDS
+while [ "$SECONDS" -lt "$deadline" ]; do
+    h="$(tip_height 0)"; h="${h:-0}"
+    if [ "$h" -ge "$SAMPLE_END" ]; then break; fi
+    if [ "$h" -ne "$last_h" ]; then last_h=$h; stall_since=$SECONDS
+        # progress ping roughly every ~50 blocks
+        [ $(( h % 50 )) -eq 0 ] && echo "    height $h / $SAMPLE_END"
+    elif [ $(( SECONDS - stall_since )) -ge 120 ]; then
+        echo "    WARNING: chain appears stalled at height $h for 120s"
+        stall_since=$SECONDS
+    fi
+    sleep 2
+done
+
+h="$(tip_height 0)"; h="${h:-0}"
+[ "$h" -ge "$SAMPLE_END" ] || fail "chain only reached height $h of $SAMPLE_END within ${DIST_TIMEOUT}s"
+
+# Consistency: all nodes must agree on the tip hash at the sample end (no fork).
+ref_hash="$(tip_hash 0)"
+for ((i = 1; i < NODES; i++)); do
+    hi="$(tip_hash "$i")"
+    # A node may be a block or two ahead; compare the block hash at SAMPLE_END.
+    hi_at_end="$(cli "$i" getblockhash "$SAMPLE_END" 2>/dev/null)"
+    h0_at_end="$(cli 0 getblockhash "$SAMPLE_END" 2>/dev/null)"
+    if [ -n "$hi_at_end" ] && [ "$hi_at_end" != "$h0_at_end" ]; then
+        fail "fork detected: node $i block $SAMPLE_END = $hi_at_end != node 0 $h0_at_end"
+    fi
+done
+echo "  all nodes agree on the chain at height $SAMPLE_END (no fork)."
+
+# Collect the data and analyze.
+WEIGHTS_JSON="${DATADIRS[0]}/weights.json"
+BLOCKS_JSON="${DATADIRS[0]}/blocks.json"
+cli 0 getallweights > "$WEIGHTS_JSON" 2>/dev/null || fail "getallweights failed"
+cli 0 listblocks "$SAMPLE_START-$SAMPLE_END" > "$BLOCKS_JSON" 2>/dev/null \
+    || fail "listblocks $SAMPLE_START-$SAMPLE_END failed"
+
+python3 "$SCRIPT_DIR/analyze_distribution.py" "$WEIGHTS_JSON" "$BLOCKS_JSON" "$DIST_TOLERANCE"
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    fail "proposer distribution did not match weight ratios within tolerance (see table above)"
+fi
+
+echo "FUNCTIONAL TEST PASSED (weighted proposer distribution matches weight ratios within tolerance over $DIST_BLOCKS blocks)."
+exit 0
