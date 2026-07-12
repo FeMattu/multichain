@@ -3,7 +3,8 @@
 > Documentation of the **node-startup integration** for wPoA. `init.cpp` is huge (it
 > drives the entire MultiChain node bootstrap); here we document **only** the wPoA parts:
 > the Phase 1 `-weight` handling + registration thread (§2.1-2.3) and the Phase 2
-> `-enablewpoa` flag (§2.4). The rest is the standard MultiChain/Bitcoin startup engine.
+> `-enablewpoa` (§2.4) and `-dumpfunction` (§2.5) flags. The rest is the standard
+> MultiChain/Bitcoin startup engine.
 
 `init.h` and `init.cpp` are documented together because they form the classic
 interface/implementation pair: `init.h` declares the global symbols that the other
@@ -197,6 +198,53 @@ miner (`miner/miner.cpp`) and validator (`protocol/multichainblock.cpp`) consult
 runtime. See [miner-integration.md](miner-integration.md) and
 [block-validation.md](block-validation.md).
 
+### 2.5 wPoA Phase 2: the `-dumpfunction` flag
+
+The final wPoA knob, parsed in the same `#ifdef ENABLE_WALLET` block right after
+`-enablewpoa`, chooses the **weight-dumping (damping) function**: the transform applied to
+every validator weight *before* the Efraimidis–Spirakis draw. Its purpose is to stop a
+single large stake ("whale") from dominating proposer selection and to keep any one
+validator's win share from growing without bound as its weight climbs. See
+[wpoa-selector.md §2.2](wpoa-selector.md) for the math.
+
+```cpp
+// wPoA Phase 2: weight-dumping (damping) function. ... Default "none" = raw weights.
+std::string dump_arg = GetArg("-dumpfunction", "none");
+if (boost::iequals(dump_arg, "none"))      g_dumping_function = DUMP_NONE;
+else if (boost::iequals(dump_arg, "sqrt")) g_dumping_function = DUMP_SQRT;
+else if (boost::iequals(dump_arg, "log"))  g_dumping_function = DUMP_LOG;
+else return InitError(strprintf(_("Invalid -dumpfunction value '%s': must be none, sqrt or log."), dump_arg));
+LogPrintf("[wPoA] Weight-dumping function: %s\n", ...);
+```
+
+Line-by-line:
+
+- **`GetArg("-dumpfunction", "none")`** — reads the parameter as a **string** (the
+  `std::string`-defaulted `GetArg` overload), defaulting to `"none"`. String values
+  (`none`/`sqrt`/`log`) are chosen over opaque integers so a `multichain.conf` entry is
+  self-documenting.
+- **`boost::iequals(...)`** — case-insensitive compare (from
+  `boost/algorithm/string/predicate.hpp`, already included), so `SQRT`, `Sqrt` and `sqrt`
+  are all accepted. Each branch sets the global `g_dumping_function` (defined in
+  `wpoa_selector.cpp`, declared `extern` in its header — like `g_wpoa_enabled`).
+- **`else return InitError(...)`** — an unrecognized value **fails startup** rather than
+  silently falling back. This is deliberate: the dumping function is **consensus-critical**
+  (every node must agree, or the elected proposer differs and the chain forks), so a typo
+  must be loud, not a silent divergence. This mirrors the strict validation of `-weight`.
+- **`LogPrintf(...)`** — records the effective transform (`none`/`sqrt`/`log`) at startup so
+  an operator can confirm it from `debug.log`; the selector also echoes it on every
+  election under `-debug=wpoa`.
+
+Like `-enablewpoa`, `-dumpfunction` launches **no thread** — it only sets a global that the
+selector core reads once per election (via `WPoASelectProposer`, the sole reader). It is
+wallet-gated for the same reason: it is only meaningful on a node that participates in wPoA.
+
+> **Operational note.** Because it is consensus-critical, `-dumpfunction` must be set
+> **identically on every mining/validating node** and, in practice, fixed for the life of
+> the chain (or coordinated at a known height). It is a *node* configuration flag today,
+> not a chain parameter, so nothing enforces cross-node agreement automatically — the same
+> accepted-risk category as `-enablewpoa`.
+
 ## 3. The complete startup flow
 
 ```mermaid
@@ -225,12 +273,14 @@ flowchart TD
 - **`stream_weight_registry.h` → `init.cpp`**: provides `MC_WPOA_DEFAULT_WEIGHT`,
   `g_node_weight` and `ThreadRegisterNodeWeight` used in the startup block.
 - **`init.cpp`** is the **only** place that launches the thread and sets `g_node_weight`
-  (Phase 1) and `g_wpoa_enabled` (Phase 2); it is the bridge between the user's
-  configuration (`-weight`, `-enablewpoa`) and the wPoA subsystem.
+  (Phase 1), `g_wpoa_enabled` and `g_dumping_function` (Phase 2); it is the bridge between
+  the user's configuration (`-weight`, `-enablewpoa`, `-dumpfunction`) and the wPoA
+  subsystem.
 - The read RPCs (in `rpclist.cpp`) are **independent** of this startup: they work even if
   the thread has not registered anything yet (they simply return 0 / an empty map).
-- **`wpoa_selector.cpp`** defines `g_wpoa_enabled`; `init.cpp` writes it. The miner and
-  validator read it via `WPoAActiveAtHeight`.
+- **`wpoa_selector.cpp`** defines `g_wpoa_enabled` and `g_dumping_function`; `init.cpp`
+  writes them. The miner and validator read `g_wpoa_enabled` via `WPoAActiveAtHeight`, and
+  `g_dumping_function` is read once per election inside `WPoASelectProposer`.
 
 ---
 

@@ -238,3 +238,81 @@ BOOST_AUTO_TEST_CASE(distribution_monotonic_in_weight)
     double ratio = (double)wins["1heavy"] / (double)wins["1light"];
     BOOST_CHECK_MESSAGE(ratio > 8.0 && ratio < 12.0, "win ratio " << ratio << " (expected ~10)");
 }
+
+// ---- weight-dumping / whale compression (-dumpfunction) ------------------
+
+// heavy/light win ratio for a fixed 10x weight gap under one dumping function.
+static double win_ratio(DumpingFunction fn, uint32_t trials)
+{
+    std::map<std::string, uint32_t> w;
+    w["1light"] = 50;
+    w["1heavy"] = 500;
+
+    uint64_t heavy = 0, light = 0;
+    for (uint32_t i = 0; i < trials; i++)
+    {
+        std::vector<unsigned char> seed = make_seed(i);
+        std::string win = WPoASelector::SelectProposer(&seed[0], seed.size(), w, fn);
+        if (win == "1heavy") heavy++;
+        else if (win == "1light") light++;
+    }
+    BOOST_REQUIRE(light > 0);
+    return (double)heavy / (double)light;
+}
+
+BOOST_AUTO_TEST_CASE(dumping_compresses_whale_dominance)
+{
+    // The whole point of -dumpfunction: a 10x weight gap should NOT buy a 10x
+    // election share once a concave dumping function is applied. none tracks the
+    // raw ratio; sqrt compresses it toward sqrt(10); log compresses hardest.
+    const uint32_t trials = 100000;
+
+    double r_none = win_ratio(DUMP_NONE, trials);
+    double r_sqrt = win_ratio(DUMP_SQRT, trials);
+    double r_log  = win_ratio(DUMP_LOG,  trials);
+
+    std::printf("\n  Whale compression (weights 50 vs 500, %u trials):\n", trials);
+    std::printf("    none : heavy/light = %6.3f  (raw ratio            = %.3f)\n",
+                r_none, 500.0 / 50.0);
+    std::printf("    sqrt : heavy/light = %6.3f  (sqrt(500)/sqrt(50)   = %.3f)\n",
+                r_sqrt, std::sqrt(500.0) / std::sqrt(50.0));
+    std::printf("    log  : heavy/light = %6.3f  (ln(1+500)/ln(1+50)   = %.3f)\n",
+                r_log, std::log(1.0 + 500.0) / std::log(1.0 + 50.0));
+
+    // none tracks the raw 10x ratio.
+    BOOST_CHECK_MESSAGE(r_none > 8.0 && r_none < 12.0, "none ratio " << r_none);
+    // sqrt compresses toward sqrt(10) ~ 3.16.
+    BOOST_CHECK_MESSAGE(r_sqrt > 2.6 && r_sqrt < 3.8, "sqrt ratio " << r_sqrt);
+    // log compresses toward ln(501)/ln(51) ~ 1.58.
+    BOOST_CHECK_MESSAGE(r_log > 1.3 && r_log < 1.9, "log ratio " << r_log);
+
+    // Strictly decreasing aggressiveness: none > sqrt > log.
+    BOOST_CHECK(r_none > r_sqrt);
+    BOOST_CHECK(r_sqrt > r_log);
+}
+
+BOOST_AUTO_TEST_CASE(dumping_preserves_ordering_and_never_starves)
+{
+    // Under every mode a heavier validator still wins more often (ordering is
+    // preserved), and the smallest legal weight (1) is never shut out — the
+    // reason DUMP_LOG uses ln(1 + w) and not ln(w) (ln(1) = 0 -> +inf score).
+    std::map<std::string, uint32_t> w;
+    w["1light"] = 1;
+    w["1heavy"] = 1000;
+
+    const DumpingFunction modes[3] = { DUMP_NONE, DUMP_SQRT, DUMP_LOG };
+    const uint32_t trials = 40000;
+    for (int m = 0; m < 3; m++)
+    {
+        uint64_t heavy = 0, light = 0;
+        for (uint32_t i = 0; i < trials; i++)
+        {
+            std::vector<unsigned char> seed = make_seed(i * 3 + 1);
+            std::string win = WPoASelector::SelectProposer(&seed[0], seed.size(), w, modes[m]);
+            if (win == "1heavy") heavy++;
+            else if (win == "1light") light++;
+        }
+        BOOST_CHECK_MESSAGE(heavy > light, "mode=" << m << " heavy=" << heavy << " light=" << light);
+        BOOST_CHECK_MESSAGE(light > 0, "mode=" << m << " weight-1 validator was starved (0 wins)");
+    }
+}

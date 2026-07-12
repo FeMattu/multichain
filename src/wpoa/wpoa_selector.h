@@ -40,6 +40,36 @@
 
 #include "crypto/hmac_sha256.h"
 
+// wPoA weight-dumping (damping) function ------------------------------------
+//
+// Applied to each validator weight *before* the Efraimidis–Spirakis draw. The
+// transform is concave and strictly increasing, so it compresses the weight
+// distribution: a single large stake ("whale") can no longer dominate proposer
+// selection, and its selection share cannot grow without bound as its weight
+// climbs — yet validators are never reordered (a heavier raw weight still maps
+// to a larger effective weight, hence a larger win probability).
+//
+//   DUMP_NONE : f(w) = w           raw weight, no compression   (default)
+//   DUMP_SQRT : f(w) = sqrt(w)     moderate compression
+//   DUMP_LOG  : f(w) = ln(1 + w)   strong compression
+//
+// CONSENSUS-CRITICAL: the miner and every validator MUST apply the SAME
+// function, or they disagree on the elected proposer and the chain forks. The
+// choice is therefore threaded explicitly into the pure core below (which never
+// reads a global) and is bound to the -dumpfunction runtime flag in exactly one
+// place — the node glue in wpoa_selector.cpp.
+enum DumpingFunction
+{
+    DUMP_NONE = 0,
+    DUMP_LOG,
+    DUMP_SQRT
+};
+
+#define MC_WPOA_DEFAULT_DUMPING_FUNCTION DUMP_NONE  // no dumping by default
+
+/** Set once from -dumpfunction in AppInit2; defined in wpoa_selector.cpp. */
+extern DumpingFunction g_dumping_function;
+
 /**
  * WPoASelector — pure, deterministic, node-free proposer election.
  *
@@ -50,6 +80,37 @@
 class WPoASelector
 {
 public:
+
+    /**
+     * Apply a weight-dumping (damping) function to a raw validator weight.
+     *
+     * Concave and strictly increasing on w >= 1 (the registry never stores a
+     * smaller positive weight), so it compresses large weights — curbing whale
+     * dominance — without ever reordering validators. The result is strictly
+     * positive for every w >= 1, so the caller's E / weight score stays finite:
+     *   DUMP_SQRT -> sqrt(1)   = 1
+     *   DUMP_LOG  -> ln(1 + 1) ~ 0.693   (the "1 +" keeps w == 1 above zero;
+     *                                     plain ln(1) = 0 would give a +inf score)
+     *
+     * Kept pure (no global reads) so the node-free unit test can exercise every
+     * mode directly; the runtime flag is bound in the node glue.
+     *
+     * @param weight   Raw validator weight (>= 1 in practice; weight 0 is
+     *                 handled by the caller before this is reached).
+     * @param dumping  Which transform to apply.
+     * @return the effective weight fed to the Efraimidis–Spirakis score.
+     */
+    static double ApplyDumping(uint32_t weight, DumpingFunction dumping)
+    {
+        switch (dumping)
+        {
+            case DUMP_SQRT: return std::sqrt((double)weight);
+            case DUMP_LOG:  return std::log(1.0 + (double)weight);
+            case DUMP_NONE:
+            default:        return (double)weight;
+        }
+    }
+
     /**
      * Efraimidis–Spirakis score for one validator.
      *
@@ -58,11 +119,16 @@ public:
      * @param address   Validator address string (the StreamWeightRegistry key).
      * @param weight    Validator weight (> 0; a weight of 0 yields +inf so the
      *                  node can never win).
-     * @return score_i = -ln(u_i) / weight, where u_i ∈ (0,1] is derived from
-     *         HMAC-SHA256(seed, address). Smaller wins.
+     * @param dumping   Weight-dumping function applied to `weight` before the
+     *                  draw (default none). CONSENSUS-CRITICAL: the caller must
+     *                  pass the same value on the miner and the validator side.
+     * @return score_i = -ln(u_i) / f(weight), where u_i ∈ (0,1] is derived from
+     *         HMAC-SHA256(seed, address) and f is the dumping function. Smaller
+     *         wins.
      */
     static double ComputeScore(const unsigned char* seed, size_t seed_len,
-                               const std::string& address, uint32_t weight)
+                               const std::string& address, uint32_t weight,
+                               DumpingFunction dumping = DUMP_NONE)
     {
         if (weight == 0)
         {
@@ -91,8 +157,8 @@ public:
         const double two64 = 18446744073709551616.0; // 2^64, exact in double
         double u = ((double)d + 1.0) / two64;
 
-        double E = -std::log(u);          // Exp(1)-distributed
-        return E / (double)weight;         // Exp(weight)-distributed
+        double E = -std::log(u);                            // Exp(1)-distributed
+        return E / ApplyDumping(weight, dumping);           // Exp(f(weight))-distributed
     }
 
     /**
@@ -106,11 +172,15 @@ public:
      * than a cumulative-range walk over an "opaque" map (see
      * docs/phase2-weighted-selection.md).
      *
+     * @param dumping   Weight-dumping function applied to every weight before
+     *                  the draw (default none). CONSENSUS-CRITICAL: must match
+     *                  on the miner and validator side.
      * @return the winning validator address, or "" if `weights` has no
      *         positive-weight entries.
      */
     static std::string SelectProposer(const unsigned char* seed, size_t seed_len,
-                                      const std::map<std::string, uint32_t>& weights)
+                                      const std::map<std::string, uint32_t>& weights,
+                                      DumpingFunction dumping = DUMP_NONE)
     {
         std::string best_addr;
         double best_score = 0.0;
@@ -124,7 +194,7 @@ public:
                 continue; // defensive: registry never stores weight 0
             }
 
-            double s = ComputeScore(seed, seed_len, it->first, it->second);
+            double s = ComputeScore(seed, seed_len, it->first, it->second, dumping);
 
             // Total order: lower score wins; on an exact tie the lexicographically
             // smaller address wins (docs/implementation-roadmap.md §9). Written so

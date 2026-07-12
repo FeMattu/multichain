@@ -135,7 +135,12 @@ std::string sProposer=WPoASelectProposer(hSeed.begin(),hSeed.size(),pindexNew->n
   out `pprev == NULL`.
 - `WPoASelectProposer(hSeed.begin(), hSeed.size(), pindexNew->nHeight)` runs the same
   registry read + argmin the miner ran, so — given the same confirmed weight map — it
-  produces the **same** proposer.
+  produces the **same** proposer. This includes the configured **weight-dumping function**
+  (`-dumpfunction`, see [wpoa-selector.md §2.2](wpoa-selector.md)): `WPoASelectProposer`
+  applies `g_dumping_function` internally on both sides, so it is transparent here — but it
+  is **consensus-critical**, so a validator running a different `-dumpfunction` than the
+  miner would reject valid blocks (and vice-versa). Every node must be configured with the
+  same value.
 
 ### 3.4 Empty-registry leniency
 ```cpp

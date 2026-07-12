@@ -21,6 +21,24 @@ using namespace std;
 // mining-diversity behavior unchanged.
 bool g_wpoa_enabled = false;
 
+// Weight-dumping (damping) function applied to validator weights before the
+// Efraimidis–Spirakis draw. Set once from -dumpfunction in AppInit2. Default
+// none = raw weights (no behavioral change from an undamped chain). This is the
+// single place the runtime flag is bound to the otherwise-pure selector core.
+DumpingFunction g_dumping_function = MC_WPOA_DEFAULT_DUMPING_FUNCTION;
+
+// Human-readable name for the debug log (never affects selection).
+static const char* DumpingFunctionName(DumpingFunction fn)
+{
+    switch (fn)
+    {
+        case DUMP_SQRT: return "sqrt";
+        case DUMP_LOG:  return "log";
+        case DUMP_NONE:
+        default:        return "none";
+    }
+}
+
 bool WPoAActiveAtHeight(int height)
 {
     if (!g_wpoa_enabled)
@@ -59,12 +77,14 @@ std::string WPoASelectProposer(const unsigned char* seed, size_t seed_len, int h
     StreamWeightRegistry registry(pwalletTxsMain);
     std::map<std::string, uint32_t> weights = registry.GetAllNodesWeights();
 
-    std::string proposer = WPoASelector::SelectProposer(seed, seed_len, weights);
+    std::string proposer = WPoASelector::SelectProposer(seed, seed_len, weights,
+                                                        g_dumping_function);
 
     if (fDebug)
     {
-        LogPrint("wpoa", "[wpoa] SelectProposer height=%d validators=%u -> %s\n",
+        LogPrint("wpoa", "[wpoa] SelectProposer height=%d validators=%u dumping=%s -> %s\n",
                  height, (unsigned)weights.size(),
+                 DumpingFunctionName(g_dumping_function),
                  proposer.empty() ? "(none)" : proposer.c_str());
     }
 

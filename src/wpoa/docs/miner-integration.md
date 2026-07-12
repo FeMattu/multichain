@@ -142,7 +142,11 @@ std::string sProposer=WPoASelectProposer(hWPoASeed.begin(),hWPoASeed.size(),nWPo
 - `WPoASelectProposer(hWPoASeed.begin(), hWPoASeed.size(), nWPoAHeight)` — `begin()`
   yields a pointer to the 32 raw hash bytes and `size()` their count (32). The function
   reads the confirmed weight map and returns the elected proposer's address. `nWPoAHeight`
-  is passed for logging/forward-compat only (Phase 2 seeds from the hash alone).
+  is passed for logging/forward-compat only (Phase 2 seeds from the hash alone). The
+  election also honors the node's configured **weight-dumping function** (`-dumpfunction`),
+  applied inside `WPoASelectProposer` — transparent to this branch, but it must match the
+  value every validator runs or they will reject this node's blocks (see
+  [wpoa-selector.md §2.2](wpoa-selector.md) and [block-validation.md](block-validation.md)).
 
 ### Elected → mine now; else → wait
 ```cpp
@@ -178,10 +182,10 @@ target spacing, the `dExpectedTime*` computation, etc. So:
 ```mermaid
 flowchart LR
     ML["mining loop<br/>miner.cpp:1543"] -->|polls| GM["GetMinerAndExpectedMiningStartTime<br/>miner.cpp:998"]
-    GM -->|WPoAActiveAtHeight(tip+1)| SEL["wpoa_selector.cpp"]
-    GM -->|seed = hash(tip)<br/>WPoASelectProposer| SEL
+    GM -->|"WPoAActiveAtHeight(tip+1)"| SEL["wpoa_selector.cpp"]
+    GM -->|"seed = hash(tip)<br/>WPoASelectProposer"| SEL
     SEL -->|GetAllNodesWeights| REG["StreamWeightRegistry (Phase 1)"]
-    GM -->|start time = now / now+3600| ML
+    GM -->|"start time = now / now+3600"| ML
     ML -->|if elected| SIGN["sign & broadcast block with kThisMiner"]
     SIGN --> VAL["validator: multichainblock.cpp<br/>(see block-validation.md)"]
 ```

@@ -563,6 +563,7 @@ std::string HelpMessage(HelpMessageMode mode)                                   
     strUsage += "  -mineemptyrounds=<n>                     " + _("If set overrides mine-empty-rounds blockchain setting, values 0.0-1000.0 or -1.") + "\n";
     strUsage += "  -miningturnover=<n>                      " + _("If set overrides mining-turnover blockchain setting, values 0-1.") + "\n";
     strUsage += "  -weight=<n>                              " + strprintf(_("wPoA validator weight for this node, positive integer (default: %u). Registered on the wpoa-weights stream."), MC_WPOA_DEFAULT_WEIGHT) + "\n";
+    strUsage += "  -dumpfunction=<none|sqrt|log>            " + _("wPoA weight-dumping (damping) function applied before proposer selection, to stop large stakes dominating (default: none). Must be identical on all nodes.") + "\n";
     strUsage += "  -shrinkdebugfilesize=<n>                 " + _("If shrinkdebugfile is 1, this controls the size of the debug file. Whenever the debug.log file reaches over 5 times this number of bytes, it is reduced back down to this size.") + "\n";
     strUsage += "  -shortoutput                             " + _("Only show the node address (if connecting was successful) or an address in the wallet (if connect permissions must be granted by another node)") + "\n";
     strUsage += "  -bantx=<txids>                           " + _("Comma delimited list of banned transactions.") + "\n";
@@ -3185,6 +3186,33 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
         g_wpoa_enabled = GetBoolArg("-enablewpoa", false);
         LogPrintf("[wPoA] Weighted proposer selection %s\n",
                   g_wpoa_enabled ? "ENABLED (-enablewpoa=1)" : "disabled (native mining-diversity)");
+
+        // wPoA Phase 2: weight-dumping (damping) function. Compresses validator
+        // weights before the Efraimidis–Spirakis draw so a single large stake
+        // cannot dominate proposer selection (or grow its share without bound).
+        // CONSENSUS-CRITICAL: every node must run the same value or the elected
+        // proposer differs and the chain forks. Default "none" = raw weights.
+        std::string dump_arg = GetArg("-dumpfunction", "none");
+        if (boost::iequals(dump_arg, "none"))
+        {
+            g_dumping_function = DUMP_NONE;
+        }
+        else if (boost::iequals(dump_arg, "sqrt"))
+        {
+            g_dumping_function = DUMP_SQRT;
+        }
+        else if (boost::iequals(dump_arg, "log"))
+        {
+            g_dumping_function = DUMP_LOG;
+        }
+        else
+        {
+            return InitError(strprintf(_("Invalid -dumpfunction value '%s': must be none, sqrt or log."), dump_arg));
+        }
+        LogPrintf("[wPoA] Weight-dumping function: %s\n",
+                  g_dumping_function == DUMP_SQRT ? "sqrt (f(w)=sqrt(w))" :
+                  g_dumping_function == DUMP_LOG  ? "log (f(w)=ln(1+w))"  :
+                                                    "none (raw weights)");
 
         // Register the weight lazily on a background thread: publishing is a
         // transaction, so it can only happen once the wallet, permissions, the

@@ -40,25 +40,7 @@ self-contained, namespaced unit with no per-instance state — you never constru
 
 ## 2. `wpoa_selector.h`
 
-### 2.1 The header comment — the specification in one place
-
-Lines 4-30 are the authoritative spec of the algorithm:
-
-```
-digest_i = HMAC-SHA256(key = prev_block_hash, msg = validator_address)
-u_i      = (top-64-bits(digest_i) + 1) / 2^64          ∈ (0, 1]
-E_i      = -ln(u_i)                                     ∈ [0, +∞)   (Exp(1))
-score_i  = E_i / w_i                                    (Exp(w_i))
-proposer = argmin_i(score_i)   [ties: lexicographically smallest address]
-
-Pr[i elected] = w_i / Σ_j w_j  (Efraimidis & Spirakis, 2006)
-```
-
-It also records the **accepted-risk** note: Phase 2 is *public and predictable* because
-the seed is the plain previous block hash; the privacy fix (per-validator VRF) is
-Phase 3/4 and swaps only the randomness source, not the scoring/argmin below.
-
-### 2.2 Includes and their provenance
+### 2.1 Includes and their provenance
 
 ```cpp
 #include <cmath>       // std::log
@@ -69,7 +51,8 @@ Phase 3/4 and swaps only the randomness source, not the scoring/argmin below.
 #include "crypto/hmac_sha256.h"  // CHMAC_SHA256
 ```
 
-- `<cmath>` → `std::log`, the natural logarithm (base *e*). Used for `E = -ln(u)`.
+- `<cmath>` → `std::log` (natural logarithm, base *e*) and `std::sqrt`. Used for
+  `E = -ln(u)` and for the weight-dumping transforms (§2.2).
 - `<limits>` → `std::numeric_limits<double>::infinity()`, a portable IEEE-754 `+∞`.
   Returned for a zero-weight node so it can never be the argmin.
 - `<map>`, `<string>`, `<stdint.h>` → STL/C standard types.
@@ -81,11 +64,69 @@ Phase 3/4 and swaps only the randomness source, not the scoring/argmin below.
     returns `*this` so calls **chain**.
   - `void Finalize(unsigned char hash[OUTPUT_SIZE]);` — writes the 32-byte MAC.
 
+### 2.2 Weight-dumping (`-dumpfunction`) — whale compression
+
+Before the Efraimidis–Spirakis draw, each validator weight is passed through an optional
+**dumping** (damping) function. Without it, election probability is exactly proportional
+to raw weight, so a validator with 100× the stake wins ~100× as often — a single
+**whale** dominates block production, and its share grows without bound as it accrues more
+weight. The dumping function is a **concave, strictly-increasing** transform that
+*compresses* that gap while never reordering validators (a heavier node is still more
+likely to be chosen — just not proportionally so).
+
+```cpp
+enum DumpingFunction
+{
+    DUMP_NONE = 0,   // f(w) = w         raw weight, no compression   (default)
+    DUMP_LOG,        // f(w) = ln(1 + w) strong compression
+    DUMP_SQRT        // f(w) = sqrt(w)   moderate compression
+};
+
+#define MC_WPOA_DEFAULT_DUMPING_FUNCTION DUMP_NONE
+
+extern DumpingFunction g_dumping_function;   // set from -dumpfunction; defined in the .cpp
+```
+
+The transform itself is a pure static helper, so the node-free unit test can exercise
+every mode directly:
+
+```cpp
+static double ApplyDumping(uint32_t weight, DumpingFunction dumping)
+{
+    switch (dumping)
+    {
+        case DUMP_SQRT: return std::sqrt((double)weight);
+        case DUMP_LOG:  return std::log(1.0 + (double)weight);
+        case DUMP_NONE:
+        default:        return (double)weight;
+    }
+}
+```
+
+- **Why `ln(1 + w)` and not `ln(w)`?** The registry's smallest positive weight is `1`, and
+  `ln(1) = 0` would make `E / f(w)` divide by zero → `+∞` → a weight-1 validator could
+  **never** win. `ln(1 + w)` gives `ln(2) ≈ 0.693 > 0`, so every legal weight keeps a
+  positive effective weight and a finite score. `sqrt(1) = 1` is fine unchanged.
+- **Return type is `double`, not `int`.** The score math is already floating-point;
+  truncating `sqrt`/`log` to an integer would collapse most weights to the same bucket
+  (e.g. `sqrt(2) → 1`) and destroy the ordering. The effective weight stays a `double`
+  all the way into `E / f(w)`.
+- **Effect (measured, `test/wpoa_selector_tests.cpp`):** for weights 50 vs 500 (raw 10×),
+  the heavy/light win ratio is ≈ 9.8 under `none`, ≈ 3.15 under `sqrt` (→ √10), and ≈ 1.57
+  under `log` (→ ln(501)/ln(51)). Ordering is always preserved; the whale's edge shrinks.
+- **CONSENSUS-CRITICAL.** The miner and every validator must apply the **same** function
+  or they compute different scores, elect different proposers, and fork. This is why the
+  choice is a value **threaded into the pure core** (never read from a global inside it):
+  the sole binding to the runtime flag `g_dumping_function` happens once, in the node glue
+  (§3.4). `g_dumping_function` is declared `extern` here and defined in `wpoa_selector.cpp`
+  (§3.2), exactly like `g_wpoa_enabled`.
+
 ### 2.3 `WPoASelector::ComputeScore` — the per-node score
 
 ```cpp
 static double ComputeScore(const unsigned char* seed, size_t seed_len,
-                           const std::string& address, uint32_t weight)
+                           const std::string& address, uint32_t weight,
+                           DumpingFunction dumping = DUMP_NONE)
 {
     if (weight == 0)
         return std::numeric_limits<double>::infinity();
@@ -102,8 +143,8 @@ static double ComputeScore(const unsigned char* seed, size_t seed_len,
     const double two64 = 18446744073709551616.0; // 2^64, exact in double
     double u = ((double)d + 1.0) / two64;
 
-    double E = -std::log(u);          // Exp(1)-distributed
-    return E / (double)weight;         // Exp(weight)-distributed
+    double E = -std::log(u);                     // Exp(1)-distributed
+    return E / ApplyDumping(weight, dumping);    // Exp(f(weight))-distributed
 }
 ```
 
@@ -113,7 +154,9 @@ Line by line:
   (`WPoASelector::ComputeScore(...)`). Returns a `double` score; **smaller wins**.
 - **Parameters:** `seed`/`seed_len` are the raw seed bytes (Phase 2: the 32 bytes of the
   previous block hash); `address` is the validator's registry-key string; `weight` its
-  weight.
+  weight; `dumping` selects the weight-dumping transform (§2.2, default `DUMP_NONE`). The
+  default keeps every existing caller and unit test byte-for-byte unchanged; the node glue
+  passes the configured `g_dumping_function`.
 - **`if (weight == 0) return …infinity();`** — a zero-weight node gets `+∞`, so it can
   never be the minimum. Defensive: the registry never stores weight 0 (Phase 1 rejects
   it), but the core must not assume its caller filtered.
@@ -154,19 +197,22 @@ Line by line:
   `u == 1` (score `0`) is a legitimate minimum reached only when `d == 2^64−1`.
 - **The exponential transform:**
   ```cpp
-  double E = -std::log(u);        // -ln(u): Exp(1)-distributed
-  return E / (double)weight;       //        Exp(weight)-distributed
+  double E = -std::log(u);                     // -ln(u): Exp(1)-distributed
+  return E / ApplyDumping(weight, dumping);    //         Exp(f(weight))-distributed
   ```
-  If `u` is uniform on `(0,1]`, then `-ln(u)` is Exponential(1). Dividing by `weight`
-  makes `E/weight` Exponential(weight). The minimum over independent Exp(w_i) variables
-  is attained by node `i` with probability `w_i / Σ w_j` — the Efraimidis–Spirakis
-  result. Hence **argmin of the scores = weighted random selection**.
+  If `u` is uniform on `(0,1]`, then `-ln(u)` is Exponential(1). Dividing by the
+  **dumped** weight `f(weight)` makes the score Exponential(f(weight)). The minimum over
+  independent Exp(f(w_i)) variables is attained by node `i` with probability
+  `f(w_i) / Σ f(w_j)` — the Efraimidis–Spirakis result over the transformed weights. Hence
+  **argmin of the scores = weighted random selection over the dumped weights**. With the
+  default `DUMP_NONE`, `f(w) = w` and this is exactly `w_i / Σ w_j` as before.
 
 ### 2.4 `WPoASelector::SelectProposer` — the argmin
 
 ```cpp
 static std::string SelectProposer(const unsigned char* seed, size_t seed_len,
-                                  const std::map<std::string, uint32_t>& weights)
+                                  const std::map<std::string, uint32_t>& weights,
+                                  DumpingFunction dumping = DUMP_NONE)
 {
     std::string best_addr;
     double best_score = 0.0;
@@ -178,7 +224,7 @@ static std::string SelectProposer(const unsigned char* seed, size_t seed_len,
         if (it->second == 0)
             continue; // defensive: registry never stores weight 0
 
-        double s = ComputeScore(seed, seed_len, it->first, it->second);
+        double s = ComputeScore(seed, seed_len, it->first, it->second, dumping);
 
         if (!have || s < best_score || (s == best_score && it->first < best_addr))
         {
@@ -192,7 +238,10 @@ static std::string SelectProposer(const unsigned char* seed, size_t seed_len,
 ```
 
 - **Inputs:** the same seed, plus `weights` = the `address → weight` map from Phase 1
-  (`GetAllNodesWeights()`). `const&` avoids copying the map.
+  (`GetAllNodesWeights()`; `const&` avoids copying the map), plus `dumping` — the
+  weight-dumping function (§2.2) applied to every weight before the draw. It is threaded
+  straight through to each `ComputeScore`, so the whole election runs under one consistent
+  transform. Defaults to `DUMP_NONE`; the glue supplies `g_dumping_function`.
 - **`best_addr` / `best_score` / `have`** — the running argmin. `have` distinguishes
   "no candidate yet" from a genuine score of `0.0` (which is possible — see §2.3).
 - **Iteration** with a `const_iterator` (`it->first` = address, `it->second` = weight).
@@ -224,7 +273,7 @@ These are **declarations only** — defined in the `.cpp`. They are the boundary
 the pure core and the node:
 
 - `extern bool g_wpoa_enabled;` — the runtime flag, set once from `-enablewpoa` in
-  `AppInit2`. `extern` = defined elsewhere (the `.cpp`).
+  `AppInit2`.
 - `WPoAActiveAtHeight(int height)` — the activation predicate (is wPoA governing this
   height?).
 - `WPoASelectProposer(...)` — the registry-backed convenience wrapper the miner and
@@ -259,13 +308,21 @@ Each include is the source of the symbols used:
   accessors `IsProtocolMultichain()` / `GetInt64Param(...)`, and the `MCP_ANYONE_CAN_MINE`
   macro.
 
-### 3.2 The flag definition
+### 3.2 The flag definitions
 
 ```cpp
 bool g_wpoa_enabled = false;
+DumpingFunction g_dumping_function = MC_WPOA_DEFAULT_DUMPING_FUNCTION;   // = DUMP_NONE
 ```
-The **definition** of the global declared `extern` in the header. Default `false` — with
-the flag unset the node keeps its native round-robin mining-diversity behavior unchanged.
+The **definitions** of the two globals declared `extern` in the header. `g_wpoa_enabled`
+defaults `false` — with the flag unset the node keeps its native round-robin
+mining-diversity behavior unchanged. `g_dumping_function` defaults `DUMP_NONE` — raw
+weights, so an operator who never sets `-dumpfunction` gets the undamped Efraimidis–Spirakis
+distribution. Both are written once, on the init thread, before any miner/validator thread
+reads them (§node-startup), so they need no lock.
+
+A file-local `DumpingFunctionName()` helper maps the enum to `"none"`/`"sqrt"`/`"log"` for
+the debug log only — it never influences selection.
 
 ### 3.3 `WPoAActiveAtHeight` — the activation predicate
 
@@ -313,11 +370,13 @@ std::string WPoASelectProposer(const unsigned char* seed, size_t seed_len, int h
     StreamWeightRegistry registry(pwalletTxsMain);
     std::map<std::string, uint32_t> weights = registry.GetAllNodesWeights();
 
-    std::string proposer = WPoASelector::SelectProposer(seed, seed_len, weights);
+    std::string proposer = WPoASelector::SelectProposer(seed, seed_len, weights,
+                                                        g_dumping_function);
 
     if (fDebug)
-        LogPrint("wpoa", "[wpoa] SelectProposer height=%d validators=%u -> %s\n",
+        LogPrint("wpoa", "[wpoa] SelectProposer height=%d validators=%u dumping=%s -> %s\n",
                  height, (unsigned)weights.size(),
+                 DumpingFunctionName(g_dumping_function),
                  proposer.empty() ? "(none)" : proposer.c_str());
 
     return proposer;
@@ -333,13 +392,16 @@ std::string WPoASelectProposer(const unsigned char* seed, size_t seed_len, int h
   (mempool excluded, newest-record-wins), read via the non-WRP self-locking wallet API,
   so this is safe to call from the miner thread *and* the validation thread. See
   [stream-weight-registry.md](stream-weight-registry.md) §2.7.
-- **`WPoASelector::SelectProposer(seed, seed_len, weights)`** — hands the confirmed map to
-  the pure core and returns the winning address. This is the single line that connects the
-  node glue to the math.
-- **`if (fDebug) LogPrint("wpoa", …)`** — traces the election under `-debug=wpoa`. The
-  `fDebug` guard avoids building the log arguments when debugging is off;
-  `proposer.empty() ? "(none)" : proposer.c_str()` prints a readable placeholder for the
-  no-proposer case.
+- **`WPoASelector::SelectProposer(seed, seed_len, weights, g_dumping_function)`** — hands
+  the confirmed map *and the configured dumping function* to the pure core and returns the
+  winning address. This is the single line that connects the node glue to the math, and the
+  **only** place `g_dumping_function` is read — so the pure core stays node-free and every
+  height on this node is elected under one consistent transform (§2.2).
+- **`if (fDebug) LogPrint("wpoa", …)`** — traces the election under `-debug=wpoa`, now
+  including `dumping=%s` (via `DumpingFunctionName`) so an operator can confirm from
+  `debug.log` which transform is live. The `fDebug` guard avoids building the log arguments
+  when debugging is off; `proposer.empty() ? "(none)" : proposer.c_str()` prints a readable
+  placeholder for the no-proposer case.
 
 ---
 
@@ -347,21 +409,22 @@ std::string WPoASelectProposer(const unsigned char* seed, size_t seed_len, int h
 
 ```mermaid
 flowchart TD
-    INIT["core/init.cpp<br/>g_wpoa_enabled = GetBoolArg(-enablewpoa)"] -.writes.-> FLAG["g_wpoa_enabled"]
+    INIT["core/init.cpp<br/>g_wpoa_enabled = GetBoolArg(-enablewpoa)<br/>g_dumping_function = parse(-dumpfunction)"] -.writes.-> FLAG["g_wpoa_enabled"]
+    INIT -.writes.-> DUMP["g_dumping_function"]
 
-    MINER["miner/miner.cpp<br/>GetMinerAndExpectedMiningStartTime"] -->|WPoAActiveAtHeight(tip+1)| GATE
-    VALID["protocol/multichainblock.cpp<br/>VerifyBlockMinerWPoA"] -->|WPoAActiveAtHeight(h)| GATE
+    MINER["miner/miner.cpp<br/>GetMinerAndExpectedMiningStartTime"] -->|"WPoAActiveAtHeight(tip+1)"| GATE
+    VALID["protocol/multichainblock.cpp<br/>VerifyBlockMinerWPoA"] -->|"WPoAActiveAtHeight(h)"| GATE
 
     subgraph selc ["wpoa_selector.cpp (glue)"]
         GATE["WPoAActiveAtHeight"] --> FLAG
-        WRAP["WPoASelectProposer"]
+        WRAP["WPoASelectProposer"] --> DUMP
     end
-    MINER -->|seed=hash(tip)| WRAP
-    VALID -->|seed=hash(h-1)| WRAP
+    MINER -->|"seed=hash(tip)"| WRAP
+    VALID -->|"seed=hash(h-1)"| WRAP
 
-    WRAP -->|GetAllNodesWeights| REG["StreamWeightRegistry (Phase 1)"]
-    WRAP -->|SelectProposer| CORE["WPoASelector (wpoa_selector.h, pure)"]
-    CORE -->|HMAC-SHA256| HMAC["crypto/hmac_sha256.h"]
+    WRAP -->|"GetAllNodesWeights"| REG["StreamWeightRegistry (Phase 1)"]
+    WRAP -->|"SelectProposer(…, g_dumping_function)"| CORE["WPoASelector (wpoa_selector.h, pure)"]
+    CORE -->|"HMAC-SHA256"| HMAC["crypto/hmac_sha256.h"]
 
     TEST["test/wpoa_selector_tests.cpp"] -.includes only.-> CORE
 ```
@@ -370,8 +433,9 @@ flowchart TD
   only HMAC-SHA256 — the entire reason the math lives in the header.
 - **`wpoa_selector.cpp` → `stream_weight_registry.h`:** consumes the Phase 1 confirmed
   weight map. This is the sole dependency of Phase 2 on Phase 1.
-- **`wpoa_selector.cpp` → `core/init.h`:** reads `pwalletTxsMain`; `g_wpoa_enabled` is set
-  in `init.cpp`. See [node-startup.md](node-startup.md).
+- **`wpoa_selector.cpp` → `core/init.h`:** reads `pwalletTxsMain`; `g_wpoa_enabled` and
+  `g_dumping_function` are set in `init.cpp` from `-enablewpoa` and `-dumpfunction`. See
+  [node-startup.md](node-startup.md).
 - **`miner/miner.cpp` and `protocol/multichainblock.cpp`** are the only callers of
   `WPoAActiveAtHeight`/`WPoASelectProposer`. See [miner-integration.md](miner-integration.md)
   and [block-validation.md](block-validation.md).
