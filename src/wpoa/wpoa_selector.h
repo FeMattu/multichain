@@ -237,4 +237,30 @@ bool WPoAActiveAtHeight(int height);
  */
 std::string WPoASelectProposer(const unsigned char* seed, size_t seed_len, int height);
 
+// ---------------------------------------------------------------------------
+// wPoA Phase 3a — VRF beacon activation (node glue; definitions in .cpp).
+//
+// Phase 3a adds the *randomness-generation* half of the wPoA beacon: the
+// proposer elected by the Phase 2 public selection additionally publishes a
+// per-block VRF reveal (bound to its key and the previous block hash), and every
+// peer verifies it. Selection itself is UNCHANGED in Phase 3a — the VRF is a
+// verifiable contribution to the beacon, not (yet) the selection mechanism (that
+// is Phase 4). See docs/phase3a-implementation-guide.md.
+// ---------------------------------------------------------------------------
+
+/**
+ * Set once from -enablewpoavrf in AppInit2. Default false = Phase 2 behavior:
+ * no VRF reveal is produced or required. Must be set uniformly across the
+ * validator set (like -enablewpoa), or nodes disagree on block validity.
+ */
+extern bool g_wpoa_vrf_enabled;
+
+/**
+ * True when a block at `height` must carry a verified VRF reveal. Requires
+ * -enablewpoavrf AND that wPoA already governs the height (WPoAActiveAtHeight),
+ * so the VRF requirement engages exactly on the wPoA-governed blocks and the
+ * miner and validator agree from the height alone.
+ */
+bool WPoAVRFActiveAtHeight(int height);
+
 #endif // WPOA_SELECTOR_H

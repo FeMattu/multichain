@@ -11,6 +11,7 @@
 #include "community/community.h"
 #include "structs/base58.h"
 #include "wpoa/wpoa_selector.h"
+#include "wpoa/vrf_wrapper.h"
 
 #include <boost/assign/list_of.hpp>
 
@@ -540,10 +541,61 @@ void FindSigner(CBlock *block,unsigned char *sig,int *sig_size,uint32_t *hash_ty
                     }
                 }
             }
-        }    
+        }
     }
 }
-    
+
+/* MCHN START - wPoA Phase 3a: extract the per-block VRF reveal */
+// Scans the coinbase OP_RETURN for the VRF reveal + proof the proposer embedded
+// as a suffix of the block-signature element (see mc_Script::GetBlockVRF).
+// Returns true and fills `reveal`/`proof` if a VRF suffix is present; false if
+// the block carries none (pre-Phase-3a block, or signed with VRF disabled).
+static bool FindBlockVRF(CBlock *block,std::vector<unsigned char>& reveal,std::vector<unsigned char>& proof)
+{
+    unsigned char reveal_buf[255];
+    unsigned char proof_buf[255];
+
+    reveal.clear();
+    proof.clear();
+
+    if(!mc_gState->m_NetworkParams->IsProtocolMultichain())
+    {
+        return false;
+    }
+
+    for (unsigned int i = 0; i < block->vtx.size(); i++)
+    {
+        const CTransaction &tx = block->vtx[i];
+        if (tx.IsCoinBase())
+        {
+            for (unsigned int j = 0; j < tx.vout.size(); j++)
+            {
+                mc_gState->m_TmpScript1->Clear();
+
+                const CScript& script1 = tx.vout[j].scriptPubKey;
+                CScript::const_iterator pc1 = script1.begin();
+
+                mc_gState->m_TmpScript1->SetScript((unsigned char*)(&pc1[0]),(size_t)(script1.end()-pc1),MC_SCR_TYPE_SCRIPTPUBKEY);
+
+                for (int e = 0; e < mc_gState->m_TmpScript1->GetNumElements(); e++)
+                {
+                    mc_gState->m_TmpScript1->SetElement(e);
+                    int reveal_size=sizeof(reveal_buf);
+                    int proof_size=sizeof(proof_buf);
+                    if(mc_gState->m_TmpScript1->GetBlockVRF(reveal_buf,&reveal_size,proof_buf,&proof_size) == 0)
+                    {
+                        reveal.assign(reveal_buf,reveal_buf+reveal_size);
+                        proof.assign(proof_buf,proof_buf+proof_size);
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+/* MCHN END */
+
 bool VerifyBlockSignatureType(CBlock *block)
 {
     unsigned char sig[255];
@@ -746,6 +798,35 @@ static bool VerifyBlockMinerWPoA(CBlock *block_in,CBlockIndex* pindexNew)
         return false;
     }
     std::string sMinerAddr=CBitcoinAddress(pubKeyMiner.GetID()).ToString();
+
+/* MCHN START - wPoA Phase 3a: verify the proposer's VRF reveal */
+    // When the VRF beacon governs this height, the block MUST carry a reveal that
+    // verifies against the signer's public key and the previous block hash (the
+    // same input the proposer signed over). A missing or forged reveal is
+    // rejected outright — this is what makes the beacon contribution unforgeable
+    // and grinding-resistant. The check is independent of the weight registry, so
+    // it is enforced even on the empty-weight leniency path below.
+    if(WPoAVRFActiveAtHeight(pindexNew->nHeight))
+    {
+        std::vector<unsigned char> vrf_reveal,vrf_proof;
+        if(!FindBlockVRF(pblock,vrf_reveal,vrf_proof))
+        {
+            LogPrintf("VerifyBlockMinerWPoA: REJECT block %s (height %d): missing VRF reveal\n",
+                      pindexNew->GetBlockHash().ToString().c_str(),pindexNew->nHeight);
+            return false;
+        }
+        uint256 hVRFInput=pindexNew->pprev->GetBlockHash();
+        std::vector<unsigned char> vVRFInput(hVRFInput.begin(),hVRFInput.end());
+        if(!WPoAVRF::Verify(vchPubKey,vVRFInput,vrf_reveal,vrf_proof))
+        {
+            LogPrintf("VerifyBlockMinerWPoA: REJECT block %s (height %d): invalid VRF reveal from signer %s\n",
+                      pindexNew->GetBlockHash().ToString().c_str(),pindexNew->nHeight,sMinerAddr.c_str());
+            return false;
+        }
+        LogPrint("wpoa","VerifyBlockMinerWPoA: VRF reveal OK block %s (height %d) signer %s\n",
+                 pindexNew->GetBlockHash().ToString().c_str(),pindexNew->nHeight,sMinerAddr.c_str());
+    }
+/* MCHN END */
 
     uint256 hSeed=pindexNew->pprev->GetBlockHash();
     std::string sProposer=WPoASelectProposer(hSeed.begin(),hSeed.size(),pindexNew->nHeight);

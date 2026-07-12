@@ -64,7 +64,8 @@ flowchart TD
 |:-----:|---|---|---|
 | 1 | 1 | `StreamWeightRegistry` — on-chain weight registry, backward-search read path | Implemented |
 | 2 | 1 (consumer) | Weighted miner selection via an intentionally **public** baseline WRS, to validate the registry substrate before adding privacy | **Current — implemented** |
-| 3 | 2 | RANDAO beacon + VRF integration (the randomness *generation* half) | Planned |
+| 3a | 2 | VRF integration — per-block verifiable reveal `(R, π)` embedded and verified by peers (the VRF half of the randomness *generation* layer) | **Implemented** |
+| 3b | 2 | RANDAO accumulator + lookback seed over the reveals (the beacon half of *generation*) | Planned |
 | 4 | 3 + 4 | Efraimidis private sortition — local scoring, gossip reveal, tie-break, fallback (the *security fix* — randomness *consumption* half) | Planned |
 | 5 | Cross-cutting | Weight inizialization, update, slashing mechanisms | Planned |
 
@@ -168,7 +169,10 @@ chooses to broadcast).
 | 2 | Deterministic tie-break | Done | Lexicographically smallest address on exact score collision (§9). |
 | 2 | Unit tests (pure selector math) | Done | [`test/wpoa_selector_tests.cpp`](../test/wpoa_selector_tests.cpp); probability preservation over 200k seeds. |
 | 2 | Multi-node distribution test (chi-square) | Done | [`test/functional_test_wpoa_multinode.sh`](../test/functional_test_wpoa_multinode.sh) + [`test/analyze_distribution.py`](../test/analyze_distribution.py); ~1000 blocks, observed vs. expected. |
-| 3 | RANDAO accumulator + VRF integration | Pending | See [§6.2](#62-phase-3--randao-beacon--vrf-integration). |
+| 3a | VRF wrapper (ECVRF/DLEQ on bundled secp256k1) | Done | Pure `WPoAVRF::Prove`/`Verify`; node-free unit suite (roundtrip, determinism, tamper/forgery/cross-key rejection). [phase3a-implementation-guide.md](phase3a-implementation-guide.md). |
+| 3a | Per-block VRF reveal — embed + verify | Done | Proposer embeds `(R, π)` as a suffix of the block-signature element; `VerifyBlockMinerWPoA` rejects a missing/invalid reveal on wPoA-VRF heights. Gated by `-enablewpoavrf`. |
+| 3a | Multi-node functional test | Done | [`test/functional_test_wpoa_vrf.sh`](../test/functional_test_wpoa_vrf.sh): reveals produced, verified network-wide, chain live and fork-free under mandatory verification. |
+| 3b | RANDAO accumulator + lookback seed | Pending | Consumes the 3a reveals; see [§6.2](#62-phase-3--randao-beacon--vrf-integration). |
 | **4** | **Efraimidis private sortition** | Pending | **The security fix.** See [§6.3](#63-phase-4--efraimidis-private-sortition-the-security-fix). |
 | 5 | VDF over beacon seed | Future | See [§6.4](#64-phase-5--vdf-future). |
 
@@ -194,9 +198,15 @@ src/wpoa/
 ├── weight_record.h                           (Phase 1, implemented — pure
 │                                                parsing/aggregation helpers)
 ├── wpoa_selector.h                           (Phase 2, implemented — pure
-│                                                Efraimidis–Spirakis selector core)
+│                                                Efraimidis–Spirakis selector core;
+│                                                Phase 3a VRF flag + predicate)
 ├── wpoa_selector.cpp                         (Phase 2, implemented — flag +
-│                                                activation predicate + registry glue)
+│                                                activation predicate + registry glue;
+│                                                Phase 3a g_wpoa_vrf_enabled + WPoAVRFActiveAtHeight)
+├── vrf_wrapper.h                             (Phase 3a, implemented — pure ECVRF/DLEQ
+│                                                VRF core over secp256k1)
+├── vrf_wrapper.cpp                           (Phase 3a, implemented — Prove/Verify,
+│                                                hash-to-curve, DLEQ proof)
 ├── docs/
 │   ├── implementation-guide.md               ← master index (phase map + links + process)
 │   ├── phase1-implementation-guide.md         ← Phase 1 full technical guide
@@ -227,12 +237,16 @@ Phase 2): `../core/init.cpp` (startup wiring), `../rpc/rpclist.cpp` /
 `../protocol/multichainblock.cpp` (Phase 2 validation hook), `../Makefile.am`
 (build).
 
-**Note on filenames.** Phase 2 has added `wpoa/wpoa_selector.{h,cpp}` (the
+**Note on filenames.** Phase 2 added `wpoa/wpoa_selector.{h,cpp}` (the
 `WPoASelector` class + node-coupled glue), `wpoa/test/wpoa_selector_tests.cpp`
 (+ `run_selector_unit_tests.sh`), and `wpoa/test/analyze_distribution.py`, and
-`wpoa/docs/phase2-implementation-guide.md`. Future phases are expected to add
-`vrf_wrapper.h` (Phase 3) and `randao_accumulator.h` (Phase 3) — **those do not
-exist yet**. §6 marks every forward-looking filename as planned.
+`wpoa/docs/phase2-implementation-guide.md`. **Phase 3a has added**
+`wpoa/vrf_wrapper.{h,cpp}` (the `WPoAVRF` ECVRF core),
+`wpoa/test/vrf_wrapper_tests.cpp` (+ `run_vrf_unit_tests.sh`),
+`wpoa/test/functional_test_wpoa_vrf.sh`, and
+`wpoa/docs/phase3a-implementation-guide.md`. Phase 3b is expected to add
+`randao_accumulator.h` — **that does not exist yet**. §6 marks every
+forward-looking filename as planned.
 
 ---
 
@@ -295,6 +309,13 @@ authorized wPoA validators.
    ~1000 blocks).
 
 ### 6.2 Phase 3 — RANDAO Beacon + VRF Integration
+
+> **Status:** split into **3a — VRF integration (implemented)** and **3b — RANDAO
+> accumulator (planned)**. Phase 3a delivered the per-block verifiable reveal and
+> its peer verification (an ECVRF/DLEQ over the bundled secp256k1), gated by
+> `-enablewpoavrf`, without changing selection — see
+> [phase3a-implementation-guide.md](phase3a-implementation-guide.md). The RANDAO
+> accumulator and lookback seed below are Phase 3b, which consumes those reveals.
 
 **Deliverable:** the seed input to the selector is no longer just the
 previous block hash but a RANDAO accumulator, updated block by block via a

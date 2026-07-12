@@ -556,10 +556,12 @@ Edit `WPoASelector::ComputeScore`/`SelectProposer` in
 [`test/wpoa_selector_tests.cpp`](../test/wpoa_selector_tests.cpp). Because the core is
 node-free, you can validate distribution changes without a node.
 
-### 11.4 Add a `-enablewpoa` help line
-Add a `strUsage += "  -enablewpoa ..."` line in `HelpMessage` in
-[`../core/init.cpp`](../../core/init.cpp), mirroring the `-weight` line (Phase 1). The
-flag is already parsed; this only documents it in `--help`.
+### 11.4 Document a new flag in `--help`
+A `strUsage += "  -enablewpoa ..."` line now exists in `HelpMessage` in
+[`../core/init.cpp`](../../core/init.cpp) (added alongside the Phase 3a `-enablewpoavrf`
+line), mirroring the `-weight`/`-dumpfunction` lines. To document any further wPoA flag,
+add one more `strUsage += ...` line next to those; the flag itself is parsed in the
+`#ifdef ENABLE_WALLET` block (see [node-startup.md](node-startup.md)).
 
 ### 11.5 Harden floating-point determinism
 Replace the `double` `-ln`/division in `ComputeScore` with a fixed-point or

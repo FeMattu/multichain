@@ -21,6 +21,11 @@ using namespace std;
 // mining-diversity behavior unchanged.
 bool g_wpoa_enabled = false;
 
+// wPoA Phase 3a: VRF beacon. Default off — when unset the node behaves exactly
+// as in Phase 2 (no VRF reveal produced or required). Set once from
+// -enablewpoavrf in AppInit2.
+bool g_wpoa_vrf_enabled = false;
+
 // Weight-dumping (damping) function applied to validator weights before the
 // Efraimidis–Spirakis draw. Set once from -dumpfunction in AppInit2. Default
 // none = raw weights (no behavioral change from an undamped chain). This is the
@@ -65,6 +70,16 @@ bool WPoAActiveAtHeight(int height)
     // whether a given block is governed by wPoA.
     int setup_blocks = (int)mc_gState->m_NetworkParams->GetInt64Param("setupfirstblocks");
     return height >= setup_blocks;
+}
+
+bool WPoAVRFActiveAtHeight(int height)
+{
+    // The VRF beacon rides on top of the Phase 2 selection: it engages exactly
+    // when wPoA already governs the height and the VRF flag is set. Because both
+    // conditions are pure functions of shared data (flags + chain params +
+    // height), the miner and every validator agree on which blocks must carry a
+    // verified reveal.
+    return g_wpoa_vrf_enabled && WPoAActiveAtHeight(height);
 }
 
 std::string WPoASelectProposer(const unsigned char* seed, size_t seed_len, int height)

@@ -86,7 +86,18 @@ typedef struct mc_Script
     
     int GetBlockSignature(unsigned char* sig,int *sig_size,uint32_t *hash_type,unsigned char* key,int *key_size);
     int SetBlockSignature(const unsigned char* sig,int sig_size,uint32_t hash_type,const unsigned char* key,int key_size);
-        
+
+/* MCHN START - wPoA Phase 3a: per-block VRF reveal (randomness beacon) */
+    // The elected proposer's verifiable pseudorandom reveal + proof, carried as
+    // a suffix INSIDE the block-signature element (see the .cpp for why it is not
+    // a separate element). SetBlockVRF appends [reveal_len:1][reveal][proof_len:1]
+    // [proof] to the current element and MUST be called right after
+    // SetBlockSignature; GetBlockVRF decodes that suffix.
+    int GetBlockVRF(unsigned char* reveal,int *reveal_size,unsigned char* proof,int *proof_size);
+    int SetBlockVRF(const unsigned char* reveal,int reveal_size,const unsigned char* proof,int proof_size);
+/* MCHN END */
+
+
     int GetAssetGenesis(int64_t *quantity);
     int SetAssetGenesis(int64_t quantity);
     

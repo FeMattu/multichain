@@ -441,3 +441,63 @@ flowchart TD
   and [block-validation.md](block-validation.md).
 - **`crypto/hmac_sha256.h`** supplies the keyed hash that generates the per-validator
   randomness.
+
+---
+
+## 5. wPoA Phase 3a — VRF beacon activation glue
+
+Phase 3a adds the *randomness-generation* half of the beacon (see
+[phase3a-implementation-guide.md](phase3a-implementation-guide.md)). The VRF **crypto**
+lives in its own pure module ([`vrf_wrapper.{h,cpp}`](../vrf_wrapper.h) →
+[vrf-wrapper.md](vrf-wrapper.md)); the only thing that lands in the selector files is the
+**node-glue activation** — one flag and one predicate, added exactly like the Phase 2
+`g_wpoa_enabled` / `WPoAActiveAtHeight` pair.
+
+### 5.1 Header declarations (bottom of `wpoa_selector.h`)
+
+```cpp
+extern bool g_wpoa_vrf_enabled;
+bool WPoAVRFActiveAtHeight(int height);
+```
+
+- **`extern bool g_wpoa_vrf_enabled;`** — the runtime flag, set once from `-enablewpoavrf`
+  in `AppInit2` (defined in the `.cpp`, §5.2). Default `false` = Phase 2 behavior: no VRF
+  reveal is produced or required. The header comment records that it *"must be set uniformly
+  across the validator set (like `-enablewpoa`), or nodes disagree on block validity"* — it
+  is consensus-affecting.
+- **`WPoAVRFActiveAtHeight(int height)`** — true when a block at `height` must carry a
+  verified VRF reveal. They are declared next to `g_wpoa_enabled`/`WPoAActiveAtHeight` so
+  the miner, validator, and `init` still need only the single
+  `#include "wpoa/wpoa_selector.h"`; the VRF wiring reuses the exact include the Phase 2
+  glue already established.
+
+### 5.2 Definitions (`wpoa_selector.cpp`)
+
+```cpp
+bool g_wpoa_vrf_enabled = false;
+
+bool WPoAVRFActiveAtHeight(int height)
+{
+    return g_wpoa_vrf_enabled && WPoAActiveAtHeight(height);
+}
+```
+
+- **`g_wpoa_vrf_enabled = false;`** — the definition of the flag declared `extern` in the
+  header, alongside `g_wpoa_enabled` and `g_dumping_function` (§3.2). Written once on the
+  init thread before any miner/validator thread reads it, so it needs no lock.
+- **`WPoAVRFActiveAtHeight`** — deliberately `g_wpoa_vrf_enabled` **AND** the Phase 2 gate
+  `WPoAActiveAtHeight(height)`. So the VRF requirement engages **exactly** on the
+  wPoA-governed heights, never on bootstrap/native heights, and never when selection itself
+  is off. Because it composes two pure functions of shared data (flags + chain params +
+  height), the miner (embedding the reveal) and every validator (requiring it) agree on
+  which blocks must carry a verified reveal from the height alone. The comment states this
+  is what keeps the produce-side and enforce-side symmetric.
+
+### 5.3 What is *not* here
+
+The VRF `Prove`/`Verify` math, the wire encoding, and the prover/verifier wiring are **not**
+in the selector files — they live in `vrf_wrapper.{h,cpp}`, `multichainscript.{h,cpp}`,
+`miner.cpp`, and `multichainblock.cpp` respectively. The selector only answers *"is a
+verified reveal required at this height?"*. See [vrf-wrapper.md](vrf-wrapper.md),
+[block-vrf-encoding.md](block-vrf-encoding.md), [vrf-prover.md](vrf-prover.md), and
+[vrf-verifier.md](vrf-verifier.md).

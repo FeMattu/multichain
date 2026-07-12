@@ -564,6 +564,8 @@ std::string HelpMessage(HelpMessageMode mode)                                   
     strUsage += "  -miningturnover=<n>                      " + _("If set overrides mining-turnover blockchain setting, values 0-1.") + "\n";
     strUsage += "  -weight=<n>                              " + strprintf(_("wPoA validator weight for this node, positive integer (default: %u). Registered on the wpoa-weights stream."), MC_WPOA_DEFAULT_WEIGHT) + "\n";
     strUsage += "  -dumpfunction=<none|sqrt|log>            " + _("wPoA weight-dumping (damping) function applied before proposer selection, to stop large stakes dominating (default: none). Must be identical on all nodes.") + "\n";
+    strUsage += "  -enablewpoa                              " + _("Enable wPoA weighted proposer selection (default: 0). Must be identical on all nodes.") + "\n";
+    strUsage += "  -enablewpoavrf                           " + _("Enable the wPoA VRF randomness beacon: each elected proposer publishes a verifiable pseudorandom reveal, verified by peers (default: 0). Requires -enablewpoa; must be identical on all nodes.") + "\n";
     strUsage += "  -shrinkdebugfilesize=<n>                 " + _("If shrinkdebugfile is 1, this controls the size of the debug file. Whenever the debug.log file reaches over 5 times this number of bytes, it is reduced back down to this size.") + "\n";
     strUsage += "  -shortoutput                             " + _("Only show the node address (if connecting was successful) or an address in the wallet (if connect permissions must be granted by another node)") + "\n";
     strUsage += "  -bantx=<txids>                           " + _("Comma delimited list of banned transactions.") + "\n";
@@ -3186,6 +3188,14 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
         g_wpoa_enabled = GetBoolArg("-enablewpoa", false);
         LogPrintf("[wPoA] Weighted proposer selection %s\n",
                   g_wpoa_enabled ? "ENABLED (-enablewpoa=1)" : "disabled (native mining-diversity)");
+
+        // wPoA Phase 3a: VRF randomness beacon. Default off. When enabled, each
+        // wPoA-elected proposer publishes a verifiable pseudorandom reveal in its
+        // block and every peer verifies it. Must be uniform across the validator
+        // set (like -enablewpoa) or nodes disagree on block validity.
+        g_wpoa_vrf_enabled = GetBoolArg("-enablewpoavrf", false);
+        LogPrintf("[wPoA] VRF randomness beacon %s\n",
+                  g_wpoa_vrf_enabled ? "ENABLED (-enablewpoavrf=1)" : "disabled");
 
         // wPoA Phase 2: weight-dumping (damping) function. Compresses validator
         // weights before the Efraimidis–Spirakis draw so a single large stake

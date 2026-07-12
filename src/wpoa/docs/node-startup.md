@@ -2,9 +2,9 @@
 
 > Documentation of the **node-startup integration** for wPoA. `init.cpp` is huge (it
 > drives the entire MultiChain node bootstrap); here we document **only** the wPoA parts:
-> the Phase 1 `-weight` handling + registration thread (§2.1-2.3) and the Phase 2
-> `-enablewpoa` (§2.4) and `-dumpfunction` (§2.5) flags. The rest is the standard
-> MultiChain/Bitcoin startup engine.
+> the Phase 1 `-weight` handling + registration thread (§2.1-2.3), the Phase 2
+> `-enablewpoa` (§2.4) and `-dumpfunction` (§2.5) flags, and the Phase 3a `-enablewpoavrf`
+> (§2.6) flag. The rest is the standard MultiChain/Bitcoin startup engine.
 
 `init.h` and `init.cpp` are documented together because they form the classic
 interface/implementation pair: `init.h` declares the global symbols that the other
@@ -189,9 +189,10 @@ Line-by-line:
 
 Why here, next to `-weight`? Both are the node's wPoA configuration knobs, both are
 wallet-gated (`#ifdef ENABLE_WALLET`), and both must be resolved before the node starts
-mining/validating. Note there is currently **no `HelpMessage` line** for `-enablewpoa`
-(unlike `-weight`); adding one is a trivial improvement — see
-[phase2-implementation-guide.md §11.4](phase2-implementation-guide.md#11-how-to-modify).
+mining/validating. As of Phase 3a, `HelpMessage` also documents `-enablewpoa` (and
+`-enablewpoavrf`, §2.6) — the two `strUsage += "  -enablewpoa …"` /
+`"  -enablewpoavrf …"` lines were added next to the `-weight`/`-dumpfunction` lines, so
+`multichaind --help` now lists every wPoA flag.
 
 Unlike `-weight`, `-enablewpoa` launches **no thread**: it only flips a boolean that the
 miner (`miner/miner.cpp`) and validator (`protocol/multichainblock.cpp`) consult at
@@ -245,6 +246,54 @@ wallet-gated for the same reason: it is only meaningful on a node that participa
 > not a chain parameter, so nothing enforces cross-node agreement automatically — the same
 > accepted-risk category as `-enablewpoa`.
 
+### 2.6 wPoA Phase 3a: the `-enablewpoavrf` flag
+
+Phase 3a adds the VRF randomness beacon (see
+[phase3a-implementation-guide.md](phase3a-implementation-guide.md)). Its only startup
+footprint is one more boolean, parsed in the **same `#ifdef ENABLE_WALLET` block**, right
+after `-enablewpoavrf`'s sibling flags:
+
+```cpp
+// wPoA Phase 3a: VRF randomness beacon. Default off. When enabled, each
+// wPoA-elected proposer publishes a verifiable pseudorandom reveal in its
+// block and every peer verifies it. Must be uniform across the validator
+// set (like -enablewpoa) or nodes disagree on block validity.
+g_wpoa_vrf_enabled = GetBoolArg("-enablewpoavrf", false);
+LogPrintf("[wPoA] VRF randomness beacon %s\n",
+          g_wpoa_vrf_enabled ? "ENABLED (-enablewpoavrf=1)" : "disabled");
+```
+
+Line-by-line:
+
+- **`GetBoolArg("-enablewpoavrf", false)`** — reads the boolean flag, defaulting to
+  `false`. `GetBoolArg` treats `-enablewpoavrf`, `-enablewpoavrf=1`, `-enablewpoavrf=true`
+  as true and an absent flag as the default. So a Phase-2 or plain node is byte-for-byte
+  unchanged.
+- **`g_wpoa_vrf_enabled = …`** — sets the global defined in `wpoa_selector.cpp` and declared
+  `extern` in `wpoa_selector.h` (see [wpoa-selector.md §5](wpoa-selector.md)). This is the
+  **single** write of the flag; it happens on the init thread before any miner or validator
+  thread reads it, so it needs no lock. From here `WPoAVRFActiveAtHeight` — and therefore
+  the prover ([vrf-prover.md](vrf-prover.md)) and verifier ([vrf-verifier.md](vrf-verifier.md))
+  — can see whether the beacon is on.
+- **`LogPrintf("[wPoA] VRF randomness beacon …")`** — records the effective mode at startup
+  so an operator can confirm from `debug.log` whether the beacon is running.
+
+There is also a `HelpMessage` line, added next to the `-enablewpoa` one:
+
+```cpp
+strUsage += "  -enablewpoavrf                           "
+    + _("Enable the wPoA VRF randomness beacon: each elected proposer publishes a "
+        "verifiable pseudorandom reveal, verified by peers (default: 0). Requires "
+        "-enablewpoa; must be identical on all nodes.") + "\n";
+```
+
+Like `-enablewpoa`/`-dumpfunction`, `-enablewpoavrf` launches **no thread**: it only flips
+a boolean that the prover (`miner/miner.cpp`) and verifier (`protocol/multichainblock.cpp`)
+consult at runtime. It is **consensus-affecting** and must be set identically across the
+validator set — the same accepted-risk category as `-enablewpoa`. It only has an effect
+where wPoA already governs the height, because `WPoAVRFActiveAtHeight` = the flag **AND**
+`WPoAActiveAtHeight` (so `-enablewpoavrf` without `-enablewpoa` does nothing).
+
 ## 3. The complete startup flow
 
 ```mermaid
@@ -273,14 +322,15 @@ flowchart TD
 - **`stream_weight_registry.h` → `init.cpp`**: provides `MC_WPOA_DEFAULT_WEIGHT`,
   `g_node_weight` and `ThreadRegisterNodeWeight` used in the startup block.
 - **`init.cpp`** is the **only** place that launches the thread and sets `g_node_weight`
-  (Phase 1), `g_wpoa_enabled` and `g_dumping_function` (Phase 2); it is the bridge between
-  the user's configuration (`-weight`, `-enablewpoa`, `-dumpfunction`) and the wPoA
-  subsystem.
+  (Phase 1), `g_wpoa_enabled` and `g_dumping_function` (Phase 2), and `g_wpoa_vrf_enabled`
+  (Phase 3a); it is the bridge between the user's configuration (`-weight`, `-enablewpoa`,
+  `-dumpfunction`, `-enablewpoavrf`) and the wPoA subsystem.
 - The read RPCs (in `rpclist.cpp`) are **independent** of this startup: they work even if
   the thread has not registered anything yet (they simply return 0 / an empty map).
-- **`wpoa_selector.cpp`** defines `g_wpoa_enabled` and `g_dumping_function`; `init.cpp`
-  writes them. The miner and validator read `g_wpoa_enabled` via `WPoAActiveAtHeight`, and
-  `g_dumping_function` is read once per election inside `WPoASelectProposer`.
+- **`wpoa_selector.cpp`** defines `g_wpoa_enabled`, `g_dumping_function` and
+  `g_wpoa_vrf_enabled`; `init.cpp` writes them all. The miner and validator read
+  `g_wpoa_enabled` via `WPoAActiveAtHeight`, `g_dumping_function` once per election inside
+  `WPoASelectProposer`, and `g_wpoa_vrf_enabled` via `WPoAVRFActiveAtHeight`.
 
 ---
 
@@ -290,10 +340,14 @@ flowchart TD
 - [stream-weight-registry.md](stream-weight-registry.md) — the thread and class this
   startup launches (Phase 1).
 - [wpoa-selector.md](wpoa-selector.md) — the selector core that reads `g_wpoa_enabled`
-  (Phase 2).
+  (Phase 2) and defines the `g_wpoa_vrf_enabled` / `WPoAVRFActiveAtHeight` glue (Phase 3a,
+  §5).
 - [miner-integration.md](miner-integration.md) / [block-validation.md](block-validation.md)
   — the runtime consumers of the `-enablewpoa` flag.
+- [vrf-prover.md](vrf-prover.md) / [vrf-verifier.md](vrf-verifier.md) — the runtime
+  consumers of the `-enablewpoavrf` flag (Phase 3a).
 - [rpc-registration.md](rpc-registration.md) — the (independent) RPC-command path.
 - [phase1-implementation-guide.md](phase1-implementation-guide.md) §7.4 /
-  [phase2-implementation-guide.md](phase2-implementation-guide.md) §7.5 — the same
+  [phase2-implementation-guide.md](phase2-implementation-guide.md) §7.5 /
+  [phase3a-implementation-guide.md](phase3a-implementation-guide.md) §8.6 — the same
   integration from the design guides' perspective.

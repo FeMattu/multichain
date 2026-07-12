@@ -23,6 +23,7 @@
 
 #include "multichain/multichain.h"
 #include "wpoa/wpoa_selector.h"
+#include "wpoa/vrf_wrapper.h"
 
 #include <boost/thread.hpp>
 #include <boost/tuple/tuple.hpp>
@@ -272,6 +273,32 @@ bool CreateBlockSignature(CBlock *block,uint32_t hash_type,CWallet *pwallet,uint
     lpScript=new mc_Script;
     
     lpScript->SetBlockSignature(vchSig.data(),vchSig.size(),hash_type,block->vSigner+1,block->vSigner[0]);
+
+/* MCHN START - wPoA Phase 3a: embed the proposer's VRF reveal */
+    // When the VRF beacon is enabled, the signer (which, under wPoA, is the
+    // elected proposer) produces a verifiable pseudorandom reveal over the
+    // previous block hash and appends it to the signature element. The reveal is
+    // bound to the signer's key and the prev-hash, so no other node can forge it
+    // and it cannot be reused at a different chain position. Verified by peers in
+    // VerifyBlockMinerWPoA. Embedding is height-independent here (the flag alone
+    // gates it); the receiving side only REQUIRES it on wPoA-governed heights, so
+    // a stray reveal on a pre-setup block is harmless.
+    if(g_wpoa_vrf_enabled)
+    {
+        unsigned char vrf_out[WPoAVRF::OUTPUT_SIZE];
+        unsigned char vrf_proof[WPoAVRF::PROOF_SIZE];
+        if(WPoAVRF::Prove(key.begin(),block->hashPrevBlock.begin(),block->hashPrevBlock.size(),
+                          vrf_out,vrf_proof))
+        {
+            lpScript->SetBlockVRF(vrf_out,WPoAVRF::OUTPUT_SIZE,vrf_proof,WPoAVRF::PROOF_SIZE);
+        }
+        else
+        {
+            LogPrintf("wPoA-VRF: failed to produce VRF reveal for block, prev %s\n",
+                      block->hashPrevBlock.ToString().c_str());
+        }
+    }
+/* MCHN END */
 
     for(int element=0;element < lpScript->GetNumElements();element++)
     {

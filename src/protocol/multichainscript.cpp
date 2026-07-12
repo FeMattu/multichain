@@ -1180,7 +1180,11 @@ int mc_Script::GetBlockSignature(unsigned char* sig,int *sig_size,uint32_t* hash
         return MC_ERR_WRONG_SCRIPT;
     }
     
-    if(m_lpCoord[m_CurrentElement*2+1] != MC_DCT_SCRIPT_IDENTIFIER_LEN+1+3+sig_len+key_len)
+    // wPoA Phase 3a: the signer may append a VRF reveal after the key (see
+    // SetBlockVRF/GetBlockVRF). The element is therefore allowed to be LONGER
+    // than sig+hash+key; a shorter element is still malformed. Blocks with no
+    // VRF suffix (the pre-Phase-3a format) match exactly and are unaffected.
+    if(m_lpCoord[m_CurrentElement*2+1] < MC_DCT_SCRIPT_IDENTIFIER_LEN+1+3+sig_len+key_len)
     {
         return MC_ERR_WRONG_SCRIPT;
     }
@@ -1188,7 +1192,7 @@ int mc_Script::GetBlockSignature(unsigned char* sig,int *sig_size,uint32_t* hash
     memcpy(key,ptr,key_len);
     *key_size=key_len;
     ptr+=key_len;
-    
+
     return MC_ERR_NOERROR;
 }
 
@@ -1252,6 +1256,146 @@ int mc_Script::SetBlockSignature(const unsigned char* sig,int sig_size,uint32_t 
     
     return MC_ERR_NOERROR;
 }
+
+/* MCHN START - wPoA Phase 3a: per-block VRF reveal encode/decode */
+// The VRF reveal is carried as a suffix INSIDE the block-signature element, not
+// as its own OP_RETURN element/output. Two MultiChain constraints force this:
+//   * a coinbase OP_RETURN with >1 pushdata element is rejected by
+//     MultiChainTransaction_CheckOpReturnScript ("Metadata script rejected"), and
+//   * CreateBlockSignature strips every extra zero-value coinbase output before
+//     re-signing, so a standalone VRF OP_RETURN would not survive.
+// Keeping the reveal in the single signature element sidesteps both: the element
+// count stays 1 and the data rides along with the signature the miner already
+// manages. The element is EXCLUDED from the signed hash (like the whole coinbase
+// OP_RETURN) but INCLUDED in the full merkle root, so the reveal is committed by
+// the block hash / PoW even though it is not covered by the signature itself.
+//
+// Layout of the signature element after Set:
+//   "SPK" 'b' [sig_len][sig][hash_type][key_len][key]   ← SetBlockSignature
+//                                                [reveal_len][reveal][proof_len][proof]  ← SetBlockVRF suffix
+//
+// SetBlockVRF appends to the CURRENT element and therefore MUST be called
+// immediately after SetBlockSignature (which leaves the signature element
+// current); it deliberately does not AddElement().
+
+int mc_Script::SetBlockVRF(const unsigned char* reveal,int reveal_size,const unsigned char* proof,int proof_size)
+{
+    int err;
+    unsigned char buf[1];
+
+    if((reveal_size>0xff) || (proof_size>0xff) || (m_CurrentElement<0))
+    {
+        return MC_ERR_INVALID_PARAMETER_VALUE;
+    }
+
+    mc_PutLE(buf,&reveal_size,1);
+    err=SetData(buf,1);
+    if(err)
+    {
+        return err;
+    }
+
+    err=SetData(reveal,reveal_size);
+    if(err)
+    {
+        return err;
+    }
+
+    mc_PutLE(buf,&proof_size,1);
+    err=SetData(buf,1);
+    if(err)
+    {
+        return err;
+    }
+
+    err=SetData(proof,proof_size);
+    if(err)
+    {
+        return err;
+    }
+
+    return MC_ERR_NOERROR;
+}
+
+// Parse the VRF suffix out of the block-signature element. Re-walks the same
+// element GetBlockSignature reads (identifier + 'b' prefix + sig + hash + key),
+// then decodes the trailing [reveal_len][reveal][proof_len][proof]. Returns
+// MC_ERR_WRONG_SCRIPT if this element is not a block signature or carries no VRF
+// suffix (i.e. a pre-Phase-3a block, or a block signed without VRF enabled).
+int mc_Script::GetBlockVRF(unsigned char* reveal,int *reveal_size,unsigned char* proof,int *proof_size)
+{
+    unsigned char *ptr;
+    unsigned char *end;
+    int sig_len,key_len,reveal_len,proof_len;
+
+    if(m_CurrentElement<0)
+    {
+        return MC_ERR_INVALID_PARAMETER_VALUE;
+    }
+
+    if(m_lpCoord[m_CurrentElement*2+1] < MC_DCT_SCRIPT_IDENTIFIER_LEN+1+3)
+    {
+        return MC_ERR_WRONG_SCRIPT;
+    }
+
+    ptr=m_lpData+m_lpCoord[m_CurrentElement*2+0];
+    end=ptr+m_lpCoord[m_CurrentElement*2+1];
+
+    if(memcmp(ptr,MC_DCT_SCRIPT_FREE_DATA_IDENTIFIER,MC_DCT_SCRIPT_IDENTIFIER_LEN) != 0)
+    {
+        return MC_ERR_WRONG_SCRIPT;
+    }
+
+    if(ptr[MC_DCT_SCRIPT_IDENTIFIER_LEN] != MC_DCT_SCRIPT_MULTICHAIN_BLOCK_SIGNATURE_PREFIX)
+    {
+        return MC_ERR_WRONG_SCRIPT;
+    }
+
+    ptr+=MC_DCT_SCRIPT_IDENTIFIER_LEN+1;
+
+    sig_len=mc_GetLE(ptr,1);            // skip [sig_len][sig]
+    ptr++;
+    ptr+=sig_len;
+
+    ptr++;                              // skip [hash_type]
+
+    if(ptr>=end)
+    {
+        return MC_ERR_WRONG_SCRIPT;
+    }
+    key_len=mc_GetLE(ptr,1);            // skip [key_len][key]
+    ptr++;
+    ptr+=key_len;
+
+    // At this point ptr sits just past the key. A pre-Phase-3a signature ends
+    // exactly here; a VRF-carrying signature has the reveal suffix following.
+    if(ptr+2>end)
+    {
+        return MC_ERR_WRONG_SCRIPT;     // no VRF suffix present
+    }
+
+    reveal_len=mc_GetLE(ptr,1);
+    ptr++;
+    if((reveal_len>*reveal_size) || (ptr+reveal_len+1>end))
+    {
+        return MC_ERR_WRONG_SCRIPT;
+    }
+    memcpy(reveal,ptr,reveal_len);
+    *reveal_size=reveal_len;
+    ptr+=reveal_len;
+
+    proof_len=mc_GetLE(ptr,1);
+    ptr++;
+    if((proof_len>*proof_size) || (ptr+proof_len>end))
+    {
+        return MC_ERR_WRONG_SCRIPT;
+    }
+    memcpy(proof,ptr,proof_len);
+    *proof_size=proof_len;
+
+    return MC_ERR_NOERROR;
+}
+/* MCHN END */
 
 int mc_Script::GetAssetGenesis(int64_t *quantity)
 {
