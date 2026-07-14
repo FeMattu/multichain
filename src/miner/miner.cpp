@@ -24,6 +24,7 @@
 #include "multichain/multichain.h"
 #include "wpoa/wpoa_selector.h"
 #include "wpoa/vrf_wrapper.h"
+#include "wpoa/randao_accumulator.h"
 
 #include <boost/thread.hpp>
 #include <boost/tuple/tuple.hpp>
@@ -1111,7 +1112,18 @@ double GetMinerAndExpectedMiningStartTime(CWallet *pwallet,CPubKey *lpkMiner,set
         }
 
         std::string sLocalAddr=CBitcoinAddress(kThisMiner.GetID()).ToString();
+
+        // wPoA Phase 3b: when the RANDAO beacon governs this height, seed the
+        // election from the accumulator (seed[n+1]=H(R_tot[n-k]‖h[n-1]‖n)) rather
+        // than the plain previous block hash. The validator derives the identical
+        // seed from the same tip in VerifyBlockMinerWPoA, so both agree on the
+        // proposer. Falls back to the prev-hash seed if RANDAO is inactive.
         uint256 hWPoASeed=pindexTip->GetBlockHash();
+        unsigned char randao_seed[32];
+        if(WPoARANDAOActiveAtHeight(nWPoAHeight) && WPoARandaoSelectionSeed(pindexTip,randao_seed))
+        {
+            memcpy(hWPoASeed.begin(),randao_seed,sizeof(randao_seed));
+        }
         std::string sProposer=WPoASelectProposer(hWPoASeed.begin(),hWPoASeed.size(),nWPoAHeight);
 
         if(!sProposer.empty() && sProposer==sLocalAddr)

@@ -12,6 +12,7 @@
 #include "structs/base58.h"
 #include "wpoa/wpoa_selector.h"
 #include "wpoa/vrf_wrapper.h"
+#include "wpoa/randao_accumulator.h"
 
 #include <boost/assign/list_of.hpp>
 
@@ -828,7 +829,16 @@ static bool VerifyBlockMinerWPoA(CBlock *block_in,CBlockIndex* pindexNew)
     }
 /* MCHN END */
 
+    // wPoA Phase 3b: when the RANDAO beacon governs this block, derive the
+    // selection seed from the accumulator over the SAME tip the honest miner saw
+    // (pindexNew->pprev), instead of the plain previous block hash. Miner and
+    // validator therefore compute an identical seed and agree on the proposer.
     uint256 hSeed=pindexNew->pprev->GetBlockHash();
+    unsigned char randao_seed[32];
+    if(WPoARANDAOActiveAtHeight(pindexNew->nHeight) && WPoARandaoSelectionSeed(pindexNew->pprev,randao_seed))
+    {
+        memcpy(hSeed.begin(),randao_seed,sizeof(randao_seed));
+    }
     std::string sProposer=WPoASelectProposer(hSeed.begin(),hSeed.size(),pindexNew->nHeight);
 
     if(sProposer.empty())

@@ -16,7 +16,7 @@
 Proof-of-Authority with a notion of **validator weight**, so that block
 production is biased toward higher-weight validators instead of being uniform.
 
-Three phases are implemented today:
+Four phases are implemented today:
 
 - **Phase 1 — Weight registry.** Each node records its weight on an append-only
   MultiChain stream (`wpoa-weights`), kept current (newest wins) and identical on
@@ -33,11 +33,19 @@ Three phases are implemented today:
   reveal** `R[n]=VRF_sk(h[n-1])` with proof `π[n]` in its block (an ECVRF/DLEQ
   over the bundled secp256k1), and every peer verifies it before accepting the
   block. Selection is unchanged; the VRF is a grinding-resistant contribution to
-  the beacon that Phase 3b (RANDAO) will accumulate and Phase 4 will consume for
-  private sortition.
+  the beacon that Phase 3b accumulates and Phase 4 will consume for private
+  sortition.
+- **Phase 3b — RANDAO beacon seed (accumulation).** When `-enablewpoarandao=1`,
+  the per-block reveals are folded into a running accumulator
+  `R_tot[n]=H(R_tot[n-1]⊕H(R[n]))` and the proposer election is seeded by the
+  lookback beacon seed `seed[n+1]=H(R_tot[n-k]‖h[n-1]‖n)` instead of the plain
+  previous block hash (lookback `k` set by `-wpoarandaolookback`). Only the seed
+  source changes — the Efraimidis–Spirakis election stays weight-proportional —
+  so the beacon is grinding-resistant with a bounded last-revealer bias, while
+  leader unpredictability remains Phase 4's job.
 
-Phase 3b (RANDAO accumulator), Phase 4 (private sortition) and Phase 5 (VDF) are
-planned — see the [Implementation status](#implementation-status) and the master
+Phase 4 (private sortition) and Phase 5 (VDF) are planned — see the
+[Implementation status](#implementation-status) and the master
 [implementation-guide.md](docs/implementation-guide.md).
 
 Operators only ever touch a few things:
@@ -89,10 +97,18 @@ flowchart TD
         VRF --> VVRF
     end
 
+    subgraph P3B [Phase 3b — RANDAO beacon seed]
+        RND["RandaoAccumulator<br/>R_tot=H(R_tot⊕H(R)); seed=H(R_tot[n-k]‖h[n-1]‖n)"]
+        RSEED["miner.cpp / multichainblock.cpp<br/>seed selection from R_tot instead of prevhash"]
+        RND --> RSEED
+    end
+
     INIT --> REG
     REG -->|"GetAllNodesWeights()"| SEL
     MINE -.->|"elected proposer signs"| MVRF
     VAL -.->|"on wPoA-VRF heights"| VVRF
+    VVRF -.->|"reveals R[n]"| RND
+    RSEED -.->|"seed &rarr; WPoASelectProposer (unchanged argmin)"| SEL
     CLI([multichain-cli getlocalweight / getnodeweight / getallweights]):::ext --> REG
 
     classDef ext fill:#eee,stroke:#999,color:#333;
@@ -111,6 +127,12 @@ flowchart TD
   over the bundled secp256k1) and every peer verifies it. Selection is unchanged.
   Full detail:
   [phase3a-implementation-guide.md](docs/phase3a-implementation-guide.md).
+- **Phase 3b** adds the RANDAO beacon seed behind `-enablewpoarandao`: the
+  per-block reveals are folded into `R_tot` (via `RandaoAccumulator`) and the
+  selection seed becomes `H(R_tot[n-k]‖h[n-1]‖n)`, consumed identically by the
+  miner and validator. Only the seed source changes; the election stays
+  weight-proportional. Full detail:
+  [phase3b-implementation-guide.md](docs/phase3b-implementation-guide.md).
 
 ---
 
@@ -148,6 +170,7 @@ new to the project.
 | [phase1-implementation-guide.md](docs/phase1-implementation-guide.md) | **Phase 1 — full technical guide.** Weight registry: mental model, data model, design decisions, threading & locking, full code walkthrough, control flow, "how to modify" recipes. |
 | [phase2-implementation-guide.md](docs/phase2-implementation-guide.md) | **Phase 2 — full technical guide.** Weighted miner selection: mental model, algorithm, design decisions, threading, full code walkthrough, control flow, edge cases, "how to modify" recipes, tests, and accepted risks / Phase 3-4 hooks. |
 | [phase3a-implementation-guide.md](docs/phase3a-implementation-guide.md) | **Phase 3a — full technical guide.** VRF randomness beacon: the ECVRF/DLEQ construction over secp256k1, on-chain carriage of the reveal, prover/verifier control flow, design decisions, edge cases, tests, and Phase 3b/4 hooks. |
+| [phase3b-implementation-guide.md](docs/phase3b-implementation-guide.md) | **Phase 3b — full technical guide.** RANDAO beacon seed: the accumulator fold + lookback seed (thesis §5.4–§5.5), the memoized block-index walk, the seed swap at both selection call sites, design decisions, edge cases, tests, and Phase 4 hooks. |
 | [thesis-project-overview.md](docs/thesis-project-overview.md) | Research companion: problem statement, threat model, literature review, theoretical contributions behind the wPoA design (bachelor's thesis, Università di Pisa). |
 | [implementation-roadmap.md](docs/implementation-roadmap.md) | Engineering companion: phased plan, rationale for private (Efraimidis) sortition over public WRS, current status, vulnerabilities & mitigations. |
 | [multichain-internals.md](docs/multichain-internals.md) | Reference to the MultiChain host APIs this module builds on, with exact `file:line` pointers — entities, the wallet-tx store, script decoding, RPC-handler reuse, permissions, mining. |
@@ -160,7 +183,8 @@ new to the project.
 | [block-vrf-encoding.md](docs/block-vrf-encoding.md) | **Phase 3a.** How the reveal is carried on-chain (`protocol/multichainscript.h` + `.cpp`): `SetBlockVRF`/`GetBlockVRF` and the `GetBlockSignature` length relaxation. |
 | [vrf-prover.md](docs/vrf-prover.md) | **Phase 3a.** How the reveal is produced and embedded (`miner/miner.cpp`, `CreateBlockSignature`). |
 | [vrf-verifier.md](docs/vrf-verifier.md) | **Phase 3a.** How the reveal is extracted and enforced (`protocol/multichainblock.cpp`, `FindBlockVRF` + `VerifyBlockMinerWPoA`). |
-| [node-startup.md](docs/node-startup.md) | How `-weight` (Phase 1), `-enablewpoa`/`-dumpfunction` (Phase 2) and `-enablewpoavrf` (Phase 3a) are wired into `AppInit2` and how the background thread is launched (`core/init.h` + `.cpp`, wPoA parts). |
+| [randao-accumulator.md](docs/randao-accumulator.md) | **Phase 3b.** Line-by-line walkthrough of the pure accumulator/seed core (`randao_accumulator.h`) and the node glue (`.cpp`): the fold, the seed derivation, the memoized block-index walk, reveal extraction. |
+| [node-startup.md](docs/node-startup.md) | How `-weight` (Phase 1), `-enablewpoa`/`-dumpfunction` (Phase 2), `-enablewpoavrf` (Phase 3a) and `-enablewpoarandao`/`-wpoarandaolookback` (Phase 3b) are wired into `AppInit2` and how the background thread is launched (`core/init.h` + `.cpp`, wPoA parts). |
 | [rpc-registration.md](docs/rpc-registration.md) | How the three RPC commands are added to the dispatch table (`rpc/rpclist.cpp`). |
 | [testing.md](docs/testing.md) | Build steps, unit tests, the MultiChain mining model, manual single-/multi-node tests, the automated smoke test, and troubleshooting. |
 
@@ -172,25 +196,32 @@ new to the project.
 | [`weight_record.h`](weight_record.h) | Phase 1: pure parsing/aggregation helpers (json_spirit-only, unit-testable). |
 | [`wpoa_selector.h`](wpoa_selector.h) / [`.cpp`](wpoa_selector.cpp) | Phase 2: pure Efraimidis–Spirakis selector core (header-only) + node-coupled glue (flag, activation predicate, registry-backed election). Phase 3a adds the `g_wpoa_vrf_enabled` flag and `WPoAVRFActiveAtHeight`. |
 | [`vrf_wrapper.h`](vrf_wrapper.h) / [`.cpp`](vrf_wrapper.cpp) | Phase 3a: pure `WPoAVRF` ECVRF/DLEQ core over secp256k1 (`Prove`/`Verify`), node-free and unit-testable. |
+| [`randao_accumulator.h`](randao_accumulator.h) / [`.cpp`](randao_accumulator.cpp) | Phase 3b: pure `RandaoAccumulator` core (`Fold`/`DeriveSeed`/`Genesis`, node-free) + node glue (flag/lookback, `WPoARANDAOActiveAtHeight`, the memoized accumulator walk, and the `WPoARandaoSelectionSeed` helper). |
 | [`test/wpoa_weight_tests.cpp`](test/wpoa_weight_tests.cpp) | Phase 1: Boost.Test unit tests for the pure registry logic. |
 | [`test/wpoa_selector_tests.cpp`](test/wpoa_selector_tests.cpp) | Phase 2: Boost.Test unit tests for the pure selector math (determinism, order-independence, probability preservation). |
 | [`test/vrf_wrapper_tests.cpp`](test/vrf_wrapper_tests.cpp) | Phase 3a: Boost.Test unit tests for the pure VRF core (roundtrip, determinism, tamper/forgery/cross-key rejection, pseudorandomness). |
-| [`test/run_unit_tests.sh`](test/run_unit_tests.sh) / [`test/run_selector_unit_tests.sh`](test/run_selector_unit_tests.sh) / [`test/run_vrf_unit_tests.sh`](test/run_vrf_unit_tests.sh) | Build + run the unit tests (no node build needed). |
+| [`test/randao_accumulator_tests.cpp`](test/randao_accumulator_tests.cpp) | Phase 3b: Boost.Test unit tests for the pure accumulator/seed core (spec conformance vs. an independent reference, determinism, order/input sensitivity, chain consistency). |
+| [`test/run_unit_tests.sh`](test/run_unit_tests.sh) / [`test/run_selector_unit_tests.sh`](test/run_selector_unit_tests.sh) / [`test/run_vrf_unit_tests.sh`](test/run_vrf_unit_tests.sh) / [`test/run_randao_unit_tests.sh`](test/run_randao_unit_tests.sh) | Build + run the unit tests (no node build needed). |
 | [`test/functional_test_wpoa.sh`](test/functional_test_wpoa.sh) | End-to-end smoke test driving a real single node. |
 | [`test/functional_test_wpoa_multinode.sh`](test/functional_test_wpoa_multinode.sh) / [`test/analyze_distribution.py`](test/analyze_distribution.py) | End-to-end multi-node test + chi-square proposer-distribution analyzer. |
 | [`test/functional_test_wpoa_vrf.sh`](test/functional_test_wpoa_vrf.sh) | Phase 3a: end-to-end multi-node VRF beacon test (reveals produced, verified network-wide, chain live and fork-free under mandatory verification). |
+| [`test/functional_test_wpoa_randao.sh`](test/functional_test_wpoa_randao.sh) | Phase 3b: end-to-end multi-node RANDAO beacon-seed test (liveness + no-fork under the beacon seed, beacon-engaged evidence, weight-proportional distribution under the seed). |
 
 Integration points in the host tree: [`../core/init.cpp`](../core/init.cpp)
-(startup flags, incl. `-enablewpoavrf`), [`../rpc/rpclist.cpp`](../rpc/rpclist.cpp) /
+(startup flags, incl. `-enablewpoavrf` and `-enablewpoarandao`/`-wpoarandaolookback`),
+[`../rpc/rpclist.cpp`](../rpc/rpclist.cpp) /
 [`../rpc/rpchelp.cpp`](../rpc/rpchelp.cpp) (RPCs),
 [`../miner/miner.cpp`](../miner/miner.cpp) (Phase 2 mining hook + Phase 3a reveal
-embedding), [`../protocol/multichainblock.cpp`](../protocol/multichainblock.cpp)
-(Phase 2 validation hook + Phase 3a reveal verification),
-[`../protocol/multichainscript.cpp`](../protocol/multichainscript.cpp) (Phase 3a
-`SetBlockVRF`/`GetBlockVRF` reveal carriage), [`../Makefile.am`](../Makefile.am)
-(build). See [phase1-implementation-guide.md §7](docs/phase1-implementation-guide.md),
-[phase2-implementation-guide.md §5](docs/phase2-implementation-guide.md) and
-[phase3a-implementation-guide.md §2](docs/phase3a-implementation-guide.md) for
+embedding + Phase 3b selection-seed swap),
+[`../protocol/multichainblock.cpp`](../protocol/multichainblock.cpp)
+(Phase 2 validation hook + Phase 3a reveal verification + Phase 3b selection-seed
+swap), [`../protocol/multichainscript.cpp`](../protocol/multichainscript.cpp)
+(Phase 3a `SetBlockVRF`/`GetBlockVRF` reveal carriage),
+[`../Makefile.am`](../Makefile.am) (build). See
+[phase1-implementation-guide.md §7](docs/phase1-implementation-guide.md),
+[phase2-implementation-guide.md §5](docs/phase2-implementation-guide.md),
+[phase3a-implementation-guide.md §2](docs/phase3a-implementation-guide.md) and
+[phase3b-implementation-guide.md §2](docs/phase3b-implementation-guide.md) for
 details.
 
 ---
@@ -219,8 +250,13 @@ details.
 | **3a** | Per-block reveal embed + verify | Done | Proposer embeds `(R, π)` as a suffix of the block-signature element; `VerifyBlockMinerWPoA` rejects a missing/invalid reveal on wPoA-VRF heights. |
 | **3a** | Unit tests (pure VRF crypto) | Done | [`test/vrf_wrapper_tests.cpp`](test/vrf_wrapper_tests.cpp); roundtrip, determinism, tamper/forgery/cross-key rejection. |
 | **3a** | Multi-node functional test | Done | [`test/functional_test_wpoa_vrf.sh`](test/functional_test_wpoa_vrf.sh); reveals verified network-wide, chain live and fork-free. |
+| **3b** | RANDAO accumulator + seed (`RandaoAccumulator`) | Done | `R_tot[n]=H(R_tot[n-1]⊕H(R[n]))` folded over the 3a reveals; `seed[n+1]=H(R_tot[n-k]‖h[n-1]‖n)` derived and memoized. [docs/phase3b-implementation-guide.md](docs/phase3b-implementation-guide.md). |
+| **3b** | `-enablewpoarandao` + `-wpoarandaolookback=k` | Done | Default off; requires `-enablewpoavrf`. Gates the seed swap via `WPoARANDAOActiveAtHeight`; `k` is consensus-critical, validated at startup. |
+| **3b** | Selection-seed swap (miner + validator) | Done | Both call sites replace the prev-hash seed with `WPoARandaoSelectionSeed(tip)`; the Efraimidis election is otherwise unchanged (stays weight-proportional). |
+| **3b** | Unit tests (pure accumulator/seed math) | Done | [`test/randao_accumulator_tests.cpp`](test/randao_accumulator_tests.cpp); spec conformance vs. an independent reference, order/input sensitivity, chain consistency. |
+| **3b** | Multi-node functional test | Done | [`test/functional_test_wpoa_randao.sh`](test/functional_test_wpoa_randao.sh); liveness + no-fork under the beacon seed, 0 fallback folds, weight-proportional distribution (chi-square). |
 
-**Phases 1, 2 and 3a are complete and validated end-to-end.** The multi-node
+**Phases 1, 2, 3a and 3b are complete and validated end-to-end.** The multi-node
 functional test bootstraps a permissioned network with distinct per-node
 weights, confirms the weight map converges on every node, then mines a long run
 of wPoA-governed blocks and verifies the observed proposer distribution matches
@@ -230,9 +266,17 @@ validated by its own multi-node test: with `-enablewpoavrf=1` every wPoA block
 carries a reveal that every peer must verify to accept, so the chain advancing
 past the setup height with all nodes agreeing (no fork) and zero VRF rejections
 is direct end-to-end evidence that reveals are produced and verified network-wide.
-Phase 3b, Phase 4 and Phase 5 are planned.
+The Phase 3b RANDAO beacon seed is validated by its own multi-node test: with
+`-enablewpoarandao=1` the proposer is elected from `seed[n+1]=H(R_tot[n-k]‖h[n-1]‖n)`,
+which every node recomputes by folding the on-chain reveals, so the chain
+advancing past setup with no fork (and zero fallback folds) is direct evidence
+that the accumulator and seed are bit-identical network-wide — while the observed
+proposer distribution still matches the weight ratios under the new seed.
+Phase 4 and Phase 5 are planned.
 
-See [docs/phase3a-implementation-guide.md](docs/phase3a-implementation-guide.md)
+See [docs/phase3b-implementation-guide.md](docs/phase3b-implementation-guide.md)
+for the Phase 3b design,
+[docs/phase3a-implementation-guide.md](docs/phase3a-implementation-guide.md)
 for the Phase 3a design,
 [docs/phase2-implementation-guide.md](docs/phase2-implementation-guide.md)
 for the Phase 2 design, and
@@ -251,15 +295,19 @@ cd /home/mattu/multichain
 # Run a node with a weight:
 ./src/multichaind <chain> -weight=100
 
-# Enable weighted selection (Phase 2) and the VRF beacon (Phase 3a).
-# Both flags must be identical on every validator.
-./src/multichaind <chain> -weight=100 -enablewpoa=1 -enablewpoavrf=1
+# Enable weighted selection (Phase 2), the VRF beacon (Phase 3a) and the RANDAO
+# beacon seed (Phase 3b). All flags (and the lookback k) must be identical on
+# every validator.
+./src/multichaind <chain> -weight=100 -enablewpoa=1 -enablewpoavrf=1 \
+                          -enablewpoarandao=1 -wpoarandaolookback=1
 
 # Query weights:
 ./src/multichain-cli <chain> getallweights
 ```
 
 Full build and test instructions are in [testing.md](docs/testing.md).
-The Phase 3a VRF unit tests run node-free via
-[`test/run_vrf_unit_tests.sh`](test/run_vrf_unit_tests.sh); the multi-node beacon
-test is [`test/functional_test_wpoa_vrf.sh`](test/functional_test_wpoa_vrf.sh).
+The Phase 3a/3b unit tests run node-free via
+[`test/run_vrf_unit_tests.sh`](test/run_vrf_unit_tests.sh) and
+[`test/run_randao_unit_tests.sh`](test/run_randao_unit_tests.sh); the multi-node
+beacon tests are [`test/functional_test_wpoa_vrf.sh`](test/functional_test_wpoa_vrf.sh)
+and [`test/functional_test_wpoa_randao.sh`](test/functional_test_wpoa_randao.sh).

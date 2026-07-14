@@ -3,8 +3,9 @@
 > Documentation of the **node-startup integration** for wPoA. `init.cpp` is huge (it
 > drives the entire MultiChain node bootstrap); here we document **only** the wPoA parts:
 > the Phase 1 `-weight` handling + registration thread (§2.1-2.3), the Phase 2
-> `-enablewpoa` (§2.4) and `-dumpfunction` (§2.5) flags, and the Phase 3a `-enablewpoavrf`
-> (§2.6) flag. The rest is the standard MultiChain/Bitcoin startup engine.
+> `-enablewpoa` (§2.4) and `-dumpfunction` (§2.5) flags, the Phase 3a `-enablewpoavrf`
+> (§2.6) flag, and the Phase 3b `-enablewpoarandao` / `-wpoarandaolookback` (§2.7) flags.
+> The rest is the standard MultiChain/Bitcoin startup engine.
 
 `init.h` and `init.cpp` are documented together because they form the classic
 interface/implementation pair: `init.h` declares the global symbols that the other
@@ -294,6 +295,65 @@ validator set — the same accepted-risk category as `-enablewpoa`. It only has 
 where wPoA already governs the height, because `WPoAVRFActiveAtHeight` = the flag **AND**
 `WPoAActiveAtHeight` (so `-enablewpoavrf` without `-enablewpoa` does nothing).
 
+### 2.7 wPoA Phase 3b: the `-enablewpoarandao` / `-wpoarandaolookback` flags
+
+Phase 3b adds the RANDAO beacon seed (see
+[phase3b-implementation-guide.md](phase3b-implementation-guide.md)). Its startup footprint is
+a boolean plus an integer lookback, parsed in the **same `#ifdef ENABLE_WALLET` block**, right
+after the `-enablewpoavrf` handling:
+
+```cpp
+// wPoA Phase 3b: RANDAO accumulator + lookback selection seed. Default off.
+// When enabled, selection is seeded by H(R_tot[n-k] ‖ h[n-1] ‖ n) over the
+// accumulated Phase-3a reveals instead of the plain previous block hash. It
+// REQUIRES -enablewpoavrf (it consumes those reveals); a lone flag stays inert.
+g_wpoa_randao_enabled = GetBoolArg("-enablewpoarandao", false);
+int64_t randao_k = GetArg("-wpoarandaolookback", MC_WPOA_DEFAULT_RANDAO_LOOKBACK);
+if (randao_k < 0 || randao_k > 1000000)
+    return InitError(strprintf(_("Invalid -wpoarandaolookback value %d: must be a non-negative integer."), randao_k));
+g_wpoa_randao_lookback = (int)randao_k;
+if (g_wpoa_randao_enabled && !g_wpoa_vrf_enabled)
+    LogPrintf("[wPoA] WARNING: -enablewpoarandao set without -enablewpoavrf; "
+              "the RANDAO beacon has no reveals to accumulate and stays inert.\n");
+LogPrintf("[wPoA] RANDAO beacon seed %s (lookback k=%d)\n",
+          g_wpoa_randao_enabled ? "ENABLED (-enablewpoarandao=1)" : "disabled",
+          g_wpoa_randao_lookback);
+```
+
+Line-by-line:
+
+- **`GetBoolArg("-enablewpoarandao", false)`** — the on/off switch, defaulting to `false`, so a
+  Phase-3a or plain node is byte-for-byte unchanged.
+- **`GetArg("-wpoarandaolookback", MC_WPOA_DEFAULT_RANDAO_LOOKBACK)`** — the lookback `k`
+  (default `1`), read as an integer and **validated** (`0 ≤ k ≤ 1e6`); an out-of-range value is
+  a fatal `InitError` rather than a silent fork risk. It is **consensus-critical** — every node
+  must run the same `k`.
+- **`g_wpoa_randao_enabled` / `g_wpoa_randao_lookback = …`** — the two globals defined in
+  `randao_accumulator.cpp` and declared `extern` in `randao_accumulator.h`
+  (see [randao-accumulator.md](randao-accumulator.md)). Written once on the init thread before
+  any miner/validator thread reads them, so they need no lock. From here
+  `WPoARANDAOActiveAtHeight` — and therefore `WPoARandaoSelectionSeed` at both selection call
+  sites — can see whether the beacon seed is on.
+- **The `!g_wpoa_vrf_enabled` warning** — a lone `-enablewpoarandao` has nothing to accumulate
+  (`WPoARANDAOActiveAtHeight` = the flag **AND** `WPoAVRFActiveAtHeight`), so it stays inert;
+  the warning makes the misconfiguration visible in `debug.log`.
+
+Two `HelpMessage` lines are added next to the `-enablewpoavrf` one:
+
+```cpp
+strUsage += "  -enablewpoarandao                        "
+    + _("Enable the wPoA RANDAO beacon seed: seed proposer selection from the accumulated "
+        "per-block VRF reveals instead of the previous block hash (default: 0). Requires "
+        "-enablewpoavrf; must be identical on all nodes.") + "\n";
+strUsage += "  -wpoarandaolookback=<k>                  "
+    + strprintf(_("wPoA RANDAO lookback distance k in seed[n+1]=H(R_tot[n-k] | h[n-1] | n) "
+        "(default: %u). Must be identical on all nodes."), MC_WPOA_DEFAULT_RANDAO_LOOKBACK) + "\n";
+```
+
+Like the other wPoA flags, these launch **no thread**: they only set globals the miner and
+validator consult at runtime. Both are **consensus-affecting** and must be uniform across the
+validator set — the same accepted-risk category as `-enablewpoa`/`-enablewpoavrf`.
+
 ## 3. The complete startup flow
 
 ```mermaid
@@ -322,15 +382,18 @@ flowchart TD
 - **`stream_weight_registry.h` → `init.cpp`**: provides `MC_WPOA_DEFAULT_WEIGHT`,
   `g_node_weight` and `ThreadRegisterNodeWeight` used in the startup block.
 - **`init.cpp`** is the **only** place that launches the thread and sets `g_node_weight`
-  (Phase 1), `g_wpoa_enabled` and `g_dumping_function` (Phase 2), and `g_wpoa_vrf_enabled`
-  (Phase 3a); it is the bridge between the user's configuration (`-weight`, `-enablewpoa`,
-  `-dumpfunction`, `-enablewpoavrf`) and the wPoA subsystem.
+  (Phase 1), `g_wpoa_enabled` and `g_dumping_function` (Phase 2), `g_wpoa_vrf_enabled`
+  (Phase 3a), and `g_wpoa_randao_enabled` / `g_wpoa_randao_lookback` (Phase 3b); it is the
+  bridge between the user's configuration (`-weight`, `-enablewpoa`, `-dumpfunction`,
+  `-enablewpoavrf`, `-enablewpoarandao`, `-wpoarandaolookback`) and the wPoA subsystem.
 - The read RPCs (in `rpclist.cpp`) are **independent** of this startup: they work even if
   the thread has not registered anything yet (they simply return 0 / an empty map).
 - **`wpoa_selector.cpp`** defines `g_wpoa_enabled`, `g_dumping_function` and
-  `g_wpoa_vrf_enabled`; `init.cpp` writes them all. The miner and validator read
+  `g_wpoa_vrf_enabled`; **`randao_accumulator.cpp`** defines `g_wpoa_randao_enabled` and
+  `g_wpoa_randao_lookback`; `init.cpp` writes them all. The miner and validator read
   `g_wpoa_enabled` via `WPoAActiveAtHeight`, `g_dumping_function` once per election inside
-  `WPoASelectProposer`, and `g_wpoa_vrf_enabled` via `WPoAVRFActiveAtHeight`.
+  `WPoASelectProposer`, `g_wpoa_vrf_enabled` via `WPoAVRFActiveAtHeight`, and the Phase 3b
+  globals via `WPoARANDAOActiveAtHeight` / `WPoARandaoSelectionSeed`.
 
 ---
 
@@ -346,8 +409,11 @@ flowchart TD
   — the runtime consumers of the `-enablewpoa` flag.
 - [vrf-prover.md](vrf-prover.md) / [vrf-verifier.md](vrf-verifier.md) — the runtime
   consumers of the `-enablewpoavrf` flag (Phase 3a).
+- [randao-accumulator.md](randao-accumulator.md) — the accumulator/seed core and glue that
+  consume the `-enablewpoarandao` / `-wpoarandaolookback` flags (Phase 3b).
 - [rpc-registration.md](rpc-registration.md) — the (independent) RPC-command path.
 - [phase1-implementation-guide.md](phase1-implementation-guide.md) §7.4 /
   [phase2-implementation-guide.md](phase2-implementation-guide.md) §7.5 /
-  [phase3a-implementation-guide.md](phase3a-implementation-guide.md) §8.6 — the same
+  [phase3a-implementation-guide.md](phase3a-implementation-guide.md) §8.6 /
+  [phase3b-implementation-guide.md](phase3b-implementation-guide.md) §7.5 — the same
   integration from the design guides' perspective.

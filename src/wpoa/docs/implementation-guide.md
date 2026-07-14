@@ -24,7 +24,7 @@ API** from Phase 1 is consumed identically by every later phase.
 flowchart TD
     P1["<b>Phase 1 — Weight Registry</b><br/>on-chain wpoa-weights stream<br/>opaque address→weight read API"]
     P2["<b>Phase 2 — Weighted Selection (public)</b><br/>Efraimidis–Spirakis argmin<br/>seed = prev-block hash"]
-    P3["<b>Phase 3 — RANDAO + VRF beacon</b><br/>3a VRF reveal: done<br/>3b RANDAO accumulator: planned"]
+    P3["<b>Phase 3 — RANDAO + VRF beacon</b><br/>3a VRF reveal: done<br/>3b RANDAO accumulator: done"]
     P4["<b>Phase 4 — Private Sortition</b><br/>local score, gossip reveal, tie-break<br/>the security fix (planned)"]
     P5["<b>Phase 5 — VDF</b><br/>removes residual last-revealer bias<br/>(future)"]
 
@@ -36,8 +36,7 @@ flowchart TD
     classDef done fill:#d7f0d7,stroke:#2e7d32,color:#123;
     classDef partial fill:#fff3cd,stroke:#b8860b,color:#123;
     classDef plan fill:#eee,stroke:#999,color:#333;
-    class P1,P2 done;
-    class P3 partial;
+    class P1,P2,P3 done;
     class P4,P5 plan;
 ```
 
@@ -57,7 +56,7 @@ Phase 2.
 | **1** | Done | An append-only on-chain `wpoa-weights` stream where every validator registers a positive integer weight, plus an opaque `address→weight` read API (`GetLocalWeight` / `GetAllNodesWeights` / `GetNodeWeight`) and three RPCs. Registration is deferred to a background thread; reads observe confirmed state from any thread. This is the substrate every later phase reads from. | [phase1-implementation-guide.md](phase1-implementation-guide.md) |
 | **2** | Done | Weighted proposer election wired into the miner and block validator. Each height's proposer is chosen in proportion to weight via the Efraimidis–Spirakis argmin (`score_i = -ln(u_i)/w_i`, `u_i` from `HMAC-SHA256(prev-block-hash, address)`), gated by `-enablewpoa`. Intentionally public/predictable — a substrate-validation baseline before privacy. | [phase2-implementation-guide.md](phase2-implementation-guide.md) |
 | **3a** | Done | Adds the VRF half of the beacon (randomness *generation*): each wPoA-elected proposer publishes a verifiable pseudorandom reveal `R[n]=VRF_sk(h[n-1])` with proof `π[n]` in its block (an ECVRF/DLEQ over the bundled secp256k1), and every peer verifies it before accepting the block. Selection is unchanged (still the public Phase 2 election); the VRF is a grinding-resistant contribution, not yet the selection mechanism. Gated by `-enablewpoavrf`. | [phase3a-implementation-guide.md](phase3a-implementation-guide.md) |
-| **3b** | Planned | Accumulates the per-block reveals into a RANDAO beacon `R_tot[n]=H(R_tot[n-1]⊕H(R[n]))` and feeds the lookback seed `H(R_tot[n-k]‖h[n-1]‖n)` back into selection, replacing the plain prev-block-hash seed and bounding manipulation. | *(to be added: `phase3b-implementation-guide.md`)* |
+| **3b** | Done | Accumulates the per-block reveals into a RANDAO beacon `R_tot[n]=H(R_tot[n-1]⊕H(R[n]))` and feeds the lookback seed `H(R_tot[n-k]‖h[n-1]‖n)` back into selection (gated by `-enablewpoarandao`, lookback `-wpoarandaolookback=k`), replacing the plain prev-block-hash seed and bounding manipulation. Selection stays weight-proportional; only the seed source changes. | [phase3b-implementation-guide.md](phase3b-implementation-guide.md) |
 | **4** | Planned | The security fix: each validator evaluates its election score privately under its own key and reveals it only on winning (gossip window, deterministic tie-break, liveness fallback), collapsing leader predictability from one block ahead to a gossip interval. | *(to be added: `phase4-implementation-guide.md`)* |
 | **5** | Future | A Verifiable Delay Function over the beacon output, removing the residual last-revealer bias that Phase 3's RANDAO only bounds (Cleve's theorem). | *(to be added: `phase5-implementation-guide.md`)* |
 

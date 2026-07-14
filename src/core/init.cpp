@@ -42,6 +42,7 @@
 #include "filters/filter.h"
 #include "wpoa/stream_weight_registry.h"
 #include "wpoa/wpoa_selector.h"
+#include "wpoa/randao_accumulator.h"
 
 std::string BurnAddress(const std::vector<unsigned char>& vchVersion);
 std::string SetBannedTxs(std::string txlist);
@@ -566,6 +567,8 @@ std::string HelpMessage(HelpMessageMode mode)                                   
     strUsage += "  -dumpfunction=<none|sqrt|log>            " + _("wPoA weight-dumping (damping) function applied before proposer selection, to stop large stakes dominating (default: none). Must be identical on all nodes.") + "\n";
     strUsage += "  -enablewpoa                              " + _("Enable wPoA weighted proposer selection (default: 0). Must be identical on all nodes.") + "\n";
     strUsage += "  -enablewpoavrf                           " + _("Enable the wPoA VRF randomness beacon: each elected proposer publishes a verifiable pseudorandom reveal, verified by peers (default: 0). Requires -enablewpoa; must be identical on all nodes.") + "\n";
+    strUsage += "  -enablewpoarandao                        " + _("Enable the wPoA RANDAO beacon seed: seed proposer selection from the accumulated per-block VRF reveals instead of the previous block hash (default: 0). Requires -enablewpoavrf; must be identical on all nodes.") + "\n";
+    strUsage += "  -wpoarandaolookback=<k>                  " + strprintf(_("wPoA RANDAO lookback distance k in seed[n+1]=H(R_tot[n-k] | h[n-1] | n) (default: %u). Must be identical on all nodes."), MC_WPOA_DEFAULT_RANDAO_LOOKBACK) + "\n";
     strUsage += "  -shrinkdebugfilesize=<n>                 " + _("If shrinkdebugfile is 1, this controls the size of the debug file. Whenever the debug.log file reaches over 5 times this number of bytes, it is reduced back down to this size.") + "\n";
     strUsage += "  -shortoutput                             " + _("Only show the node address (if connecting was successful) or an address in the wallet (if connect permissions must be granted by another node)") + "\n";
     strUsage += "  -bantx=<txids>                           " + _("Comma delimited list of banned transactions.") + "\n";
@@ -3196,6 +3199,29 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
         g_wpoa_vrf_enabled = GetBoolArg("-enablewpoavrf", false);
         LogPrintf("[wPoA] VRF randomness beacon %s\n",
                   g_wpoa_vrf_enabled ? "ENABLED (-enablewpoavrf=1)" : "disabled");
+
+        // wPoA Phase 3b: RANDAO accumulator + lookback selection seed. Default off.
+        // When enabled, the proposer election is seeded by the RANDAO beacon
+        // seed[n+1]=H(R_tot[n-k]‖h[n-1]‖n) (folding the Phase-3a per-block reveals)
+        // instead of the plain previous block hash. It consumes those reveals, so
+        // it REQUIRES -enablewpoavrf; a lone -enablewpoarandao is a misconfiguration
+        // and stays inert (WPoARANDAOActiveAtHeight is gated on the VRF beacon). The
+        // lookback k must be identical across the validator set, like the flags.
+        g_wpoa_randao_enabled = GetBoolArg("-enablewpoarandao", false);
+        int64_t randao_k = GetArg("-wpoarandaolookback", MC_WPOA_DEFAULT_RANDAO_LOOKBACK);
+        if (randao_k < 0 || randao_k > 1000000)
+        {
+            return InitError(strprintf(_("Invalid -wpoarandaolookback value %d: must be a non-negative integer."), randao_k));
+        }
+        g_wpoa_randao_lookback = (int)randao_k;
+        if (g_wpoa_randao_enabled && !g_wpoa_vrf_enabled)
+        {
+            LogPrintf("[wPoA] WARNING: -enablewpoarandao set without -enablewpoavrf; "
+                      "the RANDAO beacon has no reveals to accumulate and stays inert.\n");
+        }
+        LogPrintf("[wPoA] RANDAO beacon seed %s (lookback k=%d)\n",
+                  g_wpoa_randao_enabled ? "ENABLED (-enablewpoarandao=1)" : "disabled",
+                  g_wpoa_randao_lookback);
 
         // wPoA Phase 2: weight-dumping (damping) function. Compresses validator
         // weights before the Efraimidis–Spirakis draw so a single large stake
