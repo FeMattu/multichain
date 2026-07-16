@@ -11,9 +11,13 @@ Companion documents:
 - [../README.md](../README.md) — feature entry point: introduction, architecture
   diagram, table of contents and implementation status.
 - [implementation-guide.md](implementation-guide.md) — master phase index.
-- [randao-accumulator.md](randao-accumulator.md) — line-by-line walkthrough of the pure
-  accumulator/seed core (`randao_accumulator.h`) and the node glue (`.cpp`): the fold,
+- [randao-accumulator.md](randao-accumulator.md) — deep line-by-line walkthrough of the
+  pure accumulator/seed core (`randao_accumulator.h`) and the node glue (`.cpp`): the fold,
   the seed derivation, the memoized block-index walk, reveal extraction.
+- [randao-miner.md](randao-miner.md) — the miner-side seed swap (`miner/miner.cpp`,
+  `GetMinerAndExpectedMiningStartTime`).
+- [randao-validator.md](randao-validator.md) — the validator-side seed swap
+  (`protocol/multichainblock.cpp`, `VerifyBlockMinerWPoA`).
 - [node-startup.md](node-startup.md) — how `-enablewpoarandao` / `-wpoarandaolookback`
   are wired into `AppInit2`.
 - [phase3a-implementation-guide.md](phase3a-implementation-guide.md) — the VRF reveals
@@ -145,8 +149,8 @@ Files **modified** in the host tree (integration points):
 | Site | File | Change | Detail doc |
 |------|------|--------|------------|
 | Startup flags | [`../../core/init.cpp`](../../core/init.cpp) | Parse `-enablewpoarandao`/`-wpoarandaolookback` into `g_wpoa_randao_enabled`/`g_wpoa_randao_lookback` in `AppInit2`; validate `k >= 0`; warn if RANDAO set without VRF; help lines. | [node-startup.md](node-startup.md) |
-| Miner | [`../../miner/miner.cpp`](../../miner/miner.cpp) | In `GetMinerAndExpectedMiningStartTime`, when the beacon governs the next height, replace the prev-hash selection seed with `WPoARandaoSelectionSeed(pindexTip)`. | §7.3 |
-| Validator | [`../../protocol/multichainblock.cpp`](../../protocol/multichainblock.cpp) | In `VerifyBlockMinerWPoA`, when the beacon governs the block, replace the prev-hash seed with `WPoARandaoSelectionSeed(pindexNew->pprev)` before the proposer check. | §7.4 |
+| Miner | [`../../miner/miner.cpp`](../../miner/miner.cpp) | In `GetMinerAndExpectedMiningStartTime`, when the beacon governs the next height, replace the prev-hash selection seed with `WPoARandaoSelectionSeed(pindexTip)`. | [randao-miner.md](randao-miner.md) (§7.3) |
+| Validator | [`../../protocol/multichainblock.cpp`](../../protocol/multichainblock.cpp) | In `VerifyBlockMinerWPoA`, when the beacon governs the block, replace the prev-hash seed with `WPoARandaoSelectionSeed(pindexNew->pprev)` before the proposer check. | [randao-validator.md](randao-validator.md) (§7.4) |
 | Build | [`../../Makefile.am`](../../Makefile.am) | Compile `wpoa/randao_accumulator.cpp`; track `wpoa/randao_accumulator.h`. | §10 |
 
 Depends on:
@@ -397,8 +401,9 @@ exhaustive line-by-line treatment.
 
 ### 7.3 `../../miner/miner.cpp` integration
 
-Inside `GetMinerAndExpectedMiningStartTime`, in the Phase 2 wPoA branch, the seed is chosen
-just before the election:
+Full line-by-line treatment in [randao-miner.md](randao-miner.md). Inside
+`GetMinerAndExpectedMiningStartTime`, in the Phase 2 wPoA branch, the seed is chosen just
+before the election:
 
 ```cpp
 uint256 hWPoASeed=pindexTip->GetBlockHash();
@@ -414,7 +419,8 @@ When RANDAO is inactive it falls back to the plain prev-hash seed (Phase 3a beha
 
 ### 7.4 `../../protocol/multichainblock.cpp` integration
 
-In `VerifyBlockMinerWPoA`, symmetrically, using the **same tip the miner saw**
+Full line-by-line treatment in [randao-validator.md](randao-validator.md). In
+`VerifyBlockMinerWPoA`, symmetrically, using the **same tip the miner saw**
 (`pindexNew->pprev`):
 
 ```cpp
