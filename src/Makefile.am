@@ -105,6 +105,7 @@ BITCOIN_CORE_H = \
   wpoa/wpoa_selector.h \
   wpoa/vrf_wrapper.h \
   wpoa/randao_accumulator.h \
+  wpoa/private_sortition.h \
   storage/coins.h \
   utils/compat.h \
   utils/compressor.h \
@@ -300,6 +301,7 @@ libbitcoin_wallet_a_SOURCES = \
   wpoa/wpoa_selector.cpp \
   wpoa/vrf_wrapper.cpp \
   wpoa/randao_accumulator.cpp \
+  wpoa/private_sortition.cpp \
   $(BITCOIN_CORE_H)
 
 # crypto primitives library

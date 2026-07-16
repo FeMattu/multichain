@@ -13,6 +13,7 @@
 #include "wpoa/wpoa_selector.h"
 #include "wpoa/vrf_wrapper.h"
 #include "wpoa/randao_accumulator.h"
+#include "wpoa/private_sortition.h"
 
 #include <boost/assign/list_of.hpp>
 
@@ -799,6 +800,56 @@ static bool VerifyBlockMinerWPoA(CBlock *block_in,CBlockIndex* pindexNew)
         return false;
     }
     std::string sMinerAddr=CBitcoinAddress(pubKeyMiner.GetID()).ToString();
+
+/* MCHN START - wPoA Phase 4: private-sortition eligibility check */
+    // On sortition-governed heights the proposer is NOT the publicly-recomputable
+    // argmin (each validator's score is private under its VRF key), so the
+    // miner==argmin equality used below cannot be applied. Instead: verify the
+    // block's VRF reveal over the sortition input (seed ‖ "PROPOSER" ‖ height),
+    // recompute the proposer's private score from that reveal and the signer's
+    // registry weight, and accept iff the block's nTime is no earlier than the score
+    // entitles (the auto-relaxing time bar). This eligibility test REPLACES the
+    // argmin equality for sortition heights; non-sortition wPoA heights fall through
+    // to the unchanged Phase 3a/3b path below.
+    if(WPoASortitionActiveAtHeight(pindexNew->nHeight))
+    {
+        std::vector<unsigned char> vrf_reveal,vrf_proof;
+        if(!FindBlockVRF(pblock,vrf_reveal,vrf_proof))
+        {
+            LogPrintf("VerifyBlockMinerWPoA: REJECT block %s (height %d): missing VRF reveal (sortition)\n",
+                      pindexNew->GetBlockHash().ToString().c_str(),pindexNew->nHeight);
+            return false;
+        }
+
+        std::string sReason;
+        WPoASortitionVerdict verdict=WPoASortitionVerifyProposer(
+                pindexNew->pprev,pindexNew->nHeight,vchPubKey,sMinerAddr,
+                vrf_reveal,vrf_proof,pblock->nTime,&sReason);
+
+        if(verdict == WPOA_SORTITION_REJECT)
+        {
+            LogPrintf("VerifyBlockMinerWPoA: REJECT block %s (height %d) signer %s: %s\n",
+                      pindexNew->GetBlockHash().ToString().c_str(),pindexNew->nHeight,
+                      sMinerAddr.c_str(),sReason.c_str());
+            return false;
+        }
+        if(verdict == WPOA_SORTITION_SKIP)
+        {
+            // Cannot recompute the score locally (e.g. weights not yet synced). The
+            // VRF proof was still enforced; accept rather than stall, mirroring the
+            // empty-registry leniency of the Phase 2/3b path.
+            LogPrintf("VerifyBlockMinerWPoA: Block %s (height %d): sortition unverifiable locally, miner check skipped\n",
+                      pindexNew->GetBlockHash().ToString().c_str(),pindexNew->nHeight);
+            pindexNew->fPassedMinerPrecheck=true;
+            return true;
+        }
+
+        LogPrint("wpoa","VerifyBlockMinerWPoA: sortition OK block %s (height %d) proposer %s\n",
+                 pindexNew->GetBlockHash().ToString().c_str(),pindexNew->nHeight,sMinerAddr.c_str());
+        pindexNew->fPassedMinerPrecheck=true;
+        return true;
+    }
+/* MCHN END */
 
 /* MCHN START - wPoA Phase 3a: verify the proposer's VRF reveal */
     // When the VRF beacon governs this height, the block MUST carry a reveal that

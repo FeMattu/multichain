@@ -66,7 +66,7 @@ flowchart TD
 | 2 | 1 (consumer) | Weighted miner selection via an intentionally **public** baseline WRS, to validate the registry substrate before adding privacy | **Current — implemented** |
 | 3a | 2 | VRF integration — per-block verifiable reveal `(R, π)` embedded and verified by peers (the VRF half of the randomness *generation* layer) | **Implemented** |
 | 3b | 2 | RANDAO accumulator + lookback seed over the reveals (the beacon half of *generation*) | **Implemented** |
-| 4 | 3 + 4 | Efraimidis private sortition — local scoring, gossip reveal, tie-break, fallback (the *security fix* — randomness *consumption* half) | Planned |
+| 4 | 3 + 4 | Efraimidis private sortition — private VRF scoring, score-timed self-election, time-bar eligibility, auto-relaxing liveness fallback (the *security fix* — randomness *consumption* half) | **Implemented** |
 | 5 | Cross-cutting | Weight inizialization, update, slashing mechanisms | Planned |
 
 This is a **bachelor's thesis** engineering track (Università di Pisa,
@@ -173,7 +173,7 @@ chooses to broadcast).
 | 3a | Per-block VRF reveal — embed + verify | Done | Proposer embeds `(R, π)` as a suffix of the block-signature element; `VerifyBlockMinerWPoA` rejects a missing/invalid reveal on wPoA-VRF heights. Gated by `-enablewpoavrf`. |
 | 3a | Multi-node functional test | Done | [`test/functional_test_wpoa_vrf.sh`](../test/functional_test_wpoa_vrf.sh): reveals produced, verified network-wide, chain live and fork-free under mandatory verification. |
 | 3b | RANDAO accumulator + lookback seed | Done | `RandaoAccumulator` folds the 3a reveals into `R_tot[n]=H(R_tot[n-1]⊕H(R[n]))` and derives `seed[n+1]=H(R_tot[n-k]‖h[n-1]‖n)`, swapped into selection at both the miner and validator call sites. Gated by `-enablewpoarandao` (+ `-wpoarandaolookback=k`); consumes the seed only, election unchanged. [phase3b-implementation-guide.md](phase3b-implementation-guide.md). |
-| **4** | **Efraimidis private sortition** | Pending | **The security fix.** See [§6.3](#63-phase-4--efraimidis-private-sortition-the-security-fix). |
+| **4** | **Efraimidis private sortition** | **Done** | **The security fix.** Private per-validator VRF score over the beacon seed; score-timed self-election (argmin proposes first); validator-side VRF-verify + score-recompute + time-bar eligibility replaces the public argmin equality; auto-relaxing time bar is the liveness fallback (no zero-proposer gap). Gated by `-enablewpoasortition` (+ `-wpoasortitiondelay`; requires `-enablewpoarandao` and `k>=1`). `wpoa/private_sortition.{h,cpp}` + miner/validator hooks. See [§6.3](#63-phase-4--efraimidis-private-sortition-the-security-fix) and [phase4-implementation-guide.md](phase4-implementation-guide.md). |
 | 5 | VDF over beacon seed | Future | See [§6.4](#64-phase-5--vdf-future). |
 
 Phase 1 is fully merged into `master` (see [§5](#5-branches--branch-strategy)).
@@ -185,7 +185,11 @@ reveal) is implemented (`wpoa/vrf_wrapper.{h,cpp}`; see
 (RANDAO accumulator) is implemented on `feature/wpoa-randao`
 (`wpoa/randao_accumulator.{h,cpp}` plus the seed swap at the two selection call
 sites; see [phase3b-implementation-guide.md](phase3b-implementation-guide.md)).
-Phases 4–5 are not yet implemented (see [§4](#4-directory-structure)).
+Phase 4 (private sortition — the security fix) is implemented on
+`feature/wpoa-private-sortition` (`wpoa/private_sortition.{h,cpp}` plus the
+score-timed miner hook and the validator-side eligibility/time-bar check; see
+[phase4-implementation-guide.md](phase4-implementation-guide.md)). Phase 5 is not
+yet implemented (see [§4](#4-directory-structure)).
 
 ---
 
@@ -217,13 +221,23 @@ src/wpoa/
 ├── randao_accumulator.cpp                    (Phase 3b, implemented — flag/lookback,
 │                                                WPoARANDAOActiveAtHeight, memoized
 │                                                accumulator walk, seed helper)
+├── private_sortition.h                       (Phase 4, implemented — pure private-sortition
+│                                                core: VRFInput/ScoreFromVRFOutput/MiningDelay
+│                                                + node-glue decls)
+├── private_sortition.cpp                     (Phase 4, implemented — flag/scale,
+│                                                WPoASortitionActiveAtHeight, local score+delay,
+│                                                reveal-input builder, eligibility/time-bar verdict)
 ├── docs/
 │   ├── implementation-guide.md               ← master index (phase map + links + process)
 │   ├── phase1-implementation-guide.md         ← Phase 1 full technical guide
 │   ├── phase2-implementation-guide.md         ← Phase 2 full technical guide
 │   ├── phase3a-implementation-guide.md        ← Phase 3a full technical guide
 │   ├── phase3b-implementation-guide.md        ← Phase 3b full technical guide
+│   ├── phase4-implementation-guide.md         ← Phase 4 full technical guide
 │   ├── randao-accumulator.md                  ← Phase 3b per-file walkthrough
+│   ├── private-sortition.md                   ← Phase 4 core per-file walkthrough
+│   ├── sortition-miner.md                     ← Phase 4 miner-hook walkthrough
+│   ├── sortition-validator.md                 ← Phase 4 validator-hook walkthrough
 │   ├── thesis-project-overview.md             ← research companion (self-contained)
 │   ├── implementation-roadmap.md              ← this document
 │   ├── multichain-internals.md                ← MultiChain host-API reference
@@ -241,11 +255,14 @@ src/wpoa/
     ├── run_selector_unit_tests.sh             ← Phase 2 unit test runner
     ├── run_vrf_unit_tests.sh                   ← Phase 3a unit test runner
     ├── run_randao_unit_tests.sh               ← Phase 3b unit test runner
+    ├── run_sortition_unit_tests.sh             ← Phase 4 unit test runner
     ├── analyze_distribution.py                ← chi-square proposer-distribution analyzer
     ├── functional_test_wpoa.sh                 ← single-node smoke test
     ├── functional_test_wpoa_multinode.sh       ← N-node smoke + distribution test
     ├── functional_test_wpoa_vrf.sh             ← Phase 3a N-node VRF beacon test
-    └── functional_test_wpoa_randao.sh          ← Phase 3b N-node RANDAO beacon-seed test
+    ├── functional_test_wpoa_randao.sh          ← Phase 3b N-node RANDAO beacon-seed test
+    ├── private_sortition_tests.cpp             ← Phase 4 Boost.Test unit suite
+    └── functional_test_wpoa_sortition.sh       ← Phase 4 N-node private-sortition test
 ```
 
 **Integration points outside `src/wpoa/`** (per
@@ -373,32 +390,38 @@ bound — see
 
 This is the phase that actually delivers leader unpredictability: the public
 WRS walk from Phase 2 is replaced by the private score/reveal flow motivated
-in [§2](#2-rationale-why-efraimidis-over-public-wrs).
+in [§2](#2-rationale-why-efraimidis-over-public-wrs). **Implemented** as
+**score-timed self-election** rather than an explicit P2P gossip-window
+protocol — the design decision recorded below. Full engineering detail in
+[phase4-implementation-guide.md](phase4-implementation-guide.md).
 
-**Components:**
+**Design decision (reveal & agreement mechanism).** The abstract §8 diagrams
+sketch a gossip-window protocol (validators broadcast `ProposerClaim`s, all
+nodes collect within a timed window, the argmin is chosen before any block is
+produced). That was deliberately **not** built: it needs a new P2P message,
+serialization, gossip/relay, per-height claim tracking and window timers — a
+large, high-risk change to the networking layer, disproportionate to this
+thesis. Instead the argmin reveals itself *by proposing first*, using the
+existing block relay + mining-timing gate + fork choice, with **no** P2P or
+fork-choice changes (continuing the Phase 2/3a/3b pattern: pure core + node
+glue + miner/validator hooks + one flag).
+
+**Components (as built — `wpoa/private_sortition.{h,cpp}`):**
 
 | Component | Responsibility |
 |---|---|
-| `VRFSelector` | Wraps the VRF library; evaluates `y_i, π_i = VRF_sk_i(seed ‖ "PROPOSER" ‖ height)` and exposes verification for peers. |
-| `ScoreComputation` | Normalizes `y_i` to `u_i`, derives `E_i = -ln(u_i)`, and computes `score_i = E_i / w_i` against the weight read from `StreamWeightRegistry`. |
-| `GossipWindow` | Bounds how long the network waits for reveals before falling back; tracks the best (lowest) score seen so far within the current round. |
-| `TiebreakerLogic` | Deterministic resolution when two validators reveal identical scores (see [§9](#9-vulnerabilities--mitigations)). |
+| `PrivateSortition::VRFInput` | Builds the consensus-critical VRF input `seed ‖ "PROPOSER" ‖ BE32(height)` (the beacon seed is the public input). |
+| `PrivateSortition::ScoreFromVRFOutput` | Folds `y_i` and runs the **same** transform as the Phase-2 selector (`WPoASelector::ScoreFromEntropy64`): `score_i = -ln(u_i)/f(w_i)`. Single source of truth ⇒ distribution provably unchanged. |
+| `PrivateSortition::MiningDelay` | The score→time map `scale · score · Σf(w)`: strictly increasing (argmin proposes first) and weight-scale invariant. Serves as **both** the miner's start-time delay and the validator's time bar. |
+| miner hook (`miner.cpp`) | `WPoASortitionLocalScoreDelay` scores this node privately; the node mines at `now + delay`. Anti-respin guard + reveal-input switch. |
+| validator hook (`multichainblock.cpp`) | `WPoASortitionVerifyProposer`: verify the VRF over the sortition input, recompute the score, accept iff `block.nTime ≥ parent.nTime + delay`. Replaces the argmin equality. |
 
-**Data structures (pseudo-schema):**
-
-```text
-ProposerClaim {
-  height:      uint32
-  score:       bytes32        // E_i / w_i, fixed-point or rational encoding
-  vrf_output:  bytes32        // y_i
-  vrf_proof:   bytes          // π_i
-  public_key:  bytes          // PK_i
-}
-```
-
-No API signatures or serialization code are specified here — this is a
-structural sketch for planning purposes only, to be refined once VRF library
-integration (Phase 3) is in place.
+**Zero-proposer fallback (design decision):** resolved by an **auto-relaxing
+time bar** rather than a public-argmin backstop. Because the delay is finite for
+every score and there is no hard threshold, the minimum-score *online* validator
+always eventually clears its own bar and proposes — so there is no zero-proposer
+stall and selection stays private even in the fallback regime (contrast a
+deterministic public backstop, which would be predictable in the fallback round).
 
 **Integration with `StreamWeightRegistry`:** `ScoreComputation` consumes
 weights through the existing opaque read API (`GetLocalWeight()` /
@@ -477,7 +500,19 @@ code-level treatment of the registry.
 
 ## 8. Diagrams
 
-### 8.1 Component Architecture — Phase 4
+> **Note (as-built vs. original sketch).** The three diagrams below are the
+> *original planning* sketch of Phase 4 as an explicit **gossip-window** protocol
+> (`VRFSelector` / `ScoreComputation` / `GossipWindow` / `TiebreakerLogic`,
+> per-round P2P `ProposerClaim` broadcast). The phase was **implemented instead as
+> score-timed self-election** (no new P2P messages; the argmin reveals itself by
+> proposing first, bounded by a validator-side time bar) — see the design-decision
+> note in [§6.3](#63-phase-4--efraimidis-private-sortition-the-security-fix). For
+> the **accurate as-built** component and control-flow diagrams, see
+> [phase4-implementation-guide.md](phase4-implementation-guide.md) (§"Module
+> structure at a glance" and §8). The sketches are retained here as a record of the
+> alternative that was considered and deliberately not built.
+
+### 8.1 Component Architecture — Phase 4 (original gossip-window sketch)
 
 ```mermaid
 flowchart TD
@@ -527,36 +562,42 @@ sequenceDiagram
 
 ## 9. Vulnerabilities & Mitigations
 
-**Leader Predictability (Phases 1 & 2).** Under the public cumulative-WRS
-form used through Phase 2, the proposer is known to any observer as soon as
-the seed is public — one full block interval ahead. Mitigated by Phase 4:
-after private sortition lands, the proposer is hidden until auto-reveal (~500
-ms gossip target), turning a *targeted* DoS opportunity into, at worst, an
-*untargeted* one arriving too late to matter. **Permissioned-context note**:
-validators are trusted, but leader unpredictability remains a design goal
-even so — it protects against network-layer attacks that do not require
-validator misbehavior, and against a compromised or rogue validator gaining
-the same advantage an external attacker would. See
-[thesis-project-overview.md §3.2](thesis-project-overview.md#32-permissioned-context-mitigating-but-not-eliminating)
-for the full argument.
+**Leader Predictability (Phases 1 & 2). RESOLVED by Phase 4.** Under the public
+cumulative-WRS form used through Phase 2/3b, the proposer is known to any
+observer as soon as the seed is public — one full block interval ahead. Phase 4
+closes this: each validator scores itself *privately* (a VRF under its own secret
+key), so no peer can compute the winner in advance; the proposer becomes known
+only when it *proposes* (score-timed self-election), collapsing the warning window
+to block-propagation time. This turns a *targeted* DoS opportunity into, at worst,
+an *untargeted* one arriving too late to matter. **Permissioned-context note**:
+validators are trusted, but leader unpredictability remains a design goal even so
+— it protects against network-layer attacks that do not require validator
+misbehavior, and against a compromised or rogue validator gaining the same
+advantage an external attacker would. See
+[thesis-project-overview.md §3.2](thesis-project-overview.md#32-permissioned-context-mitigating-but-not-eliminating).
 
-**Zero-Proposer Finality Gap.** If no validator's score clears the reveal
-threshold in a round (all scores land above it by chance, or the top-scoring
-validators are offline), no block is proposed. Needs a defined fallback:
-either a domain-separated seed re-derivation for a retry round, or a bounded
-round-extension policy. This is an open design point for Phase 4 and should
-be specified before implementation begins.
+**Zero-Proposer Finality Gap. RESOLVED (auto-relaxing time bar).** The design
+point flagged here was resolved by making the mining delay a *continuous,
+strictly-increasing, finite* function of the score with **no hard threshold**
+(equivalently, a threshold that auto-relaxes over time). Because every score maps
+to a finite delay, the minimum-score *online* validator always eventually clears
+its own bar and proposes — so there is no zero-proposer stall, and no separate
+retry/round-extension policy is needed. See
+[phase4-implementation-guide.md §5](phase4-implementation-guide.md#5-design-decisions).
 
-**Tie-Breaking Determinism.** Two validators producing bit-identical scores
-is cryptographically negligible but not impossible to plan for. Rule:
-lexicographic ordering of `PK_i` breaks ties deterministically, so all honest
-nodes converge on the same winner without an extra round.
+**Tie-Breaking Determinism.** Two validators producing bit-identical scores is
+cryptographically negligible. Under score-timed self-election the ordering is by
+mining delay (score) rather than an explicit tie-break; an exact score tie is
+measure-zero and, if it ever occurred, is resolved by the network's ordinary
+first-seen fork choice like any other simultaneous-proposer round.
 
-**Liveness Under Churn.** If the validators with the lowest (winning) scores
-for a given round are offline or partitioned, the gossip window may expire
-with no accepted reveal, compounding with the zero-proposer case above. The
-fallback mechanism must be tested specifically under validator-churn
-scenarios, not just the all-online happy path.
+**Liveness Under Churn. Handled by the auto-relaxing bar.** If the lowest-score
+validators for a round are offline or partitioned, selection simply shifts to the
+minimum-score *online* validator (its finite delay elapses and it proposes). No
+gossip window can expire empty because there is no window to expire — the time bar
+relaxes continuously until *some* online validator proposes. The functional test
+drives the chain to completion with all nodes online; churn scenarios remain a
+recommended additional test.
 
 **Last-Revealer Bias.** Inherited from the RANDAO layer (Phase 3), not
 introduced by Phase 4: a validator that controls the last reveal in a round

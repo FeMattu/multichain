@@ -25,6 +25,7 @@
 #include "wpoa/wpoa_selector.h"
 #include "wpoa/vrf_wrapper.h"
 #include "wpoa/randao_accumulator.h"
+#include "wpoa/private_sortition.h"
 
 #include <boost/thread.hpp>
 #include <boost/tuple/tuple.hpp>
@@ -277,19 +278,32 @@ bool CreateBlockSignature(CBlock *block,uint32_t hash_type,CWallet *pwallet,uint
 
 /* MCHN START - wPoA Phase 3a: embed the proposer's VRF reveal */
     // When the VRF beacon is enabled, the signer (which, under wPoA, is the
-    // elected proposer) produces a verifiable pseudorandom reveal over the
-    // previous block hash and appends it to the signature element. The reveal is
-    // bound to the signer's key and the prev-hash, so no other node can forge it
-    // and it cannot be reused at a different chain position. Verified by peers in
-    // VerifyBlockMinerWPoA. Embedding is height-independent here (the flag alone
-    // gates it); the receiving side only REQUIRES it on wPoA-governed heights, so
-    // a stray reveal on a pre-setup block is harmless.
+    // elected proposer) produces a verifiable pseudorandom reveal and appends it to
+    // the signature element. The reveal is bound to the signer's key and to the
+    // round's public input, so no other node can forge it and it cannot be reused at
+    // a different chain position. Verified by peers in VerifyBlockMinerWPoA.
+    // Embedding is height-independent here (the flag alone gates it); the receiving
+    // side only REQUIRES it on wPoA-governed heights, so a stray reveal on a
+    // pre-setup block is harmless.
+    //
+    // wPoA Phase 4: on sortition-governed heights the VRF input is NOT the plain
+    // prev-block hash but the sortition input (beacon seed ‖ "PROPOSER" ‖ height) —
+    // the very input whose output IS this proposer's private election score, so the
+    // reveal peers verify is the one they re-score. Other heights keep the Phase-3a
+    // prev-hash input. WPoASortitionVRFInputForBlock returns false off sortition
+    // heights, so this cleanly falls back.
     if(g_wpoa_vrf_enabled)
     {
         unsigned char vrf_out[WPoAVRF::OUTPUT_SIZE];
         unsigned char vrf_proof[WPoAVRF::PROOF_SIZE];
-        if(WPoAVRF::Prove(key.begin(),block->hashPrevBlock.begin(),block->hashPrevBlock.size(),
-                          vrf_out,vrf_proof))
+
+        std::vector<unsigned char> vrf_input;
+        if(!WPoASortitionVRFInputForBlock(block,vrf_input))
+        {
+            vrf_input.assign(block->hashPrevBlock.begin(),block->hashPrevBlock.end());
+        }
+
+        if(WPoAVRF::Prove(key.begin(),vrf_input.data(),vrf_input.size(),vrf_out,vrf_proof))
         {
             lpScript->SetBlockVRF(vrf_out,WPoAVRF::OUTPUT_SIZE,vrf_proof,WPoAVRF::PROOF_SIZE);
         }
@@ -1051,6 +1065,28 @@ double GetMinerAndExpectedMiningStartTime(CWallet *pwallet,CPubKey *lpkMiner,set
 
     pindexTip = chainActive.Tip();
 
+/* MCHN START - wPoA Phase 4: don't re-propose a height whose tip has not advanced */
+    // Under private sortition a node's own block can legitimately lose the fork
+    // race; the tip hash (this function's caching key) then stays unchanged and the
+    // caching return below would keep handing back the past "mine now" time, so the
+    // miner loop would spin re-mining the same height. If we have already proposed a
+    // block for the next height, stand down until the tip advances. Placed before
+    // the cache so it takes effect even on a cache hit. Zero cost off sortition
+    // chains (WPoASortitionActiveAtHeight short-circuits on the disabled flag).
+    if(WPoASortitionActiveAtHeight(pindexTip->nHeight+1) &&
+       WPoASortitionAlreadyProposed(pindexTip->nHeight+1))
+    {
+        pwallet->GetKeyFromAddressBook(kThisMiner,MC_PTP_MINE);
+        *lpkMiner=kThisMiner;
+        *lpdMiningStartTime=mc_TimeNowAsDouble()+3600;
+        *lphLastBlockHash=pindexTip->GetBlockHash();
+        *lpnMemPoolSize=mempool.hashList->m_Count;
+        LogPrint("wpoa","mchn-miner: wPoA-sortition height=%d already proposed, waiting for tip to advance\n",
+                         pindexTip->nHeight+1);
+        return *lpdMiningStartTime;
+    }
+/* MCHN END */
+
     if(*lpdMiningStartTime >= 0)
     {
         if(*lphLastBlockHash == pindexTip->GetBlockHash())
@@ -1089,6 +1125,61 @@ double GetMinerAndExpectedMiningStartTime(CWallet *pwallet,CPubKey *lpkMiner,set
         *lpdMiningStartTime=mc_TimeNowAsDouble();                               // start mining immediately
         return *lpdMiningStartTime;
     }
+
+/* MCHN START - wPoA Phase 4: private (VRF-scored) sortition (score-timed self-election) */
+    // THE security fix. Instead of the public argmin (Phase 2/3b), each validator
+    // scores itself PRIVATELY — a VRF over the beacon seed under its own secret key,
+    // which no peer can compute — and self-elects by a mining delay that INCREASES
+    // with its score. The lowest score (the argmin) therefore starts first; once its
+    // block propagates, higher-score validators see the new tip (and the guard above
+    // / the caching return) and stand down. So the proposer is unknowable to the
+    // network until it acts, yet the winner is still the argmin => Pr[i]=w_i/Σw.
+    // Placed before the Phase 2 branch because sortition heights are a strict subset
+    // of wPoA heights and must take THIS path.
+    if(WPoASortitionActiveAtHeight(pindexTip->nHeight + 1))
+    {
+        pwallet->GetKeyFromAddressBook(kThisMiner,MC_PTP_MINE);
+        *lpkMiner=kThisMiner;
+
+        int nHeight=pindexTip->nHeight+1;
+        if(!kThisMiner.IsValid())
+        {
+            // No local mining key — cannot score/self-elect. Sleep until the tip
+            // advances (the caching return above keeps us idle in the meantime).
+            *lpdMiningStartTime=mc_TimeNowAsDouble()+3600;
+            LogPrint("wpoa","mchn-miner: wPoA-sortition height=%d no local mining key, waiting\n",nHeight);
+            return *lpdMiningStartTime;
+        }
+
+        CKey kMinerSecret;
+        if(!pwallet->GetKey(kThisMiner.GetID(),kMinerSecret))
+        {
+            *lpdMiningStartTime=mc_TimeNowAsDouble()+3600;
+            LogPrint("wpoa","mchn-miner: wPoA-sortition height=%d secret key unavailable, waiting\n",nHeight);
+            return *lpdMiningStartTime;
+        }
+        std::string sLocalAddr=CBitcoinAddress(kThisMiner.GetID()).ToString();
+
+        double dScore=0.0,dDelay=0.0;
+        if(!WPoASortitionLocalScoreDelay(pindexTip,sLocalAddr,kMinerSecret.begin(),&dScore,&dDelay))
+        {
+            // Seed / weight map not yet available, or this node carries no weight:
+            // cannot self-elect this round. Wait for the tip to advance.
+            *lpdMiningStartTime=mc_TimeNowAsDouble()+3600;
+            LogPrint("wpoa","mchn-miner: wPoA-sortition height=%d cannot score (unsynced or unweighted), waiting\n",nHeight);
+            return *lpdMiningStartTime;
+        }
+
+        // Score-timed self-election: mine after a delay that grows with our score,
+        // so the argmin proposes first. The receiving side enforces the SAME bar via
+        // the block's nTime (WPoASortitionVerifyProposer), so mining earlier than
+        // this would produce a block peers reject as "too early for its score".
+        *lpdMiningStartTime=mc_TimeNowAsDouble()+dDelay;
+        LogPrint("wpoa","mchn-miner: wPoA-sortition height=%d score=%.9g delay=%.3fs -> start in %.3fs (local=%s)\n",
+                         nHeight,dScore,dDelay,dDelay,sLocalAddr.c_str());
+        return *lpdMiningStartTime;
+    }
+/* MCHN END */
 
 /* MCHN START - wPoA Phase 2: weighted proposer election */
     // Replace the round-robin mining-diversity timing gate with a weighted
@@ -1711,7 +1802,15 @@ void static BitcoinMiner(CWallet *pwallet)
                         }
                         LogPrintf("MultiChainMiner: Block Found - %s, prev: %s, height: %d, txs: %d\n",
                                 hash.GetHex(),pblock->hashPrevBlock.ToString().c_str(),mc_gState->m_Permissions->m_Block+1,(int)pblock->vtx.size());
-/*                        
+/* MCHN START - wPoA Phase 4: record the proposed height so the miner loop does not
+   re-mine it if this block loses the fork race (the tip, its timing-cache key,
+   would otherwise stay unchanged). See WPoASortitionAlreadyProposed. */
+                        if(pindexPrev != NULL && WPoASortitionActiveAtHeight(pindexPrev->nHeight+1))
+                        {
+                            WPoASortitionMarkProposed(pindexPrev->nHeight+1);
+                        }
+/* MCHN END */
+/*
                         LogPrintf("MultiChainMiner:\n");
                         LogPrintf("proof-of-work found  \n  hash: %s  \ntarget: %s\n", hash.GetHex(), hashTarget.GetHex());
 */                     

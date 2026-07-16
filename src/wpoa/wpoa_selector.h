@@ -112,7 +112,65 @@ public:
     }
 
     /**
-     * Efraimidis–Spirakis score for one validator.
+     * Fold the top 64 bits (big-endian) of a hash-valued buffer into an integer.
+     *
+     * 64 bits of entropy is far more than a double's 53-bit mantissa can resolve,
+     * so this is not a precision bottleneck; using more bytes would not change the
+     * outcome. Shared by every entropy source that feeds the Efraimidis draw
+     * (Phase 2's HMAC digest, Phase 4's VRF output) so they fold identically.
+     *
+     * @param buf  At least 8 readable bytes (an HMAC-SHA256 or VRF output).
+     * @return the big-endian uint64 formed from buf[0..7].
+     */
+    static uint64_t FoldTop64(const unsigned char* buf)
+    {
+        uint64_t d = 0;
+        for (int i = 0; i < 8; i++)
+        {
+            d = (d << 8) | (uint64_t)buf[i];
+        }
+        return d;
+    }
+
+    /**
+     * The Efraimidis–Spirakis score transform, isolated from the entropy source.
+     *
+     *   u      = (d + 1) / 2^64        ∈ (0, 1]      (from 64 bits of entropy `d`)
+     *   E      = -ln(u)                ∈ [0, +∞)     (Exp(1)-distributed)
+     *   score  = E / f(weight)                       (Exp(f(weight))-distributed)
+     *
+     * This is the SINGLE SOURCE OF TRUTH for the score math: Phase 2's public
+     * HMAC selector (ComputeScore below) and Phase 4's private VRF sortition
+     * (PrivateSortition, private_sortition.h) both fold their entropy with
+     * FoldTop64 and call this, so the two produce byte-identical scores from the
+     * same `d` and `weight` — the only thing that differs between the public and
+     * private forms is WHERE `d` comes from.
+     *
+     * @param d        64 bits of entropy (see FoldTop64).
+     * @param weight   Validator weight; 0 yields +inf so the node can never win.
+     * @param dumping  Weight-dumping function applied to `weight` before the draw.
+     * @return the Efraimidis–Spirakis score; smaller wins.
+     */
+    static double ScoreFromEntropy64(uint64_t d, uint32_t weight,
+                                     DumpingFunction dumping = DUMP_NONE)
+    {
+        if (weight == 0)
+        {
+            return std::numeric_limits<double>::infinity();
+        }
+
+        // Normalize to (0, 1]. The "+ 1.0" (done in double, so it never wraps the
+        // uint64) guarantees u > 0 and therefore that -ln(u) is finite; u == 1 is
+        // a legitimate minimum (score 0) reached only when d == 2^64 - 1.
+        const double two64 = 18446744073709551616.0; // 2^64, exact in double
+        double u = ((double)d + 1.0) / two64;
+
+        double E = -std::log(u);                            // Exp(1)-distributed
+        return E / ApplyDumping(weight, dumping);           // Exp(f(weight))-distributed
+    }
+
+    /**
+     * Efraimidis–Spirakis score for one validator (Phase 2 public form).
      *
      * @param seed      Raw seed bytes (Phase 2: the previous block hash).
      * @param seed_len  Length of `seed` in bytes.
@@ -130,35 +188,13 @@ public:
                                const std::string& address, uint32_t weight,
                                DumpingFunction dumping = DUMP_NONE)
     {
-        if (weight == 0)
-        {
-            return std::numeric_limits<double>::infinity();
-        }
-
         // u_i = HMAC-SHA256(key = seed, msg = address).
         unsigned char mac[CHMAC_SHA256::OUTPUT_SIZE];
         CHMAC_SHA256(seed, seed_len)
             .Write(reinterpret_cast<const unsigned char*>(address.data()), address.size())
             .Finalize(mac);
 
-        // Fold the top 64 bits (big-endian) of the digest into an integer. 64 bits
-        // of entropy is far more than a double's 53-bit mantissa can resolve, so
-        // this is not a precision bottleneck; using more bytes would not change
-        // the outcome.
-        uint64_t d = 0;
-        for (int i = 0; i < 8; i++)
-        {
-            d = (d << 8) | (uint64_t)mac[i];
-        }
-
-        // Normalize to (0, 1]. The "+ 1.0" (done in double, so it never wraps the
-        // uint64) guarantees u > 0 and therefore that -ln(u) is finite; u == 1 is
-        // a legitimate minimum (score 0) reached only when d == 2^64 - 1.
-        const double two64 = 18446744073709551616.0; // 2^64, exact in double
-        double u = ((double)d + 1.0) / two64;
-
-        double E = -std::log(u);                            // Exp(1)-distributed
-        return E / ApplyDumping(weight, dumping);           // Exp(f(weight))-distributed
+        return ScoreFromEntropy64(FoldTop64(mac), weight, dumping);
     }
 
     /**

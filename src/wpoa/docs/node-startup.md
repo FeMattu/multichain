@@ -4,7 +4,8 @@
 > drives the entire MultiChain node bootstrap); here we document **only** the wPoA parts:
 > the Phase 1 `-weight` handling + registration thread (§2.1-2.3), the Phase 2
 > `-enablewpoa` (§2.4) and `-dumpfunction` (§2.5) flags, the Phase 3a `-enablewpoavrf`
-> (§2.6) flag, and the Phase 3b `-enablewpoarandao` / `-wpoarandaolookback` (§2.7) flags.
+> (§2.6) flag, the Phase 3b `-enablewpoarandao` / `-wpoarandaolookback` (§2.7) flags, and
+> the Phase 4 `-enablewpoasortition` / `-wpoasortitiondelay` (§2.8) flags.
 > The rest is the standard MultiChain/Bitcoin startup engine.
 
 `init.h` and `init.cpp` are documented together because they form the classic
@@ -354,6 +355,63 @@ Like the other wPoA flags, these launch **no thread**: they only set globals the
 validator consult at runtime. Both are **consensus-affecting** and must be uniform across the
 validator set — the same accepted-risk category as `-enablewpoa`/`-enablewpoavrf`.
 
+### 2.8 wPoA Phase 4: the `-enablewpoasortition` / `-wpoasortitiondelay` flags
+
+Phase 4 adds private (VRF-scored) sortition — the security fix (see
+[phase4-implementation-guide.md](phase4-implementation-guide.md)). Its startup footprint is a
+boolean plus a floating-point delay scale, parsed in the **same `#ifdef ENABLE_WALLET` block**,
+right after the `-enablewpoarandao` handling:
+
+```cpp
+// wPoA Phase 4: private (VRF-scored) sortition. Default off. Consumes the beacon
+// seed as its public VRF input, so it REQUIRES -enablewpoarandao; a lone flag stays
+// inert. The delay scale enters the validator's time bar and must match on all nodes.
+g_wpoa_sortition_enabled = GetBoolArg("-enablewpoasortition", false);
+
+std::string sortition_delay_arg =
+    GetArg("-wpoasortitiondelay", strprintf("%g", (double)MC_WPOA_DEFAULT_SORTITION_DELAY));
+char* end = NULL;
+double sortition_delay = strtod(sortition_delay_arg.c_str(), &end);
+if (end == sortition_delay_arg.c_str() || *end != '\0' ||
+    !(sortition_delay >= 0.0) || sortition_delay > PrivateSortition::MaxDelaySeconds())
+    return InitError(strprintf(_("Invalid -wpoasortitiondelay value '%s': ..."), sortition_delay_arg));
+g_wpoa_sortition_delay = sortition_delay;
+
+if (g_wpoa_sortition_enabled)
+{
+    if (!g_wpoa_randao_enabled)
+        LogPrintf("[wPoA] WARNING: -enablewpoasortition set without -enablewpoarandao; "
+                  "private sortition has no beacon seed to score and stays inert.\n");
+    else if (g_wpoa_randao_lookback < 1)
+        return InitError(_("wPoA private sortition requires -wpoarandaolookback >= 1: ... circular."));
+}
+LogPrintf("[wPoA] Private sortition %s (delay scale=%g s)\n",
+          g_wpoa_sortition_enabled ? "ENABLED (-enablewpoasortition=1)" : "disabled",
+          g_wpoa_sortition_delay);
+```
+
+Line-by-line:
+
+- **`GetBoolArg("-enablewpoasortition", false)`** — the on/off switch, defaulting to `false`, so
+  a Phase 3b (public-election) node is byte-for-byte unchanged.
+- **`-wpoasortitiondelay`** — the delay scale `s` in `delay = s · score · Σf(w)`, read as a
+  string and parsed with `strtod` so a fractional value is accepted; validated to be a finite,
+  non-negative number `≤ PrivateSortition::MaxDelaySeconds()`. It is **consensus-critical** (it
+  enters the validator's time bar), so every node must run the same value.
+- **`g_wpoa_sortition_enabled` / `g_wpoa_sortition_delay = …`** — the two globals defined in
+  `private_sortition.cpp` and declared `extern` in `private_sortition.h`
+  (see [private-sortition.md](private-sortition.md)). Written once on the init thread, so no lock.
+- **The `!g_wpoa_randao_enabled` warning** — a lone `-enablewpoasortition` has no beacon seed to
+  evaluate (`WPoASortitionActiveAtHeight` = the flag **AND** `WPoARANDAOActiveAtHeight`), so it
+  stays inert; the warning makes the misconfiguration visible.
+- **The `k >= 1` fatal check** — the **circularity guard**: the sortition reveal `R[n]` feeds
+  `R_tot[n]` while its own seed reads `R_tot[n-k]`, so `k = 0` would make the selection seed
+  circular. When sortition is on, `k = 0` is a fatal `InitError`, not a silent fork risk.
+
+Two `HelpMessage` lines are added next to the `-wpoarandaolookback` one, describing
+`-enablewpoasortition` and `-wpoasortitiondelay`. Like the other wPoA flags they launch **no
+thread**; both are consensus-affecting and must be uniform across the validator set.
+
 ## 3. The complete startup flow
 
 ```mermaid
@@ -383,9 +441,11 @@ flowchart TD
   `g_node_weight` and `ThreadRegisterNodeWeight` used in the startup block.
 - **`init.cpp`** is the **only** place that launches the thread and sets `g_node_weight`
   (Phase 1), `g_wpoa_enabled` and `g_dumping_function` (Phase 2), `g_wpoa_vrf_enabled`
-  (Phase 3a), and `g_wpoa_randao_enabled` / `g_wpoa_randao_lookback` (Phase 3b); it is the
-  bridge between the user's configuration (`-weight`, `-enablewpoa`, `-dumpfunction`,
-  `-enablewpoavrf`, `-enablewpoarandao`, `-wpoarandaolookback`) and the wPoA subsystem.
+  (Phase 3a), `g_wpoa_randao_enabled` / `g_wpoa_randao_lookback` (Phase 3b), and
+  `g_wpoa_sortition_enabled` / `g_wpoa_sortition_delay` (Phase 4); it is the bridge between the
+  user's configuration (`-weight`, `-enablewpoa`, `-dumpfunction`, `-enablewpoavrf`,
+  `-enablewpoarandao`, `-wpoarandaolookback`, `-enablewpoasortition`, `-wpoasortitiondelay`) and
+  the wPoA subsystem.
 - The read RPCs (in `rpclist.cpp`) are **independent** of this startup: they work even if
   the thread has not registered anything yet (they simply return 0 / an empty map).
 - **`wpoa_selector.cpp`** defines `g_wpoa_enabled`, `g_dumping_function` and
