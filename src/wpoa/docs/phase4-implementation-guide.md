@@ -155,7 +155,7 @@ New files (the module):
 | [`private_sortition.cpp`](../private_sortition.cpp) | Definitions of the node glue: the runtime flag/scale, the height activation predicate, the shared context builder (seed + weight map + Σf(w)), the miner-side local score/delay, the reveal VRF-input builder, the validator-side eligibility/time-bar verdict, and the miner-loop anti-respin guard. |
 | [`test/private_sortition_tests.cpp`](../test/private_sortition_tests.cpp) | Boost.Test unit suite: VRF-input encoding, score reuse (single source of truth), delay map, key-dependence (privacy), and end-to-end probability preservation with **real** VRF keys. |
 | [`test/run_unit_tests.sh sortition`](../test/run_unit_tests.sh) | Build + run the unit tests (links SHA256 + HMAC + the VRF wrapper + secp256k1; no node build). |
-| [`test/functional_test_wpoa_sortition.sh`](../test/functional_test_wpoa_sortition.sh) | Multi-node end-to-end test: liveness, no persistent fork, private-path-engaged (no public-argmin acceptances), weight-proportional distribution. |
+| [`test/functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh) | Multi-node end-to-end test: liveness, no persistent fork, private-path-engaged (no public-argmin acceptances), weight-proportional distribution. |
 
 Files **modified** in the host tree (integration points):
 
@@ -446,7 +446,7 @@ Representative run (equal weights, 20 000 trials; skewed 1:2:3:4, 20 000 trials)
 
 ### 12.2 Multi-node functional test
 
-[test/functional_test_wpoa_sortition.sh](../test/functional_test_wpoa_sortition.sh). Bootstraps
+[test/functional_test_wpoa_system.sh](../test/functional_test_wpoa_system.sh). Bootstraps
 N permissioned nodes with `-enablewpoa -enablewpoavrf -enablewpoarandao -enablewpoasortition`,
 waits for weight convergence, drives the chain past setup, and asserts:
 

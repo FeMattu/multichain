@@ -6,7 +6,7 @@
 //
 // These tests are self-contained: they link only SHA256 and Boost.Test
 // (header-only), NOT the wallet / node runtime. Build & run with
-// src/wpoa/test/run_randao_unit_tests.sh.
+// src/wpoa/test/run_unit_tests.sh randao.
 //
 // They validate, node-free, every property the beacon relies on:
 //   * spec conformance — Fold == H(R_tot_prev ⊕ H(reveal)) and

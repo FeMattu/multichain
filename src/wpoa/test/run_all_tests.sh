@@ -7,7 +7,7 @@
 #   Phase 2  ── functional tests (slow, real multi-node) via run_functional_tests.sh
 #
 # Unit tests run first because they are fast and node-free: if the pure logic is
-# broken there is no point spending many minutes on the multi-node drivers. By
+# broken there is no point spending many minutes on the multi-node functional run. By
 # default a unit-test failure therefore SKIPS the functional phase (set
 # CONTINUE_ON_UNIT_FAIL=1 to run functional tests anyway).
 #

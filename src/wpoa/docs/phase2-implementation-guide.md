@@ -116,7 +116,7 @@ New files (the module):
 | [`wpoa_selector.cpp`](../wpoa_selector.cpp) | Definitions of the node-coupled glue: the runtime flag, the height activation predicate, and the registry-backed `WPoASelectProposer`. |
 | [`test/wpoa_selector_tests.cpp`](../test/wpoa_selector_tests.cpp) | Boost.Test unit suite for the pure core (determinism, order-independence, degenerate cases, probability preservation). |
 | [`test/run_unit_tests.sh selector`](../test/run_unit_tests.sh) | Build + run the selector unit tests (no node build needed). |
-| [`test/functional_test_wpoa_multinode.sh`](../test/functional_test_wpoa_multinode.sh) | Multi-node end-to-end distribution test. |
+| [`test/functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh) | Multi-node end-to-end distribution test. |
 | [`test/analyze_distribution.py`](../test/analyze_distribution.py) | Chi-square goodness-of-fit analysis of the observed proposer distribution. |
 
 Files **modified** in the host tree (integration points):
@@ -585,7 +585,7 @@ validator matches `w_i/Σw` (e.g. weights 1:2:3:4 → observed 0.100/0.200/0.299
 
 ### 12.2 Multi-node functional test (chi-square distribution)
 
-[test/functional_test_wpoa_multinode.sh](../test/functional_test_wpoa_multinode.sh) +
+[test/functional_test_wpoa_system.sh](../test/functional_test_wpoa_system.sh) +
 [test/analyze_distribution.py](../test/analyze_distribution.py). Bootstraps N
 permissioned nodes with distinct weights and `-enablewpoa=1`, waits until every node has
 the full weight map confirmed (so the whole sample is elected from an identical,
@@ -636,14 +636,14 @@ Run it:
 ```
 # ~1000-block run (raise the accrual timeout to match ~2 s/block pacing)
 NODES=3 WEIGHTS="100 200 300" DIST_BLOCKS=1000 DIST_TIMEOUT=2400 \
-    ./src/wpoa/test/functional_test_wpoa_multinode.sh
+    ./src/wpoa/test/functional_test_wpoa_system.sh
 
 # fast validation: 200-block distribution test (the run shown above)
 NODES=3 WEIGHTS="100 200 300" DIST_BLOCKS=200 SETUP_BLOCKS=30 DIST_TIMEOUT=500 \
-    ./src/wpoa/test/functional_test_wpoa_multinode.sh
+    ./src/wpoa/test/functional_test_wpoa_system.sh
 
 # legacy mode: aggregate-weight check only (no wPoA / no distribution)
-ENABLEWPOA=0 DIST_BLOCKS=0 ./src/wpoa/test/functional_test_wpoa_multinode.sh
+ENABLEWPOA=0 DIST_BLOCKS=0 ./src/wpoa/test/functional_test_wpoa_system.sh
 ```
 
 ---

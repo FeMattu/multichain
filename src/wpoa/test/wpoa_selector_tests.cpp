@@ -6,7 +6,7 @@
 //
 // These tests are self-contained: they link only the HMAC-SHA256 / SHA256
 // crypto primitives and Boost.Test (header-only), NOT the wallet / node
-// runtime. Build & run with src/wpoa/test/run_selector_unit_tests.sh.
+// runtime. Build & run with src/wpoa/test/run_unit_tests.sh selector.
 //
 // They validate, node-free:
 //   * determinism and iteration-order independence of the election;

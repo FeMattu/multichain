@@ -25,15 +25,15 @@ flowchart TD
         U[run_unit_tests.sh<br/>all Boost.Test suites:<br/>weight / selector / vrf / randao / sortition]
     end
     subgraph func [Requires a built node]
-        F[run_functional_tests.sh<br/>orchestrates the drivers below]
-        M[functional_test_wpoa_multinode.sh<br/>weight + distribution<br/>single node = NODES=1]
-        V[functional_test_wpoa_vrf/randao/sortition.sh<br/>beacon + private sortition]
+        F[run_functional_tests.sh<br/>wrapper: timeout + QUICK]
+        SYS[functional_test_wpoa_system.sh<br/>ONE full-stack network, warmed up once]
+        C[checks on the shared run:<br/>weight / consistency / vrf / randao / sortition / distribution]
         MAN[Manual tests<br/>single node §4 / three nodes §5]
     end
     ALL[run_all_tests.sh<br/>unit then functional] --> U
     ALL --> F
-    F --> M
-    F --> V
+    F --> SYS
+    SYS --> C
     BUILD[make: multichaind / multichain-cli / multichain-util] --> func
     U -.no build needed.-> UOK([pure logic verified])
 ```
@@ -295,34 +295,32 @@ Notes:
 
 ---
 
-## 7. Automated functional smoke test
+## 7. Automated functional test (single system-level run)
 
-`src/wpoa/test/functional_test_wpoa_multinode.sh` drives a **real multi-node**
-network end to end (and a **single node** when `NODES=1`): it creates a throwaway
-chain with fast blocks, starts `multichaind -weight=<N>` per node, polls
-`getallweights` until the aggregate weight is confirmed, asserts it, and
-(optionally) runs the weighted proposer-distribution / chi-square check, then
-stops the nodes and cleans up. It requires the node to be built first (§1).
+`src/wpoa/test/functional_test_wpoa_system.sh` drives a **real multi-node**
+network end to end. It starts **one** full-stack network (weights + VRF + RANDAO
++ sortition), waits for weight convergence and a block warm-up **once**, and then
+runs every feature check against that shared run — `check_weight`,
+`check_multinode_consistency`, `check_vrf`, `check_randao`, `check_sortition`,
+`check_distribution` — before stopping the nodes and cleaning up. It requires the
+node to be built first (§1). Set `NODES=1` for a single-node run.
 
 ```bash
 cd ./src/wpoa/test
-# single-node smoke (weight only)
-NODES=1 ENABLEWPOA=0 DIST_BLOCKS=0 ./functional_test_wpoa_multinode.sh
-BINDIR=./src NODES=1 ENABLEWPOA=0 DIST_BLOCKS=0 WEIGHTS="200" ./functional_test_wpoa_multinode.sh
-
-# multinode
-./functional_test_wpoa_multinode.sh                       # 3 nodes, default weights
-NODES=5 WEIGHTS="10 20 30 40 50" ./functional_test_wpoa_multinode.sh
-BINDIR=./src NODES=4 TIMEOUT=240 ./functional_test_wpoa_multinode.sh
+./functional_test_wpoa_system.sh                          # 3 nodes, full sample
+QUICK=1 ./functional_test_wpoa_system.sh                  # smaller sample, faster
+NODES=1 ./functional_test_wpoa_system.sh                  # single node
+NODES=5 WEIGHTS="10 20 30 40 50" ./functional_test_wpoa_system.sh
+INCLUDE_PUBLIC_SELECTOR=1 ./functional_test_wpoa_system.sh # + the sortition-off regime
 ```
 
-Prefer the orchestrator to run every functional suite (weight/distribution, VRF,
-RANDAO, private sortition) in order, with a warning banner, per-suite hard
-timeout and correct exit codes — see [`../test/README.md`](../test/README.md):
+Each check prints ✔/✗ lines and a final results table; the run exits non-zero if
+any critical check fails. Prefer the wrapper, which adds a warning banner and a
+hard timeout safety-net — see [`../test/README.md`](../test/README.md):
 
 ```bash
-./src/wpoa/test/run_functional_tests.sh            # all suites (full)
-QUICK=1 ./src/wpoa/test/run_functional_tests.sh    # fast smoke (reduced samples)
+./src/wpoa/test/run_functional_tests.sh            # the system run (full)
+QUICK=1 ./src/wpoa/test/run_functional_tests.sh    # fast smoke (smaller sample)
 ```
 
 Exit code `0` and `FUNCTIONAL TEST PASSED` on success; non-zero with diagnostics

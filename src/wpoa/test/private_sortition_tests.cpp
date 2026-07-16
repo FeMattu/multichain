@@ -8,7 +8,7 @@
 // These tests are self-contained: they link only the SHA256 / HMAC-SHA256 crypto
 // primitives, the VRF wrapper (secp256k1) and Boost.Test (header-only), NOT the
 // wallet / node runtime. Build & run with
-// src/wpoa/test/run_sortition_unit_tests.sh (needs a one-time secp256k1 build).
+// src/wpoa/test/run_unit_tests.sh sortition (needs a one-time secp256k1 build).
 //
 // They validate, node-free:
 //   * the consensus-critical VRF-input encoding  seed ‖ "PROPOSER" ‖ height_be;

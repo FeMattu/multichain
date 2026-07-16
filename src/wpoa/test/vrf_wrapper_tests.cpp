@@ -6,7 +6,7 @@
 //
 // These tests are self-contained: they link only secp256k1 + SHA256 and
 // Boost.Test (header-only), NOT the wallet / node runtime. Build & run with
-// src/wpoa/test/run_vrf_unit_tests.sh.
+// src/wpoa/test/run_unit_tests.sh vrf.
 //
 // They validate, node-free, every property the beacon relies on:
 //   * correctness  — an honestly produced (output, proof) verifies;

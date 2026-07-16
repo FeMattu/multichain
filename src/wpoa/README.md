@@ -240,12 +240,9 @@ new to the project.
 | [`test/randao_accumulator_tests.cpp`](test/randao_accumulator_tests.cpp) | Phase 3b: Boost.Test unit tests for the pure accumulator/seed core (spec conformance vs. an independent reference, determinism, order/input sensitivity, chain consistency). |
 | [`test/private_sortition_tests.cpp`](test/private_sortition_tests.cpp) | Phase 4: Boost.Test unit tests for the pure sortition core (VRF-input encoding, score reuse vs. the shared transform, delay map, key-dependence/privacy, and probability preservation with real VRF keys). |
 | [`test/run_unit_tests.sh`](test/run_unit_tests.sh) | Build + run **all** unit suites, or a named subset — `run_unit_tests.sh selector vrf` (no node build needed). |
-| [`test/run_functional_tests.sh`](test/run_functional_tests.sh) | Orchestrate **all** functional suites (or a subset) with a warning banner, per-suite hard timeout, and correct exit codes. |
-| [`test/run_all_tests.sh`](test/run_all_tests.sh) | Single entrypoint: run unit tests, then functional tests, to validate the whole system. See [`test/README.md`](test/README.md). |
-| [`test/functional_test_wpoa_multinode.sh`](test/functional_test_wpoa_multinode.sh) / [`test/analyze_distribution.py`](test/analyze_distribution.py) | End-to-end multi-node test (weight + chi-square proposer-distribution analyzer). Single-node smoke = `NODES=1 ENABLEWPOA=0 DIST_BLOCKS=0`. |
-| [`test/functional_test_wpoa_vrf.sh`](test/functional_test_wpoa_vrf.sh) | Phase 3a: end-to-end multi-node VRF beacon test (reveals produced, verified network-wide, chain live and fork-free under mandatory verification). |
-| [`test/functional_test_wpoa_randao.sh`](test/functional_test_wpoa_randao.sh) | Phase 3b: end-to-end multi-node RANDAO beacon-seed test (liveness + no-fork under the beacon seed, beacon-engaged evidence, weight-proportional distribution under the seed). |
-| [`test/functional_test_wpoa_sortition.sh`](test/functional_test_wpoa_sortition.sh) | Phase 4: end-to-end multi-node private-sortition test (liveness, no persistent fork, private-path-engaged with zero public-argmin acceptances, weight-proportional distribution under private scoring). |
+| [`test/run_functional_tests.sh`](test/run_functional_tests.sh) | Wrapper around the single system run: warning banner, hard timeout, correct exit code. |
+| [`test/run_all_tests.sh`](test/run_all_tests.sh) | Single entrypoint: run unit tests, then the functional run, to validate the whole system. See [`test/README.md`](test/README.md). |
+| [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) / [`test/functional_lib.sh`](test/functional_lib.sh) / [`test/analyze_distribution.py`](test/analyze_distribution.py) | **The** functional test: ONE full-stack network, warmed up once, then all feature checks (weight, multi-node consistency, VRF, RANDAO, sortition, chi-square distribution) on the shared run. `INCLUDE_PUBLIC_SELECTOR=1` adds the sortition-off (public argmin) regime; `QUICK=1` uses a smaller sample. |
 
 Integration points in the host tree: [`../core/init.cpp`](../core/init.cpp)
 (startup flags, incl. `-enablewpoavrf`, `-enablewpoarandao`/`-wpoarandaolookback`
@@ -281,30 +278,30 @@ details.
 | **1** | RPC surface (`getlocalweight`, `getnodeweight`, `getallweights`) | Done | Confirmed-only, thread-safe. |
 | **1** | Read-path correctness fixes | Done | non-WRP read family (WRP snapshot bug) and 6-arg `OpReturnFormatEntry` overload. |
 | **1** | Unit tests (pure parsing / aggregation) | Done | Boost.Test suite, node-free. |
-| **1** | Single-node functional smoke test | Done | [`test/functional_test_wpoa_multinode.sh`](test/functional_test_wpoa_multinode.sh) with `NODES=1 ENABLEWPOA=0 DIST_BLOCKS=0`. |
-| **1** | Multi-node functional smoke test | Done | [`test/functional_test_wpoa_multinode.sh`](test/functional_test_wpoa_multinode.sh) — bootstraps `connect`/`send`/`receive`/`mine`/`wpoa-weights.write` from node 0; asserts per-node weight. |
+| **1** | Single-node functional smoke test | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) with `NODES=1` (`check_weight`). |
+| **1** | Multi-node functional smoke test | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) `check_weight` + `check_multinode_consistency` — bootstraps `connect`/`send`/`receive`/`mine`/`wpoa-weights.write` from node 0; asserts aggregate weight. |
 | **2** | Weighted miner selection (`WPoASelector` + `miner.cpp` hook) | Done | Efraimidis–Spirakis argmin seeded by prev-block hash; consumes `GetAllNodesWeights()`. See [docs/phase2-implementation-guide.md](docs/phase2-implementation-guide.md). |
 | **2** | `-enablewpoa` runtime toggle | Done | Default off (native round-robin unchanged); gates miner + validation hooks. |
 | **2** | Proposer validation (`VerifyBlockMiner` hook) | Done | Recomputes the election on receipt; rejects blocks not from the elected proposer. |
 | **2** | Deterministic tie-break | Done | Lexicographically smallest address on exact score collision. |
 | **2** | Unit tests (pure selector math) | Done | [`test/wpoa_selector_tests.cpp`](test/wpoa_selector_tests.cpp); probability preservation over 200k seeds. |
-| **2** | Multi-node distribution test (chi-square) | Done | [`test/functional_test_wpoa_multinode.sh`](test/functional_test_wpoa_multinode.sh) + [`test/analyze_distribution.py`](test/analyze_distribution.py); ~1000 blocks, observed vs. expected. |
+| **2** | Multi-node distribution test (chi-square) | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) `check_distribution` + [`test/analyze_distribution.py`](test/analyze_distribution.py); observed vs. expected over the sample window. Public-argmin regime via `INCLUDE_PUBLIC_SELECTOR=1`. |
 | **3a** | VRF wrapper (`WPoAVRF`, ECVRF/DLEQ over secp256k1) | Done | Pure `Prove`/`Verify`; no new build dependency. [docs/phase3a-implementation-guide.md](docs/phase3a-implementation-guide.md). |
 | **3a** | `-enablewpoavrf` runtime toggle | Done | Default off; requires `-enablewpoa`. Gates reveal production + verification via `WPoAVRFActiveAtHeight`. |
 | **3a** | Per-block reveal embed + verify | Done | Proposer embeds `(R, π)` as a suffix of the block-signature element; `VerifyBlockMinerWPoA` rejects a missing/invalid reveal on wPoA-VRF heights. |
 | **3a** | Unit tests (pure VRF crypto) | Done | [`test/vrf_wrapper_tests.cpp`](test/vrf_wrapper_tests.cpp); roundtrip, determinism, tamper/forgery/cross-key rejection. |
-| **3a** | Multi-node functional test | Done | [`test/functional_test_wpoa_vrf.sh`](test/functional_test_wpoa_vrf.sh); reveals verified network-wide, chain live and fork-free. |
+| **3a** | Multi-node functional test | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) `check_vrf`; reveals carried & verified network-wide (via the sortition path), 0 rejects, chain live and fork-free. Standalone `VRF reveal OK` log via `INCLUDE_PUBLIC_SELECTOR=1`. |
 | **3b** | RANDAO accumulator + seed (`RandaoAccumulator`) | Done | `R_tot[n]=H(R_tot[n-1]⊕H(R[n]))` folded over the 3a reveals; `seed[n+1]=H(R_tot[n-k]‖h[n-1]‖n)` derived and memoized. [docs/phase3b-implementation-guide.md](docs/phase3b-implementation-guide.md). |
 | **3b** | `-enablewpoarandao` + `-wpoarandaolookback=k` | Done | Default off; requires `-enablewpoavrf`. Gates the seed swap via `WPoARANDAOActiveAtHeight`; `k` is consensus-critical, validated at startup. |
 | **3b** | Selection-seed swap (miner + validator) | Done | Both call sites replace the prev-hash seed with `WPoARandaoSelectionSeed(tip)`; the Efraimidis election is otherwise unchanged (stays weight-proportional). |
 | **3b** | Unit tests (pure accumulator/seed math) | Done | [`test/randao_accumulator_tests.cpp`](test/randao_accumulator_tests.cpp); spec conformance vs. an independent reference, order/input sensitivity, chain consistency. |
-| **3b** | Multi-node functional test | Done | [`test/functional_test_wpoa_randao.sh`](test/functional_test_wpoa_randao.sh); liveness + no-fork under the beacon seed, 0 fallback folds, weight-proportional distribution (chi-square). |
+| **3b** | Multi-node functional test | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) `check_randao`; liveness + no-fork under the beacon seed, seed derivations logged, 0 fallback folds, weight-proportional distribution (chi-square). |
 | **4** | Private sortition core (`PrivateSortition`) | Done | `VRFInput`/`ScoreFromVRFOutput`/`MiningDelay`, node-free; reuses the Phase-2 score transform so the distribution is provably unchanged. [docs/phase4-implementation-guide.md](docs/phase4-implementation-guide.md). |
 | **4** | `-enablewpoasortition` + `-wpoasortitiondelay` | Done | Default off; requires `-enablewpoarandao` and lookback `k>=1` (seed↔reveal acyclicity, validated at startup). Gates the private path via `WPoASortitionActiveAtHeight`; the delay scale is consensus-critical. |
 | **4** | Score-timed self-election (miner) | Done | Each validator scores itself privately (VRF under its own key) and mines at `now + delay(score)`, so the argmin proposes first; anti-respin guard + reveal-input switch to `seed‖"PROPOSER"‖height`. |
 | **4** | Eligibility / time-bar validation (`VerifyBlockMinerWPoA`) | Done | Replaces the public argmin equality: verify the VRF over the sortition input, recompute the score, accept iff `block.nTime ≥ parent.nTime + delay`. Auto-relaxing bar = liveness fallback (no zero-proposer gap). |
 | **4** | Unit tests (pure sortition math + real VRF) | Done | [`test/private_sortition_tests.cpp`](test/private_sortition_tests.cpp); VRF-input encoding, score reuse, delay map, privacy, and probability preservation with real VRF keys (chi-square). |
-| **4** | Multi-node functional test | Done | [`test/functional_test_wpoa_sortition.sh`](test/functional_test_wpoa_sortition.sh); liveness, no persistent fork, zero public-argmin acceptances (selection is private), weight-proportional distribution (chi-square). |
+| **4** | Multi-node functional test | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) `check_sortition`; liveness, no persistent fork, zero public-argmin acceptances (selection is private), weight-proportional distribution (chi-square). This is the default full-stack run. |
 
 **Phases 1, 2, 3a, 3b and 4 are complete and validated end-to-end.** The multi-node
 functional test bootstraps a permissioned network with distinct per-node
@@ -368,10 +365,10 @@ Full build and test instructions are in [testing.md](docs/testing.md) and
 [`test/README.md`](test/README.md). All unit suites (weight, selector, VRF,
 RANDAO, sortition) run node-free via
 [`test/run_unit_tests.sh`](test/run_unit_tests.sh) — pass a suite name to run
-just one, e.g. `run_unit_tests.sh vrf`. The multi-node beacon/sortition tests
-are orchestrated by [`test/run_functional_tests.sh`](test/run_functional_tests.sh)
-(individual drivers:
-[`test/functional_test_wpoa_vrf.sh`](test/functional_test_wpoa_vrf.sh),
-[`test/functional_test_wpoa_randao.sh`](test/functional_test_wpoa_randao.sh),
-[`test/functional_test_wpoa_sortition.sh`](test/functional_test_wpoa_sortition.sh)).
-Run absolutely everything with [`test/run_all_tests.sh`](test/run_all_tests.sh).
+just one, e.g. `run_unit_tests.sh vrf`. The functional tests are now a single
+system-level run,
+[`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh)
+(wrapped by [`test/run_functional_tests.sh`](test/run_functional_tests.sh)): it
+starts ONE full-stack network and verifies weight, multi-node consistency, VRF,
+RANDAO, sortition and the chi-square distribution on that shared run. Run
+absolutely everything with [`test/run_all_tests.sh`](test/run_all_tests.sh).
