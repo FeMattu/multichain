@@ -92,7 +92,7 @@ bias block production. That is Phase 2 (see §12).
 | Docs | [../README.md](../README.md) (entry point), this guide, [multichain-internals.md](multichain-internals.md), [stream-weight-registry.md](stream-weight-registry.md), [weight-record.md](weight-record.md), [node-startup.md](node-startup.md), [rpc-registration.md](rpc-registration.md), [testing.md](testing.md). |
 | [`test/wpoa_weight_tests.cpp`](../test/wpoa_weight_tests.cpp) | Boost.Test unit tests for the pure logic. |
 | [`test/run_unit_tests.sh`](../test/run_unit_tests.sh) | Build + run the unit tests (no node build needed). |
-| [`test/functional_test_wpoa.sh`](../test/functional_test_wpoa.sh) | End-to-end smoke test driving a real single node. |
+| [`test/functional_test_wpoa_multinode.sh`](../test/functional_test_wpoa_multinode.sh) | End-to-end smoke test driving a real single node. |
 
 Files **modified** in the host tree (integration points):
 

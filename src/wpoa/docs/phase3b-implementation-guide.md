@@ -141,7 +141,7 @@ New files (the module):
 | [`randao_accumulator.h`](../randao_accumulator.h) | Header-only pure core `RandaoAccumulator` (`Fold`, `DeriveSeed`, `Genesis`) **plus** the declarations of the node-coupled glue (`g_wpoa_randao_enabled`, `g_wpoa_randao_lookback`, `WPoARANDAOActiveAtHeight`, `WPoARandaoSelectionSeed`). Depends only on `CSHA256`, so the core is unit-testable without the node. |
 | [`randao_accumulator.cpp`](../randao_accumulator.cpp) | Definitions of the node-coupled glue: the runtime flag/lookback, the height activation predicate, the memoized block-index walk (`GetAccumulator`), the thread-local reveal extractor (`ExtractBlockReveal`) and the seed helper (`WPoARandaoSelectionSeed`). |
 | [`test/randao_accumulator_tests.cpp`](../test/randao_accumulator_tests.cpp) | Boost.Test unit suite for the pure core (spec conformance vs. an independent reference, determinism, order/input sensitivity, chain consistency). |
-| [`test/run_randao_unit_tests.sh`](../test/run_randao_unit_tests.sh) | Build + run the accumulator unit tests (no node build needed; links only SHA256). |
+| [`test/run_unit_tests.sh randao`](../test/run_unit_tests.sh) | Build + run the accumulator unit tests (no node build needed; links only SHA256). |
 | [`test/functional_test_wpoa_randao.sh`](../test/functional_test_wpoa_randao.sh) | Multi-node end-to-end test: liveness + no-fork under the beacon seed, beacon-engaged evidence, and weight-proportional distribution under the seed. |
 
 Files **modified** in the host tree (integration points):
@@ -547,7 +547,7 @@ Operators still override it with `-wpoarandaolookback`; it must match on all nod
 
 ### 11.3 Change the fold / accumulator construction
 Reimplement `RandaoAccumulator::Fold` behind the same signature and re-run
-[`test/run_randao_unit_tests.sh`](../test/run_randao_unit_tests.sh); no caller changes. Keep it
+[`test/run_unit_tests.sh randao`](../test/run_unit_tests.sh); no caller changes. Keep it
 order-sensitive and deterministic, or the chain-history property (§4.1) breaks.
 
 ### 11.4 Change when the beacon seed engages
@@ -567,7 +567,7 @@ up again), or persist `R_tot` in the block index — see §5.4 for the trade-off
 ### 12.1 Unit tests (node-free, pure math)
 
 [test/randao_accumulator_tests.cpp](../test/randao_accumulator_tests.cpp), run with
-[test/run_randao_unit_tests.sh](../test/run_randao_unit_tests.sh). Links only SHA256 +
+[test/run_unit_tests.sh randao](../test/run_unit_tests.sh). Links only SHA256 +
 Boost.Test. Covers, node-free:
 
 - **spec conformance** — `Fold` and `DeriveSeed` match an *independent* re-implementation of
@@ -583,7 +583,7 @@ Boost.Test. Covers, node-free:
 Run it:
 
 ```
-./src/wpoa/test/run_randao_unit_tests.sh
+./src/wpoa/test/run_unit_tests.sh randao
 ```
 
 ### 12.2 Multi-node functional test

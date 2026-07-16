@@ -22,13 +22,18 @@ Throughout, `CHAIN` is the blockchain name and the binaries are in `./src`
 ```mermaid
 flowchart TD
     subgraph unit [Node-free]
-        U[run_unit_tests.sh<br/>Boost.Test on weight_record.h<br/>parsing + newest-wins aggregation]
+        U[run_unit_tests.sh<br/>all Boost.Test suites:<br/>weight / selector / vrf / randao / sortition]
     end
     subgraph func [Requires a built node]
-        S[functional_test_wpoa.sh<br/>single node, fast blocks, assert weight]
-        M[functional_test_wpoa_multinode.sh<br/>multiple nodes]
+        F[run_functional_tests.sh<br/>orchestrates the drivers below]
+        M[functional_test_wpoa_multinode.sh<br/>weight + distribution<br/>single node = NODES=1]
+        V[functional_test_wpoa_vrf/randao/sortition.sh<br/>beacon + private sortition]
         MAN[Manual tests<br/>single node §4 / three nodes §5]
     end
+    ALL[run_all_tests.sh<br/>unit then functional] --> U
+    ALL --> F
+    F --> M
+    F --> V
     BUILD[make: multichaind / multichain-cli / multichain-util] --> func
     U -.no build needed.-> UOK([pure logic verified])
 ```
@@ -37,25 +42,29 @@ flowchart TD
 
 ## 1. Automated unit tests
 
-The pure record-parsing / aggregation logic (`src/wpoa/weight_record.h`) has a
-self-contained Boost.Test suite that does **not** require the node to be built:
+Every wPoA feature has a self-contained Boost.Test suite that does **not**
+require the node to be built. One runner builds and runs them all (or a named
+subset — `weight selector vrf randao sortition`):
 
 ```bash
-./src/wpoa/test/run_unit_tests.sh
+./src/wpoa/test/run_unit_tests.sh                # all suites
+./src/wpoa/test/run_unit_tests.sh weight         # just the weight suite
+./src/wpoa/test/run_unit_tests.sh --list         # list the suites
 ```
 
 Expected tail:
 
 ```
-Running 16 test cases...
-*** No errors detected
-OK — all wPoA unit tests passed.
+== unit-test summary ==
+  PASSED: weight selector vrf randao sortition
+OK — all selected wPoA unit tests passed.
 ```
 
-The suite covers: valid records, field-order independence, real/large weights,
-and rejection of malformed input (missing `json` wrapper, missing/empty address,
-missing/zero/negative/wrong-typed weight), plus the "newest record wins"
-aggregation used by `GetAllNodesWeights`.
+The suites cover: the weight registry (valid records, field-order independence,
+real/large weights, rejection of malformed input, and the "newest record wins"
+aggregation used by `GetAllNodesWeights`); the proposer selector; the VRF
+wrapper; the RANDAO accumulator/seed; and private sortition. See
+[`../test/README.md`](../test/README.md) for the full map.
 
 ---
 
@@ -288,22 +297,32 @@ Notes:
 
 ## 7. Automated functional smoke test
 
-`src/wpoa/test/functional_test_wpoa.sh` drives a **real single node** end to end, `src/wpoa/test/functional_test_wpoa_multinode.sh` drives a **multinode** end to end:
-it creates a throwaway chain with fast blocks, starts `multichaind -weight=<N>`,
-polls `getallweights` until the weight is confirmed, asserts the value, then
-stops the node and cleans up. It requires the node to be built first (§1).
+`src/wpoa/test/functional_test_wpoa_multinode.sh` drives a **real multi-node**
+network end to end (and a **single node** when `NODES=1`): it creates a throwaway
+chain with fast blocks, starts `multichaind -weight=<N>` per node, polls
+`getallweights` until the aggregate weight is confirmed, asserts it, and
+(optionally) runs the weighted proposer-distribution / chi-square check, then
+stops the nodes and cleans up. It requires the node to be built first (§1).
 
 ```bash
 cd ./src/wpoa/test
-# single node
-./functional_test_wpoa.sh              # uses ./src binaries, weight 137
-BINDIR=./src WEIGHT=200 ./functional_test_wpoa.sh
+# single-node smoke (weight only)
+NODES=1 ENABLEWPOA=0 DIST_BLOCKS=0 ./functional_test_wpoa_multinode.sh
+BINDIR=./src NODES=1 ENABLEWPOA=0 DIST_BLOCKS=0 WEIGHTS="200" ./functional_test_wpoa_multinode.sh
 
 # multinode
 ./functional_test_wpoa_multinode.sh                       # 3 nodes, default weights
-NODES=1 ./functional_test_wpoa_multinode.sh                # single-node mode (legacy behavior)
 NODES=5 WEIGHTS="10 20 30 40 50" ./functional_test_wpoa_multinode.sh
 BINDIR=./src NODES=4 TIMEOUT=240 ./functional_test_wpoa_multinode.sh
+```
+
+Prefer the orchestrator to run every functional suite (weight/distribution, VRF,
+RANDAO, private sortition) in order, with a warning banner, per-suite hard
+timeout and correct exit codes — see [`../test/README.md`](../test/README.md):
+
+```bash
+./src/wpoa/test/run_functional_tests.sh            # all suites (full)
+QUICK=1 ./src/wpoa/test/run_functional_tests.sh    # fast smoke (reduced samples)
 ```
 
 Exit code `0` and `FUNCTIONAL TEST PASSED` on success; non-zero with diagnostics

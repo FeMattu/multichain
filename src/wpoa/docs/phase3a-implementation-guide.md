@@ -133,7 +133,7 @@ New files (the module):
 | [`vrf_wrapper.h`](../vrf_wrapper.h) | Pure, node-free `WPoAVRF` class: `Prove` / `Verify` for an ECVRF / Chaum–Pedersen DLEQ over secp256k1. Depends only on secp256k1 + SHA256, so it is unit-testable without the node. |
 | [`vrf_wrapper.cpp`](../vrf_wrapper.cpp) | The ECVRF implementation: hash-to-curve, deterministic nonce, DLEQ prove/verify, point/scalar helpers over the core secp256k1 API. |
 | [`test/vrf_wrapper_tests.cpp`](../test/vrf_wrapper_tests.cpp) | Boost.Test unit suite for the pure VRF core (correctness, determinism, tamper/forgery rejection, pseudorandomness sanity). |
-| [`test/run_vrf_unit_tests.sh`](../test/run_vrf_unit_tests.sh) | Build + run the VRF unit tests (no node build needed; links the prebuilt `libsecp256k1.a`). |
+| [`test/run_unit_tests.sh vrf`](../test/run_unit_tests.sh) | Build + run the VRF unit tests (no node build needed; links the prebuilt `libsecp256k1.a`). |
 | [`test/functional_test_wpoa_vrf.sh`](../test/functional_test_wpoa_vrf.sh) | Multi-node end-to-end test: reveals produced, verified network-wide, chain live and fork-free under mandatory verification. |
 
 Files **modified** in the host tree (integration points):
@@ -577,7 +577,7 @@ the weight registry, so it is enforced even on the empty-weight leniency path.
   the wallet lib's include/link path). `miner.cpp` / `multichainblock.cpp` reference
   `WPoAVRF` and `g_wpoa_vrf_enabled` and link against it.
 - The pure core links against only `libsecp256k1.a` + `sha256` for the unit test — no node
-  (see [`test/run_vrf_unit_tests.sh`](../test/run_vrf_unit_tests.sh)).
+  (see [`test/run_unit_tests.sh vrf`](../test/run_unit_tests.sh)).
 - Regenerate after the `Makefile.am` change: `./autogen.sh && ./configure && make` (or just
   `make`, which regenerates under maintainer mode).
 - **Verification done:** the VRF unit tests pass (roundtrip, determinism,
@@ -602,7 +602,7 @@ wire-format constant changes as long as each field stays ≤ 255 bytes.
 
 ### 12.3 Swap the VRF construction
 Reimplement `WPoAVRF::Prove`/`Verify` behind the same interface and re-run
-[`test/run_vrf_unit_tests.sh`](../test/run_vrf_unit_tests.sh); no caller changes. Keep the
+[`test/run_unit_tests.sh vrf`](../test/run_unit_tests.sh); no caller changes. Keep the
 domain-separation discipline (distinct role bytes per hash use) if you add hash usages.
 
 ### 12.4 Change when the VRF is required
@@ -622,7 +622,7 @@ Phase 4 change, not a tweak — see [§14](#14-accepted-properties-risks--phase-
 ### 13.1 Unit tests (node-free, pure crypto)
 
 [test/vrf_wrapper_tests.cpp](../test/vrf_wrapper_tests.cpp), run with
-[test/run_vrf_unit_tests.sh](../test/run_vrf_unit_tests.sh). Links only
+[test/run_unit_tests.sh vrf](../test/run_unit_tests.sh). Links only
 `libsecp256k1.a` + SHA256 + Boost.Test. Covers: prove→verify roundtrip (compressed and
 uncompressed keys); determinism; and the soundness/uniqueness guards — a tampered output,
 a bit-flip in any proof field (Gamma, c, s), a wrong public key, a wrong input, and a
@@ -632,7 +632,7 @@ inputs give 500 distinct outputs; the vector API round-trips and rejects a short
 Run it:
 
 ```
-./src/wpoa/test/run_vrf_unit_tests.sh
+./src/wpoa/test/run_unit_tests.sh vrf
 ```
 
 ### 13.2 Multi-node functional test

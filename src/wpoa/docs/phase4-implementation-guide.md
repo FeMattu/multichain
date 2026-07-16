@@ -154,7 +154,7 @@ New files (the module):
 | [`private_sortition.h`](../private_sortition.h) | Header-only pure core `PrivateSortition` (`VRFInput`, `ScoreFromVRFOutput`, `MiningDelay`) **plus** the node-glue declarations (`g_wpoa_sortition_enabled`, `g_wpoa_sortition_delay`, `WPoASortitionActiveAtHeight`, `WPoASortitionLocalScoreDelay`, `WPoASortitionVRFInputForBlock`, `WPoASortitionVerifyProposer`, the proposed-height guard). The core depends only on the Phase-2 score transform, so it is unit-testable without the node. |
 | [`private_sortition.cpp`](../private_sortition.cpp) | Definitions of the node glue: the runtime flag/scale, the height activation predicate, the shared context builder (seed + weight map + Σf(w)), the miner-side local score/delay, the reveal VRF-input builder, the validator-side eligibility/time-bar verdict, and the miner-loop anti-respin guard. |
 | [`test/private_sortition_tests.cpp`](../test/private_sortition_tests.cpp) | Boost.Test unit suite: VRF-input encoding, score reuse (single source of truth), delay map, key-dependence (privacy), and end-to-end probability preservation with **real** VRF keys. |
-| [`test/run_sortition_unit_tests.sh`](../test/run_sortition_unit_tests.sh) | Build + run the unit tests (links SHA256 + HMAC + the VRF wrapper + secp256k1; no node build). |
+| [`test/run_unit_tests.sh sortition`](../test/run_unit_tests.sh) | Build + run the unit tests (links SHA256 + HMAC + the VRF wrapper + secp256k1; no node build). |
 | [`test/functional_test_wpoa_sortition.sh`](../test/functional_test_wpoa_sortition.sh) | Multi-node end-to-end test: liveness, no persistent fork, private-path-engaged (no public-argmin acceptances), weight-proportional distribution. |
 
 Files **modified** in the host tree (integration points):
@@ -404,7 +404,7 @@ The unit tests do **not** need the node build (see §12).
 
 - **Change the delay shape.** Edit `PrivateSortition::MiningDelay` (pure, unit-tested). Keep
   it strictly increasing in `score` (or the argmin no longer proposes first) and finite for
-  all scores (or liveness breaks). Re-run `run_sortition_unit_tests.sh`.
+  all scores (or liveness breaks). Re-run `run_unit_tests.sh sortition`.
 - **Change the reveal/VRF input.** Edit `PrivateSortition::VRFInput` (consensus-critical wire
   contract). Update both the miner embed (`WPoASortitionVRFInputForBlock`) and the validator
   verify (`WPoASortitionVerifyProposer`) — they must agree byte-for-byte.
@@ -424,7 +424,7 @@ The unit tests do **not** need the node build (see §12).
 ### 12.1 Unit tests (node-free)
 
 [test/private_sortition_tests.cpp](../test/private_sortition_tests.cpp), run with
-[test/run_sortition_unit_tests.sh](../test/run_sortition_unit_tests.sh). Links SHA256 +
+[test/run_unit_tests.sh sortition](../test/run_unit_tests.sh). Links SHA256 +
 HMAC-SHA256 + the VRF wrapper + secp256k1. Covers: the VRF-input encoding
 (`seed ‖ "PROPOSER" ‖ BE32(height)`, 44 bytes, height/seed sensitive); score reuse (byte-
 identical to `WPoASelector::ScoreFromEntropy64`); the delay map (zero at score 0, strictly

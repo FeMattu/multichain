@@ -115,7 +115,7 @@ New files (the module):
 | [`wpoa_selector.h`](../wpoa_selector.h) | Header-only pure core `WPoASelector` (`ComputeScore`, `SelectProposer`) **plus** the declarations of the node-coupled glue (`g_wpoa_enabled`, `WPoAActiveAtHeight`, `WPoASelectProposer`). Depends only on the C++ stdlib + HMAC-SHA256, so the core is unit-testable without the node. |
 | [`wpoa_selector.cpp`](../wpoa_selector.cpp) | Definitions of the node-coupled glue: the runtime flag, the height activation predicate, and the registry-backed `WPoASelectProposer`. |
 | [`test/wpoa_selector_tests.cpp`](../test/wpoa_selector_tests.cpp) | Boost.Test unit suite for the pure core (determinism, order-independence, degenerate cases, probability preservation). |
-| [`test/run_selector_unit_tests.sh`](../test/run_selector_unit_tests.sh) | Build + run the selector unit tests (no node build needed). |
+| [`test/run_unit_tests.sh selector`](../test/run_unit_tests.sh) | Build + run the selector unit tests (no node build needed). |
 | [`test/functional_test_wpoa_multinode.sh`](../test/functional_test_wpoa_multinode.sh) | Multi-node end-to-end distribution test. |
 | [`test/analyze_distribution.py`](../test/analyze_distribution.py) | Chi-square goodness-of-fit analysis of the observed proposer distribution. |
 
@@ -576,7 +576,7 @@ cross-`libm` assumption.
 ### 12.1 Unit tests (node-free, pure math)
 
 [test/wpoa_selector_tests.cpp](../test/wpoa_selector_tests.cpp), run with
-[test/run_selector_unit_tests.sh](../test/run_selector_unit_tests.sh). Links only
+[test/run_unit_tests.sh selector](../test/run_unit_tests.sh). Links only
 HMAC-SHA256/SHA256 + Boost.Test. Covers: determinism, iteration-order independence,
 single-validator / empty-map / zero-weight degenerate cases, weight-monotonicity, and
 **probability preservation** — over 200 000 distinct seeds the empirical share of each

@@ -161,7 +161,7 @@ chooses to broadcast).
 | 1 | Opaque read API (`GetLocalWeight`, `GetAllNodesWeights`, `GetNodeWeight`) | Done | Backward-search per address; hides stream mechanics from callers. |
 | 1 | RPC surface (`getlocalweight`, `getnodeweight`, `getallweights`) | Done | Confirmed-only, thread-safe. |
 | 1 | Unit tests (pure parsing / aggregation) | Done | Boost.Test suite, node-free — [`test/wpoa_weight_tests.cpp`](../test/wpoa_weight_tests.cpp). |
-| 1 | Single-node functional smoke test | Done | [`test/functional_test_wpoa.sh`](../test/functional_test_wpoa.sh). |
+| 1 | Single-node functional smoke test | Done | [`test/functional_test_wpoa_multinode.sh`](../test/functional_test_wpoa_multinode.sh) with `NODES=1 ENABLEWPOA=0 DIST_BLOCKS=0`. |
 | 1 | Multi-node functional smoke test | Done | [`test/functional_test_wpoa_multinode.sh`](../test/functional_test_wpoa_multinode.sh). |
 | 2 | Weighted miner selection (`WPoASelector` + miner hook) | Done | Efraimidis–Spirakis argmin seeded by prev-block hash, consuming `GetAllNodesWeights()`. [phase2-implementation-guide.md](phase2-implementation-guide.md). |
 | 2 | `-enablewpoa` runtime toggle | Done | Default off; native round-robin unchanged when unset. Gates the miner + validation hooks via `WPoAActiveAtHeight`. |
@@ -251,14 +251,12 @@ src/wpoa/
     ├── wpoa_selector_tests.cpp                ← Phase 2 Boost.Test unit suite
     ├── vrf_wrapper_tests.cpp                  ← Phase 3a Boost.Test unit suite
     ├── randao_accumulator_tests.cpp           ← Phase 3b Boost.Test unit suite
-    ├── run_unit_tests.sh                       ← Phase 1 unit test runner
-    ├── run_selector_unit_tests.sh             ← Phase 2 unit test runner
-    ├── run_vrf_unit_tests.sh                   ← Phase 3a unit test runner
-    ├── run_randao_unit_tests.sh               ← Phase 3b unit test runner
-    ├── run_sortition_unit_tests.sh             ← Phase 4 unit test runner
+    ├── run_unit_tests.sh                       ← runs ALL unit suites (or a named subset)
+    ├── run_functional_tests.sh                 ← orchestrates ALL functional suites
+    ├── run_all_tests.sh                         ← single entrypoint: unit + functional
+    ├── README.md                               ← how to run unit / functional / all
     ├── analyze_distribution.py                ← chi-square proposer-distribution analyzer
-    ├── functional_test_wpoa.sh                 ← single-node smoke test
-    ├── functional_test_wpoa_multinode.sh       ← N-node smoke + distribution test
+    ├── functional_test_wpoa_multinode.sh       ← N-node smoke + distribution test (NODES=1 = single node)
     ├── functional_test_wpoa_vrf.sh             ← Phase 3a N-node VRF beacon test
     ├── functional_test_wpoa_randao.sh          ← Phase 3b N-node RANDAO beacon-seed test
     ├── private_sortition_tests.cpp             ← Phase 4 Boost.Test unit suite
@@ -277,14 +275,14 @@ verify + Phase 3b selection-seed swap), `../protocol/multichainscript.cpp`
 
 **Note on filenames.** Phase 2 added `wpoa/wpoa_selector.{h,cpp}` (the
 `WPoASelector` class + node-coupled glue), `wpoa/test/wpoa_selector_tests.cpp`
-(+ `run_selector_unit_tests.sh`), and `wpoa/test/analyze_distribution.py`, and
+(the `selector` suite of `run_unit_tests.sh`), and `wpoa/test/analyze_distribution.py`, and
 `wpoa/docs/phase2-implementation-guide.md`. **Phase 3a has added**
 `wpoa/vrf_wrapper.{h,cpp}` (the `WPoAVRF` ECVRF core),
-`wpoa/test/vrf_wrapper_tests.cpp` (+ `run_vrf_unit_tests.sh`),
+`wpoa/test/vrf_wrapper_tests.cpp` (the `vrf` suite of `run_unit_tests.sh`),
 `wpoa/test/functional_test_wpoa_vrf.sh`, and
 `wpoa/docs/phase3a-implementation-guide.md`. **Phase 3b has added**
 `wpoa/randao_accumulator.{h,cpp}` (the `RandaoAccumulator` core + node glue),
-`wpoa/test/randao_accumulator_tests.cpp` (+ `run_randao_unit_tests.sh`),
+`wpoa/test/randao_accumulator_tests.cpp` (the `randao` suite of `run_unit_tests.sh`),
 `wpoa/test/functional_test_wpoa_randao.sh`, and
 `wpoa/docs/phase3b-implementation-guide.md` (+ `randao-accumulator.md`). Phase 4
 is expected to add `wpoa/private_sortition.{h,cpp}` (or similar) — **that does not
