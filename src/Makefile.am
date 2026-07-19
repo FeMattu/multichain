@@ -106,6 +106,8 @@ BITCOIN_CORE_H = \
   wpoa/vrf_wrapper.h \
   wpoa/randao_accumulator.h \
   wpoa/private_sortition.h \
+  weight_engine/weight_streams.h \
+  weight_engine/weight_records.h \
   storage/coins.h \
   utils/compat.h \
   utils/compressor.h \
