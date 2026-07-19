@@ -564,14 +564,16 @@ std::string HelpMessage(HelpMessageMode mode)                                   
     strUsage += "  -miningrequirespeers                     " + _("If set overrides mining-requires-peers blockchain setting, values 0/1.") + "\n";
     strUsage += "  -mineemptyrounds=<n>                     " + _("If set overrides mine-empty-rounds blockchain setting, values 0.0-1000.0 or -1.") + "\n";
     strUsage += "  -miningturnover=<n>                      " + _("If set overrides mining-turnover blockchain setting, values 0-1.") + "\n";
-    strUsage += "  -weight=<n>                              " + strprintf(_("wPoA validator weight for this node, positive integer (default: %u). Registered on the wpoa-weights stream."), MC_WPOA_DEFAULT_WEIGHT) + "\n";
-    strUsage += "  -dumpfunction=<none|sqrt|log>            " + _("wPoA weight-dumping (damping) function applied before proposer selection, to stop large stakes dominating (default: none). Must be identical on all nodes.") + "\n";
-    strUsage += "  -enablewpoa                              " + _("Enable wPoA weighted proposer selection (default: 0). Must be identical on all nodes.") + "\n";
-    strUsage += "  -enablewpoavrf                           " + _("Enable the wPoA VRF randomness beacon: each elected proposer publishes a verifiable pseudorandom reveal, verified by peers (default: 0). Requires -enablewpoa; must be identical on all nodes.") + "\n";
-    strUsage += "  -enablewpoarandao                        " + _("Enable the wPoA RANDAO beacon seed: seed proposer selection from the accumulated per-block VRF reveals instead of the previous block hash (default: 0). Requires -enablewpoavrf; must be identical on all nodes.") + "\n";
-    strUsage += "  -wpoarandaolookback=<k>                  " + strprintf(_("wPoA RANDAO lookback distance k in seed[n+1]=H(R_tot[n-k] | h[n-1] | n) (default: %u). Must be identical on all nodes."), MC_WPOA_DEFAULT_RANDAO_LOOKBACK) + "\n";
-    strUsage += "  -enablewpoasortition                     " + _("Enable wPoA private (VRF-scored) sortition: each validator scores itself privately under its own secret key and self-elects via a score-proportional mining delay, so the next proposer is unpredictable until it acts (default: 0). Requires -enablewpoarandao (and lookback >= 1); must be identical on all nodes.") + "\n";
-    strUsage += "  -wpoasortitiondelay=<s>                  " + strprintf(_("wPoA sortition delay scale in seconds (delay = s * score * total_effective_weight); larger values spread proposers further apart in time, reducing forks at the cost of block latency (default: %g). Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_SORTITION_DELAY) + "\n";
+    strUsage += "  -weight=<n>                              " + strprintf(_("wPoA validator weight for this node, positive integer (default: %u). Registered on the wpoa-weights stream. Per-node, not a chain parameter."), MC_WPOA_DEFAULT_WEIGHT) + "\n";
+    strUsage += "  -enablewpoa or -wpoaenable               " + _("wPoA master switch: enable the whole protocol (weights stream + weighted selection + VRF + RANDAO + sortition). More specific -enablewpoa* flags override it. Inherited from params.dat if set at chain creation; default 0 (native MultiChain mining). Must be identical on all nodes.") + "\n";
+    strUsage += "  -enablewpoaweights                       " + _("wPoA Phase 1: run the wpoa-weights stream (validators register their weight). Can run standalone (even with the master off); forced on by any higher phase. Inherited from params.dat; default 0.") + "\n";
+    strUsage += "  -enablewpoaselection                     " + _("wPoA Phase 2: weighted proposer selection. Requires -enablewpoaweights. Inherited from params.dat; default 0. Must be identical on all nodes.") + "\n";
+    strUsage += "  -dumpfunction=<none|sqrt|log>            " + _("wPoA weight-dumping (damping) function applied before proposer selection, to stop large stakes dominating (default: none). Inherited from params.dat. Must be identical on all nodes.") + "\n";
+    strUsage += "  -enablewpoavrf                           " + _("wPoA Phase 3a: VRF randomness beacon; each elected proposer publishes a verifiable pseudorandom reveal, verified by peers (default: 0). Requires -enablewpoaselection. Inherited from params.dat. Must be identical on all nodes.") + "\n";
+    strUsage += "  -enablewpoarandao                        " + _("wPoA Phase 3b: RANDAO beacon seed; seed proposer selection from the accumulated per-block VRF reveals instead of the previous block hash (default: 0). Requires -enablewpoavrf. Inherited from params.dat. Must be identical on all nodes.") + "\n";
+    strUsage += "  -wpoarandaolookback=<k>                  " + strprintf(_("wPoA RANDAO lookback distance k in seed[n+1]=H(R_tot[n-k] | h[n-1] | n) (default: %u). Inherited from params.dat. Must be identical on all nodes."), MC_WPOA_DEFAULT_RANDAO_LOOKBACK) + "\n";
+    strUsage += "  -enablewpoasortition                     " + _("wPoA Phase 4: private (VRF-scored) sortition; each validator scores itself privately under its own secret key and self-elects via a score-proportional mining delay, so the next proposer is unpredictable until it acts (default: 0). Requires -enablewpoarandao (and lookback >= 1). Inherited from params.dat. Must be identical on all nodes.") + "\n";
+    strUsage += "  -wpoasortitiondelay=<s>                  " + strprintf(_("wPoA sortition delay scale in seconds (delay = s * score * total_effective_weight); larger values spread proposers further apart in time, reducing forks at the cost of block latency (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_SORTITION_DELAY) + "\n";
     strUsage += "  -shrinkdebugfilesize=<n>                 " + _("If shrinkdebugfile is 1, this controls the size of the debug file. Whenever the debug.log file reaches over 5 times this number of bytes, it is reduced back down to this size.") + "\n";
     strUsage += "  -shortoutput                             " + _("Only show the node address (if connecting was successful) or an address in the wallet (if connect permissions must be granted by another node)") + "\n";
     strUsage += "  -bantx=<txids>                           " + _("Comma delimited list of banned transactions.") + "\n";
@@ -3178,9 +3180,11 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
     LogPrintf("Node started\n");
 /* MCHN END */
 
-/* MCHN START - wPoA weight registry (Phase 1) */
+/* MCHN START - wPoA startup resolution (params.dat baseline + runtime CLI override) */
 #ifdef ENABLE_WALLET
     {
+        // Per-node weight is NOT a chain parameter: each validator sets its own and
+        // publishes it on the weights stream, so it stays a plain runtime flag.
         int64_t weight_arg = GetArg("-weight", MC_WPOA_DEFAULT_WEIGHT);
         if (weight_arg <= 0)
         {
@@ -3189,118 +3193,144 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
         g_node_weight = (uint32_t)weight_arg;
         LogPrintf("[StreamWeightRegistry] Node weight configured: %u\n", g_node_weight);
 
-        // wPoA Phase 2: weighted proposer selection. Default off — when unset the
-        // node keeps its native round-robin mining-diversity behavior unchanged.
-        g_wpoa_enabled = GetBoolArg("-enablewpoa", false);
-        LogPrintf("[wPoA] Weighted proposer selection %s\n",
-                  g_wpoa_enabled ? "ENABLED (-enablewpoa=1)" : "disabled (native mining-diversity)");
+        // Every wPoA switch is a chain parameter inherited via params.dat, so a node
+        // that joins an existing network picks up the configuration with no command-line
+        // flags. The params.dat value is the baseline; a matching runtime flag overrides
+        // it locally (CLI wins). The master switch -enablewpoa (alias -wpoaenable) turns
+        // the whole protocol on; the per-phase enable-wpoa-* flags override the master.
+        mc_MultichainParams* np = mc_gState->m_NetworkParams;
 
-        // wPoA Phase 3a: VRF randomness beacon. Default off. When enabled, each
-        // wPoA-elected proposer publishes a verifiable pseudorandom reveal in its
-        // block and every peer verifies it. Must be uniform across the validator
-        // set (like -enablewpoa) or nodes disagree on block validity.
-        g_wpoa_vrf_enabled = GetBoolArg("-enablewpoavrf", false);
-        LogPrintf("[wPoA] VRF randomness beacon %s\n",
-                  g_wpoa_vrf_enabled ? "ENABLED (-enablewpoavrf=1)" : "disabled");
+        bool p_weights   = (np != NULL) && (np->GetInt64Param("enablewpoaweights")   != 0);
+        bool p_selection = (np != NULL) && (np->GetInt64Param("enablewpoaselection") != 0);
+        bool p_vrf       = (np != NULL) && (np->GetInt64Param("enablewpoavrf")       != 0);
+        bool p_randao    = (np != NULL) && (np->GetInt64Param("enablewpoarandao")    != 0);
+        bool p_sortition = (np != NULL) && (np->GetInt64Param("enablewpoasortition") != 0);
 
-        // wPoA Phase 3b: RANDAO accumulator + lookback selection seed. Default off.
-        // When enabled, the proposer election is seeded by the RANDAO beacon
-        // seed[n+1]=H(R_tot[n-k]‖h[n-1]‖n) (folding the Phase-3a per-block reveals)
-        // instead of the plain previous block hash. It consumes those reveals, so
-        // it REQUIRES -enablewpoavrf; a lone -enablewpoarandao is a misconfiguration
-        // and stays inert (WPoARANDAOActiveAtHeight is gated on the VRF beacon). The
-        // lookback k must be identical across the validator set, like the flags.
-        g_wpoa_randao_enabled = GetBoolArg("-enablewpoarandao", false);
-        int64_t randao_k = GetArg("-wpoarandaolookback", MC_WPOA_DEFAULT_RANDAO_LOOKBACK);
+        // Runtime master flag. Present-and-true forces every phase on (unless a specific
+        // phase flag overrides); present-and-false forces the baseline off; absent leaves
+        // the inherited params.dat baseline untouched.
+        bool master_cli_present = mapArgs.count("-enablewpoa") || mapArgs.count("-wpoaenable");
+        bool master_cli = false;
+        if (mapArgs.count("-enablewpoa"))      master_cli = GetBoolArg("-enablewpoa", false);
+        else if (mapArgs.count("-wpoaenable")) master_cli = GetBoolArg("-wpoaenable", false);
+
+        // Resolve each phase: an explicit phase flag wins; else the runtime master sets
+        // the baseline (on or off); else the inherited params.dat value.
+        bool weights, selection, vrf, randao, sortition;
+        {
+            struct { const char* flag; bool base; bool* out; } ph[] = {
+                { "-enablewpoaweights",   p_weights,   &weights   },
+                { "-enablewpoaselection", p_selection, &selection },
+                { "-enablewpoavrf",       p_vrf,       &vrf       },
+                { "-enablewpoarandao",    p_randao,    &randao    },
+                { "-enablewpoasortition", p_sortition, &sortition },
+            };
+            for (int i = 0; i < 5; i++)
+            {
+                if (mapArgs.count(ph[i].flag))  *ph[i].out = GetBoolArg(ph[i].flag, ph[i].base);
+                else if (master_cli_present)    *ph[i].out = master_cli;
+                else                            *ph[i].out = ph[i].base;
+            }
+        }
+
+        // Numeric / string parameters: the params.dat value is the default, CLI overrides.
+        int64_t p_lookback = (np != NULL) ? np->GetInt64Param("wpoarandaolookback") : MC_WPOA_DEFAULT_RANDAO_LOOKBACK;
+        if (p_lookback < 0) p_lookback = MC_WPOA_DEFAULT_RANDAO_LOOKBACK;
+        int64_t randao_k = GetArg("-wpoarandaolookback", p_lookback);
         if (randao_k < 0 || randao_k > 1000000)
         {
-            return InitError(strprintf(_("Invalid -wpoarandaolookback value %d: must be a non-negative integer."), randao_k));
+            return InitError(strprintf(_("Invalid -wpoarandaolookback value %d: must be a non-negative integer."), (int)randao_k));
         }
-        g_wpoa_randao_lookback = (int)randao_k;
-        if (g_wpoa_randao_enabled && !g_wpoa_vrf_enabled)
+
+        std::string p_delay_str;
+        if (np != NULL)
         {
-            LogPrintf("[wPoA] WARNING: -enablewpoarandao set without -enablewpoavrf; "
-                      "the RANDAO beacon has no reveals to accumulate and stays inert.\n");
+            int delay_size = 0;
+            const char* delay_ptr = (const char*)np->GetParam("wpoasortitiondelay", &delay_size);
+            if (delay_ptr && delay_size > 0) p_delay_str = delay_ptr;
         }
-        LogPrintf("[wPoA] RANDAO beacon seed %s (lookback k=%d)\n",
-                  g_wpoa_randao_enabled ? "ENABLED (-enablewpoarandao=1)" : "disabled",
-                  g_wpoa_randao_lookback);
-
-        // wPoA Phase 4: private (VRF-scored) sortition — THE security fix. Default
-        // off. When enabled, each validator scores itself privately (a VRF over the
-        // beacon seed under its OWN secret key) and self-elects by a mining delay
-        // that increases with the score, so the argmin proposes first and the
-        // proposer is unknowable to peers until it acts. It consumes the beacon
-        // seed, so it REQUIRES -enablewpoarandao; a lone -enablewpoasortition stays
-        // inert (WPoASortitionActiveAtHeight gates on the RANDAO beacon). The delay
-        // scale enters the validator's time bar and, like the flags, must match on
-        // all nodes.
-        g_wpoa_sortition_enabled = GetBoolArg("-enablewpoasortition", false);
-
-        std::string sortition_delay_arg =
-            GetArg("-wpoasortitiondelay", strprintf("%g", (double)MC_WPOA_DEFAULT_SORTITION_DELAY));
+        if (p_delay_str.empty()) p_delay_str = strprintf("%g", (double)MC_WPOA_DEFAULT_SORTITION_DELAY);
+        std::string sortition_delay_arg = GetArg("-wpoasortitiondelay", p_delay_str);
         char* sortition_delay_end = NULL;
         double sortition_delay = strtod(sortition_delay_arg.c_str(), &sortition_delay_end);
         if (sortition_delay_end == sortition_delay_arg.c_str() || *sortition_delay_end != '\0' ||
             !(sortition_delay >= 0.0) || sortition_delay > PrivateSortition::MaxDelaySeconds())
         {
-            return InitError(strprintf(_("Invalid -wpoasortitiondelay value '%s': must be a non-negative number of seconds (<= %g)."),
+            return InitError(strprintf(_("Invalid wpoa-sortition-delay value '%s': must be a non-negative number of seconds (<= %g)."),
                                        sortition_delay_arg, PrivateSortition::MaxDelaySeconds()));
         }
-        g_wpoa_sortition_delay = sortition_delay;
 
-        if (g_wpoa_sortition_enabled)
+        std::string p_dump_str;
+        if (np != NULL)
         {
-            if (!g_wpoa_randao_enabled)
-            {
-                LogPrintf("[wPoA] WARNING: -enablewpoasortition set without -enablewpoarandao; "
-                          "private sortition has no beacon seed to score and stays inert.\n");
-            }
-            else if (g_wpoa_randao_lookback < 1)
-            {
-                // Circularity guard: the sortition reveal R[n] feeds R_tot[n], while
-                // seed[n] reads R_tot[n-k]. k >= 1 keeps that dependency acyclic; k=0
-                // would define the selection seed in terms of the very reveal it elects.
-                return InitError(_("wPoA private sortition (-enablewpoasortition) requires -wpoarandaolookback >= 1: "
-                                   "the sortition reveal feeds R_tot[n] while its own seed reads R_tot[n-k], "
-                                   "so k=0 would make the selection seed circular."));
-            }
+            int dump_size = 0;
+            const char* dump_ptr = (const char*)np->GetParam("dumpfunction", &dump_size);
+            if (dump_ptr && dump_size > 0) p_dump_str = dump_ptr;
         }
-        LogPrintf("[wPoA] Private sortition %s (delay scale=%g s)\n",
-                  g_wpoa_sortition_enabled ? "ENABLED (-enablewpoasortition=1)" : "disabled",
-                  g_wpoa_sortition_delay);
+        if (p_dump_str.empty()) p_dump_str = "none";
+        std::string dump_arg = GetArg("-dumpfunction", p_dump_str);
+        DumpingFunction dump_fn;
+        if (boost::iequals(dump_arg, "none"))      dump_fn = DUMP_NONE;
+        else if (boost::iequals(dump_arg, "sqrt")) dump_fn = DUMP_SQRT;
+        else if (boost::iequals(dump_arg, "log"))  dump_fn = DUMP_LOG;
+        else return InitError(strprintf(_("Invalid dump-function value '%s': must be none, sqrt or log."), dump_arg));
 
-        // wPoA Phase 2: weight-dumping (damping) function. Compresses validator
-        // weights before the Efraimidis–Spirakis draw so a single large stake
-        // cannot dominate proposer selection (or grow its share without bound).
-        // CONSENSUS-CRITICAL: every node must run the same value or the elected
-        // proposer differs and the chain forks. Default "none" = raw weights.
-        std::string dump_arg = GetArg("-dumpfunction", "none");
-        if (boost::iequals(dump_arg, "none"))
-        {
-            g_dumping_function = DUMP_NONE;
-        }
-        else if (boost::iequals(dump_arg, "sqrt"))
-        {
-            g_dumping_function = DUMP_SQRT;
-        }
-        else if (boost::iequals(dump_arg, "log"))
-        {
-            g_dumping_function = DUMP_LOG;
-        }
-        else
-        {
-            return InitError(strprintf(_("Invalid -dumpfunction value '%s': must be none, sqrt or log."), dump_arg));
-        }
-        LogPrintf("[wPoA] Weight-dumping function: %s\n",
-                  g_dumping_function == DUMP_SQRT ? "sqrt (f(w)=sqrt(w))" :
-                  g_dumping_function == DUMP_LOG  ? "log (f(w)=ln(1+w))"  :
-                                                    "none (raw weights)");
+        // Dependency constraints (hard fail). The height-activation predicates already
+        // chain sortition -> randao -> vrf -> selection, but we refuse to start on a
+        // contradictory configuration instead of silently running a phase inert. Any
+        // higher phase implies the weights stream.
+        if (selection || vrf || randao || sortition) weights = true;
 
-        // Register the weight lazily on a background thread: publishing is a
-        // transaction, so it can only happen once the wallet, permissions, the
-        // stream and network connectivity are ready. Never blocks startup.
-        if (pwalletMain && pwalletTxsMain && !fDisableWallet)
+        if (selection && !weights)
+            return InitError(_("wPoA: -enablewpoaselection requires the weights stream (-enablewpoaweights)."));
+        if (vrf && !selection)
+            return InitError(_("wPoA: -enablewpoavrf requires weighted selection (-enablewpoaselection)."));
+        if (randao && !vrf)
+            return InitError(_("wPoA: -enablewpoarandao requires the VRF beacon (-enablewpoavrf)."));
+        if (sortition && !randao)
+            return InitError(_("wPoA: -enablewpoasortition requires the RANDAO beacon (-enablewpoarandao)."));
+        if (sortition && randao_k < 1)
+            return InitError(_("wPoA: -enablewpoasortition requires -wpoarandaolookback >= 1 (the sortition reveal feeds R_tot[n] while its own seed reads R_tot[n-k], so k=0 would make the selection seed circular)."));
+
+        // Commit to the runtime globals consumed by the miner / block validation.
+        g_wpoa_weights_enabled   = weights;
+        g_wpoa_enabled           = selection;   // Phase 2 weighted proposer selection
+        g_wpoa_vrf_enabled       = vrf;
+        g_wpoa_randao_enabled    = randao;
+        g_wpoa_randao_lookback   = (int)randao_k;
+        g_wpoa_sortition_enabled = sortition;
+        g_wpoa_sortition_delay   = sortition_delay;
+        g_dumping_function       = dump_fn;
+
+        // Warn when a runtime flag diverges from the inherited chain configuration: the
+        // wPoA switches are consensus-critical, so a local override that does not match
+        // the rest of the validator set will fork the chain.
+        if (np != NULL && (weights != p_weights || selection != p_selection || vrf != p_vrf ||
+                           randao != p_randao || sortition != p_sortition))
+        {
+            LogPrintf("[wPoA] WARNING: runtime flags override the inherited chain configuration "
+                      "(params.dat: weights=%d selection=%d vrf=%d randao=%d sortition=%d; effective: "
+                      "weights=%d selection=%d vrf=%d randao=%d sortition=%d). These switches are "
+                      "consensus-critical and MUST match the rest of the validator set or this node "
+                      "will fork.\n",
+                      (int)p_weights, (int)p_selection, (int)p_vrf, (int)p_randao, (int)p_sortition,
+                      (int)weights, (int)selection, (int)vrf, (int)randao, (int)sortition);
+        }
+
+        LogPrintf("[wPoA] weights-stream %s; weighted-selection %s; VRF %s; RANDAO %s (k=%d); "
+                  "sortition %s (delay=%g s); dumping=%s\n",
+                  weights   ? "ON" : "off",
+                  selection ? "ON" : "off",
+                  vrf       ? "ON" : "off",
+                  randao    ? "ON" : "off", g_wpoa_randao_lookback,
+                  sortition ? "ON" : "off", g_wpoa_sortition_delay,
+                  dump_arg.c_str());
+
+        // Register this node's weight lazily on a background thread — only when the
+        // weights stream is enabled. Publishing is a transaction, so it can only happen
+        // once the wallet, permissions, the stream and connectivity are ready. Never
+        // blocks startup.
+        if (g_wpoa_weights_enabled && pwalletMain && pwalletTxsMain && !fDisableWallet)
         {
             threadGroup.create_thread(boost::bind(&ThreadRegisterNodeWeight, g_node_weight));
         }

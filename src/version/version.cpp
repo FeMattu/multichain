@@ -15,7 +15,7 @@ int mc_State::VersionInfo(int version)
     }
     
     int this_build=20300901;
-    int this_protocol=20013;   
+    int this_protocol=20014;   // 20014: wPoA (weighted proof-of-authority) chain parameters
     
     if(mc_gState->m_EnterpriseBuild)
     {

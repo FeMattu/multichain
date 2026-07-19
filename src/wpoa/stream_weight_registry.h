@@ -116,6 +116,15 @@ void ThreadRegisterNodeWeight(uint32_t weight);
 /** Node weight parsed from -weight in AppInit2 (defaults to MC_WPOA_DEFAULT_WEIGHT). */
 extern uint32_t g_node_weight;
 
+/**
+ * wPoA Phase 1 gate. When true the node runs the wpoa-weights stream (registers its
+ * own weight and reads the registry); when false the stream is never created and the
+ * node behaves as a plain MultiChain instance. Resolved once in AppInit2 from the
+ * params.dat baseline plus the -enablewpoaweights / -enablewpoa runtime flags. Forced
+ * on whenever any higher wPoA phase (selection/vrf/randao/sortition) is active.
+ */
+extern bool g_wpoa_weights_enabled;
+
 /* --- RPC commands (registered in src/rpc/rpclist.cpp) --- */
 json_spirit::Value getlocalweight(const json_spirit::Array& params, bool fHelp);
 json_spirit::Value getallweights(const json_spirit::Array& params, bool fHelp);

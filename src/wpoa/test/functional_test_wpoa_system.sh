@@ -67,7 +67,10 @@ else
 fi
 export BINDIR NODES SETUP_BLOCKS   # consumed by functional_lib.sh
 
-FULL_STACK_ARGS="-enablewpoa=1 -enablewpoavrf=1 -enablewpoarandao=1 -wpoarandaolookback=$RANDAO_LOOKBACK -enablewpoasortition=1 -wpoasortitiondelay=$SORTITION_DELAY -debug=wpoa"
+# -enablewpoa is the master switch: it turns on the whole stack (weights + selection
+# + VRF + RANDAO + sortition). The numeric knobs (lookback, delay) are still passed
+# explicitly. Specific -enablewpoa* flags would override the master per phase.
+FULL_STACK_ARGS="-enablewpoa=1 -wpoarandaolookback=$RANDAO_LOOKBACK -wpoasortitiondelay=$SORTITION_DELAY -debug=wpoa"
 
 # Sample window, filled in after warm-up.
 SAMPLE_START=0
@@ -189,7 +192,9 @@ check_distribution() {
 # The one scenario the full-stack run cannot observe. Uses the same library.
 scenario_public_selector() {
     fl_phase "OPTIONAL SCENARIO: public-selector regime (sortition OFF)"
-    local pub_args="-enablewpoa=1 -enablewpoavrf=1 -enablewpoarandao=1 -wpoarandaolookback=$RANDAO_LOOKBACK -debug=wpoa"
+    # Master on, but sortition explicitly OFF (specific flag overrides the master):
+    # weights + selection + VRF + RANDAO with the public argmin selection path.
+    local pub_args="-enablewpoa=1 -enablewpoasortition=0 -wpoarandaolookback=$RANDAO_LOOKBACK -debug=wpoa"
     fl_start_network "$pub_args"
     fl_wait_weight_convergence || fl_die "weights did not converge (public-selector scenario)"
     local cur; cur="$(fl_tip_height 0)"; cur="${cur:-0}"

@@ -18,11 +18,13 @@ production is biased toward higher-weight validators instead of being uniform.
 
 Five phases are implemented today:
 
-- **Phase 1 — Weight registry.** Each node records its weight on an append-only
-  MultiChain stream (`wpoa-weights`), kept current (newest wins) and identical on
-  every node (confirmed-on-chain data only), exposed through three RPC commands
-  and a `StreamWeightRegistry` class.
-- **Phase 2 — Weighted miner selection.** When `-enablewpoa=1`, the miner and
+- **Phase 1 — Weight registry.** When `-enablewpoaweights=1` (default off; forced
+  on by any higher phase or by the `-enablewpoa` master switch), each node records
+  its weight on an append-only MultiChain stream (`wpoa-weights`), kept current
+  (newest wins) and identical on every node (confirmed-on-chain data only), exposed
+  through three RPC commands and a `StreamWeightRegistry` class. This phase can run
+  standalone (e.g. to collect weights) with everything else off.
+- **Phase 2 — Weighted miner selection.** When `-enablewpoaselection=1`, the miner and
   the block validator elect each height's proposer in proportion to weight via
   the Efraimidis–Spirakis argmin, seeded by the previous block hash, bypassing
   the native round-robin mining-diversity gate. This phase is intentionally
@@ -62,13 +64,53 @@ planned — see the [Implementation status](#implementation-status) and the mast
 
 Operators only ever touch a few things:
 
-- the startup parameters **`-weight=<n>`** (positive integer, default `100`) and
-  **`-enablewpoa`** (default off; enables weighted selection), and
+- the per-node parameter **`-weight=<n>`** (positive integer, default `100`) — this
+  node's own validator weight, published on the `wpoa-weights` stream. It is *not* a
+  chain parameter (each node sets its own);
+- the wPoA switches (see **Startup configuration** below), and
 - the RPC commands **`getlocalweight`**, **`getnodeweight`**, **`getallweights`**.
 
 Everything else — stream layout, transaction plumbing, wallet indexes, the
 election math — is hidden behind the `StreamWeightRegistry` facade and the
 `WPoASelector`.
+
+### Startup configuration — flags & `params.dat` inheritance
+
+Every wPoA switch is a **chain parameter**: it can be set when the chain is created
+(`multichain-util create <chain> -enablewpoa=1 …`) and is then written into
+`params.dat`. Any node that joins the network **inherits** it automatically, so a
+fresh node needs no command-line flags — it just runs `multichaind <chain>@<seed>`
+and picks up the right protocol. A chain created with no wPoA flags is a plain
+MultiChain instance (everything off), exactly as before.
+
+The same names also work as **runtime flags** on `multichaind`. A runtime flag
+overrides the inherited `params.dat` value for that node only (CLI wins); because
+the switches are consensus-critical, a divergent override logs a loud fork warning.
+
+| Switch | Phase | Meaning |
+|---|---|---|
+| `-enablewpoa` / `-wpoaenable` | master | Enable the **whole** protocol. More specific flags below override it. |
+| `-enablewpoaweights` | 1 | Run the `wpoa-weights` stream. Standalone-capable; forced on by any higher phase. |
+| `-enablewpoaselection` | 2 | Weighted proposer selection. Requires `-enablewpoaweights`. |
+| `-dumpfunction=<none\|sqrt\|log>` | 2 | Weight-dumping function applied before the draw. |
+| `-enablewpoavrf` | 3a | VRF randomness beacon. Requires `-enablewpoaselection`. |
+| `-enablewpoarandao` | 3b | RANDAO beacon seed. Requires `-enablewpoavrf`. |
+| `-wpoarandaolookback=<k>` | 3b | RANDAO lookback distance `k` (default `1`). |
+| `-enablewpoasortition` | 4 | Private (VRF-scored) sortition. Requires `-enablewpoarandao` and `k≥1`. |
+| `-wpoasortitiondelay=<s>` | 4 | Sortition delay scale in seconds (default `1`). |
+
+**Precedence.** The master (`-enablewpoa` / `-wpoaenable`) turns every phase on; a
+more specific `-enablewpoa*` flag then overrides its phase. So
+`-enablewpoa=1 -enablewpoasortition=0` runs the full stack *except* sortition.
+
+**Dependency constraints (hard fail).** Phases must be enabled bottom-up:
+`weights → selection → vrf → randao → sortition`. Enabling a phase without its
+prerequisite (e.g. RANDAO without VRF, or sortition without RANDAO / with `k=0`) is
+rejected at chain creation **and** at node startup with a clear error — the node
+refuses to start rather than run a phase inert. `-enablewpoa`, `-dumpfunction`,
+`-wpoarandaolookback` and `-wpoasortitiondelay` are consensus-critical and must be
+identical across the validator set (inheritance via `params.dat` guarantees this for
+nodes that join without overriding flags).
 
 ---
 
@@ -143,7 +185,7 @@ flowchart TD
   [phase1-implementation-guide.md](docs/phase1-implementation-guide.md).
 - **Phase 2** consumes `GetAllNodesWeights()` and elects each height's proposer
   in proportion to weight, gating the miner and the block validator behind
-  `-enablewpoa`. Full detail:
+  `-enablewpoaselection` (or the `-enablewpoa` master switch). Full detail:
   [phase2-implementation-guide.md](docs/phase2-implementation-guide.md).
 - **Phase 3a** adds the VRF beacon behind `-enablewpoavrf`: the elected proposer
   embeds a verifiable reveal `(R, π)` in its block (via `WPoAVRF`, an ECVRF/DLEQ
@@ -220,7 +262,7 @@ new to the project.
 | [private-sortition.md](docs/private-sortition.md) | **Phase 4.** Line-by-line walkthrough of the pure sortition core (`private_sortition.h`: `VRFInput`/`ScoreFromVRFOutput`/`MiningDelay`) and the node glue (`.cpp`): activation gate, shared context, local score+delay, reveal-input builder, eligibility/time-bar verdict, anti-respin guard. |
 | [sortition-miner.md](docs/sortition-miner.md) | **Phase 4.** The miner-side hook (`miner/miner.cpp`): score-timed self-election, the anti-respin guard, the reveal-input switch, and marking the proposed height. |
 | [sortition-validator.md](docs/sortition-validator.md) | **Phase 4.** The validator-side hook (`protocol/multichainblock.cpp`, `VerifyBlockMinerWPoA`): the VRF-verify + score-recompute + time-bar eligibility check that replaces the public argmin equality on sortition heights. |
-| [node-startup.md](docs/node-startup.md) | How `-weight` (Phase 1), `-enablewpoa`/`-dumpfunction` (Phase 2), `-enablewpoavrf` (Phase 3a), `-enablewpoarandao`/`-wpoarandaolookback` (Phase 3b) and `-enablewpoasortition`/`-wpoasortitiondelay` (Phase 4) are wired into `AppInit2` and how the background thread is launched (`core/init.h` + `.cpp`, wPoA parts). |
+| [node-startup.md](docs/node-startup.md) | How the wPoA switches — the `-enablewpoa` master, `-enablewpoaweights` (Phase 1), `-enablewpoaselection`/`-dumpfunction` (Phase 2), `-enablewpoavrf` (Phase 3a), `-enablewpoarandao`/`-wpoarandaolookback` (Phase 3b), `-enablewpoasortition`/`-wpoasortitiondelay` (Phase 4) — are read from `params.dat` (inherited) with CLI override, resolved (master + precedence + hard-fail constraints) and wired into `AppInit2`, and how the background thread is launched (`core/init.h` + `.cpp`, wPoA parts). |
 | [rpc-registration.md](docs/rpc-registration.md) | How the three RPC commands are added to the dispatch table (`rpc/rpclist.cpp`). |
 | [testing.md](docs/testing.md) | Build steps, unit tests, the MultiChain mining model, manual single-/multi-node tests, the automated smoke test, and troubleshooting. |
 
@@ -281,13 +323,13 @@ details.
 | **1** | Single-node functional smoke test | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) with `NODES=1` (`check_weight`). |
 | **1** | Multi-node functional smoke test | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) `check_weight` + `check_multinode_consistency` — bootstraps `connect`/`send`/`receive`/`mine`/`wpoa-weights.write` from node 0; asserts aggregate weight. |
 | **2** | Weighted miner selection (`WPoASelector` + `miner.cpp` hook) | Done | Efraimidis–Spirakis argmin seeded by prev-block hash; consumes `GetAllNodesWeights()`. See [docs/phase2-implementation-guide.md](docs/phase2-implementation-guide.md). |
-| **2** | `-enablewpoa` runtime toggle | Done | Default off (native round-robin unchanged); gates miner + validation hooks. |
+| **2** | `-enablewpoaselection` toggle (chain param + runtime) | Done | Default off (native round-robin unchanged); requires `-enablewpoaweights`. Inherited via `params.dat`; `-enablewpoa` master turns it on. Gates miner + validation hooks. |
 | **2** | Proposer validation (`VerifyBlockMiner` hook) | Done | Recomputes the election on receipt; rejects blocks not from the elected proposer. |
 | **2** | Deterministic tie-break | Done | Lexicographically smallest address on exact score collision. |
 | **2** | Unit tests (pure selector math) | Done | [`test/wpoa_selector_tests.cpp`](test/wpoa_selector_tests.cpp); probability preservation over 200k seeds. |
 | **2** | Multi-node distribution test (chi-square) | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) `check_distribution` + [`test/analyze_distribution.py`](test/analyze_distribution.py); observed vs. expected over the sample window. Public-argmin regime via `INCLUDE_PUBLIC_SELECTOR=1`. |
 | **3a** | VRF wrapper (`WPoAVRF`, ECVRF/DLEQ over secp256k1) | Done | Pure `Prove`/`Verify`; no new build dependency. [docs/phase3a-implementation-guide.md](docs/phase3a-implementation-guide.md). |
-| **3a** | `-enablewpoavrf` runtime toggle | Done | Default off; requires `-enablewpoa`. Gates reveal production + verification via `WPoAVRFActiveAtHeight`. |
+| **3a** | `-enablewpoavrf` toggle (chain param + runtime) | Done | Default off; requires `-enablewpoaselection`. Inherited via `params.dat`. Gates reveal production + verification via `WPoAVRFActiveAtHeight`. |
 | **3a** | Per-block reveal embed + verify | Done | Proposer embeds `(R, π)` as a suffix of the block-signature element; `VerifyBlockMinerWPoA` rejects a missing/invalid reveal on wPoA-VRF heights. |
 | **3a** | Unit tests (pure VRF crypto) | Done | [`test/vrf_wrapper_tests.cpp`](test/vrf_wrapper_tests.cpp); roundtrip, determinism, tamper/forgery/cross-key rejection. |
 | **3a** | Multi-node functional test | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) `check_vrf`; reveals carried & verified network-wide (via the sortition path), 0 rejects, chain live and fork-free. Standalone `VRF reveal OK` log via `INCLUDE_PUBLIC_SELECTOR=1`. |
@@ -346,16 +388,27 @@ for the full limitations register.
 cd /home/mattu/multichain
 ./autogen.sh && ./configure && make
 
-# Run a node with a weight:
+# Preferred: bake the configuration into the chain at creation, so every node that
+# joins inherits it via params.dat and needs no wPoA flags of its own:
+./src/multichain-util create <chain> -enablewpoa=1        # whole protocol on
+./src/multichaind <chain>                                 # this node ...
+./src/multichaind <chain>@<seed-ip>:<port>                # ... and any joiner
+
+# Run a node with its own validator weight (weight is per-node, not a chain param):
 ./src/multichaind <chain> -weight=100
 
-# Enable weighted selection (Phase 2), the VRF beacon (Phase 3a), the RANDAO
-# beacon seed (Phase 3b) and private sortition — the security fix (Phase 4).
-# All flags (the lookback k and the sortition delay scale) must be identical on
-# every validator; sortition requires the beacon and k>=1.
-./src/multichaind <chain> -weight=100 -enablewpoa=1 -enablewpoavrf=1 \
-                          -enablewpoarandao=1 -wpoarandaolookback=1 \
-                          -enablewpoasortition=1 -wpoasortitiondelay=1
+# Phase 1 only (just collect weights on the wpoa-weights stream), nothing else:
+./src/multichaind <chain> -weight=100 -enablewpoaweights=1
+
+# Full stack as *runtime* flags (equivalent to the master switch). The master
+# -enablewpoa=1 alone already turns all phases on; specific flags would override it
+# per phase. All consensus knobs (lookback k, delay scale, dump function) must be
+# identical on every validator; sortition requires the beacon and k>=1.
+./src/multichaind <chain> -weight=100 -enablewpoa=1 \
+                          -wpoarandaolookback=1 -wpoasortitiondelay=1
+
+# Full stack EXCEPT sortition (specific flag overrides the master):
+./src/multichaind <chain> -weight=100 -enablewpoa=1 -enablewpoasortition=0
 
 # Query weights:
 ./src/multichain-cli <chain> getallweights

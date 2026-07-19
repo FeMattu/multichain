@@ -22,6 +22,12 @@ using namespace json_spirit;
 
 uint32_t g_node_weight = MC_WPOA_DEFAULT_WEIGHT;
 
+// wPoA Phase 1: weights-stream gate. Default off — the wpoa-weights stream is only
+// created and populated when this is set (directly via -enablewpoaweights, forced on
+// by any higher wPoA phase, or by the -enablewpoa master switch). Resolved once in
+// AppInit2. When off the node behaves as a plain MultiChain instance (no stream).
+bool g_wpoa_weights_enabled = false;
+
 // Retry pacing for the deferred registration thread.
 static const int MC_WPOA_RETRY_INTERVAL_MS = 3000;
 static const int MC_WPOA_MAX_ATTEMPTS      = 200;   // ~10 minutes worst case

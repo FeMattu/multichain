@@ -126,6 +126,62 @@ To check if everything after compilation its working run
 
 To create and/or test the blockchain follow instructions in [Create-Blockchain.md](Create-Blockchain.md)
 
+## wPoA — Weighted Proof-of-Authority
+
+This build adds an optional **weighted proof-of-authority** consensus layer on top of
+MultiChain's permissioned mining. It is **off by default**: a chain created without any
+wPoA flag behaves as a plain MultiChain instance. Full design and internals are in
+[src/wpoa/README.md](src/wpoa/README.md).
+
+### Configuration model
+
+Every wPoA switch is a **chain parameter** (introduced at protocol version `20014`).
+You set it once, when the chain is created:
+
+```bash
+# Whole protocol on — baked into params.dat:
+./src/multichain-util create mychain -enablewpoa=1
+
+# Any node that joins INHERITS the configuration from params.dat — no flags needed:
+./src/multichaind mychain                       # the creator / a local node
+./src/multichaind mychain@<seed-ip>:<port>      # a joining node
+```
+
+Because the switches live in `params.dat`, a node that does not know how the network is
+configured retrieves every parameter on connect and starts correctly with no
+command-line flags. The **same names also work as runtime flags** on `multichaind`,
+which override the inherited value for that node only (a divergent override logs a
+consensus-fork warning, since these switches must match across the validator set).
+
+### All flags
+
+| Flag (CLI) / parameter (`params.dat`) | Phase | Default | Meaning |
+|---|---|---|---|
+| `-enablewpoa` / `-wpoaenable` &nbsp; (`enable-wpoa`) | master | `0` | Enable the **whole** protocol. Specific flags below override it per phase. |
+| `-enablewpoaweights` &nbsp; (`enable-wpoa-weights`) | 1 | `0` | Run the `wpoa-weights` stream (validators register their weight). Can run standalone; forced on by any higher phase. |
+| `-enablewpoaselection` &nbsp; (`enable-wpoa-selection`) | 2 | `0` | Weighted proposer selection (Efraimidis–Spirakis). Requires phase 1. |
+| `-dumpfunction=<none\|sqrt\|log>` &nbsp; (`dump-function`) | 2 | `none` | Weight-dumping (damping) function applied before the draw. Consensus-critical. |
+| `-enablewpoavrf` &nbsp; (`enable-wpoa-vrf`) | 3a | `0` | VRF randomness beacon (verifiable per-block reveal). Requires phase 2. |
+| `-enablewpoarandao` &nbsp; (`enable-wpoa-randao`) | 3b | `0` | RANDAO beacon seed from accumulated reveals. Requires phase 3a. |
+| `-wpoarandaolookback=<k>` &nbsp; (`wpoa-randao-lookback`) | 3b | `1` | RANDAO lookback distance `k`. Consensus-critical. |
+| `-enablewpoasortition` &nbsp; (`enable-wpoa-sortition`) | 4 | `0` | Private (VRF-scored) sortition. Requires phase 3b and `k≥1`. |
+| `-wpoasortitiondelay=<s>` &nbsp; (`wpoa-sortition-delay`) | 4 | `1` | Sortition delay scale in seconds. Consensus-critical. |
+| `-weight=<n>` | — | `100` | This node's own validator weight (per-node, **not** a chain parameter). |
+
+**Master + precedence.** `-enablewpoa` (alias `-wpoaenable`) turns every phase on; a more
+specific `-enablewpoa*` flag overrides its phase. Example — full stack except sortition:
+
+```bash
+./src/multichain-util create mychain -enablewpoa=1 -enablewpoasortition=0
+```
+
+**Dependency constraints (hard fail).** Phases must be enabled bottom-up —
+`weights → selection → vrf → randao → sortition` — and sortition additionally requires
+`wpoa-randao-lookback ≥ 1`. In particular **RANDAO requires the VRF beacon** and
+**sortition requires the VRF beacon** (transitively, via RANDAO). Enabling a phase
+without its prerequisite is rejected with a clear error at chain creation *and* at node
+startup; the node refuses to start rather than run a phase inert.
+
 Windows Build Notes
 =====================
 

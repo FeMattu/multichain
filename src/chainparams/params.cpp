@@ -497,7 +497,17 @@ int mc_MultichainParams::Create(const char* name,int version)
                                     {
                                         sprintf(ptrData,"multichain");
                                         size=strlen(ptrData)+1;
-                                    }                                   
+                                    }
+                                }
+                                if(strcmp(param->m_Name,"dumpfunction") == 0)
+                                {
+                                    sprintf(ptrData,"none");
+                                    size=strlen(ptrData)+1;
+                                }
+                                if(strcmp(param->m_Name,"wpoasortitiondelay") == 0)
+                                {
+                                    sprintf(ptrData,"1");
+                                    size=strlen(ptrData)+1;
                                 }
                                 break;
                             case MC_PRM_BOOLEAN:
@@ -682,8 +692,70 @@ int mc_MultichainParams::Read(const char* name,int argc, char* argv[],int create
     if(err)
     {
         goto exitlbl;
-    }    
-    
+    }
+
+    // wPoA: resolve the master switch into per-phase parameters at chain-creation
+    // time (argc>0), so the params.dat that peers later inherit already carries
+    // concrete per-phase values (no master re-expansion needed on read). The more
+    // specific enable-wpoa-* flags override the master; dependency violations are a
+    // hard error, matching the runtime constraint check in AppInit2.
+    if(argc)
+    {
+        // -wpoaenable is an accepted alias for the -enablewpoa master switch.
+        if( (mapConfig->Get("wpoaenable") != NULL) && (mapConfig->Get("enablewpoa") == NULL) )
+        {
+            mapConfig->Add("enablewpoa",mapConfig->Get("wpoaenable"));
+        }
+
+        const char* wpoa_phase_params[]={"enablewpoaweights","enablewpoaselection",
+                                         "enablewpoavrf","enablewpoarandao","enablewpoasortition"};
+        int wpoa_phase_count=(int)(sizeof(wpoa_phase_params)/sizeof(wpoa_phase_params[0]));
+
+        const char* wpoa_master_val=mapConfig->Get("enablewpoa");
+        int wpoa_master=0;
+        if(wpoa_master_val)
+        {
+            wpoa_master = (atoi(wpoa_master_val)!=0) || (strcasecmp(wpoa_master_val,"true")==0);
+        }
+        if(wpoa_master)
+        {
+            // Master on: every phase not set explicitly defaults to on (specific wins).
+            for(int wp=0;wp<wpoa_phase_count;wp++)
+            {
+                if(mapConfig->Get(wpoa_phase_params[wp]) == NULL)
+                {
+                    mapConfig->Add(wpoa_phase_params[wp],"true");
+                }
+            }
+        }
+
+        int wpoa_eff[5];
+        for(int wp=0;wp<wpoa_phase_count;wp++)
+        {
+            const char* v=mapConfig->Get(wpoa_phase_params[wp]);
+            wpoa_eff[wp] = (v != NULL) && ( (atoi(v)!=0) || (strcasecmp(v,"true")==0) );
+        }
+
+        int wpoa_lookback=1;
+        if(mapConfig->Get("wpoarandaolookback"))
+        {
+            wpoa_lookback=atoi(mapConfig->Get("wpoarandaolookback"));
+        }
+
+        const char* wpoa_dep_err=NULL;
+        if(wpoa_eff[1] && !wpoa_eff[0]) wpoa_dep_err="enable-wpoa-selection requires enable-wpoa-weights";
+        else if(wpoa_eff[2] && !wpoa_eff[1]) wpoa_dep_err="enable-wpoa-vrf requires enable-wpoa-selection";
+        else if(wpoa_eff[3] && !wpoa_eff[2]) wpoa_dep_err="enable-wpoa-randao requires enable-wpoa-vrf";
+        else if(wpoa_eff[4] && !wpoa_eff[3]) wpoa_dep_err="enable-wpoa-sortition requires enable-wpoa-randao";
+        else if(wpoa_eff[4] && wpoa_lookback<1) wpoa_dep_err="enable-wpoa-sortition requires wpoa-randao-lookback >= 1";
+        if(wpoa_dep_err)
+        {
+            printf("Invalid wPoA parameters: %s. Enable phases bottom-up (weights -> selection -> vrf -> randao -> sortition) or use the enable-wpoa master switch.\n",wpoa_dep_err);
+            err=MC_ERR_INVALID_PARAMETER_VALUE;
+            goto exitlbl;
+        }
+    }
+
     Init();
 
     version=0;

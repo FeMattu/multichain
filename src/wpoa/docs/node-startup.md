@@ -1,9 +1,38 @@
 # `core/init.h` + `core/init.cpp` (wPoA parts)
 
+> **⚠ Updated in protocol 20014 — the wPoA switches are now chain parameters.**
+> The per-section walkthrough below (§2.4-§2.8) describes the *original* model, in
+> which each phase was a standalone runtime flag read with `GetBoolArg(...)`. That
+> single resolution block has since been replaced. The current behaviour is:
+>
+> - **Every wPoA switch is a `params.dat` chain parameter** (defined in
+>   [`chainparams/paramlist.h`](../../chainparams/paramlist.h), relevant from protocol
+>   `20014`, `MC_PRM_NOHASH`): `enablewpoa` (master), `enablewpoaweights`,
+>   `enablewpoaselection`, `dumpfunction`, `enablewpoavrf`, `enablewpoarandao`,
+>   `wpoarandaolookback`, `enablewpoasortition`, `wpoasortitiondelay`. They are set at
+>   `multichain-util create` time (or edited into `params.dat`) and **inherited** by
+>   every node that joins — a fresh node needs no wPoA command-line flags.
+> - **`AppInit2` resolves each phase** as: explicit runtime `-enablewpoa*` flag → else
+>   the runtime master `-enablewpoa`/`-wpoaenable` (on/off) → else the inherited
+>   `params.dat` value. The runtime flag overriding the inherited value logs a
+>   consensus-fork warning.
+> - **The `-enablewpoa` master switch** (creation-time master expansion lives in
+>   [`chainparams/params.cpp`](../../chainparams/params.cpp) `Read`) turns the whole
+>   protocol on; specific `-enablewpoa*` flags override it per phase.
+> - **Dependency constraints are hard failures** (both at creation and startup):
+>   `weights → selection → vrf → randao → sortition`, and sortition needs `k≥1`.
+> - **Phase 1 (the weights stream) is gated** on `enablewpoaweights` / `g_wpoa_weights_enabled`
+>   (default off) — the registration thread only launches when it is on. It is forced
+>   on whenever any higher phase is active.
+>
+> See the **Startup configuration** section of [`../README.md`](../README.md) and the
+> `/* MCHN START - wPoA startup resolution */` block in `init.cpp` for the authoritative
+> current logic; the code snippets below are retained for phase-by-phase background.
+
 > Documentation of the **node-startup integration** for wPoA. `init.cpp` is huge (it
 > drives the entire MultiChain node bootstrap); here we document **only** the wPoA parts:
 > the Phase 1 `-weight` handling + registration thread (§2.1-2.3), the Phase 2
-> `-enablewpoa` (§2.4) and `-dumpfunction` (§2.5) flags, the Phase 3a `-enablewpoavrf`
+> `-enablewpoaselection` (§2.4) and `-dumpfunction` (§2.5) flags, the Phase 3a `-enablewpoavrf`
 > (§2.6) flag, the Phase 3b `-enablewpoarandao` / `-wpoarandaolookback` (§2.7) flags, and
 > the Phase 4 `-enablewpoasortition` / `-wpoasortitiondelay` (§2.8) flags.
 > The rest is the standard MultiChain/Bitcoin startup engine.
