@@ -509,6 +509,21 @@ int mc_MultichainParams::Create(const char* name,int version)
                                     sprintf(ptrData,"1");
                                     size=strlen(ptrData)+1;
                                 }
+                                if(strcmp(param->m_Name,"weightkappa") == 0)      // MC_WEIGHT_DEFAULT_KAPPA
+                                {
+                                    sprintf(ptrData,"100");
+                                    size=strlen(ptrData)+1;
+                                }
+                                if(strcmp(param->m_Name,"weightalpha") == 0)      // MC_WEIGHT_DEFAULT_ALPHA
+                                {
+                                    sprintf(ptrData,"0.2");
+                                    size=strlen(ptrData)+1;
+                                }
+                                if(strcmp(param->m_Name,"weightlambda") == 0)     // MC_WEIGHT_DEFAULT_LAMBDA
+                                {
+                                    sprintf(ptrData,"0.5");
+                                    size=strlen(ptrData)+1;
+                                }
                                 break;
                             case MC_PRM_BOOLEAN:
                                 size=1;

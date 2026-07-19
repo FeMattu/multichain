@@ -305,6 +305,7 @@ libbitcoin_wallet_a_SOURCES = \
   wpoa/vrf_wrapper.cpp \
   wpoa/randao_accumulator.cpp \
   wpoa/private_sortition.cpp \
+  weight_engine/weight_engine.cpp \
   $(BITCOIN_CORE_H)
 
 # crypto primitives library

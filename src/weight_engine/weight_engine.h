@@ -410,4 +410,33 @@ private:
     }
 };
 
+// ---------------------------------------------------------------------------
+// Node-coupled configuration (defined in weight_engine.cpp; bound to the chain
+// parameters / runtime flags in AppInit2, exactly like the wPoA globals). NOT
+// used by the node-free unit test, which exercises only the pure core above.
+//
+// Each is a params.dat chain parameter inherited on join, which a matching
+// runtime flag can override locally (see src/core/init.cpp). CONSENSUS-CRITICAL:
+// every honest node MUST hold identical values, or they compute different w_k and
+// disagree on the elected proposer (the chain forks). They are threaded
+// explicitly into WeightEngine::Params by the caller; the pure core never reads
+// a global.
+// ---------------------------------------------------------------------------
+
+/** -enableweightengine: compute+publish w_k each epoch instead of a static
+ *  -weight. Default false. Requires the wPoA weights stream. */
+extern bool g_weight_engine_enabled;
+
+/** -weightepochlength: epoch length in blocks, epoch(height) = height / this (>= 1). */
+extern int g_weight_epoch_length;
+
+/** -weightkappa: normalization constant kappa > 0 (Def. contributo-pesato). */
+extern double g_weight_kappa;
+
+/** -weightalpha: allocation constant alpha in [0,1] (Def. allocazione). */
+extern double g_weight_alpha;
+
+/** -weightlambda: feedback damping lambda in [0,1) (Def. peso-finale). */
+extern double g_weight_lambda;
+
 #endif // MC_WEIGHT_ENGINE_H

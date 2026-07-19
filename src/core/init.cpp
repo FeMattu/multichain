@@ -44,6 +44,7 @@
 #include "wpoa/wpoa_selector.h"
 #include "wpoa/randao_accumulator.h"
 #include "wpoa/private_sortition.h"
+#include "weight_engine/weight_engine.h"
 
 std::string BurnAddress(const std::vector<unsigned char>& vchVersion);
 std::string SetBannedTxs(std::string txlist);
@@ -574,6 +575,11 @@ std::string HelpMessage(HelpMessageMode mode)                                   
     strUsage += "  -wpoarandaolookback=<k>                  " + strprintf(_("wPoA RANDAO lookback distance k in seed[n+1]=H(R_tot[n-k] | h[n-1] | n) (default: %u). Inherited from params.dat. Must be identical on all nodes."), MC_WPOA_DEFAULT_RANDAO_LOOKBACK) + "\n";
     strUsage += "  -enablewpoasortition                     " + _("wPoA Phase 4: private (VRF-scored) sortition; each validator scores itself privately under its own secret key and self-elects via a score-proportional mining delay, so the next proposer is unpredictable until it acts (default: 0). Requires -enablewpoarandao (and lookback >= 1). Inherited from params.dat. Must be identical on all nodes.") + "\n";
     strUsage += "  -wpoasortitiondelay=<s>                  " + strprintf(_("wPoA sortition delay scale in seconds (delay = s * score * total_effective_weight); larger values spread proposers further apart in time, reducing forks at the cost of block latency (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_SORTITION_DELAY) + "\n";
+    strUsage += "  -enableweightengine                      " + _("Weight engine: derive each cluster's wpoa-weights entry from public on-chain inputs (membership/ESG/activity/reconciliation) every epoch, instead of a static per-node -weight. Requires -enablewpoaweights. Inherited from params.dat; default 0. Must be identical on all nodes.") + "\n";
+    strUsage += "  -weightepochlength=<n>                   " + strprintf(_("Weight engine epoch length in blocks: epoch(height) = height / n (default: %u). Inherited from params.dat. Must be identical on all nodes."), (unsigned)MC_WEIGHT_DEFAULT_EPOCH_LENGTH) + "\n";
+    strUsage += "  -weightkappa=<x>                         " + strprintf(_("Weight engine normalization constant kappa > 0 in c_i = ESG_i * tau_i / kappa (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WEIGHT_DEFAULT_KAPPA) + "\n";
+    strUsage += "  -weightalpha=<x>                         " + strprintf(_("Weight engine allocation constant alpha in [0,1] in A_k = alpha * Theta * W_k / W_tot (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WEIGHT_DEFAULT_ALPHA) + "\n";
+    strUsage += "  -weightlambda=<x>                        " + strprintf(_("Weight engine feedback damping lambda in [0,1) in w_k = W_k * [rho*lambda + (1-lambda)] (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WEIGHT_DEFAULT_LAMBDA) + "\n";
     strUsage += "  -shrinkdebugfilesize=<n>                 " + _("If shrinkdebugfile is 1, this controls the size of the debug file. Whenever the debug.log file reaches over 5 times this number of bytes, it is reduced back down to this size.") + "\n";
     strUsage += "  -shortoutput                             " + _("Only show the node address (if connecting was successful) or an address in the wallet (if connect permissions must be granted by another node)") + "\n";
     strUsage += "  -bantx=<txids>                           " + _("Comma delimited list of banned transactions.") + "\n";
@@ -772,6 +778,35 @@ bool GrantMessagePrinted(int OutputPipe,bool failed_seed)
         }        
     }
     return false;
+}
+
+/* Weight-engine parameter helpers (params.dat baseline + CLI override), mirroring
+ * the wPoA startup resolution below. kappa/alpha/lambda are real-valued and, like
+ * -wpoasortitiondelay, are carried as strings and parsed with strtod. */
+static std::string ResolveWeightRealStr(mc_MultichainParams* np, const char* pname,
+                                        const char* cliflag, double def)
+{
+    std::string base;
+    if (np != NULL)
+    {
+        int sz = 0;
+        const char* p = (const char*)np->GetParam(pname, &sz);
+        if (p && sz > 0) base = p;
+    }
+    if (base.empty()) base = strprintf("%g", def);
+    return GetArg(cliflag, base);
+}
+
+/* Parse the whole string as a double; false on empty, trailing garbage or no
+ * digits. Range/finiteness are checked by the caller (NaN/Inf-safe comparisons). */
+static bool ParseWeightDouble(const std::string& s, double& out)
+{
+    if (s.empty()) return false;
+    char* end = NULL;
+    double v = strtod(s.c_str(), &end);
+    if (end == s.c_str() || *end != '\0') return false;
+    out = v;
+    return true;
 }
 
 /** Initialize bitcoin.
@@ -3333,6 +3368,75 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
         if (g_wpoa_weights_enabled && pwalletMain && pwalletTxsMain && !fDisableWallet)
         {
             threadGroup.create_thread(boost::bind(&ThreadRegisterNodeWeight, g_node_weight));
+        }
+
+        // Weight-engine parameters — consensus-critical chain parameters inherited
+        // via params.dat exactly like the wPoA switches above (params.dat value is
+        // the baseline; a matching runtime flag overrides it locally, CLI wins). The
+        // engine's compute/publish thread is wired in a later stage; here we only
+        // resolve, validate and commit the configuration to the runtime globals.
+        {
+            bool p_we = (np != NULL) && (np->GetInt64Param("enableweightengine") != 0);
+            bool we_enabled = mapArgs.count("-enableweightengine")
+                                ? GetBoolArg("-enableweightengine", p_we) : p_we;
+
+            int64_t p_epoch = (np != NULL) ? np->GetInt64Param("weightepochlength")
+                                           : (int64_t)MC_WEIGHT_DEFAULT_EPOCH_LENGTH;
+            if (p_epoch < 1) p_epoch = MC_WEIGHT_DEFAULT_EPOCH_LENGTH;
+            int64_t epoch_len = GetArg("-weightepochlength", p_epoch);
+            if (epoch_len < 1 || epoch_len > 1000000)
+            {
+                return InitError(strprintf(_("Invalid -weightepochlength value %d: must be an integer in [1, 1000000]."), (int)epoch_len));
+            }
+
+            // kappa / alpha / lambda are real-valued, so (like -wpoasortitiondelay)
+            // they travel as strings and are parsed here with NaN/Inf-safe range checks.
+            double kappa = 0.0, alpha = 0.0, lambda = 0.0;
+            std::string s;
+
+            s = ResolveWeightRealStr(np, "weightkappa", "-weightkappa", (double)MC_WEIGHT_DEFAULT_KAPPA);
+            if (!ParseWeightDouble(s, kappa) || !(kappa > 0.0 && kappa < 1e18))
+            {
+                return InitError(strprintf(_("Invalid -weightkappa value '%s': must be a number > 0."), s));
+            }
+
+            s = ResolveWeightRealStr(np, "weightalpha", "-weightalpha", (double)MC_WEIGHT_DEFAULT_ALPHA);
+            if (!ParseWeightDouble(s, alpha) || !(alpha >= 0.0 && alpha <= 1.0))
+            {
+                return InitError(strprintf(_("Invalid -weightalpha value '%s': must be a number in [0, 1]."), s));
+            }
+
+            s = ResolveWeightRealStr(np, "weightlambda", "-weightlambda", (double)MC_WEIGHT_DEFAULT_LAMBDA);
+            if (!ParseWeightDouble(s, lambda) || !(lambda >= 0.0 && lambda < 1.0))
+            {
+                return InitError(strprintf(_("Invalid -weightlambda value '%s': must be a number in [0, 1) (lambda < 1 is a correctness requirement)."), s));
+            }
+
+            // The weight engine PRODUCES the weights the wPoA layer consumes, so it
+            // needs the weights stream running.
+            if (we_enabled && !g_wpoa_weights_enabled)
+            {
+                return InitError(_("weight-engine: -enableweightengine requires the wPoA weights stream (-enablewpoaweights)."));
+            }
+
+            g_weight_engine_enabled = we_enabled;
+            g_weight_epoch_length   = (int)epoch_len;
+            g_weight_kappa          = kappa;
+            g_weight_alpha          = alpha;
+            g_weight_lambda         = lambda;
+
+            // Consensus-critical divergence warning (mirrors the wPoA block above).
+            if (np != NULL && we_enabled != p_we)
+            {
+                LogPrintf("[WeightEngine] WARNING: -enableweightengine overrides the inherited chain "
+                          "configuration (params.dat=%d, effective=%d). This switch is consensus-critical "
+                          "and MUST match the rest of the validator set or this node will fork.\n",
+                          (int)p_we, (int)we_enabled);
+            }
+
+            LogPrintf("[WeightEngine] %s; epoch-length=%d blocks; kappa=%g; alpha=%g; lambda=%g\n",
+                      we_enabled ? "ON" : "off", g_weight_epoch_length,
+                      g_weight_kappa, g_weight_alpha, g_weight_lambda);
         }
     }
 #endif
