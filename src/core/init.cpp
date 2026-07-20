@@ -3365,11 +3365,6 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
         // weights stream is enabled. Publishing is a transaction, so it can only happen
         // once the wallet, permissions, the stream and connectivity are ready. Never
         // blocks startup.
-        if (g_wpoa_weights_enabled && pwalletMain && pwalletTxsMain && !fDisableWallet)
-        {
-            threadGroup.create_thread(boost::bind(&ThreadRegisterNodeWeight, g_node_weight));
-        }
-
         // Weight-engine parameters — consensus-critical chain parameters inherited
         // via params.dat exactly like the wPoA switches above (params.dat value is
         // the baseline; a matching runtime flag overrides it locally, CLI wins). The
@@ -3437,6 +3432,22 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
             LogPrintf("[WeightEngine] %s; epoch-length=%d blocks; kappa=%g; alpha=%g; lambda=%g\n",
                       we_enabled ? "ON" : "off", g_weight_epoch_length,
                       g_weight_kappa, g_weight_alpha, g_weight_lambda);
+        }
+
+        // Launch the weight-publication thread: the dynamic WeightEngine when enabled
+        // (it computes + publishes w_k each epoch and auto-creates/subscribes the four
+        // input streams), otherwise the static per-node weight registrar. Both feed the
+        // same wpoa-weights stream, so the consensus selector is unaffected.
+        if (g_wpoa_weights_enabled && pwalletMain && pwalletTxsMain && !fDisableWallet)
+        {
+            if (g_weight_engine_enabled)
+            {
+                threadGroup.create_thread(boost::bind(&ThreadWeightEngine));
+            }
+            else
+            {
+                threadGroup.create_thread(boost::bind(&ThreadRegisterNodeWeight, g_node_weight));
+            }
         }
     }
 #endif

@@ -439,4 +439,24 @@ extern double g_weight_alpha;
 /** -weightlambda: feedback damping lambda in [0,1) (Def. peso-finale). */
 extern double g_weight_lambda;
 
+// --- epoch mapping / activation / background thread (defined in weight_engine.cpp) ---
+
+/** epoch(height) = height / g_weight_epoch_length + 1 (1-based). Every node derives
+ *  the same epoch from the height alone (thesis §epochs_slots). */
+uint32_t HeightToEpoch(int height);
+
+/** True when the weight engine governs the weights at `height` (i.e. it is enabled).
+ *  Pure predicate, in the style of WPoAActiveAtHeight (wpoa_selector.h). */
+bool WeightEngineActiveAtHeight(int height);
+
+/**
+ * Background entry point launched from AppInit2 (in place of ThreadRegisterNodeWeight)
+ * when -enableweightengine is set. Ensures the four input streams exist and are
+ * subscribed — creating them on the first node that has create permission (the
+ * genesis / admin node) and merely subscribing on every other node — then, at each
+ * epoch boundary on the chain tip, recomputes this node's own w_k from the public
+ * inputs and publishes it to wpoa-weights via StreamWeightRegistry.
+ */
+void ThreadWeightEngine();
+
 #endif // MC_WEIGHT_ENGINE_H

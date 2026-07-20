@@ -3,21 +3,37 @@
 //
 // Weight-management layer — node-coupled glue.
 // ------------------------------------------------------------------------------
-// Definitions of the WeightEngine runtime configuration globals declared in
-// weight_engine.h. They are bound to the WeightEngine chain parameters / CLI
-// flags (params.dat baseline + runtime override) in AppInit2 (src/core/init.cpp),
-// exactly like the wPoA globals in stream_weight_registry.cpp / wpoa_selector.cpp.
+// Holds the runtime configuration globals (bound to the WeightEngine chain
+// parameters / CLI flags in AppInit2, src/core/init.cpp) and the background
+// orchestration that, each epoch, reads the four public input streams, folds them
+// forward through the pure core (weight_engine.h) and publishes THIS node's own
+// cluster weight w_k to the wpoa-weights stream — reusing StreamWeightRegistry as
+// the publication port, exactly as the static -weight path did.
 //
-// The initializers are the compile-time defaults from weight_streams.h; AppInit2
-// overwrites them with the resolved chain-parameter / flag values at startup. The
-// remaining node glue (the stream reader, the per-epoch trigger, the publish path
-// and ThreadWeightEngine) is added to this file in a later stage — the pure math
-// core lives header-only in weight_engine.h so it stays unit-testable in isolation.
+// The pure math stays header-only in weight_engine.h; everything node-coupled
+// (stream reads, epoch trigger off the chain tip, publish, thread) lives here and
+// in weight_reader.{h,cpp}.
 
 #include "weight_engine/weight_engine.h"
+#include "weight_engine/weight_reader.h"
 
-/** -enableweightengine (default off): when set, the engine computes and publishes
- *  w_k each epoch instead of the static per-node -weight. */
+#include "wpoa/stream_weight_registry.h"  // StreamWeightRegistry (publish port), g_wpoa_weights_enabled
+#include "core/init.h"                     // pwalletMain, pwalletTxsMain, ShutdownRequested
+#include "core/main.h"                     // chainActive, cs_main, IsInitialBlockDownload
+#include "utils/util.h"                    // LogPrintf, RenameThread, GetBoolArg
+#include "utils/utiltime.h"                // MilliSleep
+
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+// ---------------------------------------------------------------------------
+// Runtime configuration globals (defaults from weight_streams.h; AppInit2
+// overwrites them with the resolved chain-parameter / flag values).
+// ---------------------------------------------------------------------------
+
+/** -enableweightengine (default off): compute+publish w_k each epoch. */
 bool g_weight_engine_enabled = false;
 
 /** -weightepochlength: epoch length in blocks (epoch(height) = height / this). */
@@ -31,3 +47,229 @@ double g_weight_alpha = MC_WEIGHT_DEFAULT_ALPHA;
 
 /** -weightlambda: feedback damping lambda in [0,1). */
 double g_weight_lambda = MC_WEIGHT_DEFAULT_LAMBDA;
+
+// Retry pacing for the background thread (mirrors the wpoa registry thread).
+static const int MC_WEIGHT_RETRY_INTERVAL_MS = 3000;
+
+// ---------------------------------------------------------------------------
+// Epoch mapping / activation predicate
+// ---------------------------------------------------------------------------
+
+// epoch(height) = height / epochlength + 1  (1-based, so the thesis' e = 1 special
+// case — w_k = W_k, no feedback — covers the first epochlength blocks). Every node
+// derives the same epoch from the height alone.
+uint32_t HeightToEpoch(int height)
+{
+    int len = (g_weight_epoch_length > 0) ? g_weight_epoch_length : MC_WEIGHT_DEFAULT_EPOCH_LENGTH;
+    if (height < 0)
+    {
+        height = 0;
+    }
+    return (uint32_t)(height / len) + 1;
+}
+
+// The weight engine governs the weights at `height` when it is enabled. (The
+// dependency on the wpoa-weights stream is enforced once at flag-parse time.)
+bool WeightEngineActiveAtHeight(int height)
+{
+    return g_weight_engine_enabled && height >= 0;
+}
+
+// ---------------------------------------------------------------------------
+// Background orchestration
+// ---------------------------------------------------------------------------
+
+// address -> value lookups that never mutate the map (no operator[] insertion).
+static uint32_t LookupTau(const std::map<std::string, uint32_t>& m, const std::string& k)
+{
+    std::map<std::string, uint32_t>::const_iterator it = m.find(k);
+    return (it != m.end()) ? it->second : 0;
+}
+static double LookupDouble(const std::map<std::string, double>& m, const std::string& k)
+{
+    std::map<std::string, double>::const_iterator it = m.find(k);
+    return (it != m.end()) ? it->second : 0.0;
+}
+
+// True once the node can create/publish and reliably read: a chain tip exists and
+// (unless -offline) the initial block download has finished. Same gate as the wpoa
+// registration thread.
+static bool NodeReadyForWeight()
+{
+    {
+        LOCK(cs_main);
+        if (chainActive.Tip() == NULL)
+        {
+            return false;
+        }
+    }
+    if (GetBoolArg("-offline", false))
+    {
+        return true;
+    }
+    return !IsInitialBlockDownload();
+}
+
+// Compute THIS node's own integer cluster weight for `target_epoch` by folding the
+// pipeline forward from epoch 1 using purely public on-chain inputs (so every
+// honest node derives the same value). Returns false when the inputs are not yet
+// readable or the local node is not a cluster miner (nothing to publish).
+static bool ComputeLocalWeightForEpoch(WeightStreamReader& reader, const std::string& local_miner,
+                                       uint32_t target_epoch, uint32_t& out_weight)
+{
+    // Static inputs (latest confirmed wins).
+    std::map<std::string, std::set<std::string> > clusters;
+    std::map<std::string, double> esg;
+    if (!reader.ReadMembership(clusters) || !reader.ReadEsg(esg))
+    {
+        return false;
+    }
+
+    // The local node only publishes a weight if it is itself a cluster miner.
+    if (clusters.find(local_miner) == clusters.end())
+    {
+        return false;
+    }
+
+    // Per-epoch inputs, bucketed by epoch in a single pass each.
+    std::map<uint32_t, std::map<std::string, uint32_t> > tau_by_epoch;
+    std::map<uint32_t, std::map<std::string, double> > r_by_epoch;
+    if (!reader.ReadActivityByEpoch(tau_by_epoch) || !reader.ReadReconciliationByEpoch(r_by_epoch))
+    {
+        return false;
+    }
+
+    const std::map<std::string, uint32_t> empty_tau;
+    const std::map<std::string, double> empty_r;
+
+    WeightEngine::Params params(g_weight_kappa, g_weight_alpha, g_weight_lambda);
+    std::map<std::string, WeightEngine::ClusterState> state;   // empty -> B_0 = 0 at epoch 1
+    std::map<std::string, WeightEngine::ClusterResult> results;
+
+    for (uint32_t e = 1; e <= target_epoch; e++)
+    {
+        std::map<uint32_t, std::map<std::string, uint32_t> >::const_iterator te = tau_by_epoch.find(e);
+        const std::map<std::string, uint32_t>& tau_e = (te != tau_by_epoch.end()) ? te->second : empty_tau;
+        std::map<uint32_t, std::map<std::string, double> >::const_iterator re = r_by_epoch.find(e);
+        const std::map<std::string, double>& r_e = (re != r_by_epoch.end()) ? re->second : empty_r;
+
+        // Build one ClusterInput per cluster (deterministic: clusters/companies are
+        // sorted std::map / std::set, and ComputeEpoch re-sorts internally anyway).
+        std::vector<WeightEngine::ClusterInput> inputs;
+        inputs.reserve(clusters.size());
+        for (std::map<std::string, std::set<std::string> >::const_iterator ci = clusters.begin();
+             ci != clusters.end(); ++ci)
+        {
+            WeightEngine::ClusterInput in;
+            in.miner      = ci->first;
+            in.esg_miner  = LookupDouble(esg, ci->first);      // 0 if uncertified -> W_k = 0
+            in.tau_miner  = LookupTau(tau_e, ci->first);
+            in.reconciled = LookupDouble(r_e, ci->first);
+            for (std::set<std::string>::const_iterator ai = ci->second.begin(); ai != ci->second.end(); ++ai)
+            {
+                WeightEngine::Company c;
+                c.address = *ai;
+                c.esg     = LookupDouble(esg, *ai);            // 0 if uncertified -> c_i = 0
+                c.tau     = LookupTau(tau_e, *ai);
+                in.companies.push_back(c);
+            }
+            inputs.push_back(in);
+        }
+
+        double theta = WeightEngine::NetworkActivity(inputs);
+        std::map<std::string, WeightEngine::ClusterState> newstate;
+        WeightEngine::ComputeEpoch(inputs, theta, state, params, e, results, newstate);
+        state = newstate;
+    }
+
+    std::map<std::string, WeightEngine::ClusterResult>::const_iterator it = results.find(local_miner);
+    if (it == results.end())
+    {
+        return false;
+    }
+    out_weight = it->second.integer_weight;
+    return true;
+}
+
+// Background thread: ensures the four input streams exist and are subscribed (the
+// automatic, first-startup-on-the-genesis-node creation), then republishes this
+// node's own w_k at every epoch boundary. Launched from AppInit2 (in place of
+// ThreadRegisterNodeWeight) when -enableweightengine is set.
+void ThreadWeightEngine()
+{
+    RenameThread("mc-weight-engine");
+    LogPrintf("[WeightEngine] background thread started (epochlen=%d, kappa=%g, alpha=%g, lambda=%g)\n",
+              g_weight_epoch_length, g_weight_kappa, g_weight_alpha, g_weight_lambda);
+
+    if (pwalletTxsMain == NULL || pwalletMain == NULL)
+    {
+        LogPrintf("[WeightEngine] wallet not available, aborting\n");
+        return;
+    }
+
+    WeightStreamReader reader(pwalletTxsMain);
+    StreamWeightRegistry registry(pwalletTxsMain);   // publication port for wpoa-weights
+    std::string local = registry.GetLocalAddress();
+
+    uint32_t last_published_epoch = 0;
+
+    while (!ShutdownRequested())
+    {
+        MilliSleep(MC_WEIGHT_RETRY_INTERVAL_MS);
+        if (ShutdownRequested())
+        {
+            break;
+        }
+
+        if (!NodeReadyForWeight())
+        {
+            continue;
+        }
+
+        // Auto-create + subscribe the four input streams. The first node with create
+        // permission (the genesis / admin node) creates them; everyone else finds
+        // them and subscribes. Not usable until the create/subscribe txs confirm.
+        if (!reader.EnsureInputStreams())
+        {
+            continue;
+        }
+
+        int height = -1;
+        {
+            LOCK(cs_main);
+            if (chainActive.Tip() != NULL)
+            {
+                height = chainActive.Height();
+            }
+        }
+        if (height < 0 || !WeightEngineActiveAtHeight(height))
+        {
+            continue;
+        }
+
+        uint32_t epoch = HeightToEpoch(height);
+        if (epoch == last_published_epoch)
+        {
+            continue; // already published for this epoch
+        }
+
+        uint32_t w = 0;
+        if (!ComputeLocalWeightForEpoch(reader, local, epoch, w))
+        {
+            // Not a certified miner yet, or inputs still incomplete — retry next tick
+            // without advancing the epoch marker.
+            continue;
+        }
+
+        // Publish via the shared registry path (ensures wpoa-weights exists +
+        // subscribed, idempotent when the value is unchanged).
+        if (registry.RegisterLocalWeight(w))
+        {
+            LogPrintf("[WeightEngine] epoch %u (height %d): w_k = %u for %s\n",
+                      epoch, height, w, local.c_str());
+            last_published_epoch = epoch;
+        }
+    }
+
+    LogPrintf("[WeightEngine] background thread stopped\n");
+}
