@@ -108,4 +108,15 @@
  *  epochs_slots). Must be >= 1. */
 #define MC_WEIGHT_DEFAULT_EPOCH_LENGTH   100
 
+/** Stability margin in blocks. The activity counter tau is derived from the
+ *  confirmed blocks of an epoch (weight_reader.cpp ComputeActivityForEpoch); to
+ *  keep that derivation identical on every node, an epoch is only computed once it
+ *  is BURIED — its last block is at least this many blocks below the chain tip —
+ *  so a shallow reorg near the tip can never make two nodes read different blocks.
+ *  MUST be >= the deepest reorg the chain can undergo and identical on every node.
+ *  Held as a compile-time constant (identical across the single binary version);
+ *  promote to a params.dat-hashed chain parameter before production, alongside
+ *  weightepochlength. */
+#define MC_WEIGHT_DEFAULT_STABILITY_MARGIN   6
+
 #endif // MC_WEIGHT_STREAMS_H

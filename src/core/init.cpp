@@ -3429,6 +3429,25 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
                           (int)p_we, (int)we_enabled);
             }
 
+            // Same guard for the numeric/real params: weightepochlength/kappa/alpha/lambda are
+            // hash-enforced chain parameters, so a local CLI override changes THIS node's w_k
+            // computation and epoch boundaries. Warn on any local override (the epoch length is
+            // compared by value; the reals are flagged by flag presence since they carry a range
+            // but no per-node "expected" beyond the inherited params.dat value).
+            {
+                std::string overridden;
+                if (epoch_len != p_epoch)               overridden += " -weightepochlength";
+                if (mapArgs.count("-weightkappa"))      overridden += " -weightkappa";
+                if (mapArgs.count("-weightalpha"))      overridden += " -weightalpha";
+                if (mapArgs.count("-weightlambda"))     overridden += " -weightlambda";
+                if (!overridden.empty())
+                {
+                    LogPrintf("[WeightEngine] WARNING: local override of hash-enforced consensus "
+                              "parameter(s):%s. These MUST match the inherited params.dat value on "
+                              "every node, or this node computes a divergent w_k.\n", overridden.c_str());
+                }
+            }
+
             LogPrintf("[WeightEngine] %s; epoch-length=%d blocks; kappa=%g; alpha=%g; lambda=%g\n",
                       we_enabled ? "ON" : "off", g_weight_epoch_length,
                       g_weight_kappa, g_weight_alpha, g_weight_lambda);

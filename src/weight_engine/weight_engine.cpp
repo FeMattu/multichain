@@ -131,15 +131,14 @@ static bool ComputeLocalWeightForEpoch(WeightStreamReader& reader, const std::st
         return false;
     }
 
-    // Per-epoch inputs, bucketed by epoch in a single pass each.
-    std::map<uint32_t, std::map<std::string, uint32_t> > tau_by_epoch;
+    // Reconciliation R (admin-attested stream), bucketed by epoch in one pass.
+    // Activity tau is NOT a stream: it is derived per-epoch from the blocks below.
     std::map<uint32_t, std::map<std::string, double> > r_by_epoch;
-    if (!reader.ReadActivityByEpoch(tau_by_epoch) || !reader.ReadReconciliationByEpoch(r_by_epoch))
+    if (!reader.ReadReconciliationByEpoch(r_by_epoch))
     {
         return false;
     }
 
-    const std::map<std::string, uint32_t> empty_tau;
     const std::map<std::string, double> empty_r;
 
     WeightEngine::Params params(g_weight_kappa, g_weight_alpha, g_weight_lambda);
@@ -148,8 +147,15 @@ static bool ComputeLocalWeightForEpoch(WeightStreamReader& reader, const std::st
 
     for (uint32_t e = 1; e <= target_epoch; e++)
     {
-        std::map<uint32_t, std::map<std::string, uint32_t> >::const_iterator te = tau_by_epoch.find(e);
-        const std::map<std::string, uint32_t>& tau_e = (te != tau_by_epoch.end()) ? te->second : empty_tau;
+        // tau_e is DERIVED deterministically from epoch e's confirmed blocks (no
+        // stream). If e is not yet buried or its block/undo data is unavailable we
+        // cannot compute identically across nodes -> abort; the caller retries once
+        // the epoch buries. (target_epoch is buried, so every e <= it is too.)
+        std::map<std::string, uint32_t> tau_e;
+        if (!reader.ComputeActivityForEpoch(e, tau_e))
+        {
+            return false;
+        }
         std::map<uint32_t, std::map<std::string, double> >::const_iterator re = r_by_epoch.find(e);
         const std::map<std::string, double>& r_e = (re != r_by_epoch.end()) ? re->second : empty_r;
 
@@ -191,9 +197,9 @@ static bool ComputeLocalWeightForEpoch(WeightStreamReader& reader, const std::st
     return true;
 }
 
-// Background thread: ensures the four input streams exist and are subscribed (the
-// automatic, first-startup-on-the-genesis-node creation), then republishes this
-// node's own w_k at every epoch boundary. Launched from AppInit2 (in place of
+// Background thread: ensures the three admin input streams exist and are subscribed
+// (automatic, first-startup-on-the-genesis-node creation), then republishes this
+// node's own w_k for the newest BURIED epoch. Launched from AppInit2 (in place of
 // ThreadRegisterNodeWeight) when -enableweightengine is set.
 void ThreadWeightEngine()
 {
@@ -226,9 +232,9 @@ void ThreadWeightEngine()
             continue;
         }
 
-        // Auto-create + subscribe the four input streams. The first node with create
-        // permission (the genesis / admin node) creates them; everyone else finds
-        // them and subscribes. Not usable until the create/subscribe txs confirm.
+        // Auto-create (closed) + subscribe the three admin input streams. The first
+        // node with create permission (the genesis / admin node) creates them;
+        // everyone else finds them and subscribes. Not usable until confirmed.
         if (!reader.EnsureInputStreams())
         {
             continue;
@@ -247,17 +253,30 @@ void ThreadWeightEngine()
             continue;
         }
 
-        uint32_t epoch = HeightToEpoch(height);
-        if (epoch == last_published_epoch)
+        // Publish for the newest BURIED epoch only: the epoch whose last block sits at
+        // least STABILITY_MARGIN below the tip. tau is derived from that epoch's
+        // blocks, so computing an open / near-tip epoch could diverge under a reorg.
+        const int len = g_weight_epoch_length;
+        if (len < 1)
         {
-            continue; // already published for this epoch
+            continue;
+        }
+        int stableHeight = height - MC_WEIGHT_DEFAULT_STABILITY_MARGIN;
+        if (stableHeight < 0)
+        {
+            continue; // nothing buried yet
+        }
+        uint32_t epoch = (uint32_t)((stableHeight + 1) / len);   // largest e with e*len-1 <= stableHeight
+        if (epoch < 1 || epoch == last_published_epoch)
+        {
+            continue; // no buried epoch yet, or already published for it
         }
 
         uint32_t w = 0;
         if (!ComputeLocalWeightForEpoch(reader, local, epoch, w))
         {
-            // Not a certified miner yet, or inputs still incomplete — retry next tick
-            // without advancing the epoch marker.
+            // Not a certified miner yet, or inputs incomplete / epoch not buried —
+            // retry next tick without advancing the epoch marker.
             continue;
         }
 

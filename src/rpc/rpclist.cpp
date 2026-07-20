@@ -11,6 +11,7 @@
 
 #include "rpc/rpcserver.h"
 #include "wpoa/stream_weight_registry.h"
+#include "weight_engine/weight_publisher.h"
 
 
 /* MCHN START */
@@ -137,6 +138,10 @@ static const CRPCCommand vRPCCommands[] =
     { "wpoa",               "getlocalweight",         &getlocalweight,         true,      true,       true },
     { "wpoa",               "getallweights",          &getallweights,          true,      true,       true },
     { "wpoa",               "getnodeweight",          &getnodeweight,          true,      true,       true },
+    /* WeightEngine admin attestations (Phase W3) — write, wallet-backed */
+    { "weight",             "weightsetesg",           &weightsetesg,           false,     false,      true },
+    { "weight",             "weightsetmembership",    &weightsetmembership,    false,     false,      true },
+    { "weight",             "weightsetreconciliation",&weightsetreconciliation,false,     false,      true },
 #endif
 
 /* MCHN END */

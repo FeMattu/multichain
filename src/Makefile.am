@@ -110,6 +110,7 @@ BITCOIN_CORE_H = \
   weight_engine/weight_records.h \
   weight_engine/weight_engine.h \
   weight_engine/weight_reader.h \
+  weight_engine/weight_publisher.h \
   storage/coins.h \
   utils/compat.h \
   utils/compressor.h \
@@ -308,6 +309,7 @@ libbitcoin_wallet_a_SOURCES = \
   wpoa/private_sortition.cpp \
   weight_engine/weight_engine.cpp \
   weight_engine/weight_reader.cpp \
+  weight_engine/weight_publisher.cpp \
   $(BITCOIN_CORE_H)
 
 # crypto primitives library

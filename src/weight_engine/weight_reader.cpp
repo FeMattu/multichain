@@ -2,20 +2,25 @@
 // MultiChain code distributed under the GPLv3 license, see COPYING file.
 //
 // Weight-management layer — Stage W3: input-stream reader implementation.
-// See weight_reader.h for the design. This mirrors, deliberately and closely,
-// the proven stream access in wpoa/stream_weight_registry.cpp: the create /
-// subscribe path reuses the in-process RPC handlers, and the reads use the
-// low-level, self-locking, NON-WRP wallet API so they are safe off the RPC read
-// thread and always observe the live confirmed state.
+// See weight_reader.h. Stream access mirrors wpoa/stream_weight_registry.cpp
+// (in-process create/subscribe, non-WRP confirmed reads). The activity counter is
+// NOT read from a stream: ComputeActivityForEpoch derives it deterministically from
+// the confirmed block + undo data of a buried epoch.
 
 #include "weight_engine/weight_reader.h"
 
-#include "weight_engine/weight_streams.h"   // stream names
+#include "weight_engine/weight_streams.h"   // stream names, STABILITY_MARGIN
 #include "weight_engine/weight_records.h"   // pure parsers / accumulators (W1)
+#include "weight_engine/weight_engine.h"    // g_weight_epoch_length
 
 #include "rpc/rpcwallet.h"      // pulls rpcserver.h (create/subscribe), wallet.h, wallettxs.h, multichain.h
 #include "rpc/rpcutils.h"       // OpReturnFormatEntry
 #include "core/init.h"          // pwalletMain, pwalletTxsMain
+#include "core/main.h"          // chainActive, cs_main, CBlockIndex, ReadBlockFromDisk, CBlockUndo
+#include "chain/undo.h"         // CTxUndo, CTxInUndo
+#include "script/standard.h"    // CTxDestination
+#include "utils/utilparse.h"    // ExtractDestinationScriptValid
+#include "structs/base58.h"     // CBitcoinAddress
 #include "utils/util.h"         // LogPrintf, GetBoolArg
 
 #include <boost/foreach.hpp>
@@ -32,16 +37,13 @@ WeightStreamReader::WeightStreamReader(mc_WalletTxs* pwalletIn)
     m_pWalletTxs = pwalletIn;
     m_Streams[0].name = MC_WEIGHT_MEMBERSHIP_STREAM_NAME;
     m_Streams[1].name = MC_WEIGHT_ESG_STREAM_NAME;
-    m_Streams[2].name = MC_WEIGHT_ACTIVITY_STREAM_NAME;
-    m_Streams[3].name = MC_WEIGHT_RECONCILIATION_STREAM_NAME;
+    m_Streams[2].name = MC_WEIGHT_RECONCILIATION_STREAM_NAME;
 }
 
 // ---------------------------------------------------------------------------
 // Stream / subscription helpers (writes reuse MultiChain RPC handlers)
 // ---------------------------------------------------------------------------
 
-// Looks up a confirmed stream entity by name. True and fills *entity only when it
-// exists and is a stream.
 bool WeightStreamReader::GetStreamEntity(const std::string& name, mc_EntityDetails* entity)
 {
     if (mc_gState == NULL || mc_gState->m_Assets == NULL)
@@ -55,9 +57,10 @@ bool WeightStreamReader::GetStreamEntity(const std::string& name, mc_EntityDetai
     return (entity->GetEntityType() == MC_ENT_TYPE_STREAM);
 }
 
-// Ensures one stream exists (creating it — exactly one create tx — if missing) and
-// that this node is subscribed. Returns true only when it exists AND is subscribed.
-// Mirrors StreamWeightRegistry::EnsureStreamExists + EnsureSubscribed.
+// Ensures one input stream exists (creating it CLOSED — one create tx — if missing)
+// and that this node is subscribed. CLOSED (MC_PTP_WRITE required) so only
+// write-permitted governance addresses can publish; the WeightPublisher admin RPCs
+// are the sanctioned write path. Reading only needs a subscription, not write.
 bool WeightStreamReader::EnsureOneStream(InputStream& s)
 {
     mc_EntityDetails entity;
@@ -68,18 +71,17 @@ bool WeightStreamReader::EnsureOneStream(InputStream& s)
             return false; // create tx already broadcast, waiting for confirmation
         }
 
-        // create ["stream", <name>, true]  (open stream: any write-permitted address
-        // — the certifier / activity aggregator / reconciliation process — may publish).
+        // create ["stream", <name>, false]  -> CLOSED (write permission required).
         Array params;
         params.push_back(string("stream"));
         params.push_back(s.name);
-        params.push_back(true);
+        params.push_back(false);
 
         s.create_attempted = true;
         try
         {
             Value result = createcmd(params, false);
-            LogPrintf("[WeightEngine] Input stream '%s' create tx broadcast: %s\n",
+            LogPrintf("[WeightEngine] Input stream '%s' created (closed): %s\n",
                       s.name.c_str(), result.get_str().c_str());
         }
         catch (const Object& objError)
@@ -94,7 +96,6 @@ bool WeightStreamReader::EnsureOneStream(InputStream& s)
         return false; // not usable until confirmed
     }
 
-    // Exists — ensure subscribed (required for reads).
     mc_TxEntityStat entStat;
     entStat.Zero();
     memcpy(&entStat, entity.GetTxID() + MC_AST_SHORT_TXID_OFFSET, MC_AST_SHORT_TXID_SIZE);
@@ -106,7 +107,7 @@ bool WeightStreamReader::EnsureOneStream(InputStream& s)
 
     if (s.subscribe_attempted)
     {
-        return false; // subscribe issued, import still catching up
+        return false;
     }
 
     Array params;
@@ -116,7 +117,6 @@ bool WeightStreamReader::EnsureOneStream(InputStream& s)
     {
         subscribe(params, false);
         LogPrintf("[WeightEngine] Subscribed to input stream '%s'\n", s.name.c_str());
-        // Re-check: subscription import may complete synchronously for a short stream.
         return m_pWalletTxs != NULL && m_pWalletTxs->WRPFindEntity(&entStat);
     }
     catch (const Object& objError)
@@ -136,11 +136,8 @@ bool WeightStreamReader::EnsureInputStreams()
     {
         return false;
     }
-
-    // Attempt every stream on each pass (do not short-circuit) so all missing
-    // creates / subscribes are issued together; ready only when all four are.
     bool all_ready = true;
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 3; i++)
     {
         if (!EnsureOneStream(m_Streams[i]))
         {
@@ -154,10 +151,6 @@ bool WeightStreamReader::EnsureInputStreams()
 // Item decoding (local mc_Script -> keys + data; thread-safe)
 // ---------------------------------------------------------------------------
 
-// Extracts the item KEY(S) and the decoded JSON payload from the stream item whose
-// OP_RETURN belongs to `stream_short_txid`. Mirrors DecodeWeightRecord but also
-// walks the middle key elements (1 .. N-2). Uses a LOCAL mc_Script (never the
-// shared temp buffer), so it is safe from the background thread.
 static bool DecodeStreamItem(const CWalletTx& wtx, const unsigned char* stream_short_txid,
                              WeightStreamItem& out)
 {
@@ -190,7 +183,6 @@ static bool DecodeStreamItem(const CWalletTx& wtx, const unsigned char* stream_s
         int64_t total_chunk_size = 0;
         script.ExtractAndDeleteDataFormat(&format, &chunk_hashes, &chunk_count, &total_chunk_size);
 
-        // Element 0 must be our stream entity.
         unsigned char short_txid[MC_AST_SHORT_TXID_SIZE];
         script.SetElement(0);
         if (script.GetEntity(short_txid) != 0)
@@ -208,7 +200,6 @@ static bool DecodeStreamItem(const CWalletTx& wtx, const unsigned char* stream_s
             continue;
         }
 
-        // Keys occupy the elements strictly between the entity (0) and the data (n-1).
         out.keys.clear();
         for (int e = 1; e < n - 1; e++)
         {
@@ -222,7 +213,6 @@ static bool DecodeStreamItem(const CWalletTx& wtx, const unsigned char* stream_s
             }
         }
 
-        // Last element holds the item data (tiny on-chain JSON only).
         size_t data_size = 0;
         const unsigned char* data = script.GetData(n - 1, &data_size);
         if (data == NULL || data_size == 0)
@@ -230,8 +220,6 @@ static bool DecodeStreamItem(const CWalletTx& wtx, const unsigned char* stream_s
             continue;
         }
 
-        // 6-argument overload: returns the raw {"json":{...}} value (like StreamItemEntry),
-        // which the W1 parsers understand. See the note in DecodeWeightRecord.
         string format_text;
         out.value = OpReturnFormatEntry(data, data_size, wtx.GetHash(), j, format, &format_text);
         return true;
@@ -243,11 +231,6 @@ static bool DecodeStreamItem(const CWalletTx& wtx, const unsigned char* stream_s
 // Generic confirmed-item read (low-level, self-locking, NON-WRP)
 // ---------------------------------------------------------------------------
 
-// Reads every CONFIRMED item of the named stream (oldest -> newest) into `out`,
-// each with its key(s) and decoded value. Returns false only when the stream is
-// unavailable (missing or not subscribed); an empty (but subscribed) stream
-// returns true with an empty vector. See the long WRP-vs-non-WRP rationale in
-// StreamWeightRegistry::ReadAllRecords.
 bool WeightStreamReader::ReadStreamItems(const std::string& name, std::vector<WeightStreamItem>& out)
 {
     static const bool dbg = GetBoolArg("-wpoadebug", false);
@@ -271,8 +254,6 @@ bool WeightStreamReader::ReadStreamItems(const std::string& name, std::vector<We
     memcpy(&entStat, entity.GetTxID() + MC_AST_SHORT_TXID_OFFSET, MC_AST_SHORT_TXID_SIZE);
     entStat.m_Entity.m_EntityType = MC_TET_STREAM | MC_TET_CHAINPOS;
 
-    // Non-WRP: self-locking FindEntity/GetListSize/GetList, so the background thread
-    // sees confirmed items as soon as their block connects (see ReadAllRecords).
     bool found;
     m_pWalletTxs->Lock();
     found = m_pWalletTxs->FindEntity(&entStat);
@@ -307,7 +288,7 @@ bool WeightStreamReader::ReadStreamItems(const std::string& name, std::vector<We
         mc_TxEntityRow* er = (mc_TxEntityRow*)rows.GetRow(i);
         if (er->m_Flags & MC_TFL_IS_EXTENSION)
         {
-            continue; // chunked/off-chain extension row; we only publish tiny on-chain JSON
+            continue;
         }
 
         uint256 hash;
@@ -346,7 +327,7 @@ bool WeightStreamReader::ReadMembership(std::map<std::string, std::set<std::stri
     {
         if (item.keys.empty())
         {
-            continue; // membership item key IS the miner address
+            continue;
         }
         const std::string& miner = item.keys[0];
         std::set<std::string> aziende;
@@ -378,26 +359,6 @@ bool WeightStreamReader::ReadEsg(std::map<std::string, double>& esg)
     return true;
 }
 
-bool WeightStreamReader::ReadActivityByEpoch(std::map<uint32_t, std::map<std::string, uint32_t> >& tau_by_epoch)
-{
-    tau_by_epoch.clear();
-    std::vector<WeightStreamItem> items;
-    if (!ReadStreamItems(MC_WEIGHT_ACTIVITY_STREAM_NAME, items))
-    {
-        return false;
-    }
-    BOOST_FOREACH(const WeightStreamItem& item, items)
-    {
-        std::string addr;
-        uint32_t tau = 0, epoch = 0;
-        if (mc_ParseActivityRecordJson(item.value, addr, tau, epoch))
-        {
-            tau_by_epoch[epoch][addr] = tau; // newest confirmed value for (epoch,addr) wins
-        }
-    }
-    return true;
-}
-
 bool WeightStreamReader::ReadReconciliationByEpoch(std::map<uint32_t, std::map<std::string, double> >& r_by_epoch)
 {
     r_by_epoch.clear();
@@ -414,6 +375,131 @@ bool WeightStreamReader::ReadReconciliationByEpoch(std::map<uint32_t, std::map<s
         if (mc_ParseReconciliationRecordJson(item.value, miner, reconciled, epoch))
         {
             r_by_epoch[epoch][miner] = reconciled; // newest wins
+        }
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Chain-derived activity (no stream) — see the determinism contract in the header.
+// ---------------------------------------------------------------------------
+
+// Immutable per-block facts snapshotted under cs_main so the disk reads below never
+// touch mutable CBlockIndex fields (nStatus / file positions), which validation and
+// pruning threads mutate under cs_main. Buried-block block/undo file contents are
+// append-only and stable, so reading them off-lock with these positions is safe.
+struct WeightBlkSnap
+{
+    int           nStatus;
+    CDiskBlockPos blockPos;
+    CDiskBlockPos undoPos;
+    uint256       prevHash;
+    bool          hasPrev;
+};
+
+bool WeightStreamReader::ComputeActivityForEpoch(uint32_t epoch, std::map<std::string, uint32_t>& tau)
+{
+    tau.clear();
+
+    const int len = g_weight_epoch_length;
+    if (epoch < 1 || len < 1)
+    {
+        return false; // never a silent default: a wrong len forks the metric
+    }
+
+    // Epoch -> closed height range [firstHeight, lastHeight] (int64 to avoid overflow).
+    const int64_t firstH = (int64_t)(epoch - 1) * (int64_t)len;
+    const int64_t lastH  = (int64_t)epoch * (int64_t)len - 1;
+    if (firstH < 0 || lastH < firstH)
+    {
+        return false;
+    }
+
+    // Snapshot one self-consistent ancestor chain and verify the epoch is buried.
+    // cs_main is held ONLY for this tiny snapshot; we copy every mutable field we
+    // need (nStatus, block/undo positions, pprev hash) so nothing below reads a
+    // CBlockIndex off-lock. CBlockIndex pointers are stable, but their fields are
+    // not — so we do not keep the pointers, only the copied facts.
+    std::vector<WeightBlkSnap> snaps;
+    {
+        LOCK(cs_main);
+        int tipHeight = chainActive.Height();
+        int stableHeight = tipHeight - MC_WEIGHT_DEFAULT_STABILITY_MARGIN;
+        if (lastH > (int64_t)stableHeight)
+        {
+            return false; // epoch not buried yet -> undefined; caller retries later
+        }
+        CBlockIndex* p = chainActive[(int)lastH];
+        if (p == NULL)
+        {
+            return false;
+        }
+        for (; p != NULL && (int64_t)p->nHeight >= firstH; p = p->pprev)
+        {
+            WeightBlkSnap s;
+            s.nStatus  = p->nStatus;
+            s.blockPos = p->GetBlockPos();
+            s.undoPos  = p->GetUndoPos();
+            s.hasPrev  = (p->pprev != NULL);
+            s.prevHash = s.hasPrev ? p->pprev->GetBlockHash() : uint256();
+            snaps.push_back(s);
+        }
+    }
+
+    // Off-lock: iterate oldest -> newest; resolve each input's owner from undo data,
+    // using only the snapshotted immutable positions/hashes.
+    for (int i = (int)snaps.size() - 1; i >= 0; --i)
+    {
+        const WeightBlkSnap& s = snaps[i];
+        if ((s.nStatus & BLOCK_HAVE_DATA) == 0)
+        {
+            return false; // a buried block must have its data (pruned node -> fail closed)
+        }
+
+        CBlock block;
+        if (!ReadBlockFromDisk(block, s.blockPos))
+        {
+            return false;
+        }
+
+        CBlockUndo undo;
+        bool haveUndo = false;
+        if (!s.undoPos.IsNull() && s.hasPrev)
+        {
+            haveUndo = undo.ReadFromDisk(s.undoPos, s.prevHash);
+        }
+
+        for (size_t k = 0; k < block.vtx.size(); k++)
+        {
+            const CTransaction& txn = block.vtx[k];
+            if (txn.IsCoinBase())
+            {
+                continue; // coinbase has no resolvable input signer
+            }
+            if (!haveUndo || k == 0 || (k - 1) >= undo.vtxundo.size())
+            {
+                return false; // non-coinbase tx without matching undo -> cannot resolve
+            }
+            const CTxUndo& tu = undo.vtxundo[k - 1];
+            if (tu.vprevout.size() != txn.vin.size())
+            {
+                return false; // internal inconsistency -> fail closed
+            }
+
+            std::set<std::string> signers; // dedup: same address counts once per tx
+            for (size_t jj = 0; jj < txn.vin.size(); jj++)
+            {
+                const CScript& spk = tu.vprevout[jj].txout.scriptPubKey;
+                CTxDestination dest;
+                if (ExtractDestinationScriptValid(spk, dest)) // 0-or-1 dest; non-standard -> nobody
+                {
+                    signers.insert(CBitcoinAddress(dest).ToString());
+                }
+            }
+            for (std::set<std::string>::const_iterator it = signers.begin(); it != signers.end(); ++it)
+            {
+                tau[*it] += 1; // +1 per distinct signing address
+            }
         }
     }
     return true;
