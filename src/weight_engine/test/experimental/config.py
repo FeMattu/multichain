@@ -21,14 +21,40 @@
 #                           fees to the miners (see ECONOMICS below).
 #
 # ---------------------------------------------------------------------------
-# ECONOMICS (GAS). 1 GAS == 1 EUR, and every network transaction costs
-# ALPHA = 0.2 GAS, paid to the miner that validated it:
+# ECONOMICS (GAS). 1 GAS == 1 EUR and ALPHA = 0.2 GAS is the per-transaction cost.
+# The canonical pipeline is the Vers_2 / thesis one, and it is IDENTICAL in both
+# (kappa = 100 is Vers_2's "/100"; lambda = 0.5 is Vers_2's "Peso %Reso" = 50):
 #
-#   Guadagno_k^{(e)} = TxMiner_k^{(e)} * ALPHA        (earnings, EUR == GAS)
-#   Resi_k^{(e)}     = Guadagno_k^{(e)} * RESO_RATE_k (returned to ADMIN)
-#   %Reso_k^{(e)}    = Resi_k / Guadagno_k * 100      (conformity rate)
-#   Giacenza_k^{(e)} = on-chain GAS balance of miner k AFTER reconciliation
-#   TotalGAIN_k^{(e)}= sum of Guadagno_k over epochs 1..e
+#   ImpUtente_i^{(e)} = ESG_i * tau_i^{(e)} / KAPPA            (engine's c_i)
+#   ImpCluster_k^{(e)} = ESG_Mk * (tau_Mk^{(e)} + sum_i ImpUtente_i^{(e)})   (W_k)
+#   Delay_k^{(e)}     = ImpCluster_k / sum_j ImpCluster_j * 1000  (per-mille weight)
+#   p_k^{(e)}         = Delay_k^{(e)} / 1000                   (selection probability)
+#   A_k^{(e)}         = Theta^{(e)} * p_k^{(e)} * ALPHA        (Guadagno / allocazione)
+#   R_k^{(e)}         in [0, A_k + B_k^{(e-1)}]                (Resi, sent ON CHAIN)
+#   B_k^{(e)}         = B_k^{(e-1)} + A_k^{(e)} - R_k^{(e)}    (Giacenza, B^{(0)} = 0)
+#   %Reso_k^{(e)}     = R_k^{(e)} / (A_k^{(e)} + B_k^{(e-1)})  (tasso di conformita)
+#   TotalGAIN_k^{(e)} = TotalGAIN_k^{(e-1)} + A_k^{(e)}
+#
+# THREE THINGS THIS CORRECTS relative to the first revision of this harness, which
+# derived the economics from BLOCK PROPOSERSHIP:
+#   * Guadagno is NOT "the fees of the blocks I mined". It is the epoch's fee pot
+#     Theta*ALPHA distributed by WEIGHT SHARE p_k. Who proposed a block is irrelevant
+#     to it (Fix 3). Proposership is an OUTCOME of p_k, checked separately.
+#   * Giacenza is the running balance B_k^{(e-1)} + A - R, not a bare A - R and not
+#     the miner's raw on-chain GAS balance (which also carries its seed funding and
+#     its miner<->miner trading). See ONCHAIN MIRROR below (Fix 1).
+#   * %Reso divides by the balance AVAILABLE to reconcile, A_k + B_k^{(e-1)}, not by
+#     A_k alone (Fix 2).
+# "Delay in msec" is likewise NOT a latency: in Vers_2 it is the per-mille normalized
+# weight, and its per-epoch total is exactly 1000 (Fix 6). The genuinely measured
+# inter-block interval is still reported, as `block_interval_ms`.
+#
+# ONCHAIN MIRROR. Every one of those quantities is settled on chain, so the ledger
+# and the table cannot drift: the FEEPOOL pays A_k to the miner, the miner returns
+# R_k to the ADMIN (signed by its own node), and R_k is re-read from the confirmed
+# transaction before being published to the reconciliation stream. B_k is therefore
+# verifiable as a balance DELTA net of miner<->miner trading (see the
+# giacenza_matches_chain invariant), not as an absolute balance.
 #
 # A default MultiChain has no spendable native currency (initial-block-reward = 0),
 # so GAS is modelled as a purpose-issued DIVISIBLE asset named GAS_ASSET_NAME with
@@ -36,11 +62,9 @@
 # also what the engine's undo-data tau metric counts) while giving exact 0.2-GAS
 # granularity. Nothing else about the model depends on the asset-vs-native choice.
 #
-# ALPHA IS NOT A DIRECT WEIGHT INPUT. The engine's weight is
-#   W_k = ESG_Mk * (tau_Mk + sum_i ESG_i*tau_i/kappa)   -- ESG + activity only
-#   w_k = W_k * [rho_k^{(e-1)}*lambda + (1-lambda)]     -- feedback via compliance
-# so ALPHA reaches the weight only through the allocation -> compliance -> feedback
-# chain, never as a term of W_k. See docs/experiment.md.
+# ALPHA IS NOT A DIRECT WEIGHT INPUT. W_k above is a function of ESG and activity
+# ONLY. ALPHA scales the allocation A_k, and so reaches the weight only through the
+# allocation -> compliance -> feedback chain, one epoch later. See docs/experiment.md.
 #
 # ---------------------------------------------------------------------------
 # NOTE ON EPOCH GEOMETRY. The WeightEngine publishes a cluster's weight only for
@@ -128,12 +152,46 @@ TARGET_BLOCK_TIME = _env_int("WE_BLOCK_TIME", 2)     # seconds (param minimum is
 SETUP_FIRST_BLOCKS = _env_int("WE_SETUP_BLOCKS", 60)
 
 # WeightEngine numeric parameters (must match on every node; passed as flags).
+# KAPPA is Vers_2's divide-by-100 in ImpUtente = ESG_i * Tx_i / 100.
 KAPPA = _env_float("WE_KAPPA", 100.0)
 # ALPHA is BOTH the engine's allocation constant AND the MyLedger per-transaction
 # cost in GAS (= EUR). One symbol, one value, so the two views stay reconcilable:
-# sum_k Guadagno_k = ALPHA * Theta = sum_k A_k.
+# sum_k A_k = ALPHA * Theta exactly (the conservation invariant).
 ALPHA = _env_float("WE_ALPHA", 0.2)
+# LAMBDA is Vers_2's "Peso %Reso" expressed as a fraction: the config sheet's 50
+# means lambda = 0.5. Must stay < 1 (Prop. positivita-peso).
 LAMBDA = _env_float("WE_LAMBDA", 0.5)
+PESO_RESO_PCT = LAMBDA * 100.0          # the configuration sheet's own units
+
+# WHICH WEIGHT THE ALLOCATION IS PROPORTIONAL TO. This is the one place where the
+# reference spreadsheet and the C++ core provably disagree, and it is documented in
+# weight_engine.h (lines 28-35):
+#
+#   "raw"   A_k = ALPHA * Theta * W_k / W_tot     -- the THESIS and the C++ engine.
+#           Allocation follows certified+current merit W_k, so the feedback bracket
+#           is applied to the weight but NOT fed back into the allocation.
+#   "final" A_k = ALPHA * Theta * w_k / w_tot     -- the Vers_2 spreadsheet, whose
+#           GuadagnoEx is derived from ImpCluster/Delay AFTER the %Reso bracket.
+#
+# The two coincide in epoch 1 and diverge from epoch 2 on. The harness always
+# computes BOTH and reports them side by side; this switch only decides which one is
+# actually SETTLED on chain. It defaults to "raw" so the on-chain ledger mirrors what
+# the node computes, which is what makes the engine's internal B_k and rho_k
+# verifiable against the chain at all.
+ALLOC_BASIS = _env_str("WE_ALLOC_BASIS", "raw")   # "raw" (engine) | "final" (Vers_2)
+VALID_ALLOC_BASES = ("raw", "final")
+
+# ---------------------------------------------------------------------------
+# On-chain stream names -- MUST match weight_streams.h exactly
+# ---------------------------------------------------------------------------
+MEMBERSHIP_STREAM = "weight-engine-membership"
+ESG_STREAM = "weight-engine-esg"
+ACTIVITY_STREAM = "weight-engine-activity"
+RECONCILIATION_STREAM = "weight-engine-reconciliation"
+WEIGHTS_STREAM = "wpoa-weights"          # the engine's OUTPUT (owned by src/wpoa)
+
+# The streams the ADMIN must hold a write grant on before it can publish.
+INPUT_STREAMS = (MEMBERSHIP_STREAM, ESG_STREAM, RECONCILIATION_STREAM)
 
 # ---------------------------------------------------------------------------
 # GAS / currency model -- 1 GAS = 1 EUR
@@ -180,6 +238,14 @@ RESO_RATES = _env_float_list("WE_RESO_RATES", [1.00, 0.90, 0.75, 0.60, 0.40])
 # line across epochs; 0 disables it. Seeded from SEED -> reproducible.
 RESO_JITTER = _env_float("WE_RESO_JITTER", 0.05)
 
+# HOW R_k IS DRAWN from its legal domain [0, A_k + B_k^{(e-1)}]:
+#   "rate"    R_k = (A_k + B_prev) * RESO_RATES[k] * (1 +- RESO_JITTER)   [default]
+#             so %Reso tracks the per-cluster nominal rate and the lambda-feedback on
+#             w_k is legible instead of buried in noise -- which is the point of a test.
+#   "uniform" R_k = uniform(0, A_k + B_prev), the reference spreadsheet's
+#             RANDBETWEEN(0; GuadagnoEx + Giacenza).
+RESO_MODE = _env_str("WE_RESO_MODE", "rate")      # "rate" | "uniform"
+
 # ---------------------------------------------------------------------------
 # Transaction simulation (per epoch)
 # ---------------------------------------------------------------------------
@@ -188,11 +254,16 @@ RESO_JITTER = _env_float("WE_RESO_JITTER", 0.05)
 # engine's tau_i and the network's Theta.
 TX_PER_COMPANY_MIN = _env_int("WE_TX_MIN", 10)
 TX_PER_COMPANY_MAX = _env_int("WE_TX_MAX", 20)
-# Miner<->miner transfers keep tau_{Mk} non-degenerate (the miner's own activity
-# term of W_k). Small on purpose: the cluster's weight should be driven by its
-# companies, not by the miner trading with itself.
-TX_MINER_MIN = _env_int("WE_TX_MINER_MIN", 2)
-TX_MINER_MAX = _env_int("WE_TX_MINER_MAX", 4)
+# EACH cluster miner also sends TX_MINER_MIN..MAX transfers per epoch -- the same
+# 10..20 band as the aziende, per the configuration sheet ("Numero minimo/massimo Tx"
+# is given for the ClusterMiner rows too, not only for the AZIENDE rows). This is
+# tau_{Mk}, the miner's own activity term of W_k = ESG_Mk * (tau_Mk + sum_i c_i).
+#
+# CHANGED: these used to be 2..4 and, worse, a NETWORK-WIDE count (a handful of
+# miner<->miner transfers per epoch shared across all five clusters), which left
+# tau_{Mk} near zero and effectively dropped that term from W_k.
+TX_MINER_MIN = _env_int("WE_TX_MINER_MIN", 10)
+TX_MINER_MAX = _env_int("WE_TX_MINER_MAX", 20)
 
 # Per-transfer GAS amount (micro-payments; small so nobody runs dry over 30 epochs).
 TX_AMOUNT_MIN = _env_float("WE_AMOUNT_MIN", 0.01)
@@ -233,10 +304,39 @@ CONFIRM_TIMEOUT = _env_int("WE_CONFIRM_TIMEOUT", 60)  # wait for a tx to confirm
 # legitimately reorder clusters whose raw weights are close together.
 RANK_CONCORDANCE_MIN = _env_float("WE_RANK_MIN", 0.80)
 
+# Tolerance on |Delay_k summed over clusters - 1000| (the per-mille normalization).
+DELAY_SUM_EPS = _env_float("WE_DELAY_EPS", 0.1)
+
+# Relative tolerance when comparing the harness replay of w_k against the integer
+# weight the node actually published. The engine rounds w_k*kappa to an integer, so a
+# match is only ever exact up to that quantization; anything above this fraction of
+# the published value means the two pipelines really differ.
+WEIGHT_MATCH_REL_EPS = _env_float("WE_WEIGHT_REL_EPS", 0.01)
+
+# Minimum fraction of (epoch, cluster) cells whose replayed w_k must match the
+# published one within WEIGHT_MATCH_REL_EPS for engine_matches_replay to pass.
+WEIGHT_MATCH_MIN_FRACTION = _env_float("WE_WEIGHT_MATCH_MIN", 0.95)
+
+# Mempool depth above which the harness warns that the chain is not keeping up.
+#
+# This matters more than it looks. Once submissions outpace the blocks, EVERY record
+# lands epochs late -- including weightsetreconciliation, which the engine must read
+# before epoch e+1 buries. When it does not, the engine computes rho_k = 0 and applies
+# the bare (1-lambda) bracket, so every published w_k comes out as exactly
+# round(W_k*kappa*(1-lambda)) and the engine-vs-replay comparison fails for a reason that
+# has nothing to do with the engine. A run that trips this warning is not a valid
+# measurement: lower WE_TX_MIN/MAX or raise WE_EPOCH_LENGTH.
+MEMPOOL_WARN = _env_int("WE_MEMPOOL_WARN", 200)
+
 # ---------------------------------------------------------------------------
 # Derived helpers
 # ---------------------------------------------------------------------------
 VALID_MODES = ("wpoa", "native")
+
+
+def alloc_basis():
+    """The validated allocation basis (see ALLOC_BASIS); falls back to "raw"."""
+    return ALLOC_BASIS if ALLOC_BASIS in VALID_ALLOC_BASES else "raw"
 
 
 def num_companies():
@@ -250,9 +350,10 @@ def theta_max():
 
 
 def feepool_fund():
-    """GAS the fee pool needs to settle every epoch's fees, with 50% head-room.
+    """GAS the fee pool needs to settle every epoch's allocations, with 50% head-room.
 
-    Guadagno totals ALPHA * Theta per epoch, so the pool must hold
+    sum_k A_k = ALPHA * Theta exactly, every epoch, whichever allocation basis is in
+    use (the p_k sum to 1 by construction), so the pool must hold
     NUM_EPOCHS * ALPHA * theta_max; the margin covers the extra epochs the harness
     drives through during setup/burial."""
     if FEEPOOL_FUND > 0:
@@ -351,3 +452,28 @@ def company_id(miner_idx, company_idx):
 def company_display(company_idx):
     """The name shown in the 'Nome utente' column of a report sheet."""
     return "Azienda %d" % (company_idx + 1)
+
+
+def company_display_for(label):
+    """'Nome utente' for a company LABEL, e.g. Azienda_A10 -> 'Azienda 10'.
+
+    Derived from the label, never from the company's position in a list: the cluster
+    sets come back from the membership stream in ADDRESS order, so a positional name
+    would silently relabel Azienda_A10 as 'Azienda 3'. Unrecognised labels are shown
+    verbatim."""
+    if label.startswith("Azienda_"):
+        suffix = label[len("Azienda_"):]
+        digits = suffix.lstrip(CLUSTER_LETTERS)
+        if digits.isdigit():
+            return "Azienda %s" % digits
+    return label
+
+
+def company_sort_key(label):
+    """Natural order for a company label: Azienda_A2 before Azienda_A10."""
+    if label.startswith("Azienda_"):
+        suffix = label[len("Azienda_"):]
+        digits = suffix.lstrip(CLUSTER_LETTERS)
+        if digits.isdigit():
+            return (suffix[:len(suffix) - len(digits)], int(digits))
+    return (label, 0)

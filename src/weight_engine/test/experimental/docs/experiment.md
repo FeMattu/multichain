@@ -16,9 +16,10 @@ system-level wPoA check is
 **Cardinal rule:** it never re-implements the weight math *for consensus*. The
 [`WeightEngine`](../../../weight_engine.h) computes `w_k` on the nodes; the harness
 *publishes the public inputs* through the sanctioned admin RPCs and *reads back* the
-results. A Python mirror of the pipeline exists in
-[`economics.py`](../helpers/economics.py) for **display and cross-check only** and is
-never fed back to the chain (§4.7).
+results. A Python replay of the pipeline lives in
+[`economics.py`](../helpers/economics.py) for **cross-check and reporting only** and is
+never fed back to the chain — it is what the engine's published `w_k` is measured
+against (§4.7).
 
 ---
 
@@ -30,15 +31,37 @@ never fed back to the chain (§4.7).
 | ADMIN | governance writer only | governance writer **and** reconciliation counterparty (the Apuana SB stand-in) |
 | ESG | 2 decimals over `[1, 100]` | **integers over `[10, 20]`** (the MyLedger configuration sheet) |
 | Currency | anonymous "activity asset" | **GAS**, a divisible asset with `1 GAS = 1 EUR` |
-| Fees / earnings | none | every transaction costs **α = 0.2 GAS**; `Guadagno_k = TxMiner_k · α` is settled on chain |
-| Reconciliation | a random `R_k ∈ [0,5]` published to the stream, with **no on-chain counterpart** | the miner **actually transfers** `Resi_k` GAS to the ADMIN address; the amount is **read back off chain** and that is what gets published |
-| `Giacenza` | recomputed `B_k` from the thesis formulas | the miner's **real on-chain GAS balance** after the reconciliation confirmed |
-| `Tx Miner` | the miner's own signed transactions | transactions the miner **validated** (blocks it proposed, coinbase excluded) |
-| `Delay` | modelled as `share × 1000` | **measured**: mean inter-block interval of the blocks the cluster proposed |
-| Volume | a handful of transfers network-wide per epoch | **10–20 per azienda per epoch** → `Θ ≈ 750` |
+| Fees / earnings | none | every transaction costs **α = 0.2 GAS**; the epoch's pot `α·Θ` is split by **weight share** `p_k` and settled on chain |
+| Reconciliation | a random `R_k ∈ [0,5]` published to the stream, with **no on-chain counterpart** | the miner **actually transfers** `R_k` GAS to the ADMIN address; the amount is **read back off chain** and that is what gets published |
+| `Giacenza` | recomputed `B_k` from the thesis formulas | the accounting balance `B_k^(e-1) + A_k − R_k`, **reconciled against** the miner's on-chain balance net of its trading (`giacenza_matches_chain`) |
+| `Tx Miner` | the miner's own signed transactions | `τ_Mk`, the miner's own signed transactions — **10–20 per epoch**, the same band as the aziende |
+| `Delay` | modelled as `share × 1000` | the **per-mille normalized weight** (Vers_2's own meaning), total exactly 1000. The measured inter-block interval is a separate `block_interval_ms` column |
+| Volume | a handful of transfers network-wide per epoch | **10–20 per azienda AND per miner per epoch** → `Θ ≈ 750` |
+| Membership | assumed from the local topology | **read back off the membership stream** with the engine's own `jsonobjectmerge` |
+| `τ` | approximated from harness records | **reconstructed exactly**, harness records + the `wpoa-weights` publisher index, with coverage asserted |
+| Engine check | ranking only (`τ_Mk` was known to be short) | **by value**: the replayed `w_k` vs the published integer, per cell |
 | Transport | one `multichain-cli` process per RPC | **JSON-RPC over a persistent HTTP connection**, CLI as automatic fallback |
-| Report | recomputed every figure from the formulas | formats **chain-read** figures; the recomputed `W_k`/`A_k` remain only as cross-check columns |
-| Invariants | none | 8 checks written to `assertions.csv` (§5) |
+| Report | recomputed every figure from the formulas | formats **chain-read** figures; the replayed `w_k` remains as the engine cross-check |
+| Invariants | none | **5 per epoch** (`epoch_checks.csv`) + **12 run-level** (`assertions.csv`), §5 |
+
+### 0.1 Corrections applied in this revision
+
+The first MyLedger revision of this harness derived the economics from **block
+proposership**. That is not the model, and four columns were wrong as a result:
+
+| Column | Was | Is |
+|---|---|---|
+| `Guadagno` | `TxMiner_k · α` — the fees of the blocks *k* mined | `A_k = Θ · p_k · α` — the epoch pot split by weight share. Proposership does not enter it |
+| `Giacenza` | the raw on-chain balance (so it also carried the 1000 GAS seed funding and the miner↔miner trading) | `B_k = B_k^(e-1) + A_k − R_k`, `B^(0) = 0` |
+| `% Reso` | `R_k / A_k` | `R_k / (A_k + B_k^(e-1))` |
+| `Impatto Cluster` | `Σ_i c_i` only — `ESG_Mk` and `τ_Mk` were missing | `ESG_Mk · (τ_Mk + Σ_i c_i)` = `W_k` |
+| `Delay` | the measured mean inter-block interval | `W_k / W_tot · 1000` |
+
+One consequence is worth stating plainly: `Σ_k Guadagno_k = α·Θ` is now an **equality the
+ledger satisfies**. Under the old per-block form it could not be, because settlement,
+reconciliation and governance transactions are validated and would have earned α too
+while `Θ` counts only azienda activity — an earlier version of this document asserted
+that equality anyway, and it was simply wrong.
 
 ---
 
@@ -50,9 +73,9 @@ configurable number of **epochs** (default 30).
 | Actor | Count | On-chain identity | Role |
 |---|---|---|---|
 | **ADMIN** | 1 (node 0) | genesis / global administrator | the **Apuana SB stand-in**: publishes ESG + membership + reconciliation, issues and distributes GAS, and **receives** every reconciliation transfer. **Not a miner** (its `mine` permission is revoked once the miner set is live) |
-| **cluster miner** `ClusterMinerA..E` | 5 | one mining node each | the wPoA validators; the engine computes and publishes each one's `w_k`; each earns `Guadagno` for the transactions it validates |
-| **azienda** `Azienda_X1..X10` | 10 per cluster → 50 | a plain address **in the ADMIN wallet** | belongs to a cluster; sends 10–20 GAS transfers per epoch, generating activity `τ` |
-| **FEEPOOL** | 1 | a plain address in the ADMIN wallet | the aggregate of all transaction senders when fees are settled (§6.6) |
+| **cluster miner** `ClusterMinerA..E` | 5 | one mining node each | the wPoA validators; the engine computes and publishes each one's `w_k`; each earns `Guadagno = A_k` in proportion to its **weight share**, and sends 10–20 transfers of its own per epoch (`τ_Mk`) |
+| **azienda** `Azienda_X1..X10` | 10 per cluster → 50 | a plain address **in the ADMIN wallet** | belongs to a cluster **as recorded on the membership stream**; sends 10–20 GAS transfers per epoch, generating activity `τ_i` and hence `Θ` |
+| **FEEPOOL** | 1 | a plain address in the ADMIN wallet | the aggregate of all transaction senders; pays out each epoch's `α·Θ` pot (§3.5 step 4, §6.6) |
 
 The ADMIN owns the azienda keys so it can both *sign* their transactions and publish
 their governance data; miners sign their own transactions on their own node.
@@ -63,7 +86,7 @@ exactly as the thesis defines them:
 ```
 c_i   = ESG_i · τ_i / κ                          (company contribution = "Impatto utente")
 W_k   = ESG_{Mk} · ( τ_{Mk} + Σ_{i∈C_k} c_i )    (raw cluster weight)
-A_k   = α · Θ · W_k / W_tot                       (allocation)
+A_k   = α · Θ · W_k / W_tot                       (allocation — see §1.2 on the basis)
 ρ_k   = R_k / (A_k + B_{k-1})                     (compliance, from reconciliation R_k)
 w_k^(1) = W_k ;  w_k^(e) = W_k · [ρ_{k,e-1}·λ + (1-λ)]   (final weight)
 ```
@@ -90,40 +113,48 @@ So the weight is a function of **{ESG, activity (NumTx), and the reconciliation
 feedback}**. `Giacenza` enters it the same indirect way: the reconciled amount and the
 carried residual `B_k` set the denominator of `ρ_k`.
 
-### 1.2 Two definitions of "earnings", and how they relate
+### 1.2 The one place the spreadsheet and the C++ core provably disagree
 
-| | Definition | Distributed by |
+`Guadagno` is the allocation `A_k`, and there is exactly one open question about it:
+**proportional to which weight?**
+
+| | Definition | Basis |
 |---|---|---|
-| `Guadagno_k` (MyLedger) | `TxMiner_k · α` | actual validation work |
-| `A_k` (thesis / engine) | `α · Θ · W_k / W_tot` | weight share |
+| thesis / `weight_engine.h` | `A_k = α · Θ · W_k / W_tot` | the **raw** weight `W_k` |
+| Vers_2 spreadsheet | `A_k = α · Θ · w_k / w_tot` | the **feedback-adjusted** `w_k` (its `ImpCluster`/`Delay`) |
 
-Every transaction is validated by exactly one cluster, so the `TxMiner` tallies
-partition the epoch's transactions — which is the invariant `tx_validated_once` checks
-against an independent recount off the block index (§5). Summing:
+Both give `Σ_k A_k = α·Θ` (the shares sum to 1 either way), and they coincide in epoch 1
+— where every `ρ^(0)` is 0, so the bracket `[ρ·λ + (1−λ)]` is the same `1−λ` for
+everyone and cancels in the normalization. From epoch 2 on they can diverge: the
+spreadsheet feeds the compliance feedback into the allocation as well as into the
+weight, the thesis deliberately does not (`weight_engine.h` lines 28–35 documents this
+choice: allocation tracks certified+current merit, avoiding a feedback-of-feedback loop).
 
-```
-Σ_k Guadagno_k  =  α · (validated transactions)
-Σ_k A_k         =  α · Θ                          (since Σ_k W_k / W_tot = 1)
-```
+The harness **always computes both** and reports them as `delay_raw` / `delay_final`.
+`WE_ALLOC_BASIS` decides only which one is actually settled on chain, and defaults to
+`raw` — because settling what the node computes is what makes the engine's own `B_k` and
+`ρ_k` verifiable against the ledger at all. `WE_ALLOC_BASIS=final` reproduces the
+spreadsheet instead, which is the natural sensitivity run for the thesis.
 
-**These are close but not equal, and the difference is real.** `Θ` counts only *azienda
-activity*, whereas a block carries more than that: the miner↔miner transfers, the fee
-settlements, the reconciliation transfers, the reconciliation stream records and each
-miner's own `wpoa-weights` publish are all validated too, and all earn α. So
+### 1.3 A discrepancy in the reference PDF worth flagging
 
-```
-Σ_k Guadagno_k  =  α · (Θ + settlement/governance overhead)   ≈  1.03 · α · Θ
-```
+Every documented formula reproduces the printed Vers_2 **epoch-1** figures to the cent,
+and the epoch-2 carry-forward columns (`Giacenza` 21.24, `% Reso` 56.30 %, `Total GAIN`
+73.49) follow exactly from `B_prev + A − R` and `R/(A + B_prev)`.
 
-at the default volumes (~22 overhead transactions per epoch against `Θ ≈ 750`). The
-run reports both figures and the overhead percentage rather than asserting a false
-equality — an earlier version of this harness *did* assert `Σ Guadagno = α·Θ` and it is
-simply wrong. What is asserted is the definitional identity
-`Σ Guadagno = α · validated` plus the partition check above.
+The epoch-2 **`ImpCluster`** does not. For cluster A the sheet prints 918, while
+`ESG_Mk · (τ_Mk + Σ_i ImpUtente_i) = 19 · (18 + 20.20) = 725.8` and the documented
+bracket `[0.7203·0.5 + 0.5] = 0.860` gives 624 — the sheet's implied factor is 1.265,
+outside the `[1−λ, 1]` range the bracket can produce at all. Solving the factor for all
+five clusters shows it is not a function of `%Reso_(e-1)` alone (A and E have
+`%Reso` 0.7203 and 0.7214 but factors 1.265 and 1.137).
 
-Distribution is where the two differ interestingly: `Guadagno` follows blocks mined,
-`A_k` follows weight share, and in `wpoa` mode the block distribution tracks the weight
-share, so they converge per cluster. The report shows both.
+This is either an extraction artifact of the printed PDF or an approximation in the
+formula as documented. It does not affect this harness, which implements the bracket as
+`weight_engine.h` and the analysis report both state it — and, more to the point,
+**measures** whether the deployed engine agrees (`engine_matches_replay`). If the
+`.ods` is available, comparing its epoch-2 `ImpCluster` cell formula directly would
+settle it.
 
 ---
 
@@ -141,9 +172,15 @@ identical.
 `native` is the control: the engine still computes and publishes `w_k`, so you can
 compare "who *would* have proposed under wPoA (the weight favourite)" against "who
 actually proposed under round-robin". That comparison is written to `experiment.log`
-per epoch. It also matters economically: because `Guadagno` follows blocks mined,
-`native` spreads it evenly while `wpoa` concentrates it on the high-weight clusters —
-visible in the `Riepilogo` sheet's per-cluster totals.
+per epoch.
+
+The **economics are identical in both modes** — `Guadagno` follows weight share, not
+proposership, so the mode changes nothing about it. What the mode isolates is the
+consensus half: in `wpoa` the observed block distribution should track `p_k`
+(`proposer_share_tracks_p_k`, reported not thresholded — the selector applies its own
+whale-compression at election time), in `native` it is round-robin by construction.
+`native` is therefore also the cleaner setting in which to verify
+`engine_matches_replay`, since weighted selection is out of the loop entirely.
 
 ---
 
@@ -202,11 +239,12 @@ mode, after the setup phase — §6.1). For each epoch `e`:
 
 1. `wait_height(start(e))` — wait until the tip enters epoch `e`'s block range.
 2. `generate_epoch_txs(e)` — every azienda sends `WE_TX_MIN..WE_TX_MAX` (10–20) GAS
-   transfers to other aziende, plus a couple of miner↔miner transfers so `τ_{Mk}` is
-   not degenerate. Each `sendassetfrom` spends a UTXO owned by the sender, so the
-   engine counts one `τ` for that sender in the confirming block's epoch.
-3. `wait_height(end(e)+1)` — let the epoch's blocks mine. **Nothing economic can be
-   computed before this point**: `TxMiner` is not defined until the epoch's blocks exist.
+   transfers to other aziende, and **every cluster miner sends
+   `WE_TX_MINER_MIN..WE_TX_MINER_MAX` (10–20) of its own**, which is `τ_{Mk}`. Each
+   `sendassetfrom` spends a UTXO owned by the sender, so the engine counts one `τ` for
+   that sender in the confirming block's epoch.
+3. `wait_height(end(e)+1)` — let the epoch's blocks mine. **Nothing can be computed
+   before this point**: `τ` is defined over the epoch's confirmed blocks.
 4. `close_epoch(e)` — [`economics.py`](../helpers/economics.py) runs the whole
    settlement automatically (§3.5).
 
@@ -217,29 +255,49 @@ sampled epoch **buries** and its `w_k` gets published (§6.4).
 
 `close_epoch(e)`, once per epoch, with **no manual step anywhere**:
 
-1. **Read the blocks** (`listblocks`, one call per chunk) → per cluster:
-   `blocks_mined`, `TxMiner` (Σ `txcount − 1`, dropping each coinbase) and
-   `Delay in msec` (mean interval between the blocks it proposed and their parents).
-2. **Read the transactions** (`getblock`) → per azienda `Tx utente` (= the engine's
-   `τ_i`) and `Impatto utente = τ_i · ESG_i / κ`; per cluster
-   `Impatto Cluster = Σ Impatto utente`.
-3. **Settle the fees on chain**: `Guadagno_k = TxMiner_k · α` is transferred
-   FEEPOOL → miner.
-4. **Reconcile on chain**: the miner's own node signs a transfer of
-   `Resi_k = Guadagno_k · reso_rate_k` to the ADMIN address. `reso_rate_k` is the
-   per-cluster **Reso** column of the configuration sheet (`WE_RESO_RATES`, default
-   `1.00 / 0.90 / 0.75 / 0.60 / 0.40`) with a small seeded jitter, clamped so
-   `Resi ∈ [0, Guadagno]` — which is why `% Reso` can never leave `[0, 100]`.
-5. **Read the amount back off chain**: the reconciliation transaction is re-read
+1. **Index the epoch's blocks** (`listblocks` + `getblock`, chunked and cached) and
+   refresh the `wpoa-weights` publisher index (`liststreamitems`).
+2. **Derive `τ`** — `epoch_tau` counts **+1 per distinct signing address per non-coinbase
+   transaction**, attributed to the epoch of the *confirming* block: exactly
+   `ComputeActivityForEpoch`'s rule. Signers come from the harness's own records (every
+   transfer is a single-from-address `sendassetfrom`, so the sender label *is* the signing
+   address) plus the stream publisher index for the publishes the harness did not submit.
+   The function also returns how many transactions in the epoch's blocks it could **not**
+   attribute — `tau_coverage` (§5) asserts that is zero, which is the precondition for
+   comparing `w_k` by value.
+3. **Compute the weights** (`compute_epoch_weights`, pure) — `ImpUtente_i`, `W_k`, `w_k`,
+   both per-mille `Delay`s, `p_k`, `A_k`. The `Σ_i c_i` sum runs in **ascending address
+   order**, matching `WeightEngine::RawWeight`, so the non-associative floating-point
+   total is identical to the node's.
+4. **Settle the allocation on chain**: `A_k` is transferred FEEPOOL → miner. The FEEPOOL
+   stands in for the aggregate of the paying senders — charging each of ~750 senders its
+   own 0.2 GAS separately would not only triple the transaction count, it would *alter
+   the measurement*, since each fee payment is a transaction signed by that company and
+   would inflate the very `τ_i` it is a fee on. The GAS totals are identical.
+5. **Reconcile on chain**: the miner's own node signs a transfer of `R_k` to the ADMIN
+   address, drawn from its legal domain `[0, A_k + B_k^(e-1)]`. `WE_RESO_MODE=rate` (the
+   default) takes `(A_k + B_prev) · reso_rate_k` with a small seeded jitter, where
+   `reso_rate_k` is the configuration sheet's per-cluster **Reso** column (`WE_RESO_RATES`,
+   default `1.00 / 0.90 / 0.75 / 0.60 / 0.40`) — so `% Reso` tracks the nominal rate and
+   the λ-feedback on `w_k` is legible instead of buried in noise. `WE_RESO_MODE=uniform`
+   reproduces the spreadsheet's `RANDBETWEEN(0; GuadagnoEx + Giacenza)` instead. Either
+   way the clamp to `[0, A_k + B_prev]` is what keeps `% Reso ∈ [0,1]` and `B_k ≥ 0`.
+6. **Read the amount back off chain**: the reconciliation transaction is re-read
    (`getrawtransaction … 1`) and the GAS quantity of the vout paying the ADMIN address
-   is the authoritative `Resi` — never the amount we asked the node to send.
-6. **Read `Giacenza`**: after the reconciliation *confirms*, the miner's on-chain GAS
-   balance (`getaddressbalances`, minconf 1) read on the miner's own node.
-7. **Publish** `weightsetreconciliation(miner, Resi_from_chain, e)`, so the engine's
+   is the authoritative `R_k` — never the amount we asked the node to send. The read
+   happens **after the transaction confirms**, because `Giacenza` is by definition the
+   post-reconciliation state.
+7. **Fold the state forward**: `ρ_k = R_k/(A_k + B_prev)`, `B_k = B_prev + A_k − R_k`,
+   `Total GAIN_k += A_k`. The miner's raw on-chain balance is also recorded, as
+   `saldo_onchain`, so the accounting balance can be reconciled against the ledger.
+8. **Publish** `weightsetreconciliation(miner, R_k_from_chain, e)`, so the engine's
    `ρ_k` is driven by GAS that actually moved.
+9. **Check the five model invariants** on what was just produced
+   (`verify_epoch_invariants`, §5) — a violation is recorded and surfaced immediately,
+   not at the end of the run.
 
-`Total GAIN_k` is the running sum of `Guadagno_k`, so it is monotonic by construction
-— which §5 asserts.
+`Total GAIN_k` is the running sum of `A_k`, so it is monotonic by construction — which
+§5 asserts.
 
 **Why publishing `R_k` after the epoch is safe.** `R_k^{(e)}` feeds `ρ_k^{(e)}`, which
 the weight formula consumes one epoch later (`w_k^{(e+1)}`). And
@@ -273,17 +331,39 @@ companies, esg_companies
 ### 4.2 `cluster_economics.csv` — one row per (epoch × cluster) — **the MyLedger core**
 ```
 epoch, cluster, letter, esg, iso,
-blocks_mined, tx_miner, tau_miner_signed, impatto_cluster, delay_ms,
-guadagno, resi, resi_target, resi_requested, giacenza, pct_reso,
-reso_rate_nominal, total_gain,
-engine_weight, engine_prob, selected_proposer,
-raw_weight_recomputed, allocation_recomputed,
-fee_txid, recon_txid, recon_stream_txid
+  # --- the Vers_2 cluster-summary row, in sheet order ---
+tx_miner, impatto_cluster, delay_msec, guadagno, resi, giacenza, pct_reso, total_gain,
+  # --- pipeline detail ---
+theta, sum_impatto_utente, raw_weight, final_weight, feedback_bracket,
+delay_raw, delay_final, p_k, giacenza_prev, available, rho,
+resi_target, resi_requested, resi_onchain, reso_rate_nominal, saldo_onchain,
+  # --- consensus outcome (NOT an input to anything above) ---
+blocks_mined, validated_in_blocks, block_interval_ms,
+  # --- engine cross-check ---
+engine_weight, engine_prob, w_k_expected, w_k_expected_int, weight_match,
+selected_proposer,
+  # --- provenance ---
+alloc_txid, recon_txid, recon_stream_txid
 ```
-Everything left of `engine_weight` is read or settled on chain. `resi_target` is what
-the Reso rate asked for, `resi_requested` what the node was told to send (clamped to
-the available balance) and `resi` what the chain says arrived — normally all three are
-equal, and any divergence is a logged warning worth reading.
+Reading the columns that are easy to confuse:
+
+| Column | Meaning |
+|---|---|
+| `tx_miner` | `τ_Mk`, the miner's **own** activity — an input to `W_k` |
+| `validated_in_blocks` | how many transactions landed in the blocks it proposed — an **audit** figure, used by nothing |
+| `impatto_cluster` / `raw_weight` | the same value, `W_k`; the first is the sheet's name |
+| `final_weight` | `w_k = W_k · feedback_bracket` |
+| `delay_msec` | the per-mille normalized weight actually in use (`delay_raw` or `delay_final` per `WE_ALLOC_BASIS`) |
+| `block_interval_ms` | the **measured** mean inter-block interval — the thing "Delay" sounds like but is not |
+| `giacenza` / `giacenza_prev` | `B_k` and `B_k^(e-1)` |
+| `available` | `A_k + B_k^(e-1)`, the denominator of `% Reso` and the domain of `R_k` |
+| `saldo_onchain` | the miner's raw GAS balance — seed funding and trading included, so **not** `B_k` |
+| `weight_match` | `exact` / `within-tol` / `off` / `unpublished` |
+
+`resi_target` is what the Reso rate asked for, `resi_requested` what the node was told
+to send (clamped to the spendable balance), `resi_onchain` what the confirmed transaction
+actually paid the ADMIN and `resi` that value clamped to `available`. Normally all four
+agree; any divergence is a logged warning worth reading.
 
 ### 4.3 `company_activity.csv` — one row per (epoch × azienda)
 ```
@@ -300,54 +380,96 @@ cluster count no longer leaves stale `M1..M4` headers. `proposer_miner` is the
 **modal** proposer of the epoch; `theta` is the epoch's total azienda activity.
 
 ### 4.5 `esg_scores.csv`, `transactions.csv`, `weights_evolution.csv`, `wpoa_proposer_log.csv`
-As before, with `type ∈ {funding, company, miner, fee_settlement, reconciliation}` in
-`transactions.csv` and `amount_gas` in place of the old `amount`. A transaction's
-`epoch` is the epoch of its **confirming block**.
+As before, with
+`type ∈ {funding, company, miner, allocation, reconciliation, publish_esg,
+publish_membership, publish_reconciliation, grant_write}` in `transactions.csv` and
+`amount_gas` in place of the old `amount`. A transaction's `epoch` is the epoch of its
+**confirming block**. The `publish_*` / `grant_write` rows are what make the ledger
+record complete enough for `tau_coverage` to be assertable.
 
-### 4.6 `assertions.csv` + `experiment.log`
-The invariant verdicts (§5), and the levelled trace with the run header, the
-per-epoch settlement lines, and a final summary (Θ, Guadagno, Resi, Total GAIN per
-cluster, blocks by miner, `http/cli` call counts, final `getallweights`).
+### 4.6 `epoch_checks.csv`, `assertions.csv` + `experiment.log`
+`epoch_checks.csv` carries the five per-epoch model invariants (one row per epoch ×
+check, §5); `assertions.csv` the run-level verdicts. `experiment.log` is the levelled
+trace: the run header (now including the allocation basis and Reso mode), one settlement
+line per epoch reporting `Θ`, `Σ A_k` against `α·Θ` and `Σ Delay`, and a final summary
+(Θ, `Σ A_k / α·Θ`, Resi, `Σ B_k`, Total GAIN per cluster, blocks by miner, `http/cli`
+call counts, final `getallweights`).
 
 ### 4.7 The `report.xlsx` workbook — [`make_report.py`](../make_report.py)
 
 | Sheet | Content |
 |---|---|
-| `Foglio di configurazione` | Score min/max ESG, Numero min/max Tx, α/κ/λ, and per ClusterMiner its **Score ESG, Certificato ISO, Peso %, Reso** — plus the 10 **AZIENDE** of each cluster with their ESG scores |
-| `Epoch N` (one per epoch) | per azienda **Nome utente \| Tx Utente \| Impatto utente \| Score ESG**; after each group of 10, the cluster row **Tx Miner \| Impatto Cluster \| Delay in msec \| Guadagno Ex (€) \| € Resi in Ex \| Giacenza \| % Reso \| Total GAIN**, then the engine cross-check block (`w_k`, selection probability, recomputed `W_k` and `A_k`, proposer flag); epoch totals and an ESG/ISO recap close the sheet |
-| `Riepilogo` | one row per epoch (Tot Tx, Tot Impatto, GAS distributed, GAS returned, mean % Reso) + per-cluster run totals |
+| `Foglio di configurazione` | α/κ/λ (λ shown **also as `Peso % Reso`**, the sheet's own units) and the allocation basis; the **Vers_2 range grid** verbatim — a row per ClusterMiner and per AZIENDE-of-a-cluster × Score min/max ESG and Numero min/max Tx; per ClusterMiner its **Score ESG, Certificato ISO, Peso %, Reso**; the 10 **AZIENDE** of each cluster with their ESG scores |
+| `Epoch N` (one per epoch) | per azienda **Nome utente \| Tx Utente \| Impatto utente \| Score ESG**; after each group of 10, the cluster row **Tx Miner \| Impatto Cluster \| Delay in msec \| Guadagno Ex (€) \| € Resi in Ex \| Giacenza \| % Reso \| Total GAIN**, then the engine cross-check block (**Peso engine `w_k` \| Prob. selezione \| `w_k` atteso \| `w_k` atteso (int) \| Match \| Proposer**); epoch totals and an ESG/ISO recap close the sheet |
+| `Riepilogo` | one row per epoch with the two **self-checking** columns `Somma Delay (=1000)` and `α×Θ` vs `Σ Guadagno`, highlighted red if they disagree; plus per-cluster run totals including blocks proposed and the `w_k` match tally |
 | `Pesi & Probabilita` | epoch × cluster grid of published weights and selection probabilities |
 | `Proposer log (wpoa)` | verbatim `wpoa_proposer_log.csv` (wpoa mode only) |
-| `Verifiche` | the invariant checks, green/red |
+| `Verifiche` | **both** invariant levels: every run-level check, then the per-epoch tally with only the failures listed in full |
 
 The totals rows are real Excel `SUM()` formulas over the actual cell ranges, so the
-sheet is auditable rather than a set of opaque numbers.
+sheet is auditable rather than a set of opaque numbers. The configuration sheet reads
+its parameters from `experiment.log` rather than from the reporter's own environment —
+otherwise a report generated in a different shell would print the *defaults* next to
+data produced with `WE_*` overrides.
 
-**The cross-check columns.** `W_k` and `A_k` never leave the node, so the report shows
-a Python replay of the pipeline beside the engine's published `w_k`. One deliberate
-imprecision: the replay's `τ_{Mk}` counts the transactions the harness *recorded* a
-miner signing, while the engine additionally counts the miner's own `wpoa-weights`
-publish — roughly one more per epoch, identically for every miner. So the two are
-compared by **ranking**, not by value, and `τ_{Mk}` is in any case the small term of
-`W_k` next to the cluster's `Impatto`.
+**The cross-check columns — the experiment's primary result.** `W_k`, `w_k` and `A_k`
+never leave the node, so the report shows the harness's replay of the pipeline beside
+the engine's published `w_k`, with a per-cell `Match` verdict. The comparison is **by
+value**, which rests on two things:
+
+* `τ` is reconstructed exactly (§3.5 step 2) and the coverage is asserted, so the
+  replay's `τ_Mk` is not short by the miner's own weight publish as it used to be;
+* `Σ_i c_i` is summed in **ascending address order**, the order
+  `WeightEngine::RawWeight` uses deliberately so that the non-associative
+  floating-point total is identical on every node.
+
+The node publishes `ToIntegerWeight(w_k, κ) = round(w_k · κ)`, so the two are compared
+as integers. Reference smoke runs give **19–20 of 20 cells `exact`**; the residue is
+`within-tol`, off by a single integer unit where `w_k · κ` lands on an exact `.5`
+boundary and the two summation orders round it opposite ways (e.g. `46.725 · 100 =
+4672.5` → 4673 here, 4672 on the node). That is a rounding artifact at a tie, not a
+formula difference — which is exactly what the three-way `exact` / `within-tol` / `off`
+classification exists to distinguish.
 
 ---
 
 ## 5. The invariant pass (`assertions.csv`)
 
-Run at the end of every run. A failure is logged as `ERROR` and recorded, but never
+Invariants run at **two levels**. A failure is logged as `ERROR` and recorded, but never
 aborts — the artifacts are always complete.
+
+### 5.1 Per epoch, inside `close_epoch` (`epoch_checks.csv`)
+
+Checked on the data the moment it is produced, so a violation is visible at the epoch
+that caused it rather than aggregated away at the end.
 
 | Check | What it asserts |
 |---|---|
-| `weight_ranking` | the engine's weight ordering agrees with the **ESG + activity composite** ordering, measured as mean pairwise concordance across epochs ≥ `WE_RANK_MIN` (default 0.80). Below 1.0 on purpose: the feedback factor `ρλ + (1−λ)` legitimately reorders clusters whose raw weights are close. The concordance against the full replay of `W_k` is reported alongside |
+| `alloc_sums_to_alpha_theta` | `Σ_k A_k = α·Θ` — the epoch's pot is fully and exactly distributed |
+| `delay_sums_to_1000` | the per-mille normalization holds: `Σ_k Delay_k = 1000` (± `WE_DELAY_EPS`) |
+| `rho_in_unit_interval` | `ρ_k ∈ [0, 1]` — it is a rate |
+| `balance_non_negative` | `B_k ≥ 0` |
+| `resi_within_available` | `R_k ≤ A_k + B_k^(e-1)` — nobody returns more than was available |
+
+### 5.2 Run level (`assertions.csv`)
+
+| Check | What it asserts |
+|---|---|
+| **`engine_matches_replay`** | **the primary result.** The integer weight each node published equals the harness's independent replay of `w_k`, for at least `WE_WEIGHT_MATCH_MIN` (0.95) of the comparable cells. Each cell is classed `exact`, `within-tol` (≤ `WE_WEIGHT_REL_EPS`, default 1 %), `off`, or `unpublished` |
+| `weight_ranking` | the weight ordering agrees with the **ESG + activity composite** `ESG_Mk·(τ_Mk + Σ_i c_i)` ordering, as mean pairwise concordance ≥ `WE_RANK_MIN` (default 0.80). Below 1.0 on purpose: the feedback factor `ρλ + (1−λ)` legitimately reorders clusters whose raw weights are close |
+| `reconciliation_visible_to_engine` | every `R_k` record confirmed before the next epoch buried. **If this fails, `engine_matches_replay` is meaningless** — see §6.9 |
+| `settlement_confirmed` | every allocation/reconciliation transfer and governance publish made it into a block. GAS still in flight is reported here rather than surfacing as a phantom supply gap |
+| `tau_coverage` | every transaction in every sampled epoch was attributed to a signer. **This is the precondition for `engine_matches_replay` being a value comparison at all**; if it fails, treat the weight check as a ranking result |
+| `membership_from_chain` | the cluster sets read back off `weight-engine-membership` are exactly the configured topology — no company claimed by two clusters, none orphaned, no wrong-sized cluster. Every `W_k` depends on this set, so it is checked rather than assumed |
 | `conformity_rate_range` | `% Reso ∈ [0, 100]` for every (epoch × cluster) |
 | `total_gain_monotonic` | cumulative `Total GAIN` never decreases, per cluster |
-| `tx_validated_once` | the per-cluster `TxMiner` tallies add up to an independent recount of every non-coinbase transaction in the sampled epochs' blocks, and no block lacks a cluster-miner proposer |
-| `gas_fees_match_validation` | `Σ Guadagno = α · (validated transactions)`. The detail line also reports `α·Θ` and what percentage of the validated traffic is settlement/governance overhead — see §1.2 |
-| `gas_returned_to_admin` | the ADMIN's **on-chain balance increase** equals `Σ Resi` read off chain |
+| `alloc_sums_to_alpha_theta`, `delay_sums_to_1000`, `rho_in_unit_interval`, `balance_non_negative`, `resi_within_available` | the §5.1 tally, rolled up: "*n*/*N* epochs pass" |
+| `alloc_equals_alpha_theta` | `Σ A_k = α·Θ` over the whole run — an **equality**, unlike the per-block fee tally it replaced (§0.1) |
+| `gas_returned_to_admin` | the ADMIN's **on-chain balance increase** equals `Σ R_k` read off chain |
+| `feepool_paid_out` | the FEEPOOL's balance decrease equals `Σ A_k` |
 | `gas_supply_conserved` | the sum of every participant's balance equals the issued GAS supply |
-| `feepool_paid_out` | the FEEPOOL's balance decrease equals `Σ Guadagno` |
+| `giacenza_matches_chain` | per miner, `(closing − opening balance) − net miner↔miner trading = B_k`. This is what ties the accounting table to the ledger: `B_k` is not the raw balance, so it is verified as a **delta net of trading** rather than compared directly |
+| `proposer_share_tracks_p_k` | *(wpoa mode only)* the L1 deviation between observed block share and mean `p_k`. **Reported, never thresholded** — the selector applies its own whale-compression at election time (`weight_engine.h`), so exact agreement is not expected and asserting it would be wrong |
 
 The last five are pure chain reads, so they check the ledger, not the bookkeeping.
 
@@ -397,13 +519,16 @@ Nothing in the model depends on the asset-versus-native choice; only the word "n
 does.
 
 ### 6.6 Why a FEEPOOL instead of charging each sender
-Each network transaction costs α, paid to the validating miner. Deducting 0.2 GAS in a
-separate transaction from every one of ~750 senders per epoch would roughly double the
-run's transaction count for no modelling gain, so one FEEPOOL address stands in for
-the aggregate and pays each miner its whole epoch fee income in a single transfer. The
-GAS totals are identical; only the number of transactions differs. The FEEPOOL is not
-a cluster member, so its `τ` never enters a weight, and paying *into* a miner adds no
-`τ` to the miner either (`τ` counts signed inputs, not credits).
+Each network transaction costs α; the epoch's pot is `α·Θ`, split by weight share.
+Deducting 0.2 GAS in a separate transaction from every one of ~750 senders per epoch
+would roughly double the run's transaction count — but the decisive objection is not
+cost, it is that **it would alter the measurement**: each fee payment is a transaction
+*signed by that company*, so it would add +1 to the very `τ_i` it is a fee on, and the
+weights would then be a function of the fee mechanism. One FEEPOOL address therefore
+stands in for the aggregate and pays out each cluster's `A_k` in a single transfer. The
+GAS totals are identical (`Σ_k A_k = α·Θ`, asserted); only the transaction count differs.
+The FEEPOOL is not a cluster member, so its own `τ` never enters a weight, and paying
+*into* a miner adds no `τ` to the miner either (`τ` counts signed inputs, not credits).
 
 ### 6.7 Why the transport changed
 The MyLedger topology issues ~50 aziende × 10–20 transfers × 30 epochs ≈ 22 000
@@ -413,11 +538,54 @@ experiment; over a persistent HTTP connection the same call costs single-digit
 milliseconds. The CLI remains the automatic fallback (and the summary line reports the
 `http / cli` split, so a silent fallback to the slow path is visible).
 
-### 6.8 Two `τ`, on purpose
-`epoch_activity` (the MyLedger business view) counts only network traffic;
-`engine_tau` (the replay input) additionally counts a miner's reconciliation transfer,
-because the engine counts every transaction a member signs. Mixing them up would
-either inflate `Tx utente` or understate `W_k`.
+### 6.9 The mempool backlog that silently invalidates a run
+This one was found by the invariants, in a `wpoa` run that failed
+`engine_matches_replay` with 12 of 16 cells `off`.
+
+The published integers turned out to be **exactly** `round(W_k · κ · 0.5)` for every
+cluster in every affected epoch — that is, the engine had applied the bare `(1−λ)`
+bracket, meaning it read `ρ_k^(e-1) = 0`. It had not seen the reconciliation records at
+all: submissions were outpacing block production, a mempool backlog had built up, and
+`weightsetreconciliation` was confirming **20–24 blocks late**, well after the epoch it
+belonged to had buried. Two unrelated checks (`gas_supply_conserved`,
+`giacenza_matches_chain`) failed at the same time for the same underlying reason — a
+lagging miner whose transfers were in flight and therefore held by neither party.
+
+Three changes came out of it:
+
+1. **`close_epoch` now blocks until the reconciliation records confirm** before leaving
+   the epoch. That is a correctness condition, not politeness: `R_k^(e)` is the only
+   economic input the engine takes from the harness, and it must be readable before epoch
+   `e+1` buries. Blocking there also throttles the epoch loop to what the chain can
+   absorb, so the backlog cannot grow without bound.
+2. **The failure gets its own name.** `reconciliation_visible_to_engine` and
+   `settlement_confirmed` report the actual condition, and `engine_matches_replay`'s
+   detail line now *names this cause* when it sees the two together, instead of leaving
+   it to be rediscovered.
+3. **Supply is checked at minconf 0 as well.** A transfer in flight is held by neither
+   sender nor recipient, so a confirmed-only sum under-counts by exactly that amount.
+   Passing on either reading separates a confirmation lag from GAS that actually went
+   missing.
+
+The practical rule: a run that logs the mempool warning (`WE_MEMPOOL_WARN`, default 200)
+is **not a valid measurement**. Lower `WE_TX_MIN`/`WE_TX_MAX` or raise
+`WE_EPOCH_LENGTH` until the peak backlog is near zero. For reference, 50 aziende × 2–3
+transfers over 12-block epochs runs at a peak backlog of 0 and gives 20/20 `exact`.
+
+### 6.8 One `τ`, counted the engine's way
+An earlier revision maintained *two* activity counters — a "business" one that ignored
+settlement traffic and an "engine" one that did not — and reconciled them by hand. That
+was a modelling error dressed up as a distinction: the engine has exactly one rule
+(`+1 per distinct signing address per non-coinbase transaction`), and any second
+definition can only disagree with the thing being verified.
+
+There is now one `τ`, computed by that rule, from two complete sources: the harness's own
+records and the `wpoa-weights` publisher index for the publishes it did not submit. What
+used to be papered over — a miner's own weight publish, ~+1 per epoch — is now counted,
+and the leftover is measured rather than assumed: `epoch_tau` returns how many
+transactions in the epoch's blocks it could not attribute, and `tau_coverage` asserts
+that count is zero. Getting this right is what upgraded the engine comparison from a
+ranking test to a value test.
 
 ---
 
@@ -444,10 +612,14 @@ experimental/
 │   ├── participants.py       label ⇄ address ⇄ owning-node registry (+ ADMIN, FEEPOOL)
 │   ├── esg_generator.py      seeded static integer ESG + the configuration-sheet view
 │   ├── stream_writer.py      ADMIN → esg / membership / reconciliation (validating RPCs)
+│   ├── membership_reader.py  cluster sets read BACK off chain (getstreamkeysummary
+│   │                         jsonobjectmerge — the engine's own merge), cached
 │   ├── tx_simulator.py       GAS issue/fund + per-epoch transfers (activity τ)
-│   ├── economics.py          the MyLedger economics + automated on-chain reconciliation
-│   │                         (+ the display-only Python mirror of the weight pipeline)
-│   └── weight_reader.py      getallweights + debug.log weight parse + block/proposer index
+│   ├── economics.py          the whole Vers_2 pipeline: exact τ, W_k/w_k/Delay/p_k/A_k,
+│   │                         automated on-chain settlement + reconciliation, and the
+│   │                         five per-epoch invariants
+│   └── weight_reader.py      getallweights + debug.log weight parse + block/proposer
+│                             index + stream publisher index
 ├── reporters/
 │   ├── csv_reporter.py       the CSV writers (+ output reset)
 │   └── log_reporter.py       levelled experiment.log

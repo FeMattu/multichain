@@ -34,6 +34,19 @@ class StreamWriter(object):
         self.reg = registry          # ParticipantRegistry (labels <-> addresses)
         self.log = log
         self._rng = random.Random(config.SEED ^ 0x5EC0)  # legacy path only
+        # Every publish is a TRANSACTION SIGNED BY THE ADMIN, so it is part of the
+        # ledger and of the epoch's transaction count. Recording them here lets the
+        # harness account for 100% of the transactions in an epoch's blocks -- the
+        # tau_coverage invariant -- instead of writing the difference off as noise.
+        self.published = []          # tx records, same shape as tx_simulator's
+
+    def _record(self, txid, kind, subject, epoch=0):
+        """Note an ADMIN-signed publish in the ledger record (see self.published)."""
+        if txid:
+            self.published.append({"epoch": epoch, "txid": txid,
+                                   "sender": config.ADMIN_LABEL, "receiver": subject,
+                                   "type": kind, "amount": 0.0})
+        return txid
 
     def ensure_write_permission(self):
         """Grant the ADMIN address write on the three (closed) input streams and
@@ -43,14 +56,15 @@ class StreamWriter(object):
         (mirrors functional_test_weight_engine.sh). Idempotent."""
         admin = self.net.admin
         txids = []
-        for s in ("weight-engine-esg", "weight-engine-membership",
-                  "weight-engine-reconciliation"):
+        for s in config.INPUT_STREAMS:
             ok, res = admin.cli_ok("grant", admin.address, "%s.write" % s)
             if ok and _looks_txid(res):
                 txids.append(res)
+                self._record(res, "grant_write", s)
         for txid in txids:
             self.net.wait_confirmed(admin, txid)
-        self.log.info("granted ADMIN write on the 3 input streams (confirmed)")
+        self.log.info("granted ADMIN write on the %d input streams (confirmed)"
+                      % len(config.INPUT_STREAMS))
 
     # -- ESG (static, published once) --------------------------------------
     def publish_esg(self, scores):
@@ -66,7 +80,7 @@ class StreamWriter(object):
             ok, res = self.net.admin.cli_ok("weightsetesg", addr, float(score))
             if ok and _looks_txid(res):
                 self.log.debug("ESG %s=%s -> %s (%s)" % (label, score, addr, res))
-                out[label] = (addr, score, res)
+                out[label] = (addr, score, self._record(res, "publish_esg", label))
             else:
                 self.log.error("ESG publish failed for %s: %s" % (label, res))
                 out[label] = (addr, score, None)
@@ -90,7 +104,8 @@ class StreamWriter(object):
                 if not txid:
                     self.log.error("membership publish failed %s<-%s: %s" %
                                    (config.miner_id(m), clabel, res))
-                out.append((config.miner_id(m), clabel, txid))
+                out.append((config.miner_id(m), clabel,
+                            self._record(txid, "publish_membership", clabel)))
         self.log.info("published membership: %d azienda->cluster links" % len(out))
         return out
 
@@ -111,7 +126,7 @@ class StreamWriter(object):
         if not txid:
             self.log.error("reconciliation publish failed %s e%d (%.4f): %s"
                            % (miner_label, epoch, reconciled, res))
-        return txid
+        return self._record(txid, "publish_reconciliation", miner_label, epoch)
 
     def publish_reconciliation(self, epoch):
         """LEGACY (pre-MyLedger): publish a seeded-random R_k for every miner, with no

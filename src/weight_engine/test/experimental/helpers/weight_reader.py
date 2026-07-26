@@ -20,6 +20,15 @@
 #   4. getblock <h> 1           -- the txid list of a block, so any transaction's
 #      confirming height (hence epoch) is resolved from the block index rather than
 #      assumed from when it was submitted.
+#   5. liststreamitems <stream> -- the publisher of every stream item, so the stream
+#      publishes that the harness did not submit itself (above all each miner's own
+#      per-epoch w_k publish to wpoa-weights) are still attributed to their signer.
+#      This is what lets the replayed tau match the engine's exactly.
+#
+# NOTE ON "Delay in msec". listblocks' timestamps give the real mean inter-block
+# interval, reported as `block_interval_ms`. It is NOT the Vers_2 "Delay in msec"
+# column, which is the per-mille normalized weight (economics.py); the two are
+# unrelated despite the name.
 
 import os
 import re
@@ -90,8 +99,12 @@ class WeightReader(object):
 
         Returns {height: {"miner": label_or_None, "time": int, "txcount": int,
         "validated": txcount-1}}. `validated` drops the coinbase, so it is the count
-        of real transactions the proposer validated in that block -- the quantity the
-        MyLedger fee model charges ALPHA for."""
+        of real transactions in that block.
+
+        `validated` is an AUDIT quantity (it cross-checks that every transaction was
+        accounted for exactly once), NOT an earnings one: Guadagno is the epoch's fee
+        pot distributed by weight share, and does not depend on who proposed a block.
+        See config.py "ECONOMICS"."""
         out = {}
         if hi < lo:
             return out
@@ -119,6 +132,38 @@ class WeightReader(object):
             else:
                 self.log.warn("listblocks %d-%d failed: %s" % (start, end, res))
             start = end + 1
+        return out
+
+    # -- stream publishers --------------------------------------------------
+    def stream_publishers(self, stream, count=200000):
+        """{txid: [publisher_label, ...]} for every item of `stream`.
+
+        WHY. The engine's tau counts +1 per distinct signing address per non-coinbase
+        transaction (weight_reader.cpp ComputeActivityForEpoch) -- and a STREAM PUBLISH
+        is such a transaction. Each miner publishes its own w_k to wpoa-weights once
+        per epoch, which the harness never submits and so cannot see in its own
+        records; ignoring it leaves the replayed tau_{Mk} short by one per epoch and
+        forces the engine comparison down to a ranking test.
+
+        Reading the publishers straight off the stream's own index closes that gap
+        exactly, so tau can be reconstructed to the transaction and w_k compared to the
+        node BY VALUE. Returns {} (with a warning) if the node has no items index for
+        the stream, in which case the caller degrades to the ranking comparison."""
+        ok, res = self.net.admin.cli_ok("liststreamitems", stream, True, count, 0)
+        if not ok or not isinstance(res, list):
+            self.log.warn("liststreamitems %s failed (no items index?): %s"
+                          % (stream, res))
+            return {}
+        out = {}
+        for item in res:
+            if not isinstance(item, dict):
+                continue
+            txid = item.get("txid")
+            if not txid:
+                continue
+            pubs = item.get("publishers") or []
+            out[txid] = [self.reg.label_of(p) for p in pubs if p]
+        self.log.debug("stream %s: %d items indexed by publisher" % (stream, len(out)))
         return out
 
     def proposers_in_range(self, start, end):

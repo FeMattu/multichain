@@ -64,7 +64,12 @@ def cluster_config_rows(scores):
             clabel = config.company_id(m, c)
             companies.append({
                 "label": clabel,
-                "display": config.company_display(c),
+                # Derived from the LABEL, not from the loop index. It is the same value
+                # here (this loop walks the canonical topology in order), but keeping one
+                # rule everywhere means a future reordering cannot relabel Azienda_A10
+                # as "Azienda 3" -- which is exactly what happened once the cluster sets
+                # started arriving from the membership stream in address order.
+                "display": config.company_display_for(clabel),
                 "esg": scores.get(clabel, 0),
             })
         rows.append({

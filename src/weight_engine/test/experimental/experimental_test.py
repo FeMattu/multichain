@@ -19,17 +19,28 @@
 # admin RPCs, the nodes compute w_k, and this harness READS the results
 # (getallweights + the engine's per-epoch debug.log lines) and the mined blocks.
 #
+# THE QUESTION THIS ANSWERS. Does the deployed weight engine compute the weight the
+# POESIA / Vers_2 model specifies, and does wPoA then select proposers by it? The
+# harness therefore replays the documented pipeline from the SAME public inputs the
+# node reads, and compares its prediction of w_k against the integer the node actually
+# published (engine_matches_replay). Everything else exists to make that comparison
+# trustworthy: tau is reconstructed transaction by transaction, the cluster sets are
+# read back off the membership stream, and every GAS figure is settled on chain.
+#
 # WHAT CHANGED FROM THE ORIGINAL (Apuana SB) SUITE
-#  * Topology is MyLedger's: 5 clusters x 10 aziende, integer ESG in [10,20], and an
-#    ADMIN that is also the reconciliation counterparty.
-#  * The economics are real and on chain (helpers/economics.py): GAS (1 GAS = 1 EUR)
-#    is a divisible asset, every transaction costs ALPHA = 0.2 GAS, the FEEPOOL settles
-#    Guadagno_k = TxMiner_k * ALPHA to each miner, the miner returns Resi_k to the
-#    ADMIN, and Giacenza_k is read back as the miner's balance after that transfer.
+#  * Topology is MyLedger's: 5 clusters x 10 aziende, integer ESG in [10,20], 10..20
+#    transactions per epoch for aziende AND miners, and an ADMIN that is also the
+#    reconciliation counterparty.
+#  * The economics are the Vers_2 ones and they are real and on chain
+#    (helpers/economics.py): GAS (1 GAS = 1 EUR) is a divisible asset, the epoch's fee
+#    pot ALPHA * Theta is split by WEIGHT SHARE p_k (not by who mined a block), the
+#    FEEPOOL settles A_k to each miner, the miner returns R_k to the ADMIN, and
+#    Giacenza is the running balance B_prev + A - R.
 #  * Reconciliation is fully AUTOMATED at each epoch boundary and the amount published
 #    to the reconciliation stream is the amount read back off chain -- never a random
 #    draw, as it was before.
-#  * The run ends with an invariant pass (see _verify) written to assertions.csv.
+#  * Invariants run at two levels: five model invariants per epoch, inside close_epoch
+#    (epoch_checks.csv), and the run-level ledger/engine checks here (assertions.csv).
 #
 # Design notes:
 #  * A tx's epoch is the epoch of its CONFIRMING block (resolved from the block
@@ -39,12 +50,14 @@
 #    log lines (authoritative + epoch-tagged); getallweights gives the live total.
 #  * "proposer of an epoch" is the miner that mined the MOST blocks in that epoch
 #    (an epoch spans many blocks); the full per-miner tally is in wpoa_proposer_log.
-#  * selection_probability is the theoretical w_k / sum w_k. The consensus selector
-#    additionally applies whale-compression at election time, so observed shares
-#    track these probabilities without being identical (see weight_engine.h).
+#  * p_k = Delay_k / 1000 is the theoretical selection probability. The consensus
+#    selector additionally applies whale-compression at election time, so observed
+#    block shares track p_k without being identical (see weight_engine.h). That
+#    deviation is REPORTED, never thresholded.
 
 import collections
 import datetime
+import math
 import os
 import sys
 
@@ -59,6 +72,7 @@ from helpers.participants import ParticipantRegistry
 from helpers.stream_writer import StreamWriter
 from helpers.tx_simulator import TxSimulator
 from helpers.weight_reader import WeightReader
+from helpers.membership_reader import MembershipReader
 from helpers.economics import EconomicsEngine
 from helpers.esg_generator import generate_scores, cluster_config_rows
 
@@ -109,6 +123,38 @@ def _rank_concordance(a, b):
     return (concordant / float(pairs)) if pairs else None
 
 
+_UINT32_MAX = 4294967295
+
+
+def _to_integer_weight(weight, scale):
+    """Python mirror of WeightEngine::ToIntegerWeight (weight_engine.h): scale, then
+    round half-away-from-zero and clamp to [1, UINT32_MAX]. The `not (s >= 1.0)` form
+    is kept deliberately -- it maps NaN to the safe floor of 1, exactly as the C++ does."""
+    s = weight * scale
+    if not (s >= 1.0):
+        return 1
+    if s >= float(_UINT32_MAX):
+        return _UINT32_MAX
+    return int(math.floor(s + 0.5))
+
+
+def _weight_verdict(published, expected_int):
+    """How the node's published integer weight compares with the harness prediction.
+
+    "exact"      identical integers -- the pipelines agree bit for bit.
+    "within-tol" differ by at most config.WEIGHT_MATCH_REL_EPS of the published value;
+                 expected when tau is off by a transaction at an epoch boundary.
+    "off"        a real divergence.
+    "unpublished" the node never published a weight for that epoch (nothing to compare).
+    """
+    if not published:
+        return "unpublished"
+    if published == expected_int:
+        return "exact"
+    tol = max(1.0, abs(published) * config.WEIGHT_MATCH_REL_EPS)
+    return "within-tol" if abs(published - expected_int) <= tol else "off"
+
+
 class Experiment(object):
     def __init__(self, mode):
         self.mode = mode
@@ -119,6 +165,7 @@ class Experiment(object):
         self.net = Network(mode, self.log)
         self.reg = None
         self.econ = None
+        self.mem = None            # MembershipReader (on-chain cluster sets)
         # collected data
         self.esg = {}              # label -> certified ESG score
         self.esg_pub = {}          # label -> (addr, score, txid)
@@ -142,8 +189,15 @@ class Experiment(object):
              % (config.GAS_ASSET_NAME, config.GAS_PER_EURO, config.ALPHA)),
             ("esg range", "%d..%d" % (config.ESG_MIN, config.ESG_MAX)),
             ("tx/azienda", "%d..%d" % (config.TX_PER_COMPANY_MIN, config.TX_PER_COMPANY_MAX)),
-            ("reso rates", ", ".join("%s=%.2f" % (config.cluster_letter(i), config.reso_rate(i))
-                                     for i in range(config.NUM_MINERS))),
+            ("tx/miner", "%d..%d" % (config.TX_MINER_MIN, config.TX_MINER_MAX)),
+            ("allocation basis", "%s (A_k prop. to %s)"
+             % (config.alloc_basis(),
+                "W_k -- thesis/engine" if config.alloc_basis() == "raw"
+                else "w_k -- Vers_2 sheet")),
+            ("reso mode", "%s (rates %s)"
+             % (config.RESO_MODE,
+                ", ".join("%s=%.2f" % (config.cluster_letter(i), config.reso_rate(i))
+                          for i in range(config.NUM_MINERS)))),
         ])
         try:
             self._setup_chain()
@@ -177,15 +231,20 @@ class Experiment(object):
         last_mtx = [x[2] for x in membership if x[2]]
         if last_mtx:
             self.net.wait_confirmed(self.net.admin, last_mtx[-1])
+        # Read the cluster sets BACK OFF CHAIN, through the same native jsonobjectmerge
+        # the engine uses. From here on the harness works from the published state, not
+        # from its own idea of the topology -- so a membership bug is detectable.
+        self.mem = MembershipReader(self.net, self.reg, self.log).load()
         # issue GAS and fund participants so they can transact (produce activity tau).
         self.tx_records += self.txsim.setup()
         # the miners publish w_k here; the ADMIN (not a cluster miner) must create it.
         self.net.ensure_wpoa_weights_stream()
         # the ADMIN must never propose a block.
         self.net.demote_admin_from_mining()
-        # the economics/reconciliation engine needs the ESG map and the stream writer.
+        # the economics/reconciliation engine needs the ESG map, the stream writer and
+        # the on-chain cluster sets.
         self.econ = EconomicsEngine(self.net, self.reg, self.sw, self.wr,
-                                    self.log, self.esg)
+                                    self.log, self.esg, self.mem)
 
     def _warmup_weights(self):
         """Wait until every miner has published a weight, so wPoA selection has a
@@ -229,11 +288,12 @@ class Experiment(object):
             rows, _ = self.econ.close_epoch(e, self.tx_records)
             self.recon_done[e] = all(r["recon_stream_txid"] for r in rows)
 
-        # The settlement/reconciliation transfers are part of the ledger too. They are
-        # appended once, here: close_epoch's activity count deliberately ignores them
-        # (they are settlement, not network traffic), while the engine-tau replay and
-        # transactions.csv both need them.
+        # The settlement/reconciliation transfers and the ADMIN's stream publishes are
+        # part of the ledger too. close_epoch already folds them into its own tau count
+        # while the run is live (economics._all_records); they are merged into
+        # tx_records once, here, for transactions.csv.
         self.tx_records += list(self.econ.settlement_tx)
+        self.tx_records += list(self.sw.published)
 
         # bury the last epoch so every sampled epoch's weight gets published.
         last_end = config.epoch_range(self.epochs[-1])[1]
@@ -257,7 +317,7 @@ class Experiment(object):
             if b.get("miner"):
                 epoch_proposers[config.height_to_epoch(h)][b["miner"]] += 1
 
-        self._replay_for_crosscheck(epoch_weights, epoch_proposers)
+        self._attach_engine_weights(epoch_weights, epoch_proposers)
 
         self._write_config_sheet()
         self._write_esg_scores()
@@ -268,32 +328,39 @@ class Experiment(object):
             self._write_wpoa_proposer_log(miners, epoch_weights, epoch_proposers)
         self.csv.cluster_economics(self.econ.cluster_rows)
         self.csv.company_activity(self.econ.company_rows)
+        self.csv.epoch_checks(self.econ.epoch_checks)
         self._verify(epoch_weights)
         self._write_summary(epoch_proposers)
 
-    def _replay_for_crosscheck(self, epoch_weights, epoch_proposers):
-        """Fill each cluster_economics row with the engine's published weight and with
-        the harness-recomputed W_k / A_k (see EconomicsEngine's mirror caveat)."""
+    def _attach_engine_weights(self, epoch_weights, epoch_proposers):
+        """Pair each cluster_economics row with the weight the NODE published for that
+        epoch, and with the harness's own prediction of it.
+
+        The harness already replayed the whole pipeline while the run was live
+        (economics.compute_epoch_weights), so `final_weight` is w_k^{(e)} as the thesis
+        and the reference sheet define it. The node publishes ToIntegerWeight(w_k,
+        kappa) = round(w_k * kappa), so the two are directly comparable as integers --
+        this is the check that the engine really computes the documented function of
+        ESG, activity and the reconciliation feedback."""
         by_key = dict(((r["epoch"], r["cluster"]), r) for r in self.econ.cluster_rows)
-        state = {}
         for e in self.epochs:
-            tau = self.econ.engine_tau(e, self.tx_records)
-            # the ABSOLUTE epoch, so the feedback bracket applies exactly as it does on
-            # the node (which always replays from epoch 1) -- see replay_epoch.
-            replay, state = self.econ.replay_epoch(e, tau, state, e)
             w = dict((m, epoch_weights.get(e, {}).get(m, 0))
                      for m in self.reg.miner_labels())
             p = WeightReader.normalized(w)
             proposer = self._modal_proposer(epoch_proposers, e)
-            for m, rep in replay.items():
+            for m in self.reg.miner_labels():
                 row = by_key.get((e, m))
                 if row is None:
                     continue
-                row["engine_weight"] = w.get(m, 0)
+                published = w.get(m, 0)
+                expected = row.get("final_weight", 0.0)
+                expected_int = _to_integer_weight(expected, config.KAPPA)
+                row["engine_weight"] = published
                 row["engine_prob"] = round(p.get(m, 0.0), 6)
+                row["w_k_expected"] = round(expected, 6)
+                row["w_k_expected_int"] = expected_int
+                row["weight_match"] = _weight_verdict(published, expected_int)
                 row["selected_proposer"] = "yes" if m == proposer else "no"
-                row["raw_weight_recomputed"] = round(rep["raw_weight"], 6)
-                row["allocation_recomputed"] = round(rep["allocation"], 6)
 
     def _weights_for(self, epoch_weights, miners, e):
         """{miner: weight} for epoch e (missing -> 0) and its normalized probs."""
@@ -355,7 +422,8 @@ class Experiment(object):
             _, end = config.epoch_range(e)
             proposer = self._modal_proposer(epoch_proposers, e)
             theta = self._theta_of(e)
-            tx_count = theta + sum(r["tau_miner_signed"] for r in self.econ.cluster_rows
+            # tau over ALL cluster members: the aziende (Theta) plus the miners' own.
+            tx_count = theta + sum(r["tx_miner"] for r in self.econ.cluster_rows
                                    if r["epoch"] == e)
             rows.append([e, self.mode, end, proposer, self.method]
                         + [w.get(m, 0) for m in miners]
@@ -418,50 +486,120 @@ class Experiment(object):
                                                  "PASS" if ok else "FAIL", detail))
 
         miners = self.reg.miner_labels()
+        rows = self.econ.cluster_rows
         rows_by_epoch = collections.defaultdict(dict)
-        for r in self.econ.cluster_rows:
+        for r in rows:
             rows_by_epoch[r["epoch"]][r["cluster"]] = r
+        tol = max(config.GAS_EPS * 100, 10 ** -config.GAS_DECIMALS)
+        cons = self._conservation()
 
-        # 1. weight ordering vs the ESG + activity composite (and vs the replay).
-        conc_raw, conc_w, compared = [], [], 0
+        # --- A. does the WEIGHT ENGINE compute what it is documented to compute? -----
+        # This is the experiment's primary question, so it is asked twice: by value
+        # (strict) and by ranking (robust to a tau off-by-one at an epoch boundary).
+        verdicts = collections.Counter(r.get("weight_match", "unpublished") for r in rows)
+        comparable = len(rows) - verdicts["unpublished"]
+        agreeing = verdicts["exact"] + verdicts["within-tol"]
+        # When the reconciliation records confirmed too late for the engine to read them,
+        # it computes rho = 0 and applies the bare (1-lambda) bracket, so every published
+        # w_k is round(W_k*kappa*(1-lambda)) and the comparison fails for a reason that is
+        # not the engine's. Say so in the detail rather than leaving it to be rediscovered.
+        cause = ""
+        if verdicts["off"] and cons["recon_publish_late"]:
+            cause = ("  CAUSE: the reconciliation record(s) for %d epoch(s) confirmed too "
+                     "late for the engine to read (mempool backlog peaked at %d tx), so "
+                     "it used rho=0 and the bare (1-lambda) bracket. This run is not a "
+                     "valid measurement of the weight -- lower WE_TX_MIN/MAX or raise "
+                     "WE_EPOCH_LENGTH."
+                     % (len(cons["recon_publish_late"]), cons["max_backlog"]))
+        add("engine_matches_replay", "published w_k vs harness replay",
+            comparable > 0
+            and agreeing >= config.WEIGHT_MATCH_MIN_FRACTION * comparable,
+            "%d/%d comparable cells agree (%d exact, %d within %.1f%%, %d off, "
+            "%d unpublished)%s"
+            % (agreeing, comparable, verdicts["exact"], verdicts["within-tol"],
+               100.0 * config.WEIGHT_MATCH_REL_EPS, verdicts["off"],
+               verdicts["unpublished"], cause))
+
+        # The engine's only economic input has to be readable in time, so this gets its
+        # own named check instead of being diagnosed from a weight mismatch.
+        add("reconciliation_visible_to_engine", "weight-engine-reconciliation",
+            not cons["recon_publish_late"],
+            "every R_k record confirmed before the next epoch buried (mempool peak %d tx)"
+            % cons["max_backlog"] if not cons["recon_publish_late"]
+            else "late in %d epoch(s): %s (mempool peak %d tx)"
+                 % (len(cons["recon_publish_late"]), cons["recon_publish_late"][:5],
+                    cons["max_backlog"]))
+
+        add("settlement_confirmed", "allocation + reconciliation transfers",
+            cons["unconfirmed_settlement"] == 0,
+            "every settlement transfer and governance publish confirmed"
+            if not cons["unconfirmed_settlement"]
+            else "%d still unconfirmed, %.4f GAS in flight -- the balances below are "
+                 "read at minconf 0 as well, so this is reported here rather than "
+                 "surfacing as a phantom supply gap"
+                 % (cons["unconfirmed_settlement"], cons["unconfirmed_settlement_gas"]))
+
+        # weight ordering vs the ESG + activity composite ESG_Mk*(tau_Mk + sum_i c_i).
+        conc_raw, compared = [], 0
         for e in self.epochs:
             w = dict((m, epoch_weights.get(e, {}).get(m, 0)) for m in miners)
             if not any(w.values()):
                 continue
-            rows = rows_by_epoch.get(e, {})
-            if len(rows) < 2:
+            er = rows_by_epoch.get(e, {})
+            if len(er) < 2:
                 continue
-            composite = dict((m, rows[m]["esg"] * (rows[m]["tau_miner_signed"]
-                                                   + rows[m]["impatto_cluster"]))
-                             for m in rows)
-            replayed = dict((m, rows[m].get("raw_weight_recomputed", 0.0)) for m in rows)
+            composite = dict((m, er[m]["esg"] * (er[m]["tx_miner"]
+                                                 + er[m]["sum_impatto_utente"]))
+                             for m in er)
             c1 = _rank_concordance(w, composite)
-            c2 = _rank_concordance(w, replayed)
             if c1 is not None:
                 conc_raw.append(c1)
-            if c2 is not None:
-                conc_w.append(c2)
             compared += 1
         mean_raw = (sum(conc_raw) / len(conc_raw)) if conc_raw else 0.0
-        mean_w = (sum(conc_w) / len(conc_w)) if conc_w else 0.0
         add("weight_ranking", "ESG+NumTx composite", mean_raw >= config.RANK_CONCORDANCE_MIN,
-            "mean pairwise concordance %.4f over %d epochs (min %.2f); "
-            "vs harness replay of W_k: %.4f"
-            % (mean_raw, compared, config.RANK_CONCORDANCE_MIN, mean_w))
+            "mean pairwise concordance %.4f over %d epochs (min %.2f)"
+            % (mean_raw, compared, config.RANK_CONCORDANCE_MIN))
 
-        # 2. conformity rate in [0, 100] %.
-        bad = [(r["epoch"], r["cluster"], r["pct_reso"]) for r in self.econ.cluster_rows
+        # tau is only comparable-by-value if every transaction had a resolvable signer.
+        add("tau_coverage", "sampled epochs", not cons["tau_gaps"],
+            "every transaction in every sampled epoch attributed to a signer"
+            if not cons["tau_gaps"]
+            else "unattributed transactions in %d epoch(s): %s"
+                 % (len(cons["tau_gaps"]), cons["tau_gaps"][:5]))
+
+        # the cluster sets the weights were computed over are the published ones.
+        add("membership_from_chain", "weight-engine-membership",
+            self.mem.agrees_with_registry(),
+            "on-chain cluster sets match the configured topology (%d clusters x %d)"
+            % (config.NUM_MINERS, config.COMPANIES_PER_MINER)
+            if self.mem.agrees_with_registry() else "issues: %s" % self.mem.issues()[:5])
+
+        # --- B. the model's own arithmetic, aggregated over the run ------------------
+        # The five per-epoch invariants ran inside close_epoch; report their tally.
+        ec = collections.Counter()
+        for c in self.econ.epoch_checks:
+            ec[(c["check"], bool(c["ok"]))] += 1
+        for name in ("alloc_sums_to_alpha_theta", "delay_sums_to_1000",
+                     "rho_in_unit_interval", "balance_non_negative",
+                     "resi_within_available"):
+            passed, failed = ec[(name, True)], ec[(name, False)]
+            add(name, "per epoch", failed == 0,
+                "%d/%d epochs pass%s" % (passed, passed + failed,
+                                         "" if not failed else
+                                         " (%d FAILED -- see epoch_checks.csv)" % failed))
+
+        # conformity rate in [0, 100] % (the reported percentage form of rho).
+        bad = [(r["epoch"], r["cluster"], r["pct_reso"]) for r in rows
                if not (-config.GAS_EPS <= r["pct_reso"] <= 100.0 + config.GAS_EPS)]
         add("conformity_rate_range", "all epochs x clusters", not bad,
-            "all %d rows in [0,100]%%" % len(self.econ.cluster_rows) if not bad
+            "all %d rows in [0,100]%%" % len(rows) if not bad
             else "out of range: %s" % bad[:5])
 
-        # 3. cumulative gain never decreases (Guadagno >= 0 every epoch).
+        # cumulative gain never decreases (A_k >= 0 every epoch).
         viol = []
         for m in miners:
             seq = [r["total_gain"] for r in sorted(
-                (x for x in self.econ.cluster_rows if x["cluster"] == m),
-                key=lambda x: x["epoch"])]
+                (x for x in rows if x["cluster"] == m), key=lambda x: x["epoch"])]
             for i in range(1, len(seq)):
                 if seq[i] < seq[i - 1] - config.GAS_EPS:
                     viol.append((m, i, seq[i - 1], seq[i]))
@@ -469,43 +607,69 @@ class Experiment(object):
             "monotonic across %d epochs for all %d clusters" % (len(self.epochs), len(miners))
             if not viol else "decreases: %s" % viol[:5])
 
-        # 4. GAS conservation, entirely from chain reads.
-        cons = self._conservation()
-        tol = max(config.GAS_EPS * 100, 10 ** -config.GAS_DECIMALS)
-        # Every non-coinbase transaction in the sampled epochs is validated by exactly
-        # one cluster, so the per-cluster TxMiner tallies must add up to an independent
-        # recount straight off the block index.
-        add("tx_validated_once", "sampled epochs",
-            cons["validated_total"] == cons["blocks_validated"]
-            and cons["blocks_foreign"] == 0,
-            "sum TxMiner %d vs blocks recount %d; %d block(s) with no cluster-miner "
-            "proposer" % (cons["validated_total"], cons["blocks_validated"],
-                          cons["blocks_foreign"]))
-        # Guadagno is charged per VALIDATED transaction. That is more than Theta: the
-        # settlement, reconciliation and governance traffic in those blocks is validated
-        # too, so alpha*Theta is reported for comparison, not as an equality.
-        overhead = cons["validated_total"] - cons["theta_total"]
-        add("gas_fees_match_validation", "network",
-            abs(cons["guadagno_total"] - config.ALPHA * cons["validated_total"])
-            <= tol * len(self.epochs),
-            "sum Guadagno %.4f = alpha * %d validated tx; azienda activity Theta=%d "
-            "(alpha*Theta %.4f), so %d tx (%.1f%%) are settlement/governance traffic"
-            % (cons["guadagno_total"], cons["validated_total"], cons["theta_total"],
-               cons["alpha_theta"], overhead,
-               (100.0 * overhead / cons["validated_total"]) if cons["validated_total"] else 0.0))
+        # --- C. the ledger agrees with the table, entirely from chain reads ----------
+        # The whole fee pot, and nothing but the fee pot, was allocated.
+        add("alloc_equals_alpha_theta", "network",
+            abs(cons["alloc_total"] - cons["alpha_theta"]) <= tol * len(self.epochs),
+            "sum A_k %.4f vs alpha*Theta %.4f (Theta=%d) -- an EQUALITY under the "
+            "weight-share model, unlike the per-block fee tally it replaced"
+            % (cons["alloc_total"], cons["alpha_theta"], cons["theta_total"]))
         add("gas_returned_to_admin", "ADMIN address",
             abs(cons["admin_delta"] - cons["resi_total"]) <= tol * len(self.epochs),
             "ADMIN balance delta %.4f vs sum Resi read off chain %.4f"
             % (cons["admin_delta"], cons["resi_total"]))
-        add("gas_supply_conserved", "all addresses",
-            abs(cons["on_network"] - cons["issued"]) <= tol * 10,
-            "balances now %.4f vs issued supply %.4f (delta %.4f)"
-            % (cons["on_network"], cons["issued"],
-               cons["on_network"] - cons["issued"]))
         add("feepool_paid_out", "FEEPOOL address",
-            abs(cons["feepool_delta"] + cons["guadagno_total"]) <= tol * len(self.epochs),
-            "FEEPOOL balance delta %.4f vs -sum Guadagno %.4f"
-            % (cons["feepool_delta"], -cons["guadagno_total"]))
+            abs(cons["feepool_delta"] + cons["alloc_total"]) <= tol * len(self.epochs),
+            "FEEPOOL balance delta %.4f vs -sum A_k %.4f"
+            % (cons["feepool_delta"], -cons["alloc_total"]))
+        # Supply is checked at minconf 0 as well: a transfer still in flight is held by
+        # neither party, so a confirmed-only sum under-counts by exactly the in-flight
+        # amount. Passing on either reading distinguishes a confirmation lag (reported by
+        # settlement_confirmed above) from GAS that actually went missing.
+        gap1 = cons["on_network"] - cons["issued"]
+        gap0 = cons["on_network_minconf0"] - cons["issued"]
+        add("gas_supply_conserved", "all addresses",
+            min(abs(gap1), abs(gap0)) <= tol * 10,
+            "balances %.4f (minconf 1) / %.4f (minconf 0) vs issued supply %.4f "
+            "-- delta %.4f / %.4f"
+            % (cons["on_network"], cons["on_network_minconf0"], cons["issued"],
+               gap1, gap0))
+
+        # Giacenza is an ACCOUNTING balance; the miner's on-chain balance also carries
+        # its seed funding and its miner<->miner trading. Netting those two out must
+        # reproduce B_k exactly -- this is what ties the table to the ledger. Read at
+        # minconf 0 for the same reason as the supply check above.
+        drift = []
+        for m in miners:
+            opened = cons["opening_balances"].get(m, 0.0)
+            expect = self.econ.balance.get(m, 0.0) + cons["miner_trade_net"].get(m, 0.0)
+            best = min(abs((cons[k].get(m, 0.0) - opened) - expect)
+                       for k in ("closing_balances", "closing_balances_minconf0"))
+            if best > tol * len(self.epochs):
+                drift.append((m, round(cons["closing_balances"].get(m, 0.0) - opened, 4),
+                              round(expect, 4)))
+        add("giacenza_matches_chain", "per cluster miner", not drift,
+            "balance delta - miner trading = B_k for all %d clusters "
+            "(sum B_k %.4f)" % (len(miners), cons["balance_total"])
+            if not drift else "drift (miner, delta_minconf1, expected B_k+trading): %s"
+                              % drift)
+
+        # --- D. wPoA: did proposership actually follow p_k? --------------------------
+        if self.mode == "wpoa":
+            total_blocks = sum(r["blocks_mined"] for r in rows)
+            dev = 0.0
+            if total_blocks:
+                for m in miners:
+                    obs = sum(r["blocks_mined"] for r in rows if r["cluster"] == m) \
+                        / float(total_blocks)
+                    exp = (sum(r["p_k"] for r in rows if r["cluster"] == m)
+                           / max(1, len(self.epochs)))
+                    dev += abs(obs - exp)
+            add("proposer_share_tracks_p_k", "wpoa selection", total_blocks > 0,
+                "total L1 deviation between observed block share and mean p_k: %.4f "
+                "over %d blocks. REPORTED, not thresholded: the selector applies its "
+                "own whale-compression at election time (weight_engine.h), so exact "
+                "agreement is not expected" % (dev, total_blocks))
 
         self.csv.assertions(checks)
         failed = [c["check"] for c in checks if c["verdict"] == "FAIL"]
@@ -519,7 +683,7 @@ class Experiment(object):
         """conservation_report(), read once and reused: it costs one balance query per
         participant and both the invariant pass and the summary need it."""
         if self._cons is None:
-            self._cons = self.econ.conservation_report()
+            self._cons = self.econ.conservation_report(self.tx_records)
         return self._cons
 
     def _write_summary(self, epoch_proposers):
@@ -530,11 +694,18 @@ class Experiment(object):
         cons = self._conservation()
         http_calls, cli_calls = self.net.rpc_stats()
         stats = [("mode", self.mode),
+                 ("allocation basis", "%s (%s)" % (
+                     config.alloc_basis(),
+                     "A_k proportional to the RAW weight W_k -- thesis / C++ engine"
+                     if config.alloc_basis() == "raw"
+                     else "A_k proportional to the FINAL weight w_k -- Vers_2 sheet")),
                  ("epochs sampled", "%d..%d" % (self.epochs[0], self.epochs[-1])),
                  ("transactions recorded", len(self.tx_records)),
-                 ("Theta (total company tx)", cons["theta_total"]),
-                 ("Guadagno total (GAS)", cons["guadagno_total"]),
+                 ("Theta (total azienda tx)", cons["theta_total"]),
+                 ("sum A_k / alpha*Theta (GAS)", "%.4f / %.4f"
+                  % (cons["alloc_total"], cons["alpha_theta"])),
                  ("Resi total (GAS)", cons["resi_total"]),
+                 ("sum Giacenza B_k (GAS)", cons["balance_total"]),
                  ("Total GAIN per cluster", dict(self.econ.total_gain)),
                  ("blocks by miner", dict(total)),
                  ("rpc calls (http/cli)", "%d / %d" % (http_calls, cli_calls)),

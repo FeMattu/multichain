@@ -1,0 +1,20 @@
+check,scope,verdict,detail
+engine_matches_replay,published w_k vs harness replay,FAIL,"83/100 comparable cells agree (44 exact, 39 within 1.0%, 17 off, 0 unpublished)"
+reconciliation_visible_to_engine,weight-engine-reconciliation,PASS,every R_k record confirmed before the next epoch buried (mempool peak 0 tx)
+settlement_confirmed,allocation + reconciliation transfers,PASS,every settlement transfer and governance publish confirmed
+weight_ranking,ESG+NumTx composite,FAIL,mean pairwise concordance 0.7950 over 20 epochs (min 0.80)
+tau_coverage,sampled epochs,FAIL,"unattributed transactions in 12 epoch(s): [(17, 2), (18, 2), (19, 2), (20, 8), (21, 1)]"
+membership_from_chain,weight-engine-membership,PASS,on-chain cluster sets match the configured topology (5 clusters x 10)
+alloc_sums_to_alpha_theta,per epoch,PASS,20/20 epochs pass
+delay_sums_to_1000,per epoch,PASS,20/20 epochs pass
+rho_in_unit_interval,per epoch,PASS,20/20 epochs pass
+balance_non_negative,per epoch,PASS,20/20 epochs pass
+resi_within_available,per epoch,PASS,20/20 epochs pass
+conformity_rate_range,all epochs x clusters,PASS,"all 100 rows in [0,100]%"
+total_gain_monotonic,per cluster,PASS,monotonic across 20 epochs for all 5 clusters
+alloc_equals_alpha_theta,network,PASS,"sum A_k 2577.9995 vs alpha*Theta 2578.0000 (Theta=12890) -- an EQUALITY under the weight-share model, unlike the per-block fee tally it replaced"
+gas_returned_to_admin,ADMIN address,PASS,ADMIN balance delta 2502.5020 vs sum Resi read off chain 2502.5020
+feepool_paid_out,FEEPOOL address,PASS,FEEPOOL balance delta -2577.9995 vs -sum A_k -2577.9995
+gas_supply_conserved,all addresses,PASS,balances 2000000.0000 (minconf 1) / 2000000.0000 (minconf 0) vs issued supply 2000000.0000 -- delta 0.0000 / 0.0000
+giacenza_matches_chain,per cluster miner,PASS,balance delta - miner trading = B_k for all 5 clusters (sum B_k 75.4975)
+proposer_share_tracks_p_k,wpoa selection,PASS,"total L1 deviation between observed block share and mean p_k: 0.0931 over 120 blocks. REPORTED, not thresholded: the selector applies its own whale-compression at election time (weight_engine.h), so exact agreement is not expected"

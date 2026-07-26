@@ -89,9 +89,11 @@ class TxSimulator(object):
 
         Categories:
           * company : every azienda sends TX_PER_COMPANY_MIN..MAX GAS transfers to
-                      other aziende -- the network traffic MyLedger charges ALPHA for.
-          * miner   : a few miner<->miner transfers, so tau_{Mk} (the miner's own
-                      activity term of W_k) is not degenerate.
+                      other aziende -- the network traffic MyLedger charges ALPHA for,
+                      and the source of Theta.
+          * miner   : every cluster miner sends TX_MINER_MIN..MAX transfers of its own,
+                      which is tau_{Mk}, the miner's activity term of W_k. Same 10..20
+                      band as the aziende, per the configuration sheet.
 
         The `epoch` field is the INTENDED epoch; the confirming block's actual epoch
         is resolved later by the reporter (a tx near an epoch boundary may confirm in
@@ -116,10 +118,17 @@ class TxSimulator(object):
                 receiver = _pick_other(rng, companies, sender)
                 amount = _q(rng.uniform(config.TX_AMOUNT_MIN, config.TX_AMOUNT_MAX))
                 plan.append((sender, receiver, amount, "company"))
-        for _ in range(rng.randint(config.TX_MINER_MIN, config.TX_MINER_MAX)):
-            s, r = _pick_pair(rng, miners)
-            amount = _q(rng.uniform(config.TX_AMOUNT_MIN, config.TX_AMOUNT_MAX))
-            plan.append((s, r, amount, "miner"))
+        # CHANGED: EACH miner now sends TX_MINER_MIN..MAX (10..20) transfers of its own,
+        # the same band the configuration sheet gives for the ClusterMiner rows. It used
+        # to be a single network-wide draw of 2..4 transfers shared across all clusters,
+        # which left tau_{Mk} at ~0 for most miners and effectively deleted that term
+        # from W_k = ESG_Mk * (tau_Mk + sum_i c_i).
+        for sender in miners:
+            n = rng.randint(config.TX_MINER_MIN, config.TX_MINER_MAX)
+            for _ in range(n):
+                receiver = _pick_other(rng, miners, sender)
+                amount = _q(rng.uniform(config.TX_AMOUNT_MIN, config.TX_AMOUNT_MAX))
+                plan.append((sender, receiver, amount, "miner"))
 
         _, end = config.epoch_range(epoch)
         waves = max(1, min(config.tx_waves(), len(plan)))
@@ -177,9 +186,3 @@ def _pick_other(rng, pool, exclude):
     return r
 
 
-def _pick_pair(rng, pool):
-    """Pick an ordered (sender, receiver) pair of distinct members of pool."""
-    if len(pool) < 2:
-        return pool[0], pool[0]
-    s = rng.choice(pool)
-    return s, _pick_other(rng, pool, s)

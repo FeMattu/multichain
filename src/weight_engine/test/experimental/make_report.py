@@ -24,21 +24,26 @@
 #   Proposer log (wpoa)       verbatim wpoa_proposer_log.csv (wpoa mode only).
 #   Verifiche                 the invariant checks and their verdicts.
 #
-# CHANGED FROM THE ORIGINAL (Apuana SB) REPORT. Every economic figure now comes from
-# the CHAIN, read and settled by helpers/economics.py while the run is live, and is
-# simply formatted here:
-#   Tx Miner        transactions the cluster validated (blocks it proposed, coinbase
-#                   excluded) -- NOT a modelled number
-#   Guadagno Ex     Tx Miner * alpha, alpha = 0.2 GAS = 0.2 EUR per transaction
-#   EUR Resi in Ex  the GAS the miner actually transferred to the ADMIN address,
-#                   re-read from that transaction
-#   Giacenza        the miner's on-chain GAS balance after the reconciliation confirmed
-#   % Reso          Resi / Guadagno * 100
-#   Total GAIN      running sum of Guadagno
-#   Delay in msec   mean inter-block interval of the blocks the cluster proposed
-# The previous version recomputed all of these in the reporter from the thesis
-# formulas; the recomputed raw weight W_k and allocation A_k are still shown, but only
-# as the engine cross-check columns.
+# COLUMN SEMANTICS. Every figure is produced and settled on chain by
+# helpers/economics.py while the run is live; this script only formats it.
+#   Tx Miner        tau_Mk, the miner's OWN activity counter for the epoch -- an input
+#                   to W_k, not a count of what it validated
+#   Impatto Cluster W_k = ESG_Mk * (tau_Mk + sum_i ImpUtente_i), the raw weight
+#   Delay in msec   the PER-MILLE NORMALIZED WEIGHT, W_k / sum_j W_j * 1000. Despite
+#                   the name it is not a latency; its per-epoch total is exactly 1000.
+#                   The measured inter-block interval is the block_interval_ms column
+#                   of cluster_economics.csv and is not shown on the epoch sheets.
+#   Guadagno Ex     A_k = Theta * (Delay_k/1000) * alpha -- the epoch's fee pot
+#                   alpha*Theta split by weight share, NOT a per-block fee tally
+#   EUR Resi in Ex  R_k, the GAS the miner actually transferred to the ADMIN address,
+#                   re-read from that confirmed transaction
+#   Giacenza        B_k = B_k^{(e-1)} + A_k - R_k, the running balance (B^{(0)} = 0)
+#   % Reso          R_k / (A_k + B_k^{(e-1)}) * 100 -- the denominator is the balance
+#                   AVAILABLE to reconcile, not A_k alone
+#   Total GAIN      running sum of A_k
+# The engine cross-check columns carry the weight the NODE published for the epoch next
+# to the harness's own prediction of it (w_k atteso / Match), which is the experiment's
+# primary result.
 #
 # Usage:
 #   python3 make_report.py                     # reads ./output, writes output/report.xlsx
@@ -91,9 +96,18 @@ def to_int(x, default=0):
 
 
 def parse_log_params(outdir):
-    """Pull the run's header values out of experiment.log; fall back to config."""
+    """Pull the run's header values out of experiment.log; fall back to config.
+
+    The log is the authority, not this process's environment: every knob is a WE_*
+    environment variable, so a report generated from a different shell than the run
+    would otherwise print the DEFAULTS next to data produced with overrides -- a
+    configuration sheet that contradicts its own numbers."""
     params = {"kappa": config.KAPPA, "alpha": config.ALPHA,
-              "lambda": config.LAMBDA, "mode": "?", "seed": config.SEED}
+              "lambda": config.LAMBDA, "mode": "?", "seed": config.SEED,
+              "esg_min": config.ESG_MIN, "esg_max": config.ESG_MAX,
+              "tx_min": config.TX_PER_COMPANY_MIN, "tx_max": config.TX_PER_COMPANY_MAX,
+              "txm_min": config.TX_MINER_MIN, "txm_max": config.TX_MINER_MAX,
+              "alloc_basis": config.alloc_basis(), "reso_mode": config.RESO_MODE}
     path = os.path.join(outdir, "experiment.log")
     if not os.path.isfile(path):
         return params
@@ -104,6 +118,18 @@ def parse_log_params(outdir):
                 params["kappa"] = float(m.group(1))
                 params["alpha"] = float(m.group(2))
                 params["lambda"] = float(m.group(3))
+            for key, label in (("esg", r"esg range"), ("tx", r"tx/azienda"),
+                               ("txm", r"tx/miner")):
+                m = re.search(r"^%s\s*:\s*(\d+)\s*\.\.\s*(\d+)" % label, line)
+                if m:
+                    params["%s_min" % key] = int(m.group(1))
+                    params["%s_max" % key] = int(m.group(2))
+            m = re.search(r"^allocation basis\s*:\s*(\w+)", line)
+            if m:
+                params["alloc_basis"] = m.group(1)
+            m = re.search(r"^reso mode\s*:\s*(\w+)", line)
+            if m:
+                params["reso_mode"] = m.group(1)
             m = re.search(r"^mode\s*:\s*(\w+)", line)
             if m:
                 params["mode"] = m.group(1)
@@ -135,6 +161,7 @@ class Model(object):
         self.wev = load_csv(os.path.join(outdir, "weights_evolution.csv"))
         self.plog = load_csv(os.path.join(outdir, "wpoa_proposer_log.csv"))
         self.checks = load_csv(os.path.join(outdir, "assertions.csv"))
+        self.echecks = load_csv(os.path.join(outdir, "epoch_checks.csv"))
 
         # -- configuration ------------------------------------------------
         self.clusters = []            # ordered cluster labels
@@ -165,20 +192,31 @@ class Model(object):
                 "esg": to_int(r.get("esg")),
                 "iso": r.get("iso", ""),
                 "blocks_mined": to_int(r.get("blocks_mined")),
+                # tau_Mk -- the miner's own activity, the weight's input
                 "tx_miner": to_int(r.get("tx_miner")),
-                "tau_miner_signed": to_int(r.get("tau_miner_signed")),
+                # "Impatto Cluster" is the raw weight W_k = ESG_Mk*(tau_Mk + sum_i c_i)
                 "impatto_cluster": to_float(r.get("impatto_cluster")),
-                "delay_ms": to_float(r.get("delay_ms")),
+                # "Delay in msec" is the per-mille NORMALIZED weight (total 1000),
+                # not a latency. The measured latency is block_interval_ms.
+                "delay_msec": to_float(r.get("delay_msec")),
+                "block_interval_ms": to_float(r.get("block_interval_ms")),
                 "guadagno": to_float(r.get("guadagno")),
                 "resi": to_float(r.get("resi")),
                 "giacenza": to_float(r.get("giacenza")),
+                "giacenza_prev": to_float(r.get("giacenza_prev")),
+                "available": to_float(r.get("available")),
                 "pct_reso": to_float(r.get("pct_reso")),
                 "total_gain": to_float(r.get("total_gain")),
+                "saldo_onchain": to_float(r.get("saldo_onchain")),
                 "engine_weight": to_int(r.get("engine_weight")),
                 "engine_prob": to_float(r.get("engine_prob")),
                 "selected": (r.get("selected_proposer") or "").lower() == "yes",
-                "raw_weight": to_float(r.get("raw_weight_recomputed")),
-                "allocation": to_float(r.get("allocation_recomputed")),
+                "raw_weight": to_float(r.get("raw_weight")),
+                "final_weight": to_float(r.get("final_weight")),
+                "feedback_bracket": to_float(r.get("feedback_bracket")),
+                "p_k": to_float(r.get("p_k")),
+                "w_k_expected_int": to_int(r.get("w_k_expected_int")),
+                "weight_match": r.get("weight_match", ""),
             }
 
         self.comp = {}                # (epoch, cluster) -> [company row dicts]
@@ -282,13 +320,20 @@ def write_config_sheet(wb, model):
     put(ws, r, 3, "Note", bold=True, fill=HDR_FILL)
     r += 1
     rows = [
-        ("Score minimo ESG", config.ESG_MIN, "intero, statico per tutta la run"),
-        ("Score massimo ESG", config.ESG_MAX, "intero, statico per tutta la run"),
-        ("Numero minimo Tx", config.TX_PER_COMPANY_MIN, "per azienda, per epoca"),
-        ("Numero massimo Tx", config.TX_PER_COMPANY_MAX, "per azienda, per epoca"),
+        ("Score minimo ESG", p["esg_min"], "intero, statico per tutta la run"),
+        ("Score massimo ESG", p["esg_max"], "intero, statico per tutta la run"),
+        ("Numero minimo Tx", p["tx_min"], "per azienda, per epoca"),
+        ("Numero massimo Tx", p["tx_max"], "per azienda, per epoca"),
+        ("Numero min/max Tx miner", "%d..%d" % (p["txm_min"], p["txm_max"]),
+         "tau_Mk, il termine di attivita propria del miner in W_k"),
         ("alpha (costo per Tx)", p["alpha"], "GAS per transazione — 1 GAS = 1 EUR"),
         ("kappa", p["kappa"], "normalizzazione: Impatto utente = Tx * ESG / kappa"),
         ("lambda", p["lambda"], "smorzamento del feedback di conformita"),
+        ("Peso % Reso", p["lambda"] * 100.0,
+         "lambda in percentuale — il parametro del foglio Vers_2"),
+        ("Base allocazione", p["alloc_basis"],
+         "raw = A_k proporzionale a W_k (tesi/engine C++); "
+         "final = A_k proporzionale a w_k (foglio Vers_2)"),
         ("Modalita", p["mode"], "wpoa = selezione pesata; native = round-robin"),
         ("Seed", p["seed"], "ogni scelta casuale deriva da qui"),
         ("Numero cluster", len(model.clusters), "ClusterMiner"),
@@ -303,6 +348,37 @@ def write_config_sheet(wb, model):
         put(ws, r, 2, v, align="center")
         put(ws, r, 3, note)
         r += 1
+
+    # -- the Vers_2 range grid, verbatim from the reference sheet -----------
+    # One row per ClusterMiner and one per AZIENDE-of-a-cluster, four columns of
+    # [min,max] for the ESG score and the transaction count. Reproduced in the
+    # reference's own shape so the two sheets can be compared side by side.
+    r += 1
+    banner(ws, r, 5, "Range di generazione (struttura del foglio Vers_2)")
+    r += 1
+    for j, h in enumerate(["", "Score minimo ESG", "Score massimo ESG",
+                           "Numero minimo Tx", "Numero massimo Tx"], start=1):
+        put(ws, r, j, h, bold=True, fill=HDR_FILL, align="center")
+    r += 1
+    for label in model.clusters:
+        put(ws, r, 1, label, bold=True, fill=MINER_FILL)
+        put(ws, r, 2, p["esg_min"], align="center")
+        put(ws, r, 3, p["esg_max"], align="center")
+        put(ws, r, 4, p["txm_min"], align="center")
+        put(ws, r, 5, p["txm_max"], align="center")
+        r += 1
+    for label in model.clusters:
+        put(ws, r, 1, "AZIENDE %s" % label, bold=True, fill=BAND_FILL)
+        put(ws, r, 2, p["esg_min"], align="center")
+        put(ws, r, 3, p["esg_max"], align="center")
+        put(ws, r, 4, p["tx_min"], align="center")
+        put(ws, r, 5, p["tx_max"], align="center")
+        r += 1
+    put(ws, r, 1, "Peso % Reso", bold=True, fill=TOT_FILL)
+    put(ws, r, 2, p["lambda"] * 100.0, bold=True, fill=TOT_FILL, align="center")
+    for j in range(3, 6):
+        put(ws, r, j, None, fill=TOT_FILL)
+    r += 1
 
     # -- per-cluster: Score ESG, Certificato ISO, Peso %, Reso -------------
     r += 1
@@ -365,30 +441,32 @@ def write_config_sheet(wb, model):
 COMPANY_COLS = ["Nome utente", "Tx Utente", "Impatto utente", "Score ESG"]
 CLUSTER_COLS = ["Tx Miner", "Impatto Cluster", "Delay in msec", "Guadagno Ex (€)",
                 "€ Resi in Ex", "Giacenza", "% Reso", "Total GAIN"]
-ENGINE_COLS = ["Peso engine w_k", "Prob. selezione", "W_k ricalcolato",
-               "A_k ricalcolato", "Proposer"]
+# The engine cross-check: the weight the NODE published next to the harness's own
+# prediction of it, which is the experiment's primary result.
+ENGINE_COLS = ["Peso engine w_k", "Prob. selezione", "w_k atteso",
+               "w_k atteso (int)", "Match", "Proposer"]
 ALL_COLS = COMPANY_COLS + CLUSTER_COLS + ENGINE_COLS
 NCOLS = len(ALL_COLS)
 C_CLUSTER = len(COMPANY_COLS) + 1          # first cluster-block column (E = 5)
 C_ENGINE = C_CLUSTER + len(CLUSTER_COLS)   # first engine column (M = 13)
 # Number formats, positionally aligned with CLUSTER_COLS / ENGINE_COLS. Module level so
-# the totals row can reuse them after the per-cluster loop.
-CLUSTER_FMTS = [None, IMPACT, MONEY, MONEY, MONEY, GAS4, PCT, MONEY]
-ENGINE_FMTS = [None, PROB, IMPACT, MONEY, None]
+# the totals row can reuse them after the per-cluster loop. Note "Delay in msec" uses a
+# plain 2-decimal format: it is a per-mille weight summing to 1000, not a duration.
+CLUSTER_FMTS = [None, IMPACT, PCT, MONEY, MONEY, GAS4, PCT, MONEY]
+ENGINE_FMTS = [None, PROB, IMPACT, None, None, None]
 
 
 def write_epoch_sheet(wb, model, epoch):
     ws = wb.create_sheet(title="Epoch %d" % epoch)
     ws.sheet_view.showGridLines = False
 
-    tot_tx = sum(model.eco[(epoch, c)]["tx_miner"] for c in model.clusters
-                 if (epoch, c) in model.eco)
+    theta = model.theta.get(epoch, 0)
     banner(ws, 1, NCOLS,
-           "EPOCH %d  —  modalita %s  —  proposer %s (%s)  —  Tot Tx epoca %d  —  "
-           "alpha %g GAS/tx"
+           "EPOCH %d  —  modalita %s  —  proposer %s (%s)  —  Theta (Tot Tx azienda) "
+           "%d  —  monte premi alpha×Theta = %.2f €"
            % (epoch, model.params["mode"], model.proposer.get(epoch, "?"),
-              model.method.get(epoch, ""), model.theta.get(epoch, 0),
-              model.params["alpha"]))
+              model.method.get(epoch, ""), theta,
+              theta * model.params["alpha"]))
 
     hr = 2
     for j, name in enumerate(ALL_COLS, start=1):
@@ -439,11 +517,12 @@ def write_epoch_sheet(wb, model, epoch):
             put(ws, r, 3, d["impatto_cluster"], bold=True, fill=fill, num=IMPACT,
                 align="center")
         put(ws, r, 4, d["esg"], bold=True, fill=fill, align="center")
-        vals = [d["tx_miner"], d["impatto_cluster"], d["delay_ms"], d["guadagno"],
+        vals = [d["tx_miner"], d["impatto_cluster"], d["delay_msec"], d["guadagno"],
                 d["resi"], d["giacenza"], d["pct_reso"], d["total_gain"]]
         for off, (v, fmt) in enumerate(zip(vals, CLUSTER_FMTS)):
             put(ws, r, C_CLUSTER + off, v, bold=True, fill=fill, num=fmt, align="center")
-        eng = [d["engine_weight"], d["engine_prob"], d["raw_weight"], d["allocation"],
+        eng = [d["engine_weight"], d["engine_prob"], d["final_weight"],
+               d["w_k_expected_int"], d["weight_match"],
                "SELECTED" if d["selected"] else ""]
         for off, (v, fmt) in enumerate(zip(eng, ENGINE_FMTS)):
             put(ws, r, C_ENGINE + off, v, bold=True, fill=fill, num=fmt, align="center")
@@ -472,11 +551,13 @@ def write_epoch_sheet(wb, model, epoch):
     for j in range(C_ENGINE, NCOLS + 1):
         put(ws, r, j, None, fill=TOT_FILL)
     r += 1
-    put(ws, r, 1, "Total GAS distribuito (= Tot Tx Miner × alpha)", bold=True,
-        fill=TOT_FILL)
-    put(ws, r, 2, round(tot_tx * model.params["alpha"], 4), bold=True, fill=TOT_FILL,
+    # The pot is alpha * Theta and it is fully distributed, so this MUST equal the
+    # Guadagno column total two rows up (the alloc_sums_to_alpha_theta invariant). The
+    # Delay column total must likewise read 1000.
+    put(ws, r, 1, "Total GAS distribuito (= alpha × Theta)", bold=True, fill=TOT_FILL)
+    put(ws, r, 2, round(theta * model.params["alpha"], 4), bold=True, fill=TOT_FILL,
         num=MONEY, align="center")
-    put(ws, r, 3, "GAS = EUR", fill=TOT_FILL)
+    put(ws, r, 3, "GAS = EUR ; somma Delay attesa = 1000", fill=TOT_FILL)
     for j in range(4, NCOLS + 1):
         put(ws, r, j, None, fill=TOT_FILL)
 
@@ -499,7 +580,8 @@ def write_epoch_sheet(wb, model, epoch):
         put(ws, r, 5, d["guadagno"], num=MONEY, align="center")
         r += 1
 
-    widths(ws, [26, 11, 15, 11, 11, 15, 14, 15, 14, 12, 10, 13, 16, 14, 15, 14, 11])
+    widths(ws, [26, 11, 15, 11, 11, 15, 14, 15, 14, 12, 10, 13,
+                16, 14, 15, 16, 12, 11])
     ws.freeze_panes = "A3"
 
 
@@ -509,50 +591,70 @@ def write_epoch_sheet(wb, model, epoch):
 def write_overview(wb, model):
     ws = wb.create_sheet(title="Riepilogo")
     ws.sheet_view.showGridLines = False
-    banner(ws, 1, 8, "Riepilogo per epoca")
-    hdr = ["Epoch", "Proposer", "Tot Tx Epoch", "Tot Impatto", "Tot Tx Miner",
-           "GAS distribuito", "GAS resi all'ADMIN", "% Reso media"]
+    NC = 10
+    banner(ws, 1, NC, "Riepilogo per epoca")
+    # "Somma Delay" and "alpha×Theta vs Σ A_k" are the two per-epoch identities the
+    # model must satisfy (1000 and equal); showing them makes the sheet self-checking.
+    hdr = ["Epoch", "Proposer", "Theta (Tx azienda)", "Tot Impatto (Σ W_k)",
+           "Σ tau_Mk", "Somma Delay (=1000)", "alpha×Theta (€)", "Σ Guadagno (€)",
+           "Σ Resi (€)", "% Reso media"]
     for j, h in enumerate(hdr, start=1):
         put(ws, 2, j, h, bold=True, fill=HDR_FILL, align="center")
     r = 3
     for e in model.epochs:
         rows = [model.eco[(e, c)] for c in model.clusters if (e, c) in model.eco]
-        impatto = sum(x["impatto_cluster"] for x in rows)
+        theta = model.theta.get(e, 0)
         guad = sum(x["guadagno"] for x in rows)
         resi = sum(x["resi"] for x in rows)
-        pct = (resi / guad * 100.0) if guad > 0 else 0.0
+        avail = sum(x["available"] for x in rows)
+        delay = sum(x["delay_msec"] for x in rows)
+        pot = theta * model.params["alpha"]
+        # %Reso is R / (A + B_prev), so the aggregate divides by the AVAILABLE total.
+        pct = (resi / avail * 100.0) if avail > 0 else 0.0
         put(ws, r, 1, e, align="center")
         put(ws, r, 2, model.proposer.get(e, ""), bold=True, align="center")
-        put(ws, r, 3, model.theta.get(e, 0), align="center")
-        put(ws, r, 4, impatto, num=IMPACT, align="center")
+        put(ws, r, 3, theta, align="center")
+        put(ws, r, 4, sum(x["impatto_cluster"] for x in rows), num=IMPACT, align="center")
         put(ws, r, 5, sum(x["tx_miner"] for x in rows), align="center")
-        put(ws, r, 6, guad, num=MONEY, align="center")
-        put(ws, r, 7, resi, num=MONEY, align="center")
-        put(ws, r, 8, pct, num=PCT, align="center")
+        put(ws, r, 6, delay, num=PCT, align="center",
+            fill=None if abs(delay - 1000.0) < 0.5 else FAIL_FILL)
+        put(ws, r, 7, pot, num=MONEY, align="center")
+        put(ws, r, 8, guad, num=MONEY, align="center",
+            fill=None if abs(guad - pot) < 0.01 else FAIL_FILL)
+        put(ws, r, 9, resi, num=MONEY, align="center")
+        put(ws, r, 10, pct, num=PCT, align="center")
         r += 1
 
     r += 1
-    banner(ws, r, 8, "Totali della run per cluster")
+    banner(ws, r, NC, "Totali della run per cluster")
     r += 1
-    for j, h in enumerate(["ClusterMiner", "Tx Miner", "Guadagno (EUR)", "Resi (EUR)",
-                           "% Reso", "Giacenza finale", "Total GAIN", "Peso % medio"],
+    for j, h in enumerate(["ClusterMiner", "Σ tau_Mk", "Guadagno (€)", "Resi (€)",
+                           "% Reso", "Giacenza finale B_k", "Total GAIN",
+                           "Peso % medio", "Blocchi proposti", "Match w_k"],
                           start=1):
         put(ws, r, j, h, bold=True, fill=HDR_FILL, align="center")
     r += 1
     for label in model.clusters:
         guad = model.run_total(label, "guadagno")
         resi = model.run_total(label, "resi")
+        avail = model.run_total(label, "available")
         last = model.eco.get((model.epochs[-1], label), {}) if model.epochs else {}
+        matches = [model.eco[(e, label)]["weight_match"]
+                   for e in model.epochs if (e, label) in model.eco]
+        agree = sum(1 for m in matches if m in ("exact", "within-tol"))
         put(ws, r, 1, label, bold=True, fill=MINER_FILL)
         put(ws, r, 2, model.run_total(label, "tx_miner"), align="center")
         put(ws, r, 3, guad, num=MONEY, align="center")
         put(ws, r, 4, resi, num=MONEY, align="center")
-        put(ws, r, 5, (resi / guad * 100.0) if guad > 0 else 0.0, num=PCT, align="center")
+        put(ws, r, 5, (resi / avail * 100.0) if avail > 0 else 0.0, num=PCT, align="center")
         put(ws, r, 6, last.get("giacenza", 0.0), num=GAS4, align="center")
         put(ws, r, 7, last.get("total_gain", 0.0), num=MONEY, align="center")
         put(ws, r, 8, model.mean_prob(label) * 100.0, num=PCT, align="center")
+        put(ws, r, 9, model.run_total(label, "blocks_mined"), align="center")
+        put(ws, r, 10, "%d/%d" % (agree, len(matches)), align="center",
+            fill=None if agree == len(matches) else FAIL_FILL)
         r += 1
-    widths(ws, [26, 14, 16, 14, 12, 16, 14, 14])
+    widths(ws, [26, 12, 14, 12, 11, 18, 14, 13, 15, 12])
 
 
 def write_weights_matrix(wb, model):
@@ -609,23 +711,53 @@ def write_proposer_log(wb, model):
 
 
 def write_checks(wb, model):
-    if not model.checks:
+    if not (model.checks or model.echecks):
         return
     ws = wb.create_sheet(title="Verifiche")
     ws.sheet_view.showGridLines = False
-    banner(ws, 1, 4, "Invarianti verificate a fine run (output/assertions.csv)")
-    for j, h in enumerate(["Check", "Ambito", "Esito", "Dettaglio"], start=1):
-        put(ws, 2, j, h, bold=True, fill=HDR_FILL, align="center")
-    r = 3
-    for c in model.checks:
-        ok = (c.get("verdict") or "").upper() == "PASS"
-        fill = TOT_FILL if ok else FAIL_FILL
-        put(ws, r, 1, c.get("check", ""), bold=True, fill=fill)
-        put(ws, r, 2, c.get("scope", ""), fill=fill)
-        put(ws, r, 3, c.get("verdict", ""), bold=True, fill=fill, align="center")
-        put(ws, r, 4, c.get("detail", ""), fill=fill)
+    r = 1
+    if model.checks:
+        banner(ws, r, 4, "Invarianti di fine run (output/assertions.csv)")
         r += 1
-    widths(ws, [30, 24, 10, 110])
+        for j, h in enumerate(["Check", "Ambito", "Esito", "Dettaglio"], start=1):
+            put(ws, r, j, h, bold=True, fill=HDR_FILL, align="center")
+        r += 1
+        for c in model.checks:
+            ok = (c.get("verdict") or "").upper() == "PASS"
+            fill = TOT_FILL if ok else FAIL_FILL
+            put(ws, r, 1, c.get("check", ""), bold=True, fill=fill)
+            put(ws, r, 2, c.get("scope", ""), fill=fill)
+            put(ws, r, 3, c.get("verdict", ""), bold=True, fill=fill, align="center")
+            put(ws, r, 4, c.get("detail", ""), fill=fill)
+            r += 1
+
+    # The five model invariants, epoch by epoch: only the FAILURES are listed in full,
+    # since a clean run has NUM_EPOCHS x 5 passing rows and listing them all buries the
+    # one row that matters.
+    if model.echecks:
+        r += 1
+        fails = [c for c in model.echecks
+                 if (c.get("verdict") or "").upper() != "PASS"]
+        banner(ws, r, 4, "Invarianti per epoca (output/epoch_checks.csv): %d controlli, "
+                         "%d fallimenti" % (len(model.echecks), len(fails)))
+        r += 1
+        for j, h in enumerate(["Epoch", "Check", "Esito", "Dettaglio"], start=1):
+            put(ws, r, j, h, bold=True, fill=HDR_FILL, align="center")
+        r += 1
+        if not fails:
+            put(ws, r, 1, "—", align="center", fill=TOT_FILL)
+            put(ws, r, 2, "tutti i controlli superati", bold=True, fill=TOT_FILL)
+            put(ws, r, 3, "PASS", bold=True, fill=TOT_FILL, align="center")
+            put(ws, r, 4, "alpha×Theta, somma Delay = 1000, rho in [0,1], B_k >= 0, "
+                          "R_k <= A_k + B_prev", fill=TOT_FILL)
+            r += 1
+        for c in fails:
+            put(ws, r, 1, to_int(c.get("epoch")), align="center", fill=FAIL_FILL)
+            put(ws, r, 2, c.get("check", ""), bold=True, fill=FAIL_FILL)
+            put(ws, r, 3, c.get("verdict", ""), bold=True, fill=FAIL_FILL, align="center")
+            put(ws, r, 4, c.get("detail", ""), fill=FAIL_FILL)
+            r += 1
+    widths(ws, [30, 26, 10, 110])
 
 
 # ---------------------------------------------------------------------------
@@ -664,7 +796,7 @@ def main():
           "Riepilogo, Pesi & Probabilita%s%s"
           % (len(model.epochs), model.epochs[0], model.epochs[-1],
              ", Proposer log" if model.plog else "",
-             ", Verifiche" if model.checks else ""))
+             ", Verifiche" if (model.checks or model.echecks) else ""))
     return 0
 
 

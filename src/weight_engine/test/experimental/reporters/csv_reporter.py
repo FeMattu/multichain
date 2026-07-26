@@ -10,12 +10,15 @@
 #  * the per-miner columns of epochs_summary / wpoa_proposer_log are now DERIVED from
 #    config.NUM_MINERS instead of being hard-coded to M1..M4, so the MyLedger topology
 #    (ClusterMinerA..E) needs no further edits when the cluster count changes;
-#  * four new artifacts carry the MyLedger data the report needs:
+#  * five new artifacts carry the MyLedger data the report needs:
 #      config_sheet.csv     -- the static configuration ("Foglio di configurazione")
-#      cluster_economics.csv-- per epoch x cluster: TxMiner, Impatto, Delay, Guadagno,
-#                              Resi, Giacenza, %Reso, Total GAIN + the engine's weight
+#      cluster_economics.csv-- per epoch x cluster: the Vers_2 summary columns
+#                              (Tx Miner, Impatto Cluster, Delay, Guadagno, Resi,
+#                              Giacenza, %Reso, Total GAIN) plus the pipeline detail
+#                              and the engine cross-check
 #      company_activity.csv -- per epoch x azienda: Tx utente, Impatto utente, ESG
-#      assertions.csv       -- the invariant checks and their verdicts.
+#      epoch_checks.csv     -- the five per-epoch model invariants, epoch by epoch
+#      assertions.csv       -- the run-level invariant checks and their verdicts.
 
 import csv
 import os
@@ -90,19 +93,34 @@ class CsvReporter(object):
     CONFIG_FIELDS = ["cluster", "letter", "esg_cluster", "iso_certificate",
                      "reso_rate_nominal", "companies", "esg_companies"]
 
+    # Column order: the Vers_2 cluster-summary columns first, in sheet order, then the
+    # audit / engine-cross-check detail. `delay_msec` is the per-mille normalized
+    # weight (Vers_2's "Delay in msec"); the measured latency is `block_interval_ms`.
     CLUSTER_FIELDS = ["epoch", "cluster", "letter", "esg", "iso",
-                      "blocks_mined", "tx_miner", "tau_miner_signed",
-                      "impatto_cluster", "delay_ms",
-                      "guadagno", "resi", "resi_target", "resi_requested",
-                      "giacenza", "pct_reso", "reso_rate_nominal", "total_gain",
-                      "engine_weight", "engine_prob", "selected_proposer",
-                      "raw_weight_recomputed", "allocation_recomputed",
-                      "fee_txid", "recon_txid", "recon_stream_txid"]
+                      # --- Vers_2 cluster summary row ---
+                      "tx_miner", "impatto_cluster", "delay_msec",
+                      "guadagno", "resi", "giacenza", "pct_reso", "total_gain",
+                      # --- pipeline detail ---
+                      "theta", "sum_impatto_utente", "raw_weight", "final_weight",
+                      "feedback_bracket", "delay_raw", "delay_final", "p_k",
+                      "giacenza_prev", "available", "rho",
+                      "resi_target", "resi_requested", "resi_onchain",
+                      "reso_rate_nominal", "saldo_onchain",
+                      # --- consensus outcome (not an input) ---
+                      "blocks_mined", "validated_in_blocks", "block_interval_ms",
+                      # --- engine cross-check ---
+                      "engine_weight", "engine_prob", "w_k_expected",
+                      "w_k_expected_int", "weight_match", "selected_proposer",
+                      # --- provenance ---
+                      "alloc_txid", "recon_txid", "recon_stream_txid",
+                      "recon_stream_confirmed"]
 
     COMPANY_FIELDS = ["epoch", "cluster", "company", "display", "tx_utente",
                       "esg", "impatto_utente"]
 
     ASSERTION_FIELDS = ["check", "scope", "verdict", "detail"]
+
+    EPOCH_CHECK_FIELDS = ["epoch", "check", "verdict", "detail"]
 
     def config_sheet(self, rows):
         """The static configuration ('Foglio di configurazione'): one row per cluster.
@@ -118,3 +136,11 @@ class CsvReporter(object):
 
     def assertions(self, rows):
         return self._write_dicts("assertions.csv", self.ASSERTION_FIELDS, rows)
+
+    def epoch_checks(self, rows):
+        """The five per-epoch model invariants, one row per (epoch, check). `rows` are
+        the dicts economics.verify_epoch_invariants returns."""
+        return self._write("epoch_checks.csv", self.EPOCH_CHECK_FIELDS,
+                           [[r.get("epoch", ""), r.get("check", ""),
+                             "PASS" if r.get("ok") else "FAIL", r.get("detail", "")]
+                            for r in rows])
