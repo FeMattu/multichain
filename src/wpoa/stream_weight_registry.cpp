@@ -126,12 +126,16 @@ bool StreamWeightRegistry::EnsureStreamExists()
         return false;
     }
 
-    // create ["stream", "wpoa-weights", true]  (open stream: any address with
-    // write permission may publish).
+    // create ["stream", "wpoa-weights", false] -> CLOSED (write permission
+    // required). Weight updates are restricted to a subset of authorized
+    // entities (consortium administrators, or a reputation oracle holding a
+    // dedicated permission), enforced by MultiChain's own granular permissions
+    // rather than by convention — cfr. Def. 5.16, weight-registry data model.
+    // Grant the publishers explicitly:  grant <addr> wpoa-weights.write
     Array params;
     params.push_back(string("stream"));
     params.push_back(m_StreamName);
-    params.push_back(true);
+    params.push_back(false);
 
     m_CreateAttempted = true;
     try
