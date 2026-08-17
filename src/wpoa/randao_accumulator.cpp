@@ -220,13 +220,13 @@ bool WPoARandaoSelectionSeed(const CBlockIndex* pindexTip, unsigned char* seed_o
     }
     uint256 rtot = GetAccumulator(pAnc);
 
-    // h[n-1]: the block *before* the tip (thesis §5.5). Falls back to the tip hash
-    // only at heights where pprev is absent — never reached once the beacon engages
-    // at height >= setupfirstblocks >= 1.
-    uint256 hprev = (pindexTip->pprev != NULL) ? pindexTip->pprev->GetBlockHash()
-                                               : pindexTip->GetBlockHash();
+    // h[n]: the hash of the tip itself — the chain state actually finalized when
+    // the round for height n+1 opens (cfr. Def. 5.4, seed with lookback). Together
+    // with the round index n+1 it keeps the seed fresh every round even where the
+    // looked-back accumulator R_tot[n-k] has not moved.
+    uint256 hn = pindexTip->GetBlockHash();
 
-    RandaoAccumulator::DeriveSeed(rtot.begin(), hprev.begin(), (uint32_t)n, seed_out);
+    RandaoAccumulator::DeriveSeed(rtot.begin(), hn.begin(), (uint32_t)(n + 1), seed_out);
 
     if (fDebug)
     {
@@ -234,7 +234,7 @@ bool WPoARandaoSelectionSeed(const CBlockIndex* pindexTip, unsigned char* seed_o
         memcpy(seed.begin(), seed_out, RandaoAccumulator::HASH_SIZE);
         LogPrint("wpoa", "[wPoA-RANDAO] seed for height=%d  k=%d  R_tot[%d]=%s  h[%d]=%s -> seed=%s\n",
                  n + 1, k, target, rtot.ToString().c_str(),
-                 n - 1, hprev.ToString().c_str(), seed.ToString().c_str());
+                 n, hn.ToString().c_str(), seed.ToString().c_str());
     }
 
     return true;
