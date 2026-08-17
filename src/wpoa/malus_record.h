@@ -347,7 +347,14 @@ public:
      * so k* is the first k with mu^k * M < M_max. Finite for every mu in (0,1),
      * which is what Cor. 5.17 means by "no permanent ban".
      *
-     * @return 0 when the validator is not excluded (M < M_max) and mu == 0
+     * The closed form above solves the NON-strict mu^k * M <= M_max, but Psi only
+     * becomes positive again on the strict inequality: when M / M_max is an exact
+     * power of 1/mu (e.g. M = 8, M_max = 4, mu = 0.5) the formula returns the epoch
+     * at which M lands exactly ON the threshold, one short. The closed form is
+     * therefore used as the starting point and settled by direct evaluation, which
+     * also absorbs any floating-point rounding at the boundary.
+     *
+     * @return 0 when the validator is not excluded (M < M_max); 1 when mu == 0
      *         (a single clean epoch wipes M entirely); -1 when the exclusion can
      *         never clear, which happens only for the degenerate mu >= 1 the
      *         protocol constraint forbids.
@@ -362,6 +369,14 @@ public:
         double k = std::log(M / Mmax) / std::log(1.0 / mu);
         int ki = (int)std::ceil(k);
         if (ki < 1) ki = 1;
+
+        // Settle on the strict inequality. Bounded so a pathological input can
+        // never spin: mu < 1, so the decay always gets there.
+        const int kMaxEpochs = 1000000;
+        while (ki < kMaxEpochs && !(std::pow(mu, (double)ki) * M < Mmax))
+        {
+            ki++;
+        }
         return ki;
     }
 
