@@ -284,7 +284,7 @@ new to the project.
 | [`test/run_unit_tests.sh`](test/run_unit_tests.sh) | Build + run **all** unit suites, or a named subset — `run_unit_tests.sh selector vrf` (no node build needed). |
 | [`test/run_functional_tests.sh`](test/run_functional_tests.sh) | Wrapper around the single system run: warning banner, hard timeout, correct exit code. |
 | [`test/run_all_tests.sh`](test/run_all_tests.sh) | Single entrypoint: run unit tests, then the functional run, to validate the whole system. See [`test/README.md`](test/README.md). |
-| [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) / [`test/functional_lib.sh`](test/functional_lib.sh) / [`test/analyze_distribution.py`](test/analyze_distribution.py) | **The** functional test: ONE full-stack network, warmed up once, then all feature checks (weight, multi-node consistency, VRF, RANDAO, sortition, chi-square distribution) on the shared run. `INCLUDE_PUBLIC_SELECTOR=1` adds the sortition-off (public argmin) regime; `QUICK=1` uses a smaller sample. |
+| [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) / [`test/functional_lib.sh`](test/functional_lib.sh) / [`test/analyze_distribution.py`](test/analyze_distribution.py) | **The** functional test: ONE full-stack network, warmed up once, then all feature checks (weight, stream permissions, malus, multi-node consistency, VRF, RANDAO, sortition, chi-square distribution) on the shared run. `INCLUDE_PUBLIC_SELECTOR=1` adds the sortition-off (public argmin) regime; `QUICK=1` uses a smaller sample. |
 
 Integration points in the host tree: [`../core/init.cpp`](../core/init.cpp)
 (startup flags, incl. `-enablewpoavrf`, `-enablewpoarandao`/`-wpoarandaolookback`
