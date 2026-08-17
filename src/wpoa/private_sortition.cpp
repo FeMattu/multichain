@@ -16,6 +16,7 @@
 #include "wpoa/randao_accumulator.h"      // WPoARANDAOActiveAtHeight, WPoARandaoSelectionSeed
 #include "wpoa/vrf_wrapper.h"             // WPoAVRF::Prove / Verify
 #include "wpoa/stream_weight_registry.h"  // StreamWeightRegistry, GetAllNodesWeights
+#include "wpoa/malus_registry.h"          // WPoAApplyMalus (w_eff = w * Psi)
 #include "core/init.h"                    // pwalletTxsMain
 #include "core/main.h"                    // CBlockIndex, CBlock, mapBlockIndex, BlockMap
 #include "utils/util.h"                   // LogPrint, LogPrintf, strprintf, fDebug
@@ -46,16 +47,17 @@ bool WPoASortitionActiveAtHeight(int height)
 }
 
 // ---------------------------------------------------------------------------
-// Shared context: the beacon seed over `pindexTip`, the confirmed weight map, and
-// its effective-weight sum Σ_j f(w_j). Read the SAME way on the miner and the
-// validator so both derive identical scores/delays. Returns false when the seed or
-// a usable weight map is unavailable — the caller then stands down / accepts
-// leniently rather than acting on a half-synced view.
+// Shared context: the beacon seed over `pindexTip`, the confirmed weight map
+// corrected by the behavioural malus, and its effective-weight sum Σ_j f(w_j).
+// Read the SAME way on the miner and the validator so both derive identical
+// scores/delays. Returns false when the seed or a usable weight map is
+// unavailable — the caller then stands down / accepts leniently rather than
+// acting on a half-synced view.
 //
 // Determinism note: Σ f(w_j) is summed in the std::map's sorted-key (address) order,
 // which is identical on every node, so the floating-point sum is reproducible.
 // ---------------------------------------------------------------------------
-static bool BuildSortitionContext(const CBlockIndex* pindexTip,
+static bool BuildSortitionContext(const CBlockIndex* pindexTip, int height,
                                   std::map<std::string, uint32_t>& weights,
                                   double* total_eff_weight,
                                   unsigned char seed_out[32])
@@ -75,6 +77,11 @@ static bool BuildSortitionContext(const CBlockIndex* pindexTip,
     {
         return false;
     }
+
+    // w_eff = w * Psi (Def. 5.22): the sortition scores the behaviourally corrected
+    // weight, never the raw registry value. Returns the map unchanged when the
+    // malus registry is disabled or nobody carries a proved violation.
+    weights = WPoAApplyMalus(weights, height);
 
     double weff = 0.0;
     for (std::map<std::string, uint32_t>::const_iterator it = weights.begin();
@@ -101,24 +108,25 @@ bool WPoASortitionLocalScoreDelay(const CBlockIndex* pindexTip,
         return false;
     }
 
+    const int height = pindexTip->nHeight + 1;
+
     std::map<std::string, uint32_t> weights;
     double weff = 0.0;
     unsigned char seed[32];
-    if (!BuildSortitionContext(pindexTip, weights, &weff, seed))
+    if (!BuildSortitionContext(pindexTip, height, weights, &weff, seed))
     {
         return false;
     }
 
     // Only a weighted validator can self-elect; a node absent from the registry (or
-    // with weight 0) has an infinite score and never proposes.
+    // whose effective weight the malus has driven to 0) has an infinite score and
+    // never proposes.
     std::map<std::string, uint32_t>::const_iterator it = weights.find(address);
     if (it == weights.end() || it->second == 0)
     {
         return false;
     }
     uint32_t weight = it->second;
-
-    const int height = pindexTip->nHeight + 1;
 
     std::vector<unsigned char> input;
     PrivateSortition::VRFInput(seed, (uint32_t)height, input);
@@ -211,8 +219,13 @@ WPoASortitionVerdict WPoASortitionVerifyProposer(const CBlockIndex* pindexParent
         return WPOA_SORTITION_SKIP;
     }
 
+    // Same correction the honest miner applied when it scored itself (Def. 5.22):
+    // both sides must consume w_eff, or they compute different delays and disagree.
+    weights = WPoAApplyMalus(weights, height);
+
     // The signer must be a weighted validator (mirrors the Phase-2 recompute: a
-    // block from a non-registered miner would fail the argmin check there too).
+    // block from a non-registered miner would fail the argmin check there too). A
+    // validator whose effective weight the malus has zeroed is ineligible here too.
     std::map<std::string, uint32_t>::const_iterator it = weights.find(miner_addr);
     if (it == weights.end() || it->second == 0)
     {
