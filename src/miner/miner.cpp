@@ -722,7 +722,20 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn,CWallet *pwallet,CP
 //                const unsigned char *pubkey_hash=(unsigned char *)Hash160(ppubkey->begin(),ppubkey->end()).begin();
 //                *canMine=mc_gState->m_Permissions->CanMine(NULL,pubkey_hash);
                 uint160 pubkey_hash=Hash160(ppubkey->begin(),ppubkey->end());
-                *canMine=mc_gState->m_Permissions->CanMine(NULL,&pubkey_hash);
+/* MCHN START - wPoA: mirror the validator-side rule (CheckBlockPermissions). On
+   wPoA-governed heights the mining-diversity spacing no longer applies, so this
+   node is "able to mine" whenever it holds the mine permission — otherwise a
+   validator that legitimately wins two consecutive rounds would log "cannot mine
+   now" and skip its own block-validity self-test. Cfr. §5.12.3, step 1. */
+                if(WPoAActiveAtHeight(nHeight))
+                {
+                    *canMine=mc_gState->m_Permissions->CanCustom(NULL,&pubkey_hash,MC_PTP_MINE);
+                }
+                else
+                {
+                    *canMine=mc_gState->m_Permissions->CanMine(NULL,&pubkey_hash);
+                }
+/* MCHN END */
                 if((*canMine & MC_PTP_MINE) == 0)
                 {
                     if(prevCanMine & MC_PTP_MINE)
