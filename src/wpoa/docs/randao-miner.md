@@ -53,7 +53,7 @@ election is run — because that is the only value the swap changes.
 
 ```cpp
 // wPoA Phase 3b: when the RANDAO beacon governs this height, seed the
-// election from the accumulator (seed[n+1]=H(R_tot[n-k]‖h[n-1]‖n)) rather
+// election from the accumulator (seed[n+1]=H(R_tot[n-k]‖h[n]‖n+1)) rather
 // than the plain previous block hash. The validator derives the identical
 // seed from the same tip in VerifyBlockMinerWPoA, so both agree on the
 // proposer. Falls back to the prev-hash seed if RANDAO is inactive.
@@ -126,7 +126,7 @@ is Phase 2 code.
   body never runs; `hWPoASeed` stays the prev-block hash and the election is byte-for-byte the
   Phase 3a behavior.
 - `-enablewpoarandao` **on** at a governed height → the election is seeded by
-  `H(R_tot[n-k] ‖ h[n-1] ‖ n)` instead.
+  `H(R_tot[n-k] ‖ h[n] ‖ n+1)` instead.
 
 The block adds no locks of its own; the only shared state it touches is read through
 `WPoARandaoSelectionSeed`, whose cache is guarded internally by `cs_randao_cache`
@@ -157,7 +157,7 @@ flowchart LR
     GMES["GetMinerAndExpectedMiningStartTime<br/>miner.cpp:1026"] --> BR{"WPoARANDAOActiveAtHeight(n+1)?"}
     BR -->|no| DEF["seed = hash(tip)  (Phase 3a)"]
     BR -->|yes| SEED["WPoARandaoSelectionSeed(pindexTip)"]
-    SEED -->|"H(R_tot[n-k] ‖ h[n-1] ‖ n)"| OVER["memcpy into hWPoASeed"]
+    SEED -->|"H(R_tot[n-k] ‖ h[n] ‖ n+1)"| OVER["memcpy into hWPoASeed"]
     DEF --> ELECT["WPoASelectProposer(seed, n+1)  (unchanged)"]
     OVER --> ELECT
     ELECT --> DECIDE{"proposer == local addr?"}

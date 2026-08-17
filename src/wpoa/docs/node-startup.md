@@ -334,7 +334,7 @@ after the `-enablewpoavrf` handling:
 
 ```cpp
 // wPoA Phase 3b: RANDAO accumulator + lookback selection seed. Default off.
-// When enabled, selection is seeded by H(R_tot[n-k] ‖ h[n-1] ‖ n) over the
+// When enabled, selection is seeded by H(R_tot[n-k] ‖ h[n] ‖ n+1) over the
 // accumulated Phase-3a reveals instead of the plain previous block hash. It
 // REQUIRES -enablewpoavrf (it consumes those reveals); a lone flag stays inert.
 g_wpoa_randao_enabled = GetBoolArg("-enablewpoarandao", false);
@@ -376,7 +376,7 @@ strUsage += "  -enablewpoarandao                        "
         "per-block VRF reveals instead of the previous block hash (default: 0). Requires "
         "-enablewpoavrf; must be identical on all nodes.") + "\n";
 strUsage += "  -wpoarandaolookback=<k>                  "
-    + strprintf(_("wPoA RANDAO lookback distance k in seed[n+1]=H(R_tot[n-k] | h[n-1] | n) "
+    + strprintf(_("wPoA RANDAO lookback distance k in seed[n+1]=H(R_tot[n-k] | h[n] | n+1) "
         "(default: %u). Must be identical on all nodes."), MC_WPOA_DEFAULT_RANDAO_LOOKBACK) + "\n";
 ```
 

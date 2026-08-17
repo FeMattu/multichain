@@ -177,7 +177,7 @@ static void DeriveSeed(const unsigned char* rtot_lookback32,
 }
 ```
 
-Implements the thesis §5.5 seed `seed[n+1] = H( R_tot[n-k] ‖ h[n-1] ‖ n )`.
+Implements the thesis §5.5 seed `seed[n+1] = H( R_tot[n-k] ‖ h[n] ‖ n+1 )`.
 
 - **`height_be[4]` — manual big-endian serialization.** `height` (a `uint32_t`) is written
   out most-significant byte first by shifting and masking (`>> 24`, `>> 16`, `>> 8`, then the
@@ -188,15 +188,15 @@ Implements the thesis §5.5 seed `seed[n+1] = H( R_tot[n-k] ‖ h[n-1] ‖ n )`.
   big-endian layout is identical on every platform.
 - **The chained `Write`s.** `CSHA256()` builds a temporary; the three `.Write(...)` calls
   each return the same hasher by reference, so they chain into one expression that feeds, in
-  order, the 32-byte looked-back accumulator, the 32-byte previous block hash, and the 4-byte
+  order, the 32-byte looked-back accumulator, the 32-byte tip hash, and the 4-byte
   height. **Order matters** — it defines the exact preimage; the validator feeds the same
   three fields in the same order.
 - **The roles of the three terms.** `R_tot[n-k]` is the mixed, grinding-resistant beacon
-  value; `h[n-1]` anchors the seed to the chain's actually-finalized parent (so the seed
-  cannot be precomputed before that block exists); `n` (the height) disambiguates rounds.
-  Because `h[n-1]` and `n` both advance every block, **the seed is fresh every round even
-  when `R_tot[n-k]` moves slowly** (e.g. large lookback `k`) — consecutive rounds can never
-  reuse a seed.
+  value; `h[n]` anchors the seed to the chain state actually finalized when the round opens
+  (so the seed cannot be precomputed before that block exists); `n+1` (the height being
+  elected) disambiguates rounds. Because `h[n]` and `n+1` both advance every block, **the
+  seed is fresh every round even when `R_tot[n-k]` moves slowly** (e.g. large lookback `k`)
+  — consecutive rounds can never reuse a seed.
 - **`.Finalize(seed_out32)`** — writes the 32-byte selection seed. This is the value handed
   verbatim to `WPoASelectProposer` at both call sites (§3).
 
@@ -593,18 +593,16 @@ bool WPoARandaoSelectionSeed(const CBlockIndex* pindexTip, unsigned char* seed_o
 - **`rtot = GetAccumulator(pAnc)`** — `R_tot[n-k]` via the memoized walk (§2.4).
 
 ```cpp
-    uint256 hprev = (pindexTip->pprev != NULL) ? pindexTip->pprev->GetBlockHash()
-                                               : pindexTip->GetBlockHash();
+    uint256 hn = pindexTip->GetBlockHash();
 
-    RandaoAccumulator::DeriveSeed(rtot.begin(), hprev.begin(), (uint32_t)n, seed_out);
+    RandaoAccumulator::DeriveSeed(rtot.begin(), hn.begin(), (uint32_t)(n + 1), seed_out);
 ```
 
-- **`hprev = h[n-1]`** — the hash of the block *before* the tip, matching the thesis's
-  `h[n-1]` term. It falls back to the tip's own hash only where `pprev` is absent (height 0),
-  which is never reached once the beacon engages (activation height ≥ setup ≥ 1).
-- **`DeriveSeed(rtot, hprev, n, seed_out)`** — the pure §1.4 derivation over
-  `(R_tot[n-k], h[n-1], n)`, writing the 32-byte seed into the caller's buffer. `(uint32_t)n`
-  is the height cast to the fixed-width type `DeriveSeed` serializes big-endian.
+- **`hn = h[n]`** — the hash of the tip itself, i.e. the chain state actually finalized when
+  the round for height `n+1` opens, matching the definition's `h[n]` term.
+- **`DeriveSeed(rtot, hn, n+1, seed_out)`** — the pure §1.4 derivation over
+  `(R_tot[n-k], h[n], n+1)`, writing the 32-byte seed into the caller's buffer. `n+1` is the
+  height being elected, cast to the fixed-width type `DeriveSeed` serializes big-endian.
 
 ```cpp
     if (fDebug)
@@ -613,7 +611,7 @@ bool WPoARandaoSelectionSeed(const CBlockIndex* pindexTip, unsigned char* seed_o
         memcpy(seed.begin(), seed_out, RandaoAccumulator::HASH_SIZE);
         LogPrint("wpoa", "[wPoA-RANDAO] seed for height=%d  k=%d  R_tot[%d]=%s  h[%d]=%s -> seed=%s\n",
                  n + 1, k, target, rtot.ToString().c_str(),
-                 n - 1, hprev.ToString().c_str(), seed.ToString().c_str());
+                 n, hn.ToString().c_str(), seed.ToString().c_str());
     }
 
     return true;
@@ -622,7 +620,7 @@ bool WPoARandaoSelectionSeed(const CBlockIndex* pindexTip, unsigned char* seed_o
 
 - **The trace.** Guarded by `fDebug` (so it costs nothing in production) and emitted with
   `LogPrint("wpoa", ...)` (only when `-debug=wpoa`). It prints the derived seed together with
-  every input — `R_tot[target]`, `h[n-1]`, the height — which is the `[wPoA-RANDAO] seed`
+  every input — `R_tot[target]`, `h[n]`, the height — which is the `[wPoA-RANDAO] seed`
   evidence the functional test greps to prove the beacon actually engaged
   ([phase3b §12.2](phase3b-implementation-guide.md#12-tests)).
 - **`return true`** — a seed was produced; the caller overwrites its prev-hash default with

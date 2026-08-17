@@ -22,7 +22,7 @@ Builds the 44-byte, consensus-critical input the per-validator VRF is evaluated 
 out = seed(32) ‖ "PROPOSER"(8) ‖ BE32(height)
 ```
 
-- `seed32` is the Phase-3b beacon seed `seed[n+1] = H(R_tot[n-k] ‖ h[n-1] ‖ n)`.
+- `seed32` is the Phase-3b beacon seed `seed[n+1] = H(R_tot[n-k] ‖ h[n] ‖ n+1)`.
 - `"PROPOSER"` is a domain-separation tag (`ProposerTag()`, `PROPOSER_TAG_LEN = 8`) so a
   sortition reveal can never collide with the Phase-3a prev-hash reveal or any other VRF
   usage.

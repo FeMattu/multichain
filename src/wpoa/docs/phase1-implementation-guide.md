@@ -649,8 +649,10 @@ The natural integration point for weighted selection is the miner
 
 - **Registry only.** Weights are recorded/queried but not yet used to bias mining.
 - **On-chain records only** (no off-chain/large payloads).
-- **Any writer can set its own weight** (open stream). A future phase should restrict
-  who may set weights (admin-signed updates) — see §11.4.
+- **Weight updates are permissioned.** The stream is created CLOSED, so publishing a
+  weight record requires an explicit `wpoa-weights.write` grant and updates stay confined
+  to the consortium's authorized publishers (Def. 5.16). An M-of-N approval path on top of
+  that grant remains a governance extension — see §11.4.
 - **Append-only growth.** Re-registration appends rather than mutating; a trimming or
   checkpoint scheme could bound growth.
 - **Phase 2 ideas:** dynamic weights, weight decay, slashing, and a weighted miner

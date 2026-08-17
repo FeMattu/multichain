@@ -90,11 +90,11 @@ Formally (see [thesis §5.4–§5.5](thesis-project-overview.md#54-global-accumu
 
 ```
 R_tot[n]  = H( R_tot[n-1] ⊕ H(R[n]) )               (global accumulator)
-seed[n+1] = H( R_tot[n-k] ‖ h[n-1] ‖ n )            (lookback selection seed)
+seed[n+1] = H( R_tot[n-k] ‖ h[n] ‖ n+1 )            (lookback selection seed)
 ```
 
 with `H` = SHA-256, `⊕` a byte-wise XOR over 32-byte values, `R[n]` the Phase-3a reveal
-carried in block `n`, `h[n-1]` the hash of block `n-1`, `n` the current tip height, and
+carried in block `n`, `h[n]` the hash of the tip, `n+1` the height being elected, and
 `k` a constant lookback distance.
 
 When `-enablewpoarandao` is set, for a beacon-governed block:
@@ -110,9 +110,9 @@ When `-enablewpoarandao` is set, for a beacon-governed block:
 weight-read path are untouched, so the election stays weight-proportional
 (`Pr[i]=w_i/Σw`, proven in [thesis §7.4](thesis-project-overview.md#74-probability-preservation-efraimidis-theorem)
 and re-verified under the new seed by the functional test, §12.2). The **VRF reveal is
-also unchanged** — its input stays `h[n-1]` exactly as in Phase 3a; the height term `n`
+also unchanged** — its input stays `h[n-1]` exactly as in Phase 3a; the height term
 that [phase3a §4.4](phase3a-implementation-guide.md#4-the-vrf-construction) deferred is
-(re)introduced here, via the seed's `n`, not in the reveal.
+(re)introduced here, via the seed's `n+1`, not in the reveal.
 
 **What Phase 3b does and does not fix.** Selection is still **public** — anyone can
 recompute the beacon from the public reveals, so leader unpredictability remains
@@ -207,8 +207,8 @@ The consequences:
   byte-for-byte unchanged; selection keeps the prev-hash seed.
 - **Amortized O(1) per block** — `R_tot` is memoized per block hash, reorg-safe (a hash
   uniquely determines its ancestor chain), so a walk touches each block's reveal once.
-- **The seed is fresh every round even if the accumulator moves slowly** — `h[n-1]` and
-  `n` advance every block, so consecutive rounds never reuse a seed regardless of `k`.
+- **The seed is fresh every round even if the accumulator moves slowly** — `h[n]` and
+  `n+1` advance every block, so consecutive rounds never reuse a seed regardless of `k`.
 
 ---
 
@@ -236,14 +236,15 @@ structure and cannot collide with a plausible reveal-derived value.
 ### 4.3 The seed derivation (`RandaoAccumulator::DeriveSeed`, thesis §5.5)
 
 ```
-seed[n+1] = H( R_tot[n-k] ‖ h[n-1] ‖ n )
+seed[n+1] = H( R_tot[n-k] ‖ h[n] ‖ n+1 )
 ```
 
-`n` is serialized as **4 big-endian bytes** so the encoding is fixed and platform
+The height is serialized as **4 big-endian bytes** so the encoding is fixed and platform
 independent (consensus-critical). The three terms play distinct roles: `R_tot[n-k]` is
-the mixed, grinding-resistant beacon value; `h[n-1]` anchors the seed to the chain's
-actually-finalized state; `n` disambiguates rounds. Because `h[n-1]` and `n` advance every
-block, the seed is fresh per round even when `R_tot[n-k]` changes slowly.
+the mixed, grinding-resistant beacon value; `h[n]` anchors the seed to the chain state
+actually finalized when the round opens; `n+1` disambiguates rounds. Because `h[n]` and
+`n+1` advance every block, the seed is fresh per round even when `R_tot[n-k]` changes
+slowly.
 
 ### 4.4 The lookback `k`
 
@@ -276,7 +277,7 @@ from disk exactly once.
   prior contributions), or hashing a concatenation of all reveals (O(n) per step, no
   incremental state).
 
-### 5.2 Seed = `H(R_tot[n-k] ‖ h[n-1] ‖ n)`, replacing the prev-hash seed at both call sites
+### 5.2 Seed = `H(R_tot[n-k] ‖ h[n] ‖ n+1)`, replacing the prev-hash seed at both call sites
 - **Choice:** the selector's `seed` argument becomes the derived beacon seed; the argmin,
   scoring, tie-break and weight read are untouched.
 - **Why:** this is precisely the Phase 2 "swap the seed" hook
@@ -459,7 +460,7 @@ flowchart TD
     subgraph M ["Miner side — GetMinerAndExpectedMiningStartTime (tip at height n)"]
         MA{"WPoARANDAOActiveAtHeight(n+1)?"}
         MA -->|no| MP["seed = hash(tip)  (Phase 3a)"]
-        MA -->|yes| MB["seed = WPoARandaoSelectionSeed(tip)<br/>= H(R_tot[n-k] ‖ h[n-1] ‖ n)"]
+        MA -->|yes| MB["seed = WPoARandaoSelectionSeed(tip)<br/>= H(R_tot[n-k] ‖ h[n] ‖ n+1)"]
         MB --> MP
         MP --> ME["proposer = WPoASelectProposer(seed, n+1)"]
         ME --> MC{"proposer == local mining addr?"}

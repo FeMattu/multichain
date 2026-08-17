@@ -347,7 +347,7 @@ sequenceDiagram
     participant Vhigh as Validator (high score)
     participant Net as Network / peers
 
-    Note over Tip: seed[n+1] = H(R_tot[n-k]‖h[n-1]‖n)  (public)
+    Note over Tip: seed[n+1] = H(R_tot[n-k]‖h[n]‖n+1)  (public)
     Vlow->>Vlow: score_low = -ln(u)/f(w), delay_low = scale·score_low·W  (small)
     Vhigh->>Vhigh: score_high, delay_high  (larger)
     Note over Vlow,Vhigh: neither can compute the other's score (private VRF key)
