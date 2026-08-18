@@ -50,13 +50,16 @@ Five phases are implemented today:
   **privately** — `u_i = VRF_sk_i(seed ‖ "PROPOSER" ‖ height)` under its own
   secret key, scored with the *same* `-ln(u_i)/f(w_i)` transform as Phase 2 — so
   no peer can compute it. A validator self-elects by mining after a delay that
-  increases with its score, so the argmin proposes **first**; peers accept a block
+  increases with its score — a band around `target-block-time`,
+  `D = T + δ·T·(2·score_norm − 1) + λ·Φ` with `score_norm = 1 − e^{−W·score}`, whose
+  `W` factor is what keeps the candidates spread across the band instead of crushed
+  against its early edge — so the argmin proposes **first**; peers accept a block
   iff its VRF reveal verifies over the sortition input and its `nTime` is no
   earlier than the score entitles (the time bar that replaces the public argmin
   equality). The proposer is thus unknowable until it acts, the distribution stays
   `Pr[i]=w_i/Σw`, and the auto-relaxing time bar is the liveness fallback (no
   zero-proposer gap). Requires `-enablewpoarandao` and lookback `k≥1`; delay scale
-  set by `-wpoasortitiondelay`.
+  set by `-wpoasortitiondelta`; optional global feedback gain `-wpoasortitionlambda`.
 
 - **Behavioural malus registry.** When `-enablewpoamalus=1`, a second — and
   deliberately **open** — stream `wpoa-weights-malus` records proved
@@ -114,7 +117,8 @@ the switches are consensus-critical, a divergent override logs a loud fork warni
 | `-enablewpoarandao` | 3b | RANDAO beacon seed. Requires `-enablewpoavrf`. |
 | `-wpoarandaolookback=<k>` | 3b | RANDAO lookback distance `k` (default `1`). |
 | `-enablewpoasortition` | 4 | Private (VRF-scored) sortition. Requires `-enablewpoarandao` and `k≥1`. |
-| `-wpoasortitiondelay=<s>` | 4 | Sortition delay scale in seconds (default `1`). |
+| `-wpoasortitiondelta=<x>` | 4 | Delay band half-width as a fraction of target-block-time, `δ ∈ (0,1)` (default `0.5`). |
+| `-wpoasortitionlambda=<x>` | 4 | Global delay-feedback gain `λ ∈ [0,1]` (default `0` = off). |
 | `-enablewpoamalus` | malus | Behavioural malus registry; elect on `w_eff = w * Psi`. Requires `-enablewpoasortition`. |
 | `-wpoamalusmu=<x>` | malus | Accumulator persistence `mu` in `[0,1)` (default `0.5`). |
 | `-wpoamalusmax=<x>` | malus | Threshold `M_max > 0` at which `Psi` reaches 0 (default `4`). |
@@ -130,7 +134,7 @@ more specific `-enablewpoa*` flag then overrides its phase. So
 prerequisite (e.g. RANDAO without VRF, or sortition without RANDAO / with `k=0`) is
 rejected at chain creation **and** at node startup with a clear error — the node
 refuses to start rather than run a phase inert. `-enablewpoa`, `-dumpfunction`,
-`-wpoarandaolookback` and `-wpoasortitiondelay` are consensus-critical and must be
+`-wpoarandaolookback`, `-wpoasortitiondelta` and `-wpoasortitionlambda` are consensus-critical and must be
 identical across the validator set (inheritance via `params.dat` guarantees this for
 nodes that join without overriding flags).
 
@@ -222,10 +226,13 @@ flowchart TD
   [phase3b-implementation-guide.md](docs/phase3b-implementation-guide.md).
 - **Phase 4** makes selection private behind `-enablewpoasortition` (via
   `PrivateSortition`): each validator scores itself with a VRF over the beacon
-  seed under its own key and self-elects by a score-proportional mining delay
-  (argmin proposes first); the validator replaces the public argmin equality with
-  a VRF-verify + score-recompute + `nTime`-time-bar eligibility check. The
-  proposer is unpredictable until it acts; the distribution is unchanged. Full
+  seed under its own key and self-elects by a mining delay **banded on
+  target-block-time**, `D = T + δ·T·(2·score_norm − 1) + λ·Φ` with
+  `score_norm = 1 − e^{−W·score}` (argmin proposes first); the validator replaces
+  the public argmin equality with a VRF-verify + score-recompute +
+  `nTime`-time-bar eligibility check. The proposer is unpredictable until it acts;
+  the distribution is unchanged; and because the winner's normalized score is
+  exactly uniform, the mean realized block time lands on the target. Full
   detail: [phase4-implementation-guide.md](docs/phase4-implementation-guide.md).
 
 ---
@@ -285,7 +292,7 @@ new to the project.
 | [sortition-miner.md](docs/sortition-miner.md) | **Phase 4.** The miner-side hook (`miner/miner.cpp`): score-timed self-election, the anti-respin guard, the reveal-input switch, and marking the proposed height. |
 | [sortition-validator.md](docs/sortition-validator.md) | **Phase 4.** The validator-side hook (`protocol/multichainblock.cpp`, `VerifyBlockMinerWPoA`): the VRF-verify + score-recompute + time-bar eligibility check that replaces the public argmin equality on sortition heights. |
 | [malus-registry.md](docs/malus-registry.md) | **Behavioural malus.** Why a second registry exists, why the two streams carry opposite write policies, the two evidence kinds and the `Valid(e)` predicate that makes an open stream safe, the decaying accumulator and the reversibility of an exclusion, epoch alignment, and the single point where `w_eff` enters consensus. |
-| [node-startup.md](docs/node-startup.md) | How the wPoA switches — the `-enablewpoa` master, `-enablewpoaweights` (Phase 1), `-enablewpoaselection`/`-dumpfunction` (Phase 2), `-enablewpoavrf` (Phase 3a), `-enablewpoarandao`/`-wpoarandaolookback` (Phase 3b), `-enablewpoasortition`/`-wpoasortitiondelay` (Phase 4) — are read from `params.dat` (inherited) with CLI override, resolved (master + precedence + hard-fail constraints) and wired into `AppInit2`, and how the background thread is launched (`core/init.h` + `.cpp`, wPoA parts). |
+| [node-startup.md](docs/node-startup.md) | How the wPoA switches — the `-enablewpoa` master, `-enablewpoaweights` (Phase 1), `-enablewpoaselection`/`-dumpfunction` (Phase 2), `-enablewpoavrf` (Phase 3a), `-enablewpoarandao`/`-wpoarandaolookback` (Phase 3b), `-enablewpoasortition`/`-wpoasortitiondelta`/`-wpoasortitionlambda` (Phase 4) — are read from `params.dat` (inherited) with CLI override, resolved (master + precedence + hard-fail constraints) and wired into `AppInit2`, and how the background thread is launched (`core/init.h` + `.cpp`, wPoA parts). |
 | [rpc-registration.md](docs/rpc-registration.md) | How the three RPC commands are added to the dispatch table (`rpc/rpclist.cpp`). |
 | [testing.md](docs/testing.md) | Build steps, unit tests, the MultiChain mining model, manual single-/multi-node tests, the automated smoke test, and troubleshooting. |
 
@@ -314,7 +321,7 @@ new to the project.
 
 Integration points in the host tree: [`../core/init.cpp`](../core/init.cpp)
 (startup flags, incl. `-enablewpoavrf`, `-enablewpoarandao`/`-wpoarandaolookback`
-and `-enablewpoasortition`/`-wpoasortitiondelay`),
+and `-enablewpoasortition`/`-wpoasortitiondelta`/`-wpoasortitionlambda`),
 [`../rpc/rpclist.cpp`](../rpc/rpclist.cpp) /
 [`../rpc/rpchelp.cpp`](../rpc/rpchelp.cpp) (RPCs),
 [`../miner/miner.cpp`](../miner/miner.cpp) (Phase 2 mining hook + Phase 3a reveal
@@ -365,7 +372,7 @@ details.
 | **3b** | Unit tests (pure accumulator/seed math) | Done | [`test/randao_accumulator_tests.cpp`](test/randao_accumulator_tests.cpp); spec conformance vs. an independent reference, order/input sensitivity, chain consistency. |
 | **3b** | Multi-node functional test | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) `check_randao`; liveness + no-fork under the beacon seed, seed derivations logged, 0 fallback folds, weight-proportional distribution (chi-square). |
 | **4** | Private sortition core (`PrivateSortition`) | Done | `VRFInput`/`ScoreFromVRFOutput`/`MiningDelay`, node-free; reuses the Phase-2 score transform so the distribution is provably unchanged. [docs/phase4-implementation-guide.md](docs/phase4-implementation-guide.md). |
-| **4** | `-enablewpoasortition` + `-wpoasortitiondelay` | Done | Default off; requires `-enablewpoarandao` and lookback `k>=1` (seed↔reveal acyclicity, validated at startup). Gates the private path via `WPoASortitionActiveAtHeight`; the delay scale is consensus-critical. |
+| **4** | `-enablewpoasortition` + `-wpoasortitiondelta`/`-wpoasortitionlambda` | Done | Default off; requires `-enablewpoarandao` and lookback `k>=1` (seed↔reveal acyclicity, validated at startup). Gates the private path via `WPoASortitionActiveAtHeight`; both band parameters are consensus-critical and range-checked at startup. |
 | **4** | Score-timed self-election (miner) | Done | Each validator scores itself privately (VRF under its own key) and mines at `now + delay(score)`, so the argmin proposes first; anti-respin guard + reveal-input switch to `seed‖"PROPOSER"‖height`. |
 | **4** | Eligibility / time-bar validation (`VerifyBlockMinerWPoA`) | Done | Replaces the public argmin equality: verify the VRF over the sortition input, recompute the score, accept iff `block.nTime ≥ parent.nTime + delay`. Auto-relaxing bar = liveness fallback (no zero-proposer gap). |
 | **4** | Unit tests (pure sortition math + real VRF) | Done | [`test/private_sortition_tests.cpp`](test/private_sortition_tests.cpp); VRF-input encoding, score reuse, delay map, privacy, and probability preservation with real VRF keys (chi-square). |
@@ -436,7 +443,7 @@ cd /home/mattu/multichain
 # per phase. All consensus knobs (lookback k, delay scale, dump function) must be
 # identical on every validator; sortition requires the beacon and k>=1.
 ./src/multichaind <chain> -weight=100 -enablewpoa=1 \
-                          -wpoarandaolookback=1 -wpoasortitiondelay=1
+                          -wpoarandaolookback=1 -wpoasortitiondelta=0.5
 
 # Full stack EXCEPT sortition (specific flag overrides the master):
 ./src/multichaind <chain> -weight=100 -enablewpoa=1 -enablewpoasortition=0

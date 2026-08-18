@@ -247,6 +247,6 @@ this affects the *variance* of individual gaps, not the LLN limit.
 |---|---|---|
 | Delay formula | `dExpectedTime ± jitter(T, n, pool-size)` | `delay = scale · score · Σf(w)` ([`private_sortition.h:174`](../private_sortition.h#L174)) |
 | Role of `n` | Logarithmic liveness-fallback term only | Enters only through `Σf(w)`; steady-state mean delay is `scale`, independent of `n` (proved in `phase4-implementation-guide.md` §5) |
-| Role of `T` | Direct anchor (`dExpectedTime = parent+T`, feedback-corrected) | No native `T` knob — `-wpoasortitiondelay` (`scale`) is tuned to the desired mean instead |
+| Role of `T` | Direct anchor (`dExpectedTime = parent+T`, feedback-corrected) | Direct anchor too: the band is centred on `T` and `lambda*Phi` corrects the realized mean, reusing the native moving-average-plus-clip shape |
 | LLN limit | `\bar G_N \to T` | `\bar G_N \to \text{scale}` (mean of `Exp(1)` scaled by `scale`, since `\min_i \text{score}_i \sim \mathrm{Exp}(\Sigma f(w))` and `\Sigma f(w)\cdot\min_i\text{score}_i \sim \mathrm{Exp}(1)`) |
 | Offline-validator effect | Inflates mean gap by (permissioned / active) mismatch | Inflates mean delay by `W_total / W_online` |

@@ -24,7 +24,7 @@ Companion documents:
   (`miner/miner.cpp`).
 - [sortition-validator.md](sortition-validator.md) — the validator-side eligibility /
   time-bar check (`protocol/multichainblock.cpp`).
-- [node-startup.md](node-startup.md) — how `-enablewpoasortition` / `-wpoasortitiondelay`
+- [node-startup.md](node-startup.md) — how `-enablewpoasortition` / `-wpoasortitiondelta` / `-wpoasortitionlambda`
   are wired into `AppInit2`.
 - [phase3b-implementation-guide.md](phase3b-implementation-guide.md) — the RANDAO
   beacon seed this phase evaluates privately; the seed is its public VRF input.
@@ -44,7 +44,7 @@ Companion documents:
 
 ```mermaid
 flowchart TD
-    INIT["core/init.cpp — AppInit2<br/>parse -enablewpoasortition &rarr; g_wpoa_sortition_enabled<br/>parse -wpoasortitiondelay &rarr; g_wpoa_sortition_delay<br/>require randao + lookback k&ge;1"] -.sets flag/param.-> GLUE
+    INIT["core/init.cpp — AppInit2<br/>parse -enablewpoasortition &rarr; g_wpoa_sortition_enabled<br/>parse -wpoasortitiondelta/-wpoasortitionlambda &rarr; g_wpoa_sortition_delta/lambda<br/>require randao + lookback k&ge;1"] -.sets flag/param.-> GLUE
 
     subgraph ps ["private_sortition.h / .cpp"]
         CORE["PrivateSortition core (header-only, node-free)<br/>VRFInput / ScoreFromVRFOutput / MiningDelay"]
@@ -137,7 +137,7 @@ it stays private). When `-enablewpoasortition` is set, for a sortition-governed 
 Nodes touch two new knobs:
 
 - `-enablewpoasortition` (default **off**; requires `-enablewpoarandao` and lookback `k ≥ 1`), and
-- `-wpoasortitiondelay=<s>` (default **1.0**; consensus-critical delay scale, must match on all nodes).
+- `-wpoasortitiondelta=<x>` (default **0.5**; band half-width as a fraction of target-block-time, in `(0,1)`) and `-wpoasortitionlambda=<x>` (default **0**; global feedback gain in `[0,1]`). Both consensus-critical, must match on all nodes.
 
 Everything else (the VRF-input encoding, the score transform, the delay map, the
 effective-weight sum, the time bar) is internal, hidden behind the `PrivateSortition`
@@ -151,7 +151,7 @@ New files (the module):
 
 | File | Role |
 |------|------|
-| [`private_sortition.h`](../private_sortition.h) | Header-only pure core `PrivateSortition` (`VRFInput`, `ScoreFromVRFOutput`, `MiningDelay`) **plus** the node-glue declarations (`g_wpoa_sortition_enabled`, `g_wpoa_sortition_delay`, `WPoASortitionActiveAtHeight`, `WPoASortitionLocalScoreDelay`, `WPoASortitionVRFInputForBlock`, `WPoASortitionVerifyProposer`, the proposed-height guard). The core depends only on the Phase-2 score transform, so it is unit-testable without the node. |
+| [`private_sortition.h`](../private_sortition.h) | Header-only pure core `PrivateSortition` (`VRFInput`, `ScoreFromVRFOutput`, `NormalizedScore`, `MiningDelay`, `MaxFeedback`) **plus** the node-glue declarations (`g_wpoa_sortition_enabled`, `g_wpoa_sortition_delta`, `g_wpoa_sortition_lambda`, `WPoASortitionFeedback`, `WPoASortitionActiveAtHeight`, `WPoASortitionLocalScoreDelay`, `WPoASortitionVRFInputForBlock`, `WPoASortitionVerifyProposer`, the proposed-height guard). The core depends only on the Phase-2 score transform, so it is unit-testable without the node. |
 | [`private_sortition.cpp`](../private_sortition.cpp) | Definitions of the node glue: the runtime flag/scale, the height activation predicate, the shared context builder (seed + weight map + Σf(w)), the miner-side local score/delay, the reveal VRF-input builder, the validator-side eligibility/time-bar verdict, and the miner-loop anti-respin guard. |
 | [`test/private_sortition_tests.cpp`](../test/private_sortition_tests.cpp) | Boost.Test unit suite: VRF-input encoding, score reuse (single source of truth), delay map, key-dependence (privacy), and end-to-end probability preservation with **real** VRF keys. |
 | [`test/run_unit_tests.sh sortition`](../test/run_unit_tests.sh) | Build + run the unit tests (links SHA256 + HMAC + the VRF wrapper + secp256k1; no node build). |
@@ -162,7 +162,7 @@ Files **modified** in the host tree (integration points):
 | Site | File | Change | Detail doc |
 |------|------|--------|------------|
 | Score transform | [`../wpoa_selector.h`](../wpoa_selector.h) | Factor the `u64 digest → -ln(u)/f(w)` step into `ScoreFromEntropy64` (+ `FoldTop64`) so Phase 2 and Phase 4 share **one** score transform. | [private-sortition.md](private-sortition.md) |
-| Startup flags | [`../../core/init.cpp`](../../core/init.cpp) | Parse `-enablewpoasortition`/`-wpoasortitiondelay`; require RANDAO and `k >= 1`; help lines; log. | [node-startup.md](node-startup.md) |
+| Startup flags | [`../../core/init.cpp`](../../core/init.cpp) | Parse `-enablewpoasortition`/`-wpoasortitiondelta`/`-wpoasortitionlambda`; require RANDAO and `k >= 1`; range-check the band; help lines; log. | [node-startup.md](node-startup.md) |
 | Miner | [`../../miner/miner.cpp`](../../miner/miner.cpp) | Sortition branch in `GetMinerAndExpectedMiningStartTime` (score-timed start + anti-respin guard); switch the reveal-embed input to the sortition input in `CreateBlockSignature`; mark the proposed height after `ProcessBlockFound`. | [sortition-miner.md](sortition-miner.md) |
 | Validator | [`../../protocol/multichainblock.cpp`](../../protocol/multichainblock.cpp) | Sortition branch in `VerifyBlockMinerWPoA`: VRF-verify over the sortition input + score recompute + time bar, replacing the argmin equality on sortition heights. | [sortition-validator.md](sortition-validator.md) |
 | Build | [`../../Makefile.am`](../../Makefile.am) | Compile `wpoa/private_sortition.cpp`; track the header. | §10 |
@@ -286,7 +286,7 @@ has 1-second resolution, so the bar is `nTime ≥ parent.nTime + floor(delay)` �
 anti-front-run guard. The **fine**, sub-second ordering that actually prevents forks is done
 miner-side with `mc_TimeNowAsDouble()`. So the two mechanisms split the work: miner-side
 sub-second timing orders proposers; the validator-side integer-second bar bounds gross
-front-running. Tune `-wpoasortitiondelay` so honest delays span at least a few seconds if you
+front-running. Raise `-wpoasortitiondelta` so honest delays span at least a few seconds if you
 want the bar itself to discriminate finely.
 
 **Why an anti-respin guard in the miner?** MultiChain's timing function caches on the tip
@@ -372,7 +372,7 @@ sequenceDiagram
 - **Simultaneous qualifiers (rare fork).** Two validators whose delays are within the network
   propagation time may both mine; the resulting short fork self-heals via the normal reorg
   once one branch extends. Accepted `network-delay-vs-sorting` property (roadmap §11); tuned
-  down by a larger `-wpoasortitiondelay`.
+  down by a larger `-wpoasortitiondelta`.
 - **A node's block loses the fork.** The anti-respin guard prevents it from re-mining the
   same height; it waits for the tip to advance.
 - **Long idle chain.** `parent.nTime` becomes stale, so the integer-second time bar is
@@ -472,7 +472,7 @@ waits for weight convergence, drives the chain past setup, and asserts:
   with `Pr = w_i/Σw` — the same target as the public selector, because the score transform is
   literally shared ([thesis §7.4](thesis-project-overview.md#74-probability-preservation-efraimidis-theorem)).
 - **Transient forks under simultaneous qualifiers (accepted).** Rare; self-healing; tuned down
-  by `-wpoasortitiondelay`. The documented `network-delay-vs-sorting` property (roadmap §11);
+  by `-wpoasortitiondelta`. The documented `network-delay-vs-sorting` property (roadmap §11);
   a strict "no sortition-induced reorg" (success-criterion §10) would need the gossip-window
   variant instead.
 - **Front-running bounded, not zero (accepted).** The integer-second time bar plus the base-
@@ -481,7 +481,7 @@ waits for weight convergence, drives the chain past setup, and asserts:
 - **Floating-point determinism (inherited).** The score is a `double` `-ln`/division, so it
   assumes a common `libm` across nodes, exactly as Phase 2/3b; the time-bar boundary is
   measure-zero (like the tie-break). See §11 for the integer-comparison hardening.
-- **Flag/scale uniformity (accepted).** `-enablewpoasortition` and `-wpoasortitiondelay` are
+- **Flag/parameter uniformity (accepted).** `-enablewpoasortition`, `-wpoasortitiondelta` and `-wpoasortitionlambda` are
   consensus-affecting and must match across validators, like the Phase 2/3a/3b flags.
 - **Requires `k ≥ 1` (enforced).** The seed↔reveal acyclicity constraint is validated in
   AppInit2; `k = 0` is rejected when sortition is enabled.

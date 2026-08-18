@@ -394,7 +394,7 @@ bool WPoASortitionActiveAtHeight(int height);
  *
  * Derives the beacon seed over `pindexTip`, builds the VRF input, evaluates the VRF
  * under `sk32`, scores the resulting output against this node's registry weight, and
- * returns the score and delay = MiningDelay(score, Σf(w), g_wpoa_sortition_delay).
+ * returns the score and delay = MiningDelay(score, Σf(w), T_block, delta, lambda, Phi).
  *
  * @param pindexTip   The current tip (parent of the block to mine; may be NULL).
  * @param address     This node's mining address (its StreamWeightRegistry key).

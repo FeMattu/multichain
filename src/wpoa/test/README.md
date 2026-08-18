@@ -124,6 +124,6 @@ The full run exits non-zero if **either** phase fails.
 | `DRY_RUN=1` | any | Print the plan without building or launching anything. |
 | `CONTINUE_ON_UNIT_FAIL=1` | all | Run the functional phase even if unit tests fail. |
 | `NODES`, `WEIGHTS`, `SETUP_BLOCKS`, `SAMPLE_BLOCKS`, `CONFIRM_BUFFER` | functional | Network size / weights / warm-up + sample window. |
-| `RANDAO_LOOKBACK`, `SORTITION_DELAY`, `DIST_TOLERANCE` | functional | Feature knobs passed to the node / analyzer. |
+| `RANDAO_LOOKBACK`, `SORTITION_DELTA`, `SORTITION_LAMBDA`, `DIST_TOLERANCE` | functional | Feature knobs passed to the node / analyzer. |
 | `BINDIR`, `KEEP_LOGS` | functional | Binaries location; keep node datadirs on teardown. |
 ```

@@ -77,9 +77,44 @@ scores, low enough to bound the worst case.
 ### 2.1 Flags
 
 - `g_wpoa_sortition_enabled` (default `false`) — set from `-enablewpoasortition` in AppInit2.
-- `g_wpoa_sortition_delay` (default `MC_WPOA_DEFAULT_SORTITION_DELAY = 1.0`) — the `scale`
-  in `MiningDelay`, set from `-wpoasortitiondelay`. Consensus-critical (it enters the
-  validator's time bar).
+- `g_wpoa_sortition_delta` (default `0.5`) — the band half-width as a fraction of
+  target-block-time, `Δmax = δ·T_block`, set from `-wpoasortitiondelta`. Must be in `(0,1)`:
+  at `δ ≥ 1` the most favoured candidate's timer would fall before the round opened.
+- `g_wpoa_sortition_lambda` (default `0`) — the feedback gain λ, set from
+  `-wpoasortitionlambda`. `0` disables the global correction entirely (Cor. 5.14).
+
+Both are consensus-critical: they enter the validator's time bar, so a node holding
+different values computes a different bar and forks.
+
+### 2.1b `WPoASortitionFeedback(pindexTip)` — Φ
+
+```
+Φ = clip( T_block − mean_observed_spacing , −M , +M )
+mean_observed_spacing = ( h[n].nTime − h[n−12].nTime ) / 12
+M = min( 0.5·T_block , M* )        M* = T_block(1−δ)/λ   (Cor. 5.15)
+```
+
+This is deliberately the **same shape MultiChain's native scheduler already uses** to hold
+its cadence on target (`miner.cpp`: a mean over `nPastBlocks = 12` past blocks, then a clip
+into a band around the per-last-block target), with one substitution that matters.
+
+The native code averages `pindex->dTimeReceived` — the **local wall-clock arrival time**,
+assigned in `main.cpp` when the block comes in. That is per-node data: two nodes disagree on
+it, and a node that synced from scratch has it zero for every historical block. Harmless for
+a purely local scheduling hint, but Φ enters the validator's time bar, and Def. 5.12 requires
+Φ to be a deterministic public function of the finalized state. So the average is taken over
+**block timestamps**, which live in the header and are identical everywhere.
+
+Sign: blocks arriving too slowly (mean spacing above target) give Φ < 0, which shortens every
+candidate's timer; too fast gives Φ > 0, which lengthens it — negative feedback on the
+cadence. Because Φ is common to all candidates of the round it cancels in every pairwise
+timer difference and cannot reorder anyone (Prop. 5.11). Fewer than a full window of history
+yields `Φ = 0`, mirroring the native `nWindowSize < nPastBlocks` branch, so a young chain
+simply runs uncorrected.
+
+The window is a compile-time constant (`MC_WPOA_SORTITION_FEEDBACK_WINDOW`) rather than an
+operator knob: it is consensus-critical, and the thesis leaves only δ and λ open to tuning
+(Table 5.2).
 
 ### 2.2 `WPoASortitionActiveAtHeight(height)`
 
@@ -105,7 +140,7 @@ caller then stands down (miner) or accepts leniently (validator).
 Builds the context; looks up this node's own weight (absent/zero ⇒ false, cannot self-elect);
 `VRFInput(seed, tip->nHeight+1)`; `WPoAVRF::Prove(sk32, input, …)` → output; `score =
 ScoreFromVRFOutput(output, weight, dumping)`; `delay = MiningDelay(score, Σf(w),
-g_wpoa_sortition_delay)`. Returns the score and delay for the miner's start-time.
+g_wpoa_sortition_delta, g_wpoa_sortition_lambda, Φ)`. Returns the score and delay for the miner's start-time.
 
 ### 2.5 `WPoASortitionVRFInputForBlock(block, &input)` — miner, at signing
 
