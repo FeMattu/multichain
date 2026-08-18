@@ -4,9 +4,9 @@
 // wPoA Phase 4 — node-coupled glue for private (VRF-scored) sortition.
 // The pure sortition math lives (header-only) in private_sortition.h so it can be
 // unit-tested without the node; this file wires that core to the running node:
-// the runtime flag/scale, the height activation predicate, the miner-side local
-// score + delay, the reveal VRF-input builder, and the validator-side eligibility
-// (VRF-verify + score + time-bar) check that replaces the Phase-2 argmin equality.
+// the runtime flags, the global delay feedback, the height activation predicate, the
+// miner-side local score + delay, the reveal VRF-input builder, and the validator-side
+// eligibility (VRF-verify + score + time-bar) check that replaces the argmin equality.
 //
 // See docs/phase4-implementation-guide.md.
 
@@ -32,10 +32,92 @@ using namespace std;
 // PUBLIC Efraimidis argmin over the beacon seed. Set once from -enablewpoasortition.
 bool g_wpoa_sortition_enabled = false;
 
-// Delay scale (seconds per unit of normalized score). Bound once from
-// -wpoasortitiondelay in AppInit2. CONSENSUS-CRITICAL (enters the validator's time
-// bar, so it must match on all nodes).
-double g_wpoa_sortition_delay = MC_WPOA_DEFAULT_SORTITION_DELAY;
+// Band half-width as a fraction of target-block-time, and the feedback gain. Bound
+// once from -wpoasortitiondelta / -wpoasortitionlambda in AppInit2.
+// CONSENSUS-CRITICAL (both enter the validator's time bar, so they must match on all
+// nodes).
+double g_wpoa_sortition_delta  = MC_WPOA_DEFAULT_SORTITION_DELTA;
+double g_wpoa_sortition_lambda = MC_WPOA_DEFAULT_SORTITION_LAMBDA;
+
+// ---------------------------------------------------------------------------
+// Phi — the global delay feedback (Def. 5.12 / Def. 5.14)
+// ---------------------------------------------------------------------------
+//
+// Same shape MultiChain's native scheduler already uses to keep its block cadence on
+// target (miner.cpp: a mean over `nPastBlocks` past blocks, then a clip into a band
+// around the per-last-block target), with one deliberate substitution: the native code
+// averages `pindex->dTimeReceived`, the LOCAL wall-clock arrival time, which differs
+// from node to node and is zero for every block on a node that synced from scratch.
+// That is fine for a purely local scheduling hint, but Phi enters the validator's time
+// bar, so Def. 5.12 requires it to be a deterministic function of finalized state.
+// We therefore average BLOCK TIMESTAMPS, which live in the header and are identical
+// on every node.
+double WPoASortitionFeedback(const CBlockIndex* pindexTip)
+{
+    if (pindexTip == NULL)
+    {
+        return 0.0;
+    }
+
+    const double Tblock = (double)Params().TargetSpacing();
+    if (!(Tblock > 0.0))
+    {
+        return 0.0;
+    }
+
+    // Walk back a fixed window of finalized blocks. Fewer than a full window (a young
+    // chain, or one just past genesis) means there is nothing to average yet: run
+    // uncorrected rather than act on a partial sample, mirroring the native
+    // `nWindowSize < nPastBlocks` branch.
+    const int window = MC_WPOA_SORTITION_FEEDBACK_WINDOW;
+    const CBlockIndex* pold = pindexTip;
+    for (int i = 0; i < window && pold != NULL; i++)
+    {
+        pold = pold->pprev;
+    }
+    if (pold == NULL)
+    {
+        return 0.0;
+    }
+
+    // Mean spacing actually realized over the window, from consensus timestamps only.
+    int64_t span = pindexTip->GetBlockTime() - pold->GetBlockTime();
+    if (span <= 0)
+    {
+        return 0.0;   // non-monotonic timestamps: no usable signal, stay neutral
+    }
+    double mean_spacing = (double)span / (double)window;
+
+    // Blocks too slow (mean spacing above target) -> negative Phi -> shorter timers;
+    // too fast -> positive Phi -> longer timers.
+    double phi = Tblock - mean_spacing;
+
+    // Clip to +/-M. M is the admissibility ceiling of Cor. 5.15, additionally capped by
+    // MultiChain's own half-spread (0.5 * target-block-time, `dRelativeSpread` in
+    // miner.cpp) so the correction never exceeds the magnitude the native scheduler
+    // considers reasonable.
+    double M = 0.5 * Tblock;
+    double Mstar = PrivateSortition::MaxFeedback(Tblock, g_wpoa_sortition_delta,
+                                                 g_wpoa_sortition_lambda);
+    if (Mstar < M)
+    {
+        M = Mstar;
+    }
+    if (!(M > 0.0) || !std::isfinite(M))
+    {
+        return 0.0;
+    }
+    if (phi >  M) phi =  M;
+    if (phi < -M) phi = -M;
+
+    if (fDebug)
+    {
+        LogPrint("wpoa", "[wpoa-sortition] feedback height=%d window=%d mean_spacing=%.3fs "
+                 "Tblock=%.3fs -> Phi=%+.3fs (|Phi| <= %.3fs)\n",
+                 pindexTip->nHeight, window, mean_spacing, Tblock, phi, M);
+    }
+    return phi;
+}
 
 bool WPoASortitionActiveAtHeight(int height)
 {
@@ -139,7 +221,11 @@ bool WPoASortitionLocalScoreDelay(const CBlockIndex* pindexTip,
     }
 
     double score = PrivateSortition::ScoreFromVRFOutput(vrf_out, weight, g_dumping_function);
-    double delay = PrivateSortition::MiningDelay(score, weff, g_wpoa_sortition_delay);
+    double delay = PrivateSortition::MiningDelay(score, weff,
+                                                 (double)Params().TargetSpacing(),
+                                                 g_wpoa_sortition_delta,
+                                                 g_wpoa_sortition_lambda,
+                                                 WPoASortitionFeedback(pindexTip));
 
     *score_out = score;
     *delay_out = delay;
@@ -251,7 +337,11 @@ WPoASortitionVerdict WPoASortitionVerifyProposer(const CBlockIndex* pindexParent
     //    front-running: a lower earliest-time needs a lower score (unforgeable) or a
     //    future timestamp (bounded by the base-consensus time-too-new rule).
     double score = PrivateSortition::ScoreFromVRFOutput(vrf_reveal.data(), weight, g_dumping_function);
-    double delay = PrivateSortition::MiningDelay(score, weff, g_wpoa_sortition_delay);
+    double delay = PrivateSortition::MiningDelay(score, weff,
+                                                 (double)Params().TargetSpacing(),
+                                                 g_wpoa_sortition_delta,
+                                                 g_wpoa_sortition_lambda,
+                                                 WPoASortitionFeedback(pindexParent));
 
     int64_t parent_ntime = pindexParent->GetBlockTime();
     int64_t earliest     = parent_ntime + (int64_t)delay;   // (int64_t)delay == floor for delay >= 0

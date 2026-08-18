@@ -504,9 +504,14 @@ int mc_MultichainParams::Create(const char* name,int version)
                                     sprintf(ptrData,"none");
                                     size=strlen(ptrData)+1;
                                 }
-                                if(strcmp(param->m_Name,"wpoasortitiondelay") == 0)
+                                if(strcmp(param->m_Name,"wpoasortitiondelta") == 0)
                                 {
-                                    sprintf(ptrData,"1");
+                                    sprintf(ptrData,"0.5");
+                                    size=strlen(ptrData)+1;
+                                }
+                                if(strcmp(param->m_Name,"wpoasortitionlambda") == 0)
+                                {
+                                    sprintf(ptrData,"0");
                                     size=strlen(ptrData)+1;
                                 }
                                 if(strcmp(param->m_Name,"wpoamalusmu") == 0)           // MC_WPOA_DEFAULT_MALUS_MU

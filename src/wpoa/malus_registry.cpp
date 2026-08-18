@@ -600,8 +600,15 @@ bool MalusRegistry::ValidReport(MalusKind kind, const std::string& node_address,
             return false;
         }
 
+        // Same delay law, and the same feedback, the block validator enforced: Phi is
+        // derived over the accused block's PARENT, exactly as WPoASortitionVerifyProposer
+        // does, so a report is judged against the bar that actually applied.
         double score = PrivateSortition::ScoreFromVRFOutput(a.reveal.data(), w, g_dumping_function);
-        double delay = PrivateSortition::MiningDelay(score, weff, g_wpoa_sortition_delay);
+        double delay = PrivateSortition::MiningDelay(score, weff,
+                                                    (double)Params().TargetSpacing(),
+                                                    g_wpoa_sortition_delta,
+                                                    g_wpoa_sortition_lambda,
+                                                    WPoASortitionFeedback(a.pindex->pprev));
 
         int64_t earliest = a.pindex->pprev->GetBlockTime() + (int64_t)delay;
         if ((int64_t)a.ntime >= earliest)

@@ -168,43 +168,147 @@ BOOST_AUTO_TEST_CASE(score_matches_shared_transform)
 
 // ---- delay map (score-timing + validator time bar) -----------------------
 
-BOOST_AUTO_TEST_CASE(mining_delay_monotone_linear_clamped)
+BOOST_AUTO_TEST_CASE(normalized_score_is_scale_corrected_and_ordered)
 {
-    const double W = 10.0, scale = 2.0;
+    const double W = 600.0;   // a realistic total: 3 validators at 100/200/300
 
-    // A zero score maps to zero delay (the argmin can, in the limit, mine at once).
-    BOOST_CHECK_EQUAL(PrivateSortition::MiningDelay(0.0, W, scale), 0.0);
-
-    // Linear in score, in W and in scale (below the clamp).
-    BOOST_CHECK_CLOSE(PrivateSortition::MiningDelay(0.5, W, scale), 0.5 * W * scale, 1e-9);
-    BOOST_CHECK_CLOSE(PrivateSortition::MiningDelay(0.3, 20.0, 1.5), 0.3 * 20.0 * 1.5, 1e-9);
-
-    // Strictly increasing in score (this is what makes argmin(score) propose first).
+    // In (0,1), and strictly increasing in the raw score at fixed W: this is the
+    // exact condition under which the delay preserves the argmin (Prop. 5.11).
     double prev = -1.0;
-    for (int i = 0; i <= 50; i++)
+    for (int i = 1; i <= 200; i++)
     {
-        double s = 0.01 * i;
-        double d = PrivateSortition::MiningDelay(s, W, scale);
+        double s = i / (20.0 * W);   // sweep the range the winner actually occupies
+        double n = PrivateSortition::NormalizedScore(s, W);
+        BOOST_CHECK(n > 0.0 && n < 1.0);
+        BOOST_CHECK(n > prev);
+        prev = n;
+    }
+
+    // The point of the W factor (Def. 5.10): without it the value collapses against
+    // 0 for every candidate once weights reach the hundreds, so no candidate could be
+    // told apart by its delay. With it, a typical winning score lands mid-band.
+    const double typical = 1.0 / W;                       // E[min score] = 1/W
+    BOOST_CHECK(PrivateSortition::NormalizedScore(typical, W) > 0.5);
+    BOOST_CHECK(PrivateSortition::NormalizedScore(typical, 1.0) < 0.01);  // unscaled: collapsed
+
+    // Degenerate input saturates to 1 (maximally delayed -> the node stands down).
+    double nan = std::numeric_limits<double>::quiet_NaN();
+    double inf = std::numeric_limits<double>::infinity();
+    BOOST_CHECK_EQUAL(PrivateSortition::NormalizedScore(-1.0, W), 1.0);
+    BOOST_CHECK_EQUAL(PrivateSortition::NormalizedScore(1.0, 0.0), 1.0);
+    BOOST_CHECK_EQUAL(PrivateSortition::NormalizedScore(nan, W), 1.0);
+    BOOST_CHECK_EQUAL(PrivateSortition::NormalizedScore(inf, W), 1.0);
+}
+
+BOOST_AUTO_TEST_CASE(mining_delay_is_a_band_around_the_target)
+{
+    const double W = 600.0, T = 15.0, delta = 0.5, lambda = 0.0, phi = 0.0;
+    const double dmax = delta * T;
+
+    // Every delay lies inside the symmetric band (T - dmax, T + dmax) — the property
+    // the admissibility bound rests on (Prop. 5.13).
+    for (int i = 1; i <= 400; i++)
+    {
+        double s = i / (20.0 * W);
+        double d = PrivateSortition::MiningDelay(s, W, T, delta, lambda, phi);
+        BOOST_CHECK(d >= T - dmax);
+        BOOST_CHECK(d <= T + dmax);
+    }
+
+    // The band edges are attained in the limit: score -> 0 is the most favoured
+    // candidate (earliest), a large score the least favoured (latest).
+    BOOST_CHECK_CLOSE(PrivateSortition::MiningDelay(1e-12, W, T, delta, lambda, phi),
+                      T - dmax, 1e-3);
+    BOOST_CHECK_CLOSE(PrivateSortition::MiningDelay(10.0, W, T, delta, lambda, phi),
+                      T + dmax, 1e-9);
+
+    // Strictly increasing in the score, which is what makes argmin(score) propose
+    // first and, dually, what the validator's time bar relies on.
+    double prev = -1.0;
+    for (int i = 1; i <= 400; i++)
+    {
+        double d = PrivateSortition::MiningDelay(i / (20.0 * W), W, T, delta, lambda, phi);
         BOOST_CHECK(d > prev);
         prev = d;
     }
 
-    // Clamped to MaxDelaySeconds for an enormous score (never overflows nTime).
-    double huge = PrivateSortition::MiningDelay(1e18, W, scale);
-    BOOST_CHECK_EQUAL(huge, PrivateSortition::MaxDelaySeconds());
+    // delta -> 0 collapses the band onto the target (no separation, maximum forks);
+    // the mid-band score sits exactly on the target for any delta.
+    BOOST_CHECK_CLOSE(PrivateSortition::MiningDelay(1.0 / W, W, T, 1e-9, lambda, phi), T, 1e-4);
+}
 
-    // Degenerate inputs must never yield a negative/NaN delay (which would make
-    // the time bar meaningless): they saturate to the maximum ("stand down").
+BOOST_AUTO_TEST_CASE(mining_delay_feedback_shifts_the_whole_band)
+{
+    const double W = 600.0, T = 15.0, delta = 0.5, lambda = 0.5;
+
+    // Phi is common to every candidate, so it shifts all timers by the same amount
+    // and cannot reorder them (Prop. 5.11). Verified as an exact identity.
+    for (int i = 1; i <= 50; i++)
+    {
+        double s = i / (5.0 * W);
+        double d0 = PrivateSortition::MiningDelay(s, W, T, delta, lambda,  0.0);
+        double dp = PrivateSortition::MiningDelay(s, W, T, delta, lambda,  2.0);
+        double dm = PrivateSortition::MiningDelay(s, W, T, delta, lambda, -2.0);
+        BOOST_CHECK_CLOSE(dp - d0,  lambda * 2.0, 1e-9);
+        BOOST_CHECK_CLOSE(d0 - dm,  lambda * 2.0, 1e-9);
+    }
+
+    // lambda = 0 disables the correction entirely (Cor. 5.14): Phi becomes inert.
+    BOOST_CHECK_EQUAL(PrivateSortition::MiningDelay(1.0 / W, W, T, delta, 0.0, 7.0),
+                      PrivateSortition::MiningDelay(1.0 / W, W, T, delta, 0.0, 0.0));
+}
+
+BOOST_AUTO_TEST_CASE(max_feedback_is_the_admissibility_ceiling)
+{
+    const double T = 15.0;
+
+    // Cor. 5.15: M* = T(1-delta)/lambda, the largest |Phi| that still leaves D >= 0.
+    BOOST_CHECK_CLOSE(PrivateSortition::MaxFeedback(T, 0.5, 0.5), T * 0.5 / 0.5, 1e-9);
+    BOOST_CHECK_CLOSE(PrivateSortition::MaxFeedback(T, 0.8, 1.0), T * 0.2 / 1.0, 1e-9);
+
+    // At exactly M* the most favoured candidate lands on 0 and never below it.
+    for (double delta = 0.1; delta < 0.95; delta += 0.1)
+    {
+        for (double lambda = 0.1; lambda <= 1.0; lambda += 0.3)
+        {
+            double M = PrivateSortition::MaxFeedback(T, delta, lambda);
+            double d = PrivateSortition::MiningDelay(1e-15, 600.0, T, delta, lambda, -M);
+            BOOST_CHECK(d >= 0.0);
+            BOOST_CHECK_SMALL(d, 1e-6);
+        }
+    }
+
+    // lambda = 0 makes the bound vacuous (the lambda*Phi term vanishes anyway).
+    BOOST_CHECK(std::isinf(PrivateSortition::MaxFeedback(T, 0.5, 0.0)));
+}
+
+BOOST_AUTO_TEST_CASE(mining_delay_never_negative_or_nan)
+{
+    const double W = 600.0, T = 15.0;
     double nan = std::numeric_limits<double>::quiet_NaN();
     double inf = std::numeric_limits<double>::infinity();
-    BOOST_CHECK_EQUAL(PrivateSortition::MiningDelay(-1.0, W, scale), PrivateSortition::MaxDelaySeconds());
-    BOOST_CHECK_EQUAL(PrivateSortition::MiningDelay(1.0, 0.0, scale), PrivateSortition::MaxDelaySeconds());
-    BOOST_CHECK_EQUAL(PrivateSortition::MiningDelay(nan, W, scale), PrivateSortition::MaxDelaySeconds());
-    BOOST_CHECK_EQUAL(PrivateSortition::MiningDelay(inf, W, scale), PrivateSortition::MaxDelaySeconds());
-    BOOST_CHECK_EQUAL(PrivateSortition::MiningDelay(1.0, inf, scale), PrivateSortition::MaxDelaySeconds());
 
-    // scale = 0 (all delays collapse to 0) is a legal, if degenerate, setting.
-    BOOST_CHECK_EQUAL(PrivateSortition::MiningDelay(1.0, W, 0.0), 0.0);
+    // Degenerate parameters must never yield a negative or NaN delay (which would
+    // make the time bar meaningless): they saturate to the maximum ("stand down").
+    BOOST_CHECK_EQUAL(PrivateSortition::MiningDelay(1.0, W, 0.0, 0.5, 0.0, 0.0),
+                      PrivateSortition::MaxDelaySeconds());
+    BOOST_CHECK_EQUAL(PrivateSortition::MiningDelay(1.0, W, T, 1.0, 0.0, 0.0),
+                      PrivateSortition::MaxDelaySeconds());   // delta must be < 1
+    BOOST_CHECK_EQUAL(PrivateSortition::MiningDelay(1.0, W, T, 0.5, -1.0, 0.0),
+                      PrivateSortition::MaxDelaySeconds());
+    BOOST_CHECK_EQUAL(PrivateSortition::MiningDelay(1.0, W, T, 0.5, 0.5, nan),
+                      PrivateSortition::MaxDelaySeconds());
+    BOOST_CHECK_EQUAL(PrivateSortition::MiningDelay(1.0, W, nan, 0.5, 0.5, 0.0),
+                      PrivateSortition::MaxDelaySeconds());
+
+    // A degenerate SCORE saturates the normalized score to 1, i.e. the far edge of
+    // the band — still a well-formed, non-negative delay.
+    BOOST_CHECK_CLOSE(PrivateSortition::MiningDelay(nan, W, T, 0.5, 0.0, 0.0), T + 0.5 * T, 1e-9);
+    BOOST_CHECK_CLOSE(PrivateSortition::MiningDelay(inf, W, T, 0.5, 0.0, 0.0), T + 0.5 * T, 1e-9);
+
+    // An over-large feedback (caller failed to clip) is absorbed by the floor rather
+    // than scheduling into the past.
+    BOOST_CHECK(PrivateSortition::MiningDelay(1e-15, W, T, 0.5, 1.0, -1e6) >= 0.0);
 }
 
 // ---- privacy: score is unknowable without the secret key -----------------
@@ -226,6 +330,99 @@ BOOST_AUTO_TEST_CASE(score_depends_on_secret_key)
     double sA = PrivateSortition::ScoreFromVRFOutput(yA, 100);
     double sB = PrivateSortition::ScoreFromVRFOutput(yB, 100);
     BOOST_CHECK(sA != sB);
+}
+
+// ---- the winner's delay: uniform over the band, mean on target ------------
+
+// Prop. 5.10 with REAL VRF keys: whatever the weight distribution, the WINNER's
+// normalized score is exactly U(0,1) — and therefore its delay is uniform over the
+// band and the mean realized block time lands on target-block-time. This is the
+// property the W factor of Def. 5.10 buys, and the reason the band form can replace
+// an open-ended ramp; without W the value collapses against 0 and every candidate
+// would be crammed against the early edge.
+static void run_winner_uniformity(const std::vector<uint32_t>& weights,
+                                  uint32_t trials, const char* label)
+{
+    const size_t m = weights.size();
+    std::vector<std::vector<unsigned char> > sks(m);
+    for (size_t i = 0; i < m; i++) sks[i] = make_secret_key((uint32_t)(4000 + i));
+
+    double W = 0.0;
+    for (size_t i = 0; i < m; i++) W += (double)weights[i];
+
+    const double T = 15.0, delta = 0.5;
+    const uint32_t height = 900;
+
+    // 10 equal-width buckets over (0,1): a uniform winner-score fills them evenly.
+    std::vector<uint64_t> hist(10, 0);
+    double sum_norm = 0.0, sum_delay = 0.0;
+    double dmin = 1e18, dmax = -1e18;
+
+    for (uint32_t t = 0; t < trials; t++)
+    {
+        std::vector<unsigned char> seed = make_seed(90000 + t);
+        double best_score = std::numeric_limits<double>::infinity();
+        for (size_t i = 0; i < m; i++)
+        {
+            unsigned char y[32];
+            vrf_output(sks[i], seed, height, y);
+            double sc = PrivateSortition::ScoreFromVRFOutput(y, weights[i]);
+            if (sc < best_score) best_score = sc;
+        }
+        double norm  = PrivateSortition::NormalizedScore(best_score, W);
+        double delay = PrivateSortition::MiningDelay(best_score, W, T, delta, 0.0, 0.0);
+
+        int b = (int)(norm * 10.0); if (b > 9) b = 9; if (b < 0) b = 0;
+        hist[b]++;
+        sum_norm  += norm;
+        sum_delay += delay;
+        if (delay < dmin) dmin = delay;
+        if (delay > dmax) dmax = delay;
+    }
+
+    double mean_norm  = sum_norm  / trials;
+    double mean_delay = sum_delay / trials;
+
+    std::printf("\n  Winner's normalized score, %s (%zu validators, W=%.0f, %u trials):\n",
+                label, m, W, trials);
+    std::printf("    decile occupancy (expect ~%.3f each):", 1.0 / 10.0);
+    for (size_t b = 0; b < hist.size(); b++)
+        std::printf(" %.3f", (double)hist[b] / trials);
+    std::printf("\n    mean score_norm = %.4f (expect 0.5000)\n", mean_norm);
+    std::printf("    mean delay      = %.3fs (target T=%.1fs)   band [%.3f, %.3f] within [%.1f, %.1f]\n",
+                mean_delay, T, dmin, dmax, T - delta * T, T + delta * T);
+
+    // Uniform winner score (Prop. 5.10) — every decile within a sampling margin.
+    BOOST_CHECK_CLOSE(mean_norm, 0.5, 4.0);
+    for (size_t b = 0; b < hist.size(); b++)
+    {
+        double share = (double)hist[b] / trials;
+        BOOST_CHECK_MESSAGE(share > 0.06 && share < 0.14,
+                            "decile " << b << " occupancy " << share
+                            << " is not consistent with a uniform winner score");
+    }
+
+    // Hence the mean realized delay sits on target-block-time, and the whole band is
+    // respected — the two goals §5.10 states for the delay.
+    BOOST_CHECK_CLOSE(mean_delay, T, 4.0);
+    BOOST_CHECK(dmin >= T - delta * T);
+    BOOST_CHECK(dmax <= T + delta * T);
+}
+
+BOOST_AUTO_TEST_CASE(winner_delay_uniform_equal_weights)
+{
+    std::vector<uint32_t> w;
+    w.push_back(100); w.push_back(100); w.push_back(100);
+    run_winner_uniformity(w, 8000, "equal weights 100x3");
+}
+
+BOOST_AUTO_TEST_CASE(winner_delay_uniform_skewed_weights)
+{
+    // The invariance that matters: a dominant holder does not shift the winner's
+    // score distribution, so the band stays fully used and the cadence stays on target.
+    std::vector<uint32_t> w;
+    w.push_back(1000); w.push_back(10); w.push_back(10); w.push_back(10);
+    run_winner_uniformity(w, 8000, "whale 1000 + 3x10");
 }
 
 // ---- probability preservation (thesis §7.4), real VRF keys ---------------

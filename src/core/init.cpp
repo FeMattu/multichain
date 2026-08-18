@@ -575,7 +575,8 @@ std::string HelpMessage(HelpMessageMode mode)                                   
     strUsage += "  -enablewpoarandao                        " + _("wPoA Phase 3b: RANDAO beacon seed; seed proposer selection from the accumulated per-block VRF reveals instead of the previous block hash (default: 0). Requires -enablewpoavrf. Inherited from params.dat. Must be identical on all nodes.") + "\n";
     strUsage += "  -wpoarandaolookback=<k>                  " + strprintf(_("wPoA RANDAO lookback distance k in seed[n+1]=H(R_tot[n-k] | h[n-1] | n) (default: %u). Inherited from params.dat. Must be identical on all nodes."), MC_WPOA_DEFAULT_RANDAO_LOOKBACK) + "\n";
     strUsage += "  -enablewpoasortition                     " + _("wPoA Phase 4: private (VRF-scored) sortition; each validator scores itself privately under its own secret key and self-elects via a score-proportional mining delay, so the next proposer is unpredictable until it acts (default: 0). Requires -enablewpoarandao (and lookback >= 1). Inherited from params.dat. Must be identical on all nodes.") + "\n";
-    strUsage += "  -wpoasortitiondelay=<s>                  " + strprintf(_("wPoA sortition delay scale in seconds (delay = s * score * total_effective_weight); larger values spread proposers further apart in time, reducing forks at the cost of block latency (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_SORTITION_DELAY) + "\n";
+    strUsage += "  -wpoasortitiondelta=<x>                  " + strprintf(_("wPoA sortition delay band half-width as a fraction of target-block-time, delta in (0,1): D = T + delta*T*(2*score_norm-1) + lambda*Phi. Larger values spread proposers further apart in time, reducing forks at the cost of latency on the unfavoured candidates (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_SORTITION_DELTA) + "\n";
+    strUsage += "  -wpoasortitionlambda=<x>                 " + strprintf(_("wPoA sortition feedback gain lambda in [0,1]: weight of the global correction Phi that recentres the observed mean block time on target-block-time, derived from a moving average of past block timestamps. 0 disables it (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_SORTITION_LAMBDA) + "\n";
     strUsage += "  -enablewpoamalus                         " + _("wPoA behavioural malus: run the open wpoa-weights-malus report stream and feed the election the effective weight w_eff = w * Psi instead of the raw registry weight (default: 0). Requires -enablewpoasortition. Inherited from params.dat. Must be identical on all nodes.") + "\n";
     strUsage += "  -wpoamalusmu=<x>                         " + strprintf(_("wPoA malus accumulator persistence mu in [0,1): the fraction of M carried into the next epoch, so a proved violation decays instead of banning permanently (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_MALUS_MU) + "\n";
     strUsage += "  -wpoamalusmax=<x>                        " + strprintf(_("wPoA malus threshold M_max > 0: the accumulator value at which Psi reaches 0 and the validator becomes ineligible (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_MALUS_MAX) + "\n";
@@ -788,8 +789,8 @@ bool GrantMessagePrinted(int OutputPipe,bool failed_seed)
 
 /* Real-valued parameter helpers (params.dat baseline + CLI override), mirroring
  * the wPoA startup resolution below. Shared by the weight-engine parameters
- * (kappa/alpha/lambda) and the malus parameters (mu/Mmax/points): like
- * -wpoasortitiondelay, they are carried as strings and parsed with strtod. */
+ * (kappa/alpha/lambda), the sortition band (delta/lambda) and the malus parameters
+ * (mu/Mmax/points): they are carried as strings and parsed with strtod. */
 static std::string ResolveWeightRealStr(mc_MultichainParams* np, const char* pname,
                                         const char* cliflag, double def)
 {
@@ -3284,22 +3285,28 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
             return InitError(strprintf(_("Invalid -wpoarandaolookback value %d: must be a non-negative integer."), (int)randao_k));
         }
 
-        std::string p_delay_str;
-        if (np != NULL)
+        // Delay band: delta (half-width as a fraction of target-block-time) and lambda
+        // (feedback gain). Both real-valued, so they travel as strings like the other
+        // reals and are parsed with the shared helpers.
+        std::string s_delta = ResolveWeightRealStr(np, "wpoasortitiondelta", "-wpoasortitiondelta",
+                                                  (double)MC_WPOA_DEFAULT_SORTITION_DELTA);
+        double sortition_delta = 0.0;
+        if (!ParseWeightDouble(s_delta, sortition_delta) ||
+            !(sortition_delta > 0.0 && sortition_delta < 1.0))
         {
-            int delay_size = 0;
-            const char* delay_ptr = (const char*)np->GetParam("wpoasortitiondelay", &delay_size);
-            if (delay_ptr && delay_size > 0) p_delay_str = delay_ptr;
+            return InitError(strprintf(_("Invalid wpoa-sortition-delta value '%s': must be a number in (0, 1) "
+                                         "(the band half-width is delta * target-block-time, so delta >= 1 would "
+                                         "schedule a timer before the round opened)."), s_delta));
         }
-        if (p_delay_str.empty()) p_delay_str = strprintf("%g", (double)MC_WPOA_DEFAULT_SORTITION_DELAY);
-        std::string sortition_delay_arg = GetArg("-wpoasortitiondelay", p_delay_str);
-        char* sortition_delay_end = NULL;
-        double sortition_delay = strtod(sortition_delay_arg.c_str(), &sortition_delay_end);
-        if (sortition_delay_end == sortition_delay_arg.c_str() || *sortition_delay_end != '\0' ||
-            !(sortition_delay >= 0.0) || sortition_delay > PrivateSortition::MaxDelaySeconds())
+
+        std::string s_lambda = ResolveWeightRealStr(np, "wpoasortitionlambda", "-wpoasortitionlambda",
+                                                   (double)MC_WPOA_DEFAULT_SORTITION_LAMBDA);
+        double sortition_lambda = 0.0;
+        if (!ParseWeightDouble(s_lambda, sortition_lambda) ||
+            !(sortition_lambda >= 0.0 && sortition_lambda <= 1.0))
         {
-            return InitError(strprintf(_("Invalid wpoa-sortition-delay value '%s': must be a non-negative number of seconds (<= %g)."),
-                                       sortition_delay_arg, PrivateSortition::MaxDelaySeconds()));
+            return InitError(strprintf(_("Invalid wpoa-sortition-lambda value '%s': must be a number in [0, 1]."),
+                                       s_lambda));
         }
 
         std::string p_dump_str;
@@ -3341,7 +3348,8 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
         g_wpoa_randao_enabled    = randao;
         g_wpoa_randao_lookback   = (int)randao_k;
         g_wpoa_sortition_enabled = sortition;
-        g_wpoa_sortition_delay   = sortition_delay;
+        g_wpoa_sortition_delta   = sortition_delta;
+        g_wpoa_sortition_lambda  = sortition_lambda;
         g_dumping_function       = dump_fn;
 
         // Warn when a runtime flag diverges from the inherited chain configuration: the
@@ -3360,12 +3368,12 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
         }
 
         LogPrintf("[wPoA] weights-stream %s; weighted-selection %s; VRF %s; RANDAO %s (k=%d); "
-                  "sortition %s (delay=%g s); dumping=%s\n",
+                  "sortition %s (delta=%g, lambda=%g); dumping=%s\n",
                   weights   ? "ON" : "off",
                   selection ? "ON" : "off",
                   vrf       ? "ON" : "off",
                   randao    ? "ON" : "off", g_wpoa_randao_lookback,
-                  sortition ? "ON" : "off", g_wpoa_sortition_delay,
+                  sortition ? "ON" : "off", g_wpoa_sortition_delta, g_wpoa_sortition_lambda,
                   dump_arg.c_str());
 
         // Behavioural-malus parameters — consensus-critical, resolved exactly like the
@@ -3460,7 +3468,7 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
                 return InitError(strprintf(_("Invalid -weightepochlength value %d: must be an integer in [1, 1000000]."), (int)epoch_len));
             }
 
-            // kappa / alpha / lambda are real-valued, so (like -wpoasortitiondelay)
+            // kappa / alpha / lambda are real-valued, so (like the sortition band)
             // they travel as strings and are parsed here with NaN/Inf-safe range checks.
             double kappa = 0.0, alpha = 0.0, lambda = 0.0;
             std::string s;

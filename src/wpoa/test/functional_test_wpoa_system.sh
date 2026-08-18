@@ -40,7 +40,7 @@
 #
 # Key env (see also functional_lib.sh): NODES, WEIGHTS, SETUP_BLOCKS,
 #   SAMPLE_BLOCKS, CONFIRM_BUFFER, DRIVE_TIMEOUT, RANDAO_LOOKBACK,
-#   SORTITION_DELAY, DIST_TOLERANCE, BINDIR, KEEP_LOGS.
+#   SORTITION_DELTA, SORTITION_LAMBDA, DIST_TOLERANCE, BINDIR, KEEP_LOGS.
 #
 # Exit code: 0 iff every CRITICAL check passed; non-zero otherwise.
 set -uo pipefail
@@ -57,7 +57,8 @@ BINDIR="${BINDIR:-$SRC_DIR}"
 NODES="${NODES:-3}"
 SETUP_BLOCKS="${SETUP_BLOCKS:-30}"
 RANDAO_LOOKBACK="${RANDAO_LOOKBACK:-1}"     # k in seed[n+1]=H(R_tot[n-k]‖h[n]‖n+1)
-SORTITION_DELAY="${SORTITION_DELAY:-1}"     # delay = s * score * total_effective_weight
+SORTITION_DELTA="${SORTITION_DELTA:-0.5}"   # band half-width as a fraction of target-block-time
+SORTITION_LAMBDA="${SORTITION_LAMBDA:-0}"   # global delay-feedback gain (0 = off)
 DIST_TOLERANCE="${DIST_TOLERANCE:-0.05}"    # advisory ±share bound; chi-square is the gate
 CONFIRM_BUFFER="${CONFIRM_BUFFER:-6}"       # blocks mined beyond the sample before the fork check
 if [ "$QUICK" = "1" ]; then
@@ -72,7 +73,7 @@ export BINDIR NODES SETUP_BLOCKS   # consumed by functional_lib.sh
 # -enablewpoa is the master switch: it turns on the whole stack (weights + selection
 # + VRF + RANDAO + sortition). The numeric knobs (lookback, delay) are still passed
 # explicitly. Specific -enablewpoa* flags would override the master per phase.
-FULL_STACK_ARGS="-enablewpoa=1 -wpoarandaolookback=$RANDAO_LOOKBACK -wpoasortitiondelay=$SORTITION_DELAY -debug=wpoa"
+FULL_STACK_ARGS="-enablewpoa=1 -wpoarandaolookback=$RANDAO_LOOKBACK -wpoasortitiondelta=$SORTITION_DELTA -wpoasortitionlambda=$SORTITION_LAMBDA -debug=wpoa"
 
 # Sample window, filled in after warm-up.
 SAMPLE_START=0
