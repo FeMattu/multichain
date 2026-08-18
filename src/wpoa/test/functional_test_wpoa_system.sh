@@ -57,7 +57,17 @@ BINDIR="${BINDIR:-$SRC_DIR}"
 NODES="${NODES:-3}"
 SETUP_BLOCKS="${SETUP_BLOCKS:-30}"
 RANDAO_LOOKBACK="${RANDAO_LOOKBACK:-1}"     # k in seed[n+1]=H(R_tot[n-k]‖h[n]‖n+1)
-SORTITION_DELTA="${SORTITION_DELTA:-0.5}"   # band half-width as a fraction of target-block-time
+# Band half-width as a fraction of target-block-time. The protocol default is 0.5,
+# which on a normal chain (target-block-time 15s) gives Delta_max = 7.5s and a ~3.8s
+# median spread between the first and second candidate. This test compresses
+# target-block-time to TARGET_BLOCK_TIME (2s) so a run finishes quickly, and the band
+# scales WITH the target: at delta=0.5 that leaves only Delta_max = 1s and a ~500ms
+# spread, comparable to the jitter of a busy loopback network — so the timer race
+# starts turning on jitter instead of on score (Prop. 5.17) and the observed
+# distribution drifts. delta is raised here to restore the absolute spread the
+# compressed target would otherwise lose; it is a property of the test's tight
+# target-block-time, not of the protocol default.
+SORTITION_DELTA="${SORTITION_DELTA:-0.9}"
 SORTITION_LAMBDA="${SORTITION_LAMBDA:-0}"   # global delay-feedback gain (0 = off)
 DIST_TOLERANCE="${DIST_TOLERANCE:-0.05}"    # advisory ±share bound; chi-square is the gate
 CONFIRM_BUFFER="${CONFIRM_BUFFER:-6}"       # blocks mined beyond the sample before the fork check

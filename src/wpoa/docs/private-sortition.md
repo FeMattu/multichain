@@ -86,6 +86,34 @@ scores, low enough to bound the worst case.
 Both are consensus-critical: they enter the validator's time bar, so a node holding
 different values computes a different bar and forks.
 
+#### Sizing δ against the network
+
+`Δmax = δ·T_block` is an *absolute* time, so δ has to be read together with the chain's
+target-block-time. Prop. 5.17 bounds the probability that jitter overturns the score
+ordering by `O((n·σ/Δmax)^{2/3})`, so what matters is Δmax against the network's timer
+jitter σ — not δ on its own.
+
+Measured on 3 validators at 100/200/300, the median spread between the first and second
+candidate:
+
+| `T_block` | δ = 0.5 | δ = 0.8 | δ = 0.9 |
+|---|---|---|---|
+| 2 s  | 504 ms | 808 ms | 909 ms |
+| 15 s (default) | 3.8 s | 6.1 s | 6.8 s |
+
+At the stock 15 s target, δ = 0.5 already gives a far wider spread than the open-ended
+ramp it replaced (~1.15 s), which is why 0.5 is the protocol default. On a chain with a
+deliberately short target the band shrinks with it: the functional test compresses
+target-block-time to 2 s and correspondingly raises δ to 0.9, and the effect is
+measurable — at δ = 0.5 the observed proposer distribution drifts (median χ² ≈ 11 over
+30-block samples, against ≈ 1.4 expected), while at δ = 0.9 it returns to the level of
+the previous delay law (median χ² ≈ 3.5 vs ≈ 3.8).
+
+Raising δ also tightens the feedback headroom: `M* = T_block(1−δ)/λ` (Cor. 5.15) shrinks
+as δ → 1, and `WPoASortitionFeedback` clips to `min(0.5·T_block, M*)`, so a wide band and
+an aggressive λ cannot be configured at the same time — the clip resolves the tension
+automatically rather than letting the timer go admissible-negative.
+
 ### 2.1b `WPoASortitionFeedback(pindexTip)` — Φ
 
 ```
