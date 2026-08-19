@@ -81,6 +81,13 @@ fl_node_total() {
 fl_tip_height()  { fl_cli "$1" getblockcount 2>/dev/null; }
 fl_blockhash_at(){ fl_cli "$1" getblockhash "$2" 2>/dev/null; }
 
+# "true" / "false" — whether publishing to <stream> needs a write permission.
+# Reads the "write" flag of the stream's "restrict" object (liststreams verbose).
+fl_stream_write_restricted() {
+    fl_cli "$1" liststreams "$2" true 2>/dev/null \
+        | sed -nE 's/.*"write"[[:space:]]*:[[:space:]]*(true|false).*/\1/p' | head -n1
+}
+
 # Sum grep -E matches for a pattern across every node's debug.log.
 fl_logcount_all() {
     local pat=$1 i c total=0
@@ -212,6 +219,32 @@ fl_start_network() {
     for ((i = 1; i < NODES; i++)); do
         _fl_bootstrap_node "$i" "$wpoa_args" || fl_die "node $i refused to join (see ${FL_DATADIRS[i]}/node.log)"
         fl_wait_rpc "$i" || fl_die "RPC did not come up on node $i"
+    done
+
+    fl_grant_weights_write
+}
+
+# wpoa-weights is a CLOSED stream, so publishing a weight needs an explicit
+# per-stream write permission. The grant issued during bootstrap can land before
+# node 0 has created the stream (the create is a transaction and needs a block),
+# in which case it is silently dropped; re-issue it here, once the stream exists,
+# for every joined node. The registration thread retries for minutes, so a grant
+# arriving now is still in time.
+fl_grant_weights_write() {
+    local t i addr
+    for ((t = 0; t < 60; t++)); do
+        fl_cli 0 liststreams wpoa-weights >/dev/null 2>&1 && break
+        sleep 2
+    done
+    if ! fl_cli 0 liststreams wpoa-weights >/dev/null 2>&1; then
+        fl_log "WARNING: wpoa-weights does not exist yet; write grants skipped"
+        return 0
+    fi
+    for ((i = 1; i < NODES; i++)); do
+        addr="$(fl_cli "$i" getaddresses 2>/dev/null | sed -nE 's/.*"([A-Za-z0-9]{30,40})".*/\1/p' | head -n1)"
+        [ -n "$addr" ] || continue
+        fl_cli 0 grant "$addr" wpoa-weights.write >/dev/null 2>&1 \
+            && fl_log "granted wpoa-weights.write to node $i ($addr)"
     done
 }
 

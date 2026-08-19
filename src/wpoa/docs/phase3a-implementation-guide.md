@@ -269,7 +269,7 @@ omitted here for the same reason Phase 2 omits it from its seed
 ([phase2 §5.2](phase2-implementation-guide.md#5-design-decisions)): on a linear chain the
 previous hash already uniquely identifies the round, and the VRF's own hash-to-curve
 supplies the `H(·)`. Phase 3b re-introduces `n` via the RANDAO seed
-`seed[n+1] = H(R_tot[n-k] ‖ h[n-1] ‖ n)`. Keeping the input equal to the Phase 2 seed
+`seed[n+1] = H(R_tot[n-k] ‖ h[n] ‖ n+1)`. Keeping the input equal to the Phase 2 seed
 also keeps the miner and validator perfectly symmetric on data they both already hold
 (`hashPrevBlock` / `pindexNew->pprev` hash), with no height lookup in the signing path.
 

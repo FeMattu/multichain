@@ -14,6 +14,8 @@
 #   2. warm-up     — wait for weight convergence, then mine past the sample window
 #   3. checks      — run all check_* verifications on the SAME run:
 #                      check_weight                 aggregate weight registry
+#                      check_stream_permissions     weights closed / malus open
+#                      check_malus                  Psi inert, false evidence refused
 #                      check_multinode_consistency  no persistent fork
 #                      check_vrf                    reveals carried & verified, 0 rejects
 #                      check_randao                 beacon seed derived, 0 fallback folds
@@ -38,7 +40,7 @@
 #
 # Key env (see also functional_lib.sh): NODES, WEIGHTS, SETUP_BLOCKS,
 #   SAMPLE_BLOCKS, CONFIRM_BUFFER, DRIVE_TIMEOUT, RANDAO_LOOKBACK,
-#   SORTITION_DELAY, DIST_TOLERANCE, BINDIR, KEEP_LOGS.
+#   SORTITION_DELTA, SORTITION_LAMBDA, DIST_TOLERANCE, BINDIR, KEEP_LOGS.
 #
 # Exit code: 0 iff every CRITICAL check passed; non-zero otherwise.
 set -uo pipefail
@@ -54,8 +56,19 @@ NO_WARN="${NO_WARN:-0}"
 BINDIR="${BINDIR:-$SRC_DIR}"
 NODES="${NODES:-3}"
 SETUP_BLOCKS="${SETUP_BLOCKS:-30}"
-RANDAO_LOOKBACK="${RANDAO_LOOKBACK:-1}"     # k in seed[n+1]=H(R_tot[n-k]‖h[n-1]‖n)
-SORTITION_DELAY="${SORTITION_DELAY:-1}"     # delay = s * score * total_effective_weight
+RANDAO_LOOKBACK="${RANDAO_LOOKBACK:-1}"     # k in seed[n+1]=H(R_tot[n-k]‖h[n]‖n+1)
+# Band half-width as a fraction of target-block-time. The protocol default is 0.5,
+# which on a normal chain (target-block-time 15s) gives Delta_max = 7.5s and a ~3.8s
+# median spread between the first and second candidate. This test compresses
+# target-block-time to TARGET_BLOCK_TIME (2s) so a run finishes quickly, and the band
+# scales WITH the target: at delta=0.5 that leaves only Delta_max = 1s and a ~500ms
+# spread, comparable to the jitter of a busy loopback network — so the timer race
+# starts turning on jitter instead of on score (Prop. 5.17) and the observed
+# distribution drifts. delta is raised here to restore the absolute spread the
+# compressed target would otherwise lose; it is a property of the test's tight
+# target-block-time, not of the protocol default.
+SORTITION_DELTA="${SORTITION_DELTA:-0.9}"
+SORTITION_LAMBDA="${SORTITION_LAMBDA:-0}"   # global delay-feedback gain (0 = off)
 DIST_TOLERANCE="${DIST_TOLERANCE:-0.05}"    # advisory ±share bound; chi-square is the gate
 CONFIRM_BUFFER="${CONFIRM_BUFFER:-6}"       # blocks mined beyond the sample before the fork check
 if [ "$QUICK" = "1" ]; then
@@ -70,7 +83,7 @@ export BINDIR NODES SETUP_BLOCKS   # consumed by functional_lib.sh
 # -enablewpoa is the master switch: it turns on the whole stack (weights + selection
 # + VRF + RANDAO + sortition). The numeric knobs (lookback, delay) are still passed
 # explicitly. Specific -enablewpoa* flags would override the master per phase.
-FULL_STACK_ARGS="-enablewpoa=1 -wpoarandaolookback=$RANDAO_LOOKBACK -wpoasortitiondelay=$SORTITION_DELAY -debug=wpoa"
+FULL_STACK_ARGS="-enablewpoa=1 -wpoarandaolookback=$RANDAO_LOOKBACK -wpoasortitiondelta=$SORTITION_DELTA -wpoasortitionlambda=$SORTITION_LAMBDA -debug=wpoa"
 
 # Sample window, filled in after warm-up.
 SAMPLE_START=0
@@ -117,6 +130,72 @@ check_weight() {
     fl_log "getallweights (node 0):"; fl_cli 0 getallweights | sed 's/^/    /'
     fl_assert_eq "$ok" "$NODES" "nodes reporting aggregate weight $FL_TOTAL_WEIGHT"
     fl_assert_zero "$bad" "nodes with a wrong aggregate"
+}
+
+# The two registries must carry OPPOSITE write policies (Def. 5.16 / Def. 5.17):
+# wpoa-weights closed, so only authorized publishers can move a validator's
+# weight; wpoa-weights-malus open, so anyone can accuse — safety there comes from
+# every node re-deriving the evidence, not from restricting who may speak.
+check_stream_permissions() {
+    local w_write m_write unauth
+    w_write="$(fl_stream_write_restricted 0 wpoa-weights)"
+    m_write="$(fl_stream_write_restricted 0 wpoa-weights-malus)"
+    fl_log "wpoa-weights       restrict.write = $w_write (expect true  = closed)"
+    fl_log "wpoa-weights-malus restrict.write = $m_write (expect false = open)"
+    fl_assert_eq "$w_write" "true"  "wpoa-weights is write-restricted"
+    fl_assert_eq "$m_write" "false" "wpoa-weights-malus is open to any publisher"
+
+    # And the restriction must actually bite: an address with no write permission
+    # on wpoa-weights cannot publish a weight record, but can still report.
+    unauth="$(fl_cli 0 getnewaddress 2>/dev/null | tr -d '"[:space:]')"
+    if [ -z "$unauth" ]; then
+        fl_bad "could not create an unpermitted address"
+        return
+    fi
+    fl_cli 0 grant "$unauth" send,receive >/dev/null 2>&1
+    if fl_cli 0 publishfrom "$unauth" wpoa-weights "$unauth" '{"json":{"node_address":"'"$unauth"'","weight":999999}}' >/dev/null 2>&1; then
+        fl_bad "an address WITHOUT wpoa-weights.write managed to publish a weight"
+    else
+        fl_ok "an address without wpoa-weights.write cannot publish a weight"
+    fi
+    if fl_cli 0 publishfrom "$unauth" wpoa-weights-malus "$unauth" '{"json":{"kind":"delay","node_address":"'"$unauth"'","height":1,"blocks":["ff"]}}' >/dev/null 2>&1; then
+        fl_ok "any address can publish to the open wpoa-weights-malus stream"
+    else
+        fl_bad "an ordinary address could NOT publish to the open malus stream"
+    fi
+}
+
+# The malus mechanism is inert on honest behaviour, and the Valid() predicate
+# refuses evidence that does not hold — the property that makes the open stream
+# safe (a false report changes no weight anywhere).
+check_malus() {
+    local i addr h bh bad=0 psi eff w
+    addr="$(fl_cli 0 getallweights 2>/dev/null | sed -nE 's/^[[:space:]]*"([A-Za-z0-9]{30,40})"[[:space:]]*:.*/\1/p' | head -n1)"
+    [ -n "$addr" ] || { fl_bad "could not read a validator address"; return; }
+
+    # Honest validator: no accumulated malus, Psi = 1, w_eff = w.
+    psi="$(fl_cli 0 getnodemalus "$addr" 2>/dev/null | sed -nE 's/.*"psi"[[:space:]]*:[[:space:]]*([0-9.]+).*/\1/p' | head -n1)"
+    w="$(fl_cli 0 getnodemalus "$addr" 2>/dev/null | sed -nE 's/.*"weight"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' | head -n1)"
+    eff="$(fl_cli 0 getnodemalus "$addr" 2>/dev/null | sed -nE 's/.*"effective"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' | head -n1)"
+    fl_log "getnodemalus $addr -> psi=$psi weight=$w effective=$eff"
+    fl_assert_eq "$psi" "1"   "honest validator carries Psi = 1"
+    fl_assert_eq "$eff" "$w"  "honest validator's effective weight equals its raw weight"
+
+    # False / malformed evidence must be refused locally on EVERY node, so no
+    # report reaches the chain and no weight moves.
+    h="$SAMPLE_END"
+    bh="$(fl_blockhash_at 0 "$h")"
+    [ -n "$bh" ] || { fl_bad "could not read a block hash at $h"; return; }
+    for ((i = 0; i < NODES; i++)); do
+        # an honest block is not a delay violation
+        fl_cli "$i" reportmalus delay "$addr" "$h" "$bh" >/dev/null 2>&1 && bad=$((bad+1))
+        # the same block twice is not an equivocation
+        fl_cli "$i" reportmalus equiv "$addr" "$h" "$bh" "$bh" >/dev/null 2>&1 && bad=$((bad+1))
+        # a block nobody has ever seen proves nothing
+        fl_cli "$i" reportmalus delay "$addr" "$h" \
+            "00000000000000000000000000000000000000000000000000000000deadbeef" >/dev/null 2>&1 && bad=$((bad+1))
+    done
+    fl_assert_zero "$bad" "false or malformed malus reports accepted (must be 0)"
 }
 
 # All nodes agree on the block hash at SAMPLE_END (buried under CONFIRM_BUFFER).
@@ -239,6 +318,8 @@ fl_drive_to_height "$DRIVE_TO" "$DRIVE_TIMEOUT" "full-stack stall (sortition/see
 
 fl_phase "PHASE 3/4 — feature checks (shared run)"
 fl_check_begin "weight"                1; check_weight;                fl_check_end || true
+fl_check_begin "stream_permissions"    1; check_stream_permissions;    fl_check_end || true
+fl_check_begin "malus"                 1; check_malus;                 fl_check_end || true
 fl_check_begin "multinode_consistency" 1; check_multinode_consistency; fl_check_end || true
 fl_check_begin "vrf"                   1; check_vrf;                   fl_check_end || true
 fl_check_begin "randao"                1; check_randao;                fl_check_end || true
@@ -256,7 +337,7 @@ fi
 # ---- verdict ----------------------------------------------------------------
 if fl_check_summary; then
     echo
-    echo "SYSTEM FUNCTIONAL TEST PASSED (single network; weight, consistency, VRF, RANDAO, sortition, distribution)."
+    echo "SYSTEM FUNCTIONAL TEST PASSED (single network; weight, stream permissions, malus, consistency, VRF, RANDAO, sortition, distribution)."
     exit 0
 fi
 echo

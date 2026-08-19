@@ -504,9 +504,49 @@ int mc_MultichainParams::Create(const char* name,int version)
                                     sprintf(ptrData,"none");
                                     size=strlen(ptrData)+1;
                                 }
-                                if(strcmp(param->m_Name,"wpoasortitiondelay") == 0)
+                                if(strcmp(param->m_Name,"wpoasortitiondelta") == 0)
                                 {
-                                    sprintf(ptrData,"1");
+                                    sprintf(ptrData,"0.5");
+                                    size=strlen(ptrData)+1;
+                                }
+                                if(strcmp(param->m_Name,"wpoasortitionlambda") == 0)
+                                {
+                                    sprintf(ptrData,"0");
+                                    size=strlen(ptrData)+1;
+                                }
+                                if(strcmp(param->m_Name,"wpoamalusmu") == 0)           // MC_WPOA_DEFAULT_MALUS_MU
+                                {
+                                    sprintf(ptrData,"0.5");
+                                    size=strlen(ptrData)+1;
+                                }
+                                if(strcmp(param->m_Name,"wpoamalusmax") == 0)          // MC_WPOA_DEFAULT_MALUS_MAX
+                                {
+                                    sprintf(ptrData,"4");
+                                    size=strlen(ptrData)+1;
+                                }
+                                if(strcmp(param->m_Name,"wpoamalusequivpoints") == 0)  // MC_WPOA_DEFAULT_MALUS_P_EQUIV
+                                {
+                                    sprintf(ptrData,"4");
+                                    size=strlen(ptrData)+1;
+                                }
+                                if(strcmp(param->m_Name,"wpoamalusdelaypoints") == 0)  // MC_WPOA_DEFAULT_MALUS_P_DELAY
+                                {
+                                    sprintf(ptrData,"0.25");
+                                    size=strlen(ptrData)+1;
+                                }
+                                if(strcmp(param->m_Name,"weightkappa") == 0)      // MC_WEIGHT_DEFAULT_KAPPA
+                                {
+                                    sprintf(ptrData,"100");
+                                    size=strlen(ptrData)+1;
+                                }
+                                if(strcmp(param->m_Name,"weightalpha") == 0)      // MC_WEIGHT_DEFAULT_ALPHA
+                                {
+                                    sprintf(ptrData,"0.2");
+                                    size=strlen(ptrData)+1;
+                                }
+                                if(strcmp(param->m_Name,"weightlambda") == 0)     // MC_WEIGHT_DEFAULT_LAMBDA
+                                {
+                                    sprintf(ptrData,"0.5");
                                     size=strlen(ptrData)+1;
                                 }
                                 break;
@@ -708,7 +748,8 @@ int mc_MultichainParams::Read(const char* name,int argc, char* argv[],int create
         }
 
         const char* wpoa_phase_params[]={"enablewpoaweights","enablewpoaselection",
-                                         "enablewpoavrf","enablewpoarandao","enablewpoasortition"};
+                                         "enablewpoavrf","enablewpoarandao","enablewpoasortition",
+                                         "enablewpoamalus"};
         int wpoa_phase_count=(int)(sizeof(wpoa_phase_params)/sizeof(wpoa_phase_params[0]));
 
         const char* wpoa_master_val=mapConfig->Get("enablewpoa");
@@ -729,7 +770,7 @@ int mc_MultichainParams::Read(const char* name,int argc, char* argv[],int create
             }
         }
 
-        int wpoa_eff[5];
+        int wpoa_eff[6];
         for(int wp=0;wp<wpoa_phase_count;wp++)
         {
             const char* v=mapConfig->Get(wpoa_phase_params[wp]);
@@ -748,9 +789,10 @@ int mc_MultichainParams::Read(const char* name,int argc, char* argv[],int create
         else if(wpoa_eff[3] && !wpoa_eff[2]) wpoa_dep_err="enable-wpoa-randao requires enable-wpoa-vrf";
         else if(wpoa_eff[4] && !wpoa_eff[3]) wpoa_dep_err="enable-wpoa-sortition requires enable-wpoa-randao";
         else if(wpoa_eff[4] && wpoa_lookback<1) wpoa_dep_err="enable-wpoa-sortition requires wpoa-randao-lookback >= 1";
+        else if(wpoa_eff[5] && !wpoa_eff[4]) wpoa_dep_err="enable-wpoa-malus requires enable-wpoa-sortition";
         if(wpoa_dep_err)
         {
-            printf("Invalid wPoA parameters: %s. Enable phases bottom-up (weights -> selection -> vrf -> randao -> sortition) or use the enable-wpoa master switch.\n",wpoa_dep_err);
+            printf("Invalid wPoA parameters: %s. Enable phases bottom-up (weights -> selection -> vrf -> randao -> sortition -> malus) or use the enable-wpoa master switch.\n",wpoa_dep_err);
             err=MC_ERR_INVALID_PARAMETER_VALUE;
             goto exitlbl;
         }

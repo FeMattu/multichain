@@ -41,9 +41,11 @@
 #include "protocol/relay.h"
 #include "filters/filter.h"
 #include "wpoa/stream_weight_registry.h"
+#include "wpoa/malus_registry.h"
 #include "wpoa/wpoa_selector.h"
 #include "wpoa/randao_accumulator.h"
 #include "wpoa/private_sortition.h"
+#include "weight_engine/weight_engine.h"
 
 std::string BurnAddress(const std::vector<unsigned char>& vchVersion);
 std::string SetBannedTxs(std::string txlist);
@@ -573,7 +575,18 @@ std::string HelpMessage(HelpMessageMode mode)                                   
     strUsage += "  -enablewpoarandao                        " + _("wPoA Phase 3b: RANDAO beacon seed; seed proposer selection from the accumulated per-block VRF reveals instead of the previous block hash (default: 0). Requires -enablewpoavrf. Inherited from params.dat. Must be identical on all nodes.") + "\n";
     strUsage += "  -wpoarandaolookback=<k>                  " + strprintf(_("wPoA RANDAO lookback distance k in seed[n+1]=H(R_tot[n-k] | h[n-1] | n) (default: %u). Inherited from params.dat. Must be identical on all nodes."), MC_WPOA_DEFAULT_RANDAO_LOOKBACK) + "\n";
     strUsage += "  -enablewpoasortition                     " + _("wPoA Phase 4: private (VRF-scored) sortition; each validator scores itself privately under its own secret key and self-elects via a score-proportional mining delay, so the next proposer is unpredictable until it acts (default: 0). Requires -enablewpoarandao (and lookback >= 1). Inherited from params.dat. Must be identical on all nodes.") + "\n";
-    strUsage += "  -wpoasortitiondelay=<s>                  " + strprintf(_("wPoA sortition delay scale in seconds (delay = s * score * total_effective_weight); larger values spread proposers further apart in time, reducing forks at the cost of block latency (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_SORTITION_DELAY) + "\n";
+    strUsage += "  -wpoasortitiondelta=<x>                  " + strprintf(_("wPoA sortition delay band half-width as a fraction of target-block-time, delta in (0,1): D = T + delta*T*(2*score_norm-1) + lambda*Phi. Larger values spread proposers further apart in time, reducing forks at the cost of latency on the unfavoured candidates (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_SORTITION_DELTA) + "\n";
+    strUsage += "  -wpoasortitionlambda=<x>                 " + strprintf(_("wPoA sortition feedback gain lambda in [0,1]: weight of the global correction Phi that recentres the observed mean block time on target-block-time, derived from a moving average of past block timestamps. 0 disables it (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_SORTITION_LAMBDA) + "\n";
+    strUsage += "  -enablewpoamalus                         " + _("wPoA behavioural malus: run the open wpoa-weights-malus report stream and feed the election the effective weight w_eff = w * Psi instead of the raw registry weight (default: 0). Requires -enablewpoasortition. Inherited from params.dat. Must be identical on all nodes.") + "\n";
+    strUsage += "  -wpoamalusmu=<x>                         " + strprintf(_("wPoA malus accumulator persistence mu in [0,1): the fraction of M carried into the next epoch, so a proved violation decays instead of banning permanently (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_MALUS_MU) + "\n";
+    strUsage += "  -wpoamalusmax=<x>                        " + strprintf(_("wPoA malus threshold M_max > 0: the accumulator value at which Psi reaches 0 and the validator becomes ineligible (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_MALUS_MAX) + "\n";
+    strUsage += "  -wpoamalusequivpoints=<x>                " + strprintf(_("wPoA malus score added by one proved equivocation, a safety fault (default: %g). Must exceed the delay score. Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_MALUS_P_EQUIV) + "\n";
+    strUsage += "  -wpoamalusdelaypoints=<x>                " + strprintf(_("wPoA malus score added by one proved scheduling-delay violation (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_MALUS_P_DELAY) + "\n";
+    strUsage += "  -enableweightengine                      " + _("Weight engine: derive each cluster's wpoa-weights entry from public on-chain inputs (membership/ESG/activity/reconciliation) every epoch, instead of a static per-node -weight. Requires -enablewpoaweights. Inherited from params.dat; default 0. Must be identical on all nodes.") + "\n";
+    strUsage += "  -weightepochlength=<n>                   " + strprintf(_("Weight engine epoch length in blocks: epoch(height) = height / n (default: %u). Inherited from params.dat. Must be identical on all nodes."), (unsigned)MC_WEIGHT_DEFAULT_EPOCH_LENGTH) + "\n";
+    strUsage += "  -weightkappa=<x>                         " + strprintf(_("Weight engine normalization constant kappa > 0 in c_i = ESG_i * tau_i / kappa (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WEIGHT_DEFAULT_KAPPA) + "\n";
+    strUsage += "  -weightalpha=<x>                         " + strprintf(_("Weight engine allocation constant alpha in [0,1] in A_k = alpha * Theta * W_k / W_tot (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WEIGHT_DEFAULT_ALPHA) + "\n";
+    strUsage += "  -weightlambda=<x>                        " + strprintf(_("Weight engine feedback damping lambda in [0,1) in w_k = W_k * [rho*lambda + (1-lambda)] (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WEIGHT_DEFAULT_LAMBDA) + "\n";
     strUsage += "  -shrinkdebugfilesize=<n>                 " + _("If shrinkdebugfile is 1, this controls the size of the debug file. Whenever the debug.log file reaches over 5 times this number of bytes, it is reduced back down to this size.") + "\n";
     strUsage += "  -shortoutput                             " + _("Only show the node address (if connecting was successful) or an address in the wallet (if connect permissions must be granted by another node)") + "\n";
     strUsage += "  -bantx=<txids>                           " + _("Comma delimited list of banned transactions.") + "\n";
@@ -772,6 +785,36 @@ bool GrantMessagePrinted(int OutputPipe,bool failed_seed)
         }        
     }
     return false;
+}
+
+/* Real-valued parameter helpers (params.dat baseline + CLI override), mirroring
+ * the wPoA startup resolution below. Shared by the weight-engine parameters
+ * (kappa/alpha/lambda), the sortition band (delta/lambda) and the malus parameters
+ * (mu/Mmax/points): they are carried as strings and parsed with strtod. */
+static std::string ResolveWeightRealStr(mc_MultichainParams* np, const char* pname,
+                                        const char* cliflag, double def)
+{
+    std::string base;
+    if (np != NULL)
+    {
+        int sz = 0;
+        const char* p = (const char*)np->GetParam(pname, &sz);
+        if (p && sz > 0) base = p;
+    }
+    if (base.empty()) base = strprintf("%g", def);
+    return GetArg(cliflag, base);
+}
+
+/* Parse the whole string as a double; false on empty, trailing garbage or no
+ * digits. Range/finiteness are checked by the caller (NaN/Inf-safe comparisons). */
+static bool ParseWeightDouble(const std::string& s, double& out)
+{
+    if (s.empty()) return false;
+    char* end = NULL;
+    double v = strtod(s.c_str(), &end);
+    if (end == s.c_str() || *end != '\0') return false;
+    out = v;
+    return true;
 }
 
 /** Initialize bitcoin.
@@ -3242,22 +3285,28 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
             return InitError(strprintf(_("Invalid -wpoarandaolookback value %d: must be a non-negative integer."), (int)randao_k));
         }
 
-        std::string p_delay_str;
-        if (np != NULL)
+        // Delay band: delta (half-width as a fraction of target-block-time) and lambda
+        // (feedback gain). Both real-valued, so they travel as strings like the other
+        // reals and are parsed with the shared helpers.
+        std::string s_delta = ResolveWeightRealStr(np, "wpoasortitiondelta", "-wpoasortitiondelta",
+                                                  (double)MC_WPOA_DEFAULT_SORTITION_DELTA);
+        double sortition_delta = 0.0;
+        if (!ParseWeightDouble(s_delta, sortition_delta) ||
+            !(sortition_delta > 0.0 && sortition_delta < 1.0))
         {
-            int delay_size = 0;
-            const char* delay_ptr = (const char*)np->GetParam("wpoasortitiondelay", &delay_size);
-            if (delay_ptr && delay_size > 0) p_delay_str = delay_ptr;
+            return InitError(strprintf(_("Invalid wpoa-sortition-delta value '%s': must be a number in (0, 1) "
+                                         "(the band half-width is delta * target-block-time, so delta >= 1 would "
+                                         "schedule a timer before the round opened)."), s_delta));
         }
-        if (p_delay_str.empty()) p_delay_str = strprintf("%g", (double)MC_WPOA_DEFAULT_SORTITION_DELAY);
-        std::string sortition_delay_arg = GetArg("-wpoasortitiondelay", p_delay_str);
-        char* sortition_delay_end = NULL;
-        double sortition_delay = strtod(sortition_delay_arg.c_str(), &sortition_delay_end);
-        if (sortition_delay_end == sortition_delay_arg.c_str() || *sortition_delay_end != '\0' ||
-            !(sortition_delay >= 0.0) || sortition_delay > PrivateSortition::MaxDelaySeconds())
+
+        std::string s_lambda = ResolveWeightRealStr(np, "wpoasortitionlambda", "-wpoasortitionlambda",
+                                                   (double)MC_WPOA_DEFAULT_SORTITION_LAMBDA);
+        double sortition_lambda = 0.0;
+        if (!ParseWeightDouble(s_lambda, sortition_lambda) ||
+            !(sortition_lambda >= 0.0 && sortition_lambda <= 1.0))
         {
-            return InitError(strprintf(_("Invalid wpoa-sortition-delay value '%s': must be a non-negative number of seconds (<= %g)."),
-                                       sortition_delay_arg, PrivateSortition::MaxDelaySeconds()));
+            return InitError(strprintf(_("Invalid wpoa-sortition-lambda value '%s': must be a number in [0, 1]."),
+                                       s_lambda));
         }
 
         std::string p_dump_str;
@@ -3299,7 +3348,8 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
         g_wpoa_randao_enabled    = randao;
         g_wpoa_randao_lookback   = (int)randao_k;
         g_wpoa_sortition_enabled = sortition;
-        g_wpoa_sortition_delay   = sortition_delay;
+        g_wpoa_sortition_delta   = sortition_delta;
+        g_wpoa_sortition_lambda  = sortition_lambda;
         g_dumping_function       = dump_fn;
 
         // Warn when a runtime flag diverges from the inherited chain configuration: the
@@ -3318,21 +3368,197 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
         }
 
         LogPrintf("[wPoA] weights-stream %s; weighted-selection %s; VRF %s; RANDAO %s (k=%d); "
-                  "sortition %s (delay=%g s); dumping=%s\n",
+                  "sortition %s (delta=%g, lambda=%g); dumping=%s\n",
                   weights   ? "ON" : "off",
                   selection ? "ON" : "off",
                   vrf       ? "ON" : "off",
                   randao    ? "ON" : "off", g_wpoa_randao_lookback,
-                  sortition ? "ON" : "off", g_wpoa_sortition_delay,
+                  sortition ? "ON" : "off", g_wpoa_sortition_delta, g_wpoa_sortition_lambda,
                   dump_arg.c_str());
+
+        // Behavioural-malus parameters — consensus-critical, resolved exactly like the
+        // switches above (params.dat baseline, CLI override). They gate w_eff = w * Psi,
+        // so a node holding different values scores different weights and forks.
+        {
+            bool p_malus = (np != NULL) && (np->GetInt64Param("enablewpoamalus") != 0);
+            bool malus_enabled = mapArgs.count("-enablewpoamalus")
+                                   ? GetBoolArg("-enablewpoamalus", p_malus)
+                                   : (master_cli_present ? master_cli : p_malus);
+
+            double mu = 0.0, mmax = 0.0, p_equiv = 0.0, p_delay = 0.0;
+            std::string s;
+
+            s = ResolveWeightRealStr(np, "wpoamalusmu", "-wpoamalusmu", (double)MC_WPOA_DEFAULT_MALUS_MU);
+            if (!ParseWeightDouble(s, mu) || !(mu >= 0.0 && mu < 1.0))
+            {
+                return InitError(strprintf(_("Invalid -wpoamalusmu value '%s': must be a number in [0, 1) (mu < 1 is what makes an exclusion reversible)."), s));
+            }
+
+            s = ResolveWeightRealStr(np, "wpoamalusmax", "-wpoamalusmax", (double)MC_WPOA_DEFAULT_MALUS_MAX);
+            if (!ParseWeightDouble(s, mmax) || !(mmax > 0.0 && mmax < 1e18))
+            {
+                return InitError(strprintf(_("Invalid -wpoamalusmax value '%s': must be a number > 0."), s));
+            }
+
+            s = ResolveWeightRealStr(np, "wpoamalusequivpoints", "-wpoamalusequivpoints", (double)MC_WPOA_DEFAULT_MALUS_P_EQUIV);
+            if (!ParseWeightDouble(s, p_equiv) || !(p_equiv > 0.0 && p_equiv < 1e18))
+            {
+                return InitError(strprintf(_("Invalid -wpoamalusequivpoints value '%s': must be a number > 0."), s));
+            }
+
+            s = ResolveWeightRealStr(np, "wpoamalusdelaypoints", "-wpoamalusdelaypoints", (double)MC_WPOA_DEFAULT_MALUS_P_DELAY);
+            if (!ParseWeightDouble(s, p_delay) || !(p_delay > 0.0 && p_delay < 1e18))
+            {
+                return InitError(strprintf(_("Invalid -wpoamalusdelaypoints value '%s': must be a number > 0."), s));
+            }
+
+            // Equivocation threatens the chain's safety, a delay violation only the
+            // correctness of the scheduling: the protocol requires p(Equiv) >> p(Delay).
+            if (p_equiv <= p_delay)
+            {
+                return InitError(_("wPoA malus: -wpoamalusequivpoints must be strictly greater than -wpoamalusdelaypoints (equivocation is a safety fault, a delay violation only a scheduling one)."));
+            }
+
+            // Both proofs rest on the block-carried VRF reveal over the beacon seed,
+            // which only exists on sortition-governed heights.
+            if (malus_enabled && !sortition)
+            {
+                return InitError(_("wPoA malus: -enablewpoamalus requires private sortition (-enablewpoasortition): both evidence kinds are proved against the block's VRF reveal over the beacon seed."));
+            }
+
+            g_wpoa_malus_enabled = malus_enabled;
+            g_wpoa_malus_mu      = mu;
+            g_wpoa_malus_max     = mmax;
+            g_wpoa_malus_p_equiv = p_equiv;
+            g_wpoa_malus_p_delay = p_delay;
+
+            if (np != NULL && malus_enabled != p_malus)
+            {
+                LogPrintf("[wPoA-malus] WARNING: -enablewpoamalus overrides the inherited chain "
+                          "configuration (params.dat=%d, effective=%d). This switch is "
+                          "consensus-critical and MUST match the rest of the validator set or "
+                          "this node will fork.\n", (int)p_malus, (int)malus_enabled);
+            }
+
+            LogPrintf("[wPoA-malus] %s; mu=%g; Mmax=%g; p(equiv)=%g; p(delay)=%g\n",
+                      malus_enabled ? "ON" : "off", g_wpoa_malus_mu, g_wpoa_malus_max,
+                      g_wpoa_malus_p_equiv, g_wpoa_malus_p_delay);
+        }
 
         // Register this node's weight lazily on a background thread — only when the
         // weights stream is enabled. Publishing is a transaction, so it can only happen
         // once the wallet, permissions, the stream and connectivity are ready. Never
         // blocks startup.
+        // Weight-engine parameters — consensus-critical chain parameters inherited
+        // via params.dat exactly like the wPoA switches above (params.dat value is
+        // the baseline; a matching runtime flag overrides it locally, CLI wins). The
+        // engine's compute/publish thread is wired in a later stage; here we only
+        // resolve, validate and commit the configuration to the runtime globals.
+        {
+            bool p_we = (np != NULL) && (np->GetInt64Param("enableweightengine") != 0);
+            bool we_enabled = mapArgs.count("-enableweightengine")
+                                ? GetBoolArg("-enableweightengine", p_we) : p_we;
+
+            int64_t p_epoch = (np != NULL) ? np->GetInt64Param("weightepochlength")
+                                           : (int64_t)MC_WEIGHT_DEFAULT_EPOCH_LENGTH;
+            if (p_epoch < 1) p_epoch = MC_WEIGHT_DEFAULT_EPOCH_LENGTH;
+            int64_t epoch_len = GetArg("-weightepochlength", p_epoch);
+            if (epoch_len < 1 || epoch_len > 1000000)
+            {
+                return InitError(strprintf(_("Invalid -weightepochlength value %d: must be an integer in [1, 1000000]."), (int)epoch_len));
+            }
+
+            // kappa / alpha / lambda are real-valued, so (like the sortition band)
+            // they travel as strings and are parsed here with NaN/Inf-safe range checks.
+            double kappa = 0.0, alpha = 0.0, lambda = 0.0;
+            std::string s;
+
+            s = ResolveWeightRealStr(np, "weightkappa", "-weightkappa", (double)MC_WEIGHT_DEFAULT_KAPPA);
+            if (!ParseWeightDouble(s, kappa) || !(kappa > 0.0 && kappa < 1e18))
+            {
+                return InitError(strprintf(_("Invalid -weightkappa value '%s': must be a number > 0."), s));
+            }
+
+            s = ResolveWeightRealStr(np, "weightalpha", "-weightalpha", (double)MC_WEIGHT_DEFAULT_ALPHA);
+            if (!ParseWeightDouble(s, alpha) || !(alpha >= 0.0 && alpha <= 1.0))
+            {
+                return InitError(strprintf(_("Invalid -weightalpha value '%s': must be a number in [0, 1]."), s));
+            }
+
+            s = ResolveWeightRealStr(np, "weightlambda", "-weightlambda", (double)MC_WEIGHT_DEFAULT_LAMBDA);
+            if (!ParseWeightDouble(s, lambda) || !(lambda >= 0.0 && lambda < 1.0))
+            {
+                return InitError(strprintf(_("Invalid -weightlambda value '%s': must be a number in [0, 1) (lambda < 1 is a correctness requirement)."), s));
+            }
+
+            // The weight engine PRODUCES the weights the wPoA layer consumes, so it
+            // needs the weights stream running.
+            if (we_enabled && !g_wpoa_weights_enabled)
+            {
+                return InitError(_("weight-engine: -enableweightengine requires the wPoA weights stream (-enablewpoaweights)."));
+            }
+
+            g_weight_engine_enabled = we_enabled;
+            g_weight_epoch_length   = (int)epoch_len;
+            g_weight_kappa          = kappa;
+            g_weight_alpha          = alpha;
+            g_weight_lambda         = lambda;
+
+            // Consensus-critical divergence warning (mirrors the wPoA block above).
+            if (np != NULL && we_enabled != p_we)
+            {
+                LogPrintf("[WeightEngine] WARNING: -enableweightengine overrides the inherited chain "
+                          "configuration (params.dat=%d, effective=%d). This switch is consensus-critical "
+                          "and MUST match the rest of the validator set or this node will fork.\n",
+                          (int)p_we, (int)we_enabled);
+            }
+
+            // Same guard for the numeric/real params: weightepochlength/kappa/alpha/lambda are
+            // hash-enforced chain parameters, so a local CLI override changes THIS node's w_k
+            // computation and epoch boundaries. Warn on any local override (the epoch length is
+            // compared by value; the reals are flagged by flag presence since they carry a range
+            // but no per-node "expected" beyond the inherited params.dat value).
+            {
+                std::string overridden;
+                if (epoch_len != p_epoch)               overridden += " -weightepochlength";
+                if (mapArgs.count("-weightkappa"))      overridden += " -weightkappa";
+                if (mapArgs.count("-weightalpha"))      overridden += " -weightalpha";
+                if (mapArgs.count("-weightlambda"))     overridden += " -weightlambda";
+                if (!overridden.empty())
+                {
+                    LogPrintf("[WeightEngine] WARNING: local override of hash-enforced consensus "
+                              "parameter(s):%s. These MUST match the inherited params.dat value on "
+                              "every node, or this node computes a divergent w_k.\n", overridden.c_str());
+                }
+            }
+
+            LogPrintf("[WeightEngine] %s; epoch-length=%d blocks; kappa=%g; alpha=%g; lambda=%g\n",
+                      we_enabled ? "ON" : "off", g_weight_epoch_length,
+                      g_weight_kappa, g_weight_alpha, g_weight_lambda);
+        }
+
+        // Launch the weight-publication thread: the dynamic WeightEngine when enabled
+        // (it computes + publishes w_k each epoch and auto-creates/subscribes the four
+        // input streams), otherwise the static per-node weight registrar. Both feed the
+        // same wpoa-weights stream, so the consensus selector is unaffected.
         if (g_wpoa_weights_enabled && pwalletMain && pwalletTxsMain && !fDisableWallet)
         {
-            threadGroup.create_thread(boost::bind(&ThreadRegisterNodeWeight, g_node_weight));
+            if (g_weight_engine_enabled)
+            {
+                threadGroup.create_thread(boost::bind(&ThreadWeightEngine));
+            }
+            else
+            {
+                threadGroup.create_thread(boost::bind(&ThreadRegisterNodeWeight, g_node_weight));
+            }
+        }
+
+        // Provision the open malus stream on its own background thread: the first node
+        // with create permission creates it, everyone else just subscribes. Reporting
+        // itself is on demand (the reportmalus RPC), so nothing else runs here.
+        if (g_wpoa_malus_enabled && pwalletMain && pwalletTxsMain && !fDisableWallet)
+        {
+            threadGroup.create_thread(boost::bind(&ThreadMalusRegistry));
         }
     }
 #endif

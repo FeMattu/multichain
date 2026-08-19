@@ -172,8 +172,8 @@ chooses to broadcast).
 | 3a | VRF wrapper (ECVRF/DLEQ on bundled secp256k1) | Done | Pure `WPoAVRF::Prove`/`Verify`; node-free unit suite (roundtrip, determinism, tamper/forgery/cross-key rejection). [phase3a-implementation-guide.md](phase3a-implementation-guide.md). |
 | 3a | Per-block VRF reveal — embed + verify | Done | Proposer embeds `(R, π)` as a suffix of the block-signature element; `VerifyBlockMinerWPoA` rejects a missing/invalid reveal on wPoA-VRF heights. Gated by `-enablewpoavrf`. |
 | 3a | Multi-node functional test | Done | [`test/functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh) `check_vrf`: reveals carried & verified network-wide, 0 rejects, chain live and fork-free under mandatory verification (standalone `VRF reveal OK` log via `INCLUDE_PUBLIC_SELECTOR=1`). |
-| 3b | RANDAO accumulator + lookback seed | Done | `RandaoAccumulator` folds the 3a reveals into `R_tot[n]=H(R_tot[n-1]⊕H(R[n]))` and derives `seed[n+1]=H(R_tot[n-k]‖h[n-1]‖n)`, swapped into selection at both the miner and validator call sites. Gated by `-enablewpoarandao` (+ `-wpoarandaolookback=k`); consumes the seed only, election unchanged. [phase3b-implementation-guide.md](phase3b-implementation-guide.md). |
-| **4** | **Efraimidis private sortition** | **Done** | **The security fix.** Private per-validator VRF score over the beacon seed; score-timed self-election (argmin proposes first); validator-side VRF-verify + score-recompute + time-bar eligibility replaces the public argmin equality; auto-relaxing time bar is the liveness fallback (no zero-proposer gap). Gated by `-enablewpoasortition` (+ `-wpoasortitiondelay`; requires `-enablewpoarandao` and `k>=1`). `wpoa/private_sortition.{h,cpp}` + miner/validator hooks. See [§6.3](#63-phase-4--efraimidis-private-sortition-the-security-fix) and [phase4-implementation-guide.md](phase4-implementation-guide.md). |
+| 3b | RANDAO accumulator + lookback seed | Done | `RandaoAccumulator` folds the 3a reveals into `R_tot[n]=H(R_tot[n-1]⊕H(R[n]))` and derives `seed[n+1]=H(R_tot[n-k]‖h[n]‖n+1)`, swapped into selection at both the miner and validator call sites. Gated by `-enablewpoarandao` (+ `-wpoarandaolookback=k`); consumes the seed only, election unchanged. [phase3b-implementation-guide.md](phase3b-implementation-guide.md). |
+| **4** | **Efraimidis private sortition** | **Done** | **The security fix.** Private per-validator VRF score over the beacon seed; score-timed self-election (argmin proposes first); validator-side VRF-verify + score-recompute + time-bar eligibility replaces the public argmin equality; auto-relaxing time bar is the liveness fallback (no zero-proposer gap). Gated by `-enablewpoasortition` (+ `-wpoasortitiondelta`/`-wpoasortitionlambda`; requires `-enablewpoarandao` and `k>=1`). `wpoa/private_sortition.{h,cpp}` + miner/validator hooks. See [§6.3](#63-phase-4--efraimidis-private-sortition-the-security-fix) and [phase4-implementation-guide.md](phase4-implementation-guide.md). |
 | 5 | VDF over beacon seed | Future | See [§6.4](#64-phase-5--vdf-future). |
 
 Phase 1 is fully merged into `master` (see [§5](#5-branches--branch-strategy)).
@@ -375,7 +375,7 @@ verification in `VerifyBlockMinerWPoA`); RANDAO accumulator + lookback seed
 (Phase 3b — `src/wpoa/randao_accumulator.{h,cpp}`: `Fold`/`DeriveSeed`, the
 memoized block-index walk, and the seed swap at both selection call sites).
 Note a deliberate deviation from the abstract deliverable above: the seed
-`seed[n+1]=H(R_tot[n-k]‖h[n-1]‖n)` is derived from the accumulated reveals but is
+`seed[n+1]=H(R_tot[n-k]‖h[n]‖n+1)` is derived from the accumulated reveals but is
 still consumed by the *public* Efraimidis election — moving the VRF evaluation
 *into* selection (so each proposer scores privately) is Phase 4, not Phase 3b.
 Phase 3b limits the last-revealer bias to ≤ 1 bit per controlled slot (Cleve's
@@ -455,9 +455,51 @@ long-horizon item that closes the last known gap in the design.
 These are real, previously-noted items that are **not** part of the
 predictability-fix track (Phases 1–5) and are not phase-numbered here:
 
-- **Authorized / admin-restricted weight updates.** Currently any writer can
-  set its own weight (open stream); a permissioned update path (M-of-N
-  approval) is a governance concern orthogonal to leader unpredictability.
+- **M-of-N approval for weight updates.** The stream is already CLOSED, so only
+  addresses holding `wpoa-weights.write` can publish (Def. 5.16); requiring
+  several administrators to co-approve each update is a further governance
+  concern, orthogonal to leader unpredictability.
+
+- **The delay law — RESOLVED.** The scheduling delay is now the banded form §5.10
+  defines:
+
+  ```
+  score_norm = 1 - e^(-W * score)                                    (Def. 5.10)
+  D_i        = T_block + delta*T_block*(2*score_norm - 1) + lambda*Phi   (Def. 5.13)
+  ```
+
+  It previously was `delay = scale · score · Σ f(w_j)`, which satisfied everything
+  §5.10 *proves* — strictly increasing in the score, so `argmin(delay) = argmin(score)`
+  and the weighted election preserved exactly (Prop. 5.11, Cor. 5.12) — but not what
+  §5.10 *defines*, and it missed the section's second stated goal: a realized mean
+  close to `target-block-time`. Its cadence was set by `-wpoasortitiondelay` and was
+  unbounded above (13.3 s observed against a 1 s scale).
+
+  What unblocked the adoption was the total-weight factor in Def. 5.10. Normalizing as
+  `1 - e^(-score)` inherits the scale of `E/w`: with weights in the hundreds it
+  collapses against 0 for every candidate, crushing the whole field against the early
+  edge of the band. Measured on the functional configuration (3 validators at
+  100/200/300, `T_block = 2 s`, `δ = 0.5`) the first two candidates landed a **median
+  3.8 ms** apart — below any real propagation latency, so the timer race would have
+  been decided by jitter rather than by score, precisely the failure §5.10.5 warns
+  about. With the `W` factor the same configuration gives a **508 ms** median spread.
+
+  Two properties follow that the old form did not have:
+
+  * the WINNER's normalized score is exactly `U(0,1)`, for any candidate count and any
+    weight distribution (Prop. 5.10) — verified empirically with real VRF keys in
+    [`../test/private_sortition_tests.cpp`](../test/private_sortition_tests.cpp)
+    (`winner_delay_uniform_*`: decile occupancy 0.095–0.106, mean 0.497, invariant
+    under a 100:1 whale). Hence the winner's delay is uniform over the band and the
+    mean realized block time lands on `target-block-time`;
+  * the band is bounded, which is what makes the admissibility bound meaningful
+    (Prop. 5.13, Cor. 5.15).
+
+  `Phi` (Def. 5.12 / 5.14) reuses MultiChain's own cadence-holding shape — a mean over
+  `nPastBlocks = 12` past blocks, then a clip — computed on block TIMESTAMPS rather
+  than on the native `dTimeReceived`, which is node-local. See
+  [private-sortition.md §2.1b](private-sortition.md).
+
 - **Dynamic weights & decay.** Would consume the same opaque API — no callers
   would need to change — but the *semantics* of how weights evolve are out of
   scope for this track (see

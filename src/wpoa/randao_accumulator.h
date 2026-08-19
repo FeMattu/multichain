@@ -12,15 +12,16 @@
 // Formal model (docs/thesis-project-overview.md §5.4–§5.5):
 //
 //   R_tot[n]   = H( R_tot[n-1] ⊕ H(R[n]) )                 (global accumulator)
-//   seed[n+1]  = H( R_tot[n-k] ‖ h[n-1] ‖ n )              (lookback selection seed)
+//   seed[n+1]  = H( R_tot[n-k] ‖ h[n] ‖ n+1 )              (lookback selection seed)
 //
 // with `H` = SHA-256, `⊕` a byte-wise XOR over 32-byte values, `R[n]` the
-// Phase-3a VRF reveal carried in block n, `h[n-1]` the hash of block n-1, `n` the
-// current tip height, and `k` a constant lookback that decouples the seed from
-// the most recent reveals (so a validator cannot immediately steer its own next
-// re-election). The reveal R[n] is unchanged from Phase 3a — its VRF input stays
-// h[n-1] (the height term is (re)introduced here, via the seed's `n`, not in the
-// reveal; see docs/phase3a-implementation-guide.md §4.4).
+// Phase-3a VRF reveal carried in block n, `h[n]` the hash of the tip (the chain
+// state actually finalized when the round opens), `n+1` the height being elected,
+// and `k` a constant lookback that decouples the seed from the most recent
+// reveals (so a validator cannot immediately steer its own next re-election).
+// The reveal R[n] is unchanged from Phase 3a — its VRF input stays h[n-1] (the
+// height term belongs to the seed, not to the reveal; see
+// docs/phase3a-implementation-guide.md §4.4).
 //
 // WHAT CHANGES / WHAT DOES NOT. Phase 3b swaps ONLY the bytes fed to the
 // Efraimidis–Spirakis selector (the "seed" argument of WPoASelectProposer); the
@@ -118,22 +119,22 @@ public:
 
     /**
      * Derive the proposer-selection seed from the looked-back accumulator, the
-     * previous block hash and the tip height:
+     * hash of the last finalized block and the height being elected:
      *
-     *   seed = H( rtot_lookback ‖ h_prev ‖ height )        (thesis §5.5)
+     *   seed = H( rtot_lookback ‖ h_tip ‖ height )         (cfr. Def. 5.4)
      *
      * `height` is serialized as 4 big-endian bytes so the encoding is fixed and
-     * platform-independent (consensus-critical). Both `h_prev` and `height`
+     * platform-independent (consensus-critical). Both `h_tip` and `height`
      * advance every block, so the seed stays fresh per round even when the
      * looked-back accumulator changes only slowly.
      *
      * @param rtot_lookback32  HASH_SIZE bytes — R_tot[n-k].
-     * @param h_prev32         HASH_SIZE bytes — h[n-1].
-     * @param height           The tip height `n`.
+     * @param h_tip32          HASH_SIZE bytes — h[n], the tip hash.
+     * @param height           The height being elected, `n+1`.
      * @param seed_out32       [out] HASH_SIZE bytes — seed[n+1].
      */
     static void DeriveSeed(const unsigned char* rtot_lookback32,
-                           const unsigned char* h_prev32,
+                           const unsigned char* h_tip32,
                            uint32_t height,
                            unsigned char* seed_out32)
     {
@@ -145,7 +146,7 @@ public:
 
         CSHA256()
             .Write(rtot_lookback32, HASH_SIZE)
-            .Write(h_prev32, HASH_SIZE)
+            .Write(h_tip32, HASH_SIZE)
             .Write(height_be, sizeof(height_be))
             .Finalize(seed_out32);
     }
@@ -177,7 +178,7 @@ class CBlockIndex;   // forward-declared: the glue walks the block index
 extern bool g_wpoa_randao_enabled;
 
 /**
- * Lookback distance `k` in seed[n+1] = H(R_tot[n-k] ‖ h[n-1] ‖ n). Set once from
+ * Lookback distance `k` in seed[n+1] = H(R_tot[n-k] ‖ h[n] ‖ n+1). Set once from
  * -wpoarandaolookback in AppInit2 (default MC_WPOA_DEFAULT_RANDAO_LOOKBACK).
  * CONSENSUS-CRITICAL: must be identical on all nodes.
  */
@@ -202,7 +203,7 @@ bool WPoARANDAOActiveAtHeight(int height);
  * Walks the block index back to R_tot[n-k] (memoized per block hash so the amortized
  * cost is O(1) per new block, reorg-safe), reads each governed ancestor's VRF reveal
  * from disk, folds them with RandaoAccumulator::Fold, and derives the seed with
- * RandaoAccumulator::DeriveSeed over (R_tot[n-k], h[n-1], n).
+ * RandaoAccumulator::DeriveSeed over (R_tot[n-k], h[n], n+1).
  *
  * The miner passes its current tip; the validator passes the parent of the block
  * under check (pindexNew->pprev) — the same tip the honest miner saw — so both

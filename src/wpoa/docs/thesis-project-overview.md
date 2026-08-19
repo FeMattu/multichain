@@ -100,7 +100,7 @@ weighted-random-selection** — every node walks the ordered list of
 validators, accumulating weights, until the running sum exceeds
 `ρ[n+1] = MapToRange(seed[n+1], 0, W[n+1]-1)` [1][3]. Because `seed[n+1]` is
 computable by *any* observer as soon as block `n` finalizes (it is a public
-function of `h[n-1]`, height, and a public accumulator), the identity of the
+function of `h[n]`, height, and a public accumulator), the identity of the
 proposer of block `n+1` is public knowledge one full block interval in
 advance.
 
@@ -300,14 +300,14 @@ possibility that a single validator immediately influences its own future
 re-election probability [1][3]:
 
 ```
-seed[n+1] = H( R_tot[n-k] ‖ h[n-1] ‖ n )
+seed[n+1] = H( R_tot[n-k] ‖ h[n] ‖ n+1 )
 ```
 
 Introducing the term `R_tot[n-k]` temporally decouples the randomness used
 for selection from the reveal just emitted or from the most recent
-contributions. The joint use of the previous block hash `h[n-1]` anchors the
+contributions. The joint use of the last finalized block hash `h[n]` anchors the
 seed to the chain's actually-finalized historical state, while including the
-index `n` avoids ambiguity between different rounds even in the presence of
+index `n+1` avoids ambiguity between different rounds even in the presence of
 similar state prefixes [3].
 
 This construction makes the seed a public, deterministic, locally
@@ -410,7 +410,7 @@ consumption of `seed[n+1]` without changing anything in §5.1–§5.5.
 The public half of the design is unchanged from the baseline model in
 [§5](#5-formal-model): a per-block VRF reveal, verified by every peer, feeds
 the RANDAO-style accumulator `R_tot[n] = H(R_tot[n-1] ⊕ H(R[n]))`, and a
-lookback-`k` seed `seed[n+1] = H(R_tot[n-k] ‖ h[n-1] ‖ n)` is derived
+lookback-`k` seed `seed[n+1] = H(R_tot[n-k] ‖ h[n] ‖ n+1)` is derived
 deterministically from that accumulator. Every honest node computes the
 *same* `seed[n+1]` — this is what preserves agreement (§2, requirement 1).
 

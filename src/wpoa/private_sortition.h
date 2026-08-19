@@ -39,6 +39,19 @@
 //                   propagates, higher-score validators see the new tip and stand
 //                   down. So ~one block is produced per round and it is the argmin's
 //                   — preserving Pr[i]=w_i/Σw without any extra messages.
+//
+//                   The delay is a BAND around the chain's target-block-time rather
+//                   than an open-ended ramp:
+//
+//                     score_norm = 1 - e^{-W·score}                      (Def. 5.10)
+//                     D_i        = T_block + delta·T_block·(2·score_norm - 1)
+//                                          + lambda·Phi                  (Def. 5.13)
+//
+//                   The W factor is what makes the normalization real: without it the
+//                   value inherits the scale of E/w and collapses against 0 for every
+//                   candidate once weights reach the hundreds. With it, the WINNER's
+//                   normalized score is exactly U(0,1) (Prop. 5.10), so its delay is
+//                   uniform over the band and the mean block time lands on T_block.
 //   * VALIDATOR side — a peer verifies π_i, recomputes score_i from the block-carried
 //                   y_i and the signer's registry weight, and accepts iff the block's
 //                   nTime is no earlier than the score entitles:
@@ -53,9 +66,9 @@
 // time bar IS the liveness fallback. See docs/phase4-implementation-guide.md.
 //
 // CONSENSUS-CRITICAL. The VRF input encoding, the score transform, the delay map,
-// the effective-weight sum and the time-bar comparison must be bit-identical on the
-// miner and every validator, or they disagree on which blocks are valid and the
-// chain forks. The math below is therefore a PURE, node-free core (this header,
+// the effective-weight sum, the feedback Phi and the time-bar comparison must be
+// bit-identical on the miner and every validator, or they disagree on which blocks
+// are valid and the chain forks. The math below is therefore a PURE, node-free core (this header,
 // like the Phase 2/3a/3b cores) that never reads a global; the runtime flag/scale
 // binding and the node walk live in the glue (private_sortition.cpp).
 //
@@ -142,55 +155,156 @@ public:
     }
 
     /**
-     * Upper bound on the mining delay / time-bar offset, in seconds. Keeps the
-     * `parent.nTime + delay` sum well clear of any uint32 overflow and prevents a
-     * pathological (score, weight) product from stalling the chain for years; a
-     * capped delay still preserves the argmin ordering among realistic scores.
+     * Upper bound on the mining delay / time-bar offset, in seconds. With the
+     * banded delay below the value is already bounded by T_block(1+delta) + lambda*M,
+     * so this is a pure defensive backstop: it keeps the `parent.nTime + delay` sum
+     * clear of any uint32 overflow even under a pathological parameter set.
      */
     static double MaxDelaySeconds() { return 100000.0; } // ~27.7 h
 
     /**
+     * The normalized score (Def. 5.10):
+     *
+     *   score_norm = 1 - e^{-W * score}   in (0, 1)
+     *
+     * The W factor — the TOTAL effective weight of the round's candidates — is what
+     * makes this a normalization rather than a relabelling. Without it the value
+     * would inherit the scale of score = E/w, which depends on the candidate's own
+     * raw weight: on a network with weights in the hundreds E/w sits very close to 0
+     * for every candidate, so 1 - e^{-score} would collapse against 0 no matter who
+     * wins the round, defeating the whole purpose of spreading the delays across the
+     * band. Multiplying by W corrects exactly that scale effect.
+     *
+     * Two properties follow, and both matter downstream:
+     *   * x -> 1 - e^{-Wx} is strictly increasing at fixed W, so the normalized score
+     *     induces the SAME ordering as the raw score — argmin is preserved, and with
+     *     it the weighted election (Prop. 5.9 / Prop. 5.11);
+     *   * the WINNER's normalized score is exactly U(0,1), for any number of
+     *     candidates and any weight distribution (Prop. 5.10): min_i score_i ~ Exp(W),
+     *     so W*min ~ Exp(1), and applying that distribution's own CDF yields a
+     *     uniform. This is what makes the winner's delay uniform over the band, and
+     *     hence the mean block time equal to T_block.
+     *
+     * @param score             The candidate's raw sortition score (>= 0).
+     * @param total_eff_weight  W = sum_j f(w_j) over the round's candidates (> 0).
+     * @return score_norm in (0, 1); 1.0 for a degenerate input, i.e. maximally
+     *         delayed, so a node that cannot score itself stands down.
+     */
+    static double NormalizedScore(double score, double total_eff_weight)
+    {
+        if (!(score >= 0.0) || !(total_eff_weight > 0.0) ||
+            !std::isfinite(score) || !std::isfinite(total_eff_weight))
+        {
+            return 1.0;
+        }
+
+        double x = total_eff_weight * score;
+        if (!std::isfinite(x) || x < 0.0)
+        {
+            return 1.0;
+        }
+
+        double norm = 1.0 - std::exp(-x);
+        if (!(norm > 0.0))  return 0.0;   // underflow for a tiny x
+        if (norm > 1.0)     return 1.0;
+        return norm;
+    }
+
+    /**
+     * The delay shape psi (Def. 5.11), in its concrete affine form
+     *
+     *   psi(x) = 2x - 1,   mapping (0,1) -> (-1,1)
+     *
+     * so the band is symmetric around T_block: the most favoured candidate (the one
+     * closest to winning) gets T_block - Delta_max, the least favoured
+     * T_block + Delta_max. Strict monotonicity is the exact condition under which
+     * the timer race elects the sortition winner (Prop. 5.11) — psi must stay a pure
+     * monotone transform of the score, never an independent selection channel.
+     */
+    static double DelayShape(double x) { return 2.0 * x - 1.0; }
+
+    /**
+     * The largest feedback magnitude M compatible with timer admissibility
+     * (Cor. 5.15):
+     *
+     *   M* = T_block (1 - delta) / lambda
+     *
+     * Prop. 5.13 requires Delta_max <= T_block - lambda*M for D_i >= 0 to hold for
+     * every candidate and every round; with Delta_max = delta*T_block that is exactly
+     * M <= M*. The node derives it from the public parameters, so no separate
+     * configuration is needed.
+     *
+     * @return M*, or +inf when lambda == 0 — the bound is then vacuous because the
+     *         lambda*Phi term vanishes regardless (Cor. 5.14).
+     */
+    static double MaxFeedback(double target_block_time, double delta, double lambda)
+    {
+        if (!(lambda > 0.0) || !std::isfinite(lambda))
+        {
+            return std::numeric_limits<double>::infinity();
+        }
+        if (!(target_block_time > 0.0) || !std::isfinite(target_block_time) ||
+            !(delta >= 0.0) || !(delta < 1.0) || !std::isfinite(delta))
+        {
+            return 0.0;
+        }
+        return target_block_time * (1.0 - delta) / lambda;
+    }
+
+    /**
      * Map a score to the mining delay (seconds) — the score-timing that makes the
      * argmin propose first and, dually, the auto-relaxing time bar the validator
-     * enforces.
+     * enforces (Def. 5.11 + Def. 5.13):
      *
-     *   delay = scale · score · total_eff_weight
+     *   Delta_max = delta * T_block
+     *   D_i       = T_block + Delta_max * psi(score_norm_i) + lambda * Phi
      *
-     * Multiplying by `total_eff_weight = Σ_j f(w_j)` makes the delay weight-SCALE
-     * invariant: the minimum score across m validators is ~Exp(Σf(w_j)), so
-     * score·Σf(w_j) is ~Exp(1)-scaled regardless of the absolute weight magnitudes,
-     * and `scale` (seconds) then sets the real-time spread between successive
-     * proposers directly. Strictly increasing in `score`, so argmin(score) =
-     * earliest allowed proposer = the winner — the distribution is preserved.
+     * Expressing Delta_max as a FRACTION of the target makes delta the real tuning
+     * knob, invariant to a change of T_block scale, and gives the admissibility
+     * constraint for free (Prop. 5.13).
      *
-     * Tuning: larger `scale` ⇒ larger inter-proposer gaps ⇒ fewer simultaneous
-     * proposers (fewer forks) but slower blocks. See docs/phase4-implementation-guide.md.
+     * The three terms have cleanly separated jobs. Delta_max*psi(score_norm) orders
+     * the candidates — and only that. `lambda*Phi` corrects the network's aggregate
+     * temporal trajectory and is IDENTICAL for every candidate of the round, so it
+     * cancels in every pairwise timer difference and cannot reorder anyone
+     * (Prop. 5.11). T_block centres the band, which together with the winner's
+     * uniform normalized score (Prop. 5.10) puts the mean realized delay exactly on
+     * target-block-time.
      *
-     * @param score             The proposer's sortition score (≥ 0).
-     * @param total_eff_weight  Σ_j f(w_j) over all validators (> 0).
-     * @param scale             Seconds per unit of normalized score (-wpoasortitiondelay).
+     * @param score             The proposer's raw sortition score (>= 0).
+     * @param total_eff_weight  W = sum_j f(w_j) over the round's candidates (> 0).
+     * @param target_block_time T_block, the chain's target-block-time in seconds.
+     * @param delta             Delta_max / T_block, in (0,1).
+     * @param lambda            Feedback gain in [0,1]; 0 disables the correction.
+     * @param feedback          Phi, the global correction (already clipped to +/-M
+     *                          by the caller). CONSENSUS-CRITICAL: must be derived
+     *                          identically on the miner and every validator.
      * @return the delay in seconds, clamped to [0, MaxDelaySeconds()].
      */
-    static double MiningDelay(double score, double total_eff_weight, double scale)
+    static double MiningDelay(double score, double total_eff_weight,
+                              double target_block_time, double delta,
+                              double lambda, double feedback)
     {
-        // Defensive: a non-finite or negative input must not produce a negative or
-        // NaN delay (which would make the time-bar meaningless). Treat any such
+        // Defensive: a non-finite or out-of-domain input must not produce a negative
+        // or NaN delay (which would make the time bar meaningless). Treat any such
         // degenerate case as "maximally delayed" so the node effectively stands down.
-        if (!(score >= 0.0) || !(total_eff_weight > 0.0) || !(scale >= 0.0) ||
-            !std::isfinite(score) || !std::isfinite(total_eff_weight) || !std::isfinite(scale))
+        if (!(target_block_time > 0.0) || !std::isfinite(target_block_time) ||
+            !(delta >= 0.0) || !(delta < 1.0) || !std::isfinite(delta) ||
+            !(lambda >= 0.0) || !std::isfinite(lambda) || !std::isfinite(feedback))
         {
             return MaxDelaySeconds();
         }
 
-        double d = scale * score * total_eff_weight;
-        if (!std::isfinite(d) || d < 0.0)
-        {
-            return MaxDelaySeconds();
-        }
-        if (d > MaxDelaySeconds())
-        {
-            return MaxDelaySeconds();
-        }
+        double norm = NormalizedScore(score, total_eff_weight);
+        double d = target_block_time
+                 + (delta * target_block_time) * DelayShape(norm)
+                 + lambda * feedback;
+
+        // Prop. 5.13 guarantees d >= 0 whenever Delta_max <= T_block - lambda*M, which
+        // the caller enforces by clipping Phi to +/-M; clamp anyway so a misconfigured
+        // chain degrades to "mine now" instead of scheduling into the past.
+        if (!std::isfinite(d) || d < 0.0)      return 0.0;
+        if (d > MaxDelaySeconds())             return MaxDelaySeconds();
         return d;
     }
 };
@@ -212,14 +326,57 @@ class CBlockIndex;   // forward-declared: the glue walks the block index for the
 extern bool g_wpoa_sortition_enabled;
 
 /**
- * Delay scale (seconds per unit of normalized score) in
- * delay = scale · score · Σf(w). Set once from -wpoasortitiondelay in AppInit2
- * (default MC_WPOA_DEFAULT_SORTITION_DELAY). CONSENSUS-CRITICAL: must be identical
- * on all nodes (it enters the validator's time-bar).
+ * delta = Delta_max / T_block, in (0,1): the half-width of the delay band as a
+ * fraction of target-block-time (Def. 5.11). Set once from -wpoasortitiondelta in
+ * AppInit2. Small delta ⇒ a narrow band, candidates closer together in time, more
+ * forks; large delta ⇒ a wide band, more latency on the unfavoured candidates.
+ * CONSENSUS-CRITICAL: must be identical on all nodes (it enters the time bar).
  */
-extern double g_wpoa_sortition_delay;
+extern double g_wpoa_sortition_delta;
 
-#define MC_WPOA_DEFAULT_SORTITION_DELAY 1.0
+/**
+ * lambda in [0,1]: the gain of the global delay feedback (Def. 5.13). 0 disables
+ * the correction entirely (Cor. 5.14) and is the default; a value close to 1 makes
+ * the correction dominate the score-driven term and risks a persistent oscillation
+ * of the mean block time around the target. CONSENSUS-CRITICAL.
+ */
+extern double g_wpoa_sortition_lambda;
+
+#define MC_WPOA_DEFAULT_SORTITION_DELTA  0.5
+#define MC_WPOA_DEFAULT_SORTITION_LAMBDA 0.0
+
+/**
+ * Number of finalized blocks the feedback averages over. Reuses MultiChain's own
+ * scheduling window (`nPastBlocks` in miner.cpp), so the correction is smoothed over
+ * the same horizon the native delay logic already uses. CONSENSUS-CRITICAL, hence a
+ * compile-time constant rather than an operator knob: the thesis leaves only delta
+ * and lambda open to tuning (Table 5.2).
+ */
+#define MC_WPOA_SORTITION_FEEDBACK_WINDOW 12
+
+/**
+ * Phi (Def. 5.12 / Def. 5.14): the global delay correction for the round that
+ * follows `pindexTip`, derived from finalized chain state alone.
+ *
+ *   Phi = clip( T_block - mean_observed_spacing , -M, +M )
+ *
+ * i.e. MultiChain's own shape — a moving average over a fixed window of past blocks,
+ * then a clip — but computed on BLOCK TIMESTAMPS rather than on the native
+ * `dTimeReceived`. That distinction is essential: dTimeReceived is the local
+ * wall-clock arrival time (main.cpp), so it differs per node and is absent entirely
+ * on a node that synced from scratch; Def. 5.12 requires Phi to be a deterministic
+ * public function of the finalized state, identical everywhere, or the miner and the
+ * validator would compute different time bars and the chain would fork.
+ *
+ * Sign: blocks arriving too slowly (mean spacing above target) yield a negative Phi,
+ * which shortens every candidate's timer; too fast yields a positive Phi, which
+ * lengthens it. Being common to all candidates it cannot reorder them (Prop. 5.11).
+ *
+ * @param pindexTip  The tip the round starts from (may be NULL).
+ * @return Phi in [-M, +M]; 0 when the window is not yet available, so a young chain
+ *         simply runs uncorrected.
+ */
+double WPoASortitionFeedback(const CBlockIndex* pindexTip);
 
 /**
  * True when the block at `height` is elected by private sortition rather than the
@@ -237,7 +394,7 @@ bool WPoASortitionActiveAtHeight(int height);
  *
  * Derives the beacon seed over `pindexTip`, builds the VRF input, evaluates the VRF
  * under `sk32`, scores the resulting output against this node's registry weight, and
- * returns the score and delay = MiningDelay(score, Σf(w), g_wpoa_sortition_delay).
+ * returns the score and delay = MiningDelay(score, Σf(w), T_block, delta, lambda, Phi).
  *
  * @param pindexTip   The current tip (parent of the block to mine; may be NULL).
  * @param address     This node's mining address (its StreamWeightRegistry key).

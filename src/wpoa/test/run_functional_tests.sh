@@ -5,7 +5,8 @@
 # The functional suite is now a SINGLE orchestrated system-level run
 # (functional_test_wpoa_system.sh): it starts ONE multi-node network, waits for
 # weight convergence and a block warm-up ONCE, and then verifies every feature
-# (weight, multi-node consistency, VRF, RANDAO, sortition, distribution) against
+# (weight, stream permissions, malus, multi-node consistency, VRF, RANDAO,
+# sortition, distribution) against
 # that shared run. This script is the thin, robust wrapper around it — it adds a
 # hard timeout safety-net and the QUICK profile, and normalises the exit code.
 #

@@ -1,0 +1,6 @@
+cluster,letter,esg_cluster,iso_certificate,reso_rate_nominal,companies,esg_companies
+ClusterMinerA,A,20,ISO 14001,1.0,Azienda_A1;Azienda_A2;Azienda_A3;Azienda_A4;Azienda_A5;Azienda_A6;Azienda_A7;Azienda_A8;Azienda_A9;Azienda_A10,11;10;14;13;13;12;11;20;18;11
+ClusterMinerB,B,19,ISO 14001 + ISO 50001,0.9,Azienda_B1;Azienda_B2;Azienda_B3;Azienda_B4;Azienda_B5;Azienda_B6;Azienda_B7;Azienda_B8;Azienda_B9;Azienda_B10,16;10;10;11;13;13;18;19;10;18
+ClusterMinerC,C,13,ISO 9001,0.75,Azienda_C1;Azienda_C2;Azienda_C3;Azienda_C4;Azienda_C5;Azienda_C6;Azienda_C7;Azienda_C8;Azienda_C9;Azienda_C10,20;18;16;13;17;19;14;10;12;16
+ClusterMinerD,D,15,ISO 14001,0.6,Azienda_D1;Azienda_D2;Azienda_D3;Azienda_D4;Azienda_D5;Azienda_D6;Azienda_D7;Azienda_D8;Azienda_D9;Azienda_D10,14;12;13;15;11;11;16;11;15;15
+ClusterMinerE,E,19,non certificato,0.4,Azienda_E1;Azienda_E2;Azienda_E3;Azienda_E4;Azienda_E5;Azienda_E6;Azienda_E7;Azienda_E8;Azienda_E9;Azienda_E10,14;10;17;18;11;16;11;18;14;20

@@ -41,6 +41,11 @@ struct mc_EntityDetails;
  * Writes reuse MultiChain's in-process RPC handlers (create / subscribe / publish),
  * which build and broadcast real transactions.
  *
+ * The stream is created CLOSED: publishing a weight record requires an explicit
+ * per-stream write permission, so weight updates stay confined to the authorized
+ * publishers of the consortium (cfr. Def. 5.16). Reading only needs a
+ * subscription. Grant a publisher with:  grant <address> wpoa-weights.write
+ *
  * Because a published record is only visible once its transaction is mined and
  * imported into the local subscription, the read methods degrade gracefully:
  * they return 0 / an empty map until the data is confirmed, never throwing.

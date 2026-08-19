@@ -17,7 +17,7 @@
 #   ./run_unit_tests.sh --list            # list the available suites and exit
 #   DRY_RUN=1 ./run_unit_tests.sh         # print what would run, build nothing
 #
-# Suites:  weight  selector  vrf  randao  sortition
+# Suites:  weight  malus  selector  vrf  randao  sortition
 #
 # Environment:
 #   CXX        C++ compiler            (default: g++)
@@ -35,7 +35,7 @@ SECP_LIB="$SRC_DIR/secp256k1/.libs/libsecp256k1.a"
 OUTDIR="${TMPDIR:-/tmp}"
 DRY_RUN="${DRY_RUN:-0}"
 
-ALL_SUITES="weight selector vrf randao sortition"
+ALL_SUITES="weight malus selector vrf randao sortition"
 
 usage() { sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^#\{0,1\} \{0,1\}//'; }
 
@@ -49,6 +49,9 @@ build_and_run() {
         weight)
             desc="weight registry (weight_record.h parsing + newest-wins aggregation)"
             src="$SCRIPT_DIR/wpoa_weight_tests.cpp" ;;
+        malus)
+            desc="behavioural malus (record parsing, EMA accumulator, Psi, w_eff)"
+            src="$SCRIPT_DIR/wpoa_malus_tests.cpp" ;;
         selector)
             desc="proposer selector (Efraimidis-Spirakis weighted argmin)"
             src="$SCRIPT_DIR/wpoa_selector_tests.cpp"

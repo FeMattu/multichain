@@ -362,7 +362,7 @@ if (m_CreateAttempted) return false;            // create already sent, awaiting
 Array params;
 params.push_back(string("stream"));
 params.push_back(m_StreamName);
-params.push_back(true);
+params.push_back(false);
 
 m_CreateAttempted = true;
 try {
@@ -377,8 +377,13 @@ return false; // not usable until confirmed
 Key points:
 
 - It builds a json_spirit `Array` equivalent to the RPC parameters
-  `create ["stream", "wpoa-weights", true]`. The trailing `true` makes the stream
-  **open**: any address with write permission can publish.
+  `create ["stream", "wpoa-weights", false]`. The trailing `false` makes the stream
+  **closed**: publishing a weight record needs an explicit per-stream write permission,
+  so weight updates stay confined to the consortium's authorized publishers rather than
+  resting on convention (Def. 5.16). Grant a publisher with
+  `grant <address> wpoa-weights.write`. Reading only needs a subscription. This is the
+  same policy the `weight-engine-*` input streams use; the malus registry
+  ([malus-registry.md](malus-registry.md)) is deliberately the opposite.
 - `createcmd(params, false)` — calls the `create` RPC handler **directly in-process**
   (the same one invoked from the command line). The second parameter `false` = `fHelp`
   (we do not want the help, we want to execute). This is the central pattern:

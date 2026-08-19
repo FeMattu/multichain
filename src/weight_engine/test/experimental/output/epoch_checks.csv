@@ -1,0 +1,101 @@
+epoch,check,verdict,detail
+9,alloc_sums_to_alpha_theta,PASS,sum A_k 133.1999 vs alpha*Theta 133.2000 (delta -0.000100)
+9,delay_sums_to_1000,PASS,sum Delay 999.9999 (expected 1000)
+9,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+9,balance_non_negative,PASS,all 5 B_k >= 0
+9,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+10,alloc_sums_to_alpha_theta,PASS,sum A_k 96.6000 vs alpha*Theta 96.6000 (delta -0.000000)
+10,delay_sums_to_1000,PASS,sum Delay 1000.0000 (expected 1000)
+10,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+10,balance_non_negative,PASS,all 5 B_k >= 0
+10,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+11,alloc_sums_to_alpha_theta,PASS,sum A_k 97.6000 vs alpha*Theta 97.6000 (delta -0.000000)
+11,delay_sums_to_1000,PASS,sum Delay 1000.0000 (expected 1000)
+11,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+11,balance_non_negative,PASS,all 5 B_k >= 0
+11,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+12,alloc_sums_to_alpha_theta,PASS,sum A_k 158.9999 vs alpha*Theta 159.0000 (delta -0.000100)
+12,delay_sums_to_1000,PASS,sum Delay 1000.0000 (expected 1000)
+12,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+12,balance_non_negative,PASS,all 5 B_k >= 0
+12,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+13,alloc_sums_to_alpha_theta,PASS,sum A_k 125.4000 vs alpha*Theta 125.4000 (delta 0.000000)
+13,delay_sums_to_1000,PASS,sum Delay 1000.0000 (expected 1000)
+13,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+13,balance_non_negative,PASS,all 5 B_k >= 0
+13,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+14,alloc_sums_to_alpha_theta,PASS,sum A_k 99.8000 vs alpha*Theta 99.8000 (delta 0.000000)
+14,delay_sums_to_1000,PASS,sum Delay 1000.0000 (expected 1000)
+14,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+14,balance_non_negative,PASS,all 5 B_k >= 0
+14,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+15,alloc_sums_to_alpha_theta,PASS,sum A_k 170.1999 vs alpha*Theta 170.2000 (delta -0.000100)
+15,delay_sums_to_1000,PASS,sum Delay 1000.0000 (expected 1000)
+15,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+15,balance_non_negative,PASS,all 5 B_k >= 0
+15,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+16,alloc_sums_to_alpha_theta,PASS,sum A_k 128.0001 vs alpha*Theta 128.0000 (delta 0.000100)
+16,delay_sums_to_1000,PASS,sum Delay 999.9999 (expected 1000)
+16,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+16,balance_non_negative,PASS,all 5 B_k >= 0
+16,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+17,alloc_sums_to_alpha_theta,PASS,sum A_k 127.0000 vs alpha*Theta 127.0000 (delta 0.000000)
+17,delay_sums_to_1000,PASS,sum Delay 1000.0000 (expected 1000)
+17,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+17,balance_non_negative,PASS,all 5 B_k >= 0
+17,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+18,alloc_sums_to_alpha_theta,PASS,sum A_k 132.5999 vs alpha*Theta 132.6000 (delta -0.000100)
+18,delay_sums_to_1000,PASS,sum Delay 1000.0001 (expected 1000)
+18,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+18,balance_non_negative,PASS,all 5 B_k >= 0
+18,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+19,alloc_sums_to_alpha_theta,PASS,sum A_k 132.4000 vs alpha*Theta 132.4000 (delta -0.000000)
+19,delay_sums_to_1000,PASS,sum Delay 1000.0000 (expected 1000)
+19,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+19,balance_non_negative,PASS,all 5 B_k >= 0
+19,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+20,alloc_sums_to_alpha_theta,PASS,sum A_k 128.2000 vs alpha*Theta 128.2000 (delta 0.000000)
+20,delay_sums_to_1000,PASS,sum Delay 1000.0001 (expected 1000)
+20,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+20,balance_non_negative,PASS,all 5 B_k >= 0
+20,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+21,alloc_sums_to_alpha_theta,PASS,sum A_k 98.3999 vs alpha*Theta 98.4000 (delta -0.000100)
+21,delay_sums_to_1000,PASS,sum Delay 1000.0000 (expected 1000)
+21,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+21,balance_non_negative,PASS,all 5 B_k >= 0
+21,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+22,alloc_sums_to_alpha_theta,PASS,sum A_k 130.0000 vs alpha*Theta 130.0000 (delta 0.000000)
+22,delay_sums_to_1000,PASS,sum Delay 999.9999 (expected 1000)
+22,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+22,balance_non_negative,PASS,all 5 B_k >= 0
+22,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+23,alloc_sums_to_alpha_theta,PASS,sum A_k 163.2000 vs alpha*Theta 163.2000 (delta -0.000000)
+23,delay_sums_to_1000,PASS,sum Delay 1000.0000 (expected 1000)
+23,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+23,balance_non_negative,PASS,all 5 B_k >= 0
+23,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+24,alloc_sums_to_alpha_theta,PASS,sum A_k 129.7999 vs alpha*Theta 129.8000 (delta -0.000100)
+24,delay_sums_to_1000,PASS,sum Delay 1000.0001 (expected 1000)
+24,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+24,balance_non_negative,PASS,all 5 B_k >= 0
+24,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+25,alloc_sums_to_alpha_theta,PASS,sum A_k 125.6000 vs alpha*Theta 125.6000 (delta 0.000000)
+25,delay_sums_to_1000,PASS,sum Delay 1000.0000 (expected 1000)
+25,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+25,balance_non_negative,PASS,all 5 B_k >= 0
+25,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+26,alloc_sums_to_alpha_theta,PASS,sum A_k 139.6000 vs alpha*Theta 139.6000 (delta 0.000000)
+26,delay_sums_to_1000,PASS,sum Delay 999.9999 (expected 1000)
+26,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+26,balance_non_negative,PASS,all 5 B_k >= 0
+26,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+27,alloc_sums_to_alpha_theta,PASS,sum A_k 96.5999 vs alpha*Theta 96.6000 (delta -0.000100)
+27,delay_sums_to_1000,PASS,sum Delay 1000.0000 (expected 1000)
+27,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+27,balance_non_negative,PASS,all 5 B_k >= 0
+27,resi_within_available,PASS,all 5 R_k <= A_k + B_prev
+28,alloc_sums_to_alpha_theta,PASS,sum A_k 164.8001 vs alpha*Theta 164.8000 (delta 0.000100)
+28,delay_sums_to_1000,PASS,sum Delay 1000.0000 (expected 1000)
+28,rho_in_unit_interval,PASS,"all 5 rho in [0,1]"
+28,balance_non_negative,PASS,all 5 B_k >= 0
+28,resi_within_available,PASS,all 5 R_k <= A_k + B_prev

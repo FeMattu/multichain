@@ -21,6 +21,23 @@ wPoA replaces that replay, **only for wPoA-governed heights**, with a check that
 block's signer equals the weighted-election proposer. The contract is preserved exactly:
 same `fPassedMinerPrecheck` side effect, same `return false` = reject.
 
+### 1.1 The other diversity gate: `CheckBlockPermissions`
+
+`VerifyBlockMiner` is a *precheck*; the standing consensus rule that the signer holds the
+`mine` permission lives in `CheckBlockPermissions`, which is applied to every block. That
+one called `mc_Permissions::CanMine()`, and `CanMine()` folds `IsBarredByDiversity()` in —
+so the round-robin spacing survived there even on wPoA-governed heights, and a validator
+that legitimately won two consecutive rounds under weighted selection had its second block
+rejected.
+
+Step 1 of the round's block validation (§5.12.3) keeps every inherited L0 rule — format,
+signature, transaction validity, the signer's `mine` permission — but explicitly drops the
+mining-diversity spacing, so that **every address holding `mine` takes part in every
+round**. On wPoA-governed heights `CheckBlockPermissions` therefore checks the raw mine
+permission (`CanCustom`, i.e. `GetPermission` without the spacing); every other height
+keeps `CanMine()` unchanged. `CreateNewBlock`'s miner-side `canMine` probe mirrors the same
+rule, so a self-elected proposer no longer logs "cannot mine now" against itself.
+
 The include added at the top of the file:
 
 ```cpp

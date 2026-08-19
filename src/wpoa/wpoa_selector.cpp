@@ -10,6 +10,7 @@
 #include "wpoa/wpoa_selector.h"
 
 #include "wpoa/stream_weight_registry.h" // StreamWeightRegistry, GetAllNodesWeights
+#include "wpoa/malus_registry.h"         // WPoAApplyMalus (w_eff = w * Psi)
 #include "core/init.h"                   // pwalletTxsMain
 #include "utils/util.h"                  // LogPrint, LogPrintf, fDebug
 #include "chainparams/state.h"           // mc_gState, IsProtocolMultichain,
@@ -91,6 +92,12 @@ std::string WPoASelectProposer(const unsigned char* seed, size_t seed_len, int h
 
     StreamWeightRegistry registry(pwalletTxsMain);
     std::map<std::string, uint32_t> weights = registry.GetAllNodesWeights();
+
+    // The election consumes the EFFECTIVE weight w_eff = w * Psi (Def. 5.22): the
+    // raw registry weight corrected by the behavioural malus accumulated on-chain.
+    // A no-op — the map comes back unchanged — when the malus registry is disabled
+    // or no validator carries any proved violation.
+    weights = WPoAApplyMalus(weights, height);
 
     std::string proposer = WPoASelector::SelectProposer(seed, seed_len, weights,
                                                         g_dumping_function);

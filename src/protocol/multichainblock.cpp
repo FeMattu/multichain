@@ -1186,16 +1186,33 @@ bool CheckBlockPermissions(const CBlock& block,CBlockIndex* prev_block,unsigned 
                     checked = false;
                 }
                 if(checked)
-                {    
+                {
                     CKeyID pubKeyHash=pubKeyOut.GetID();
                     memcpy(lpMinerAddress,pubKeyHash.begin(),20);
-                    if(!mc_gState->m_Permissions->CanMine(NULL,pubKeyHash.begin()))
+/* MCHN START - wPoA: the mine permission still gates the signer, but the
+   mining-diversity spacing does not. Under weighted selection every address with
+   the mine permission takes part in every round, and a heavier validator may
+   legitimately win two consecutive heights — which CanMine()'s round-robin
+   spacing would reject. So on wPoA-governed heights check the raw mine
+   permission (CanCustom = GetPermission, no spacing); every other height keeps
+   the native CanMine() unchanged. Cfr. §5.12.3, block validation step 1. */
+                    int nMinerPerm;
+                    if(WPoAActiveAtHeight(prev_block->nHeight+1))
+                    {
+                        nMinerPerm=mc_gState->m_Permissions->CanCustom(NULL,pubKeyHash.begin(),MC_PTP_MINE);
+                    }
+                    else
+                    {
+                        nMinerPerm=mc_gState->m_Permissions->CanMine(NULL,pubKeyHash.begin());
+                    }
+                    if(!nMinerPerm)
+/* MCHN END */
                     {
                 //                mc_DumpSize("Connection address",pubKeyHash.begin(),20,20);
                         LogPrintf("mchn: Permission denied for miner %s received in block signature\n",CBitcoinAddress(pubKeyHash).ToString().c_str());
                         checked = false;
                     }
-                }                
+                }
             }
         }
         else
