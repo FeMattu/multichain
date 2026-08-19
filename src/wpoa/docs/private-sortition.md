@@ -76,15 +76,21 @@ scores, low enough to bound the worst case.
 
 ### 2.1 Flags
 
-- `g_wpoa_sortition_enabled` (default `false`) — set from `-enablewpoasortition` in AppInit2.
-- `g_wpoa_sortition_delta` (default `0.5`) — the band half-width as a fraction of
-  target-block-time, `Δmax = δ·T_block`, set from `-wpoasortitiondelta`. Must be in `(0,1)`:
-  at `δ ≥ 1` the most favoured candidate's timer would fall before the round opened.
-- `g_wpoa_sortition_lambda` (default `0`) — the feedback gain λ, set from
-  `-wpoasortitionlambda`. `0` disables the global correction entirely (Cor. 5.14).
+Three runtime globals, all set once in `AppInit2` and never written again:
 
-Both are consensus-critical: they enter the validator's time bar, so a node holding
-different values computes a different bar and forks.
+- `g_wpoa_sortition_enabled` — the activation gate, from `-enablewpoasortition`.
+- `g_wpoa_sortition_delta` — the band half-width **as a fraction** of
+  target-block-time, so the absolute half-width is `Δmax = δ·T_block`. Must be in
+  `(0,1)`: at `δ ≥ 1` the most favoured candidate's timer would fall *before* the
+  round opened.
+- `g_wpoa_sortition_lambda` — the feedback gain `λ`. At `0` the global correction is
+  disabled entirely (Cor. 5.14).
+
+All three are **consensus-critical**: they enter the validator's time bar, so a node
+holding different values computes a different bar and forks.
+
+> **Defaults and valid ranges:
+> [protocol-parameters.md §2](protocol-parameters.md#2-catalogo--fasi-wpoa).**
 
 #### Sizing δ against the network
 

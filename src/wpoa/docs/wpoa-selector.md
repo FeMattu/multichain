@@ -315,8 +315,10 @@ bool g_wpoa_enabled = false;
 DumpingFunction g_dumping_function = MC_WPOA_DEFAULT_DUMPING_FUNCTION;   // = DUMP_NONE
 ```
 The **definitions** of the two globals declared `extern` in the header. `g_wpoa_enabled`
-defaults `false` — with the flag unset the node keeps its native round-robin
-mining-diversity behavior unchanged. `g_dumping_function` defaults `DUMP_NONE` — raw
+defaults to off — with the flag unset the node keeps its native round-robin
+mining-diversity behavior unchanged (see
+[protocol-parameters.md](protocol-parameters.md) for the exact values).
+`g_dumping_function` defaults `DUMP_NONE` — raw
 weights, so an operator who never sets `-dumpfunction` gets the undamped Efraimidis–Spirakis
 distribution. Both are written once, on the init thread, before any miner/validator thread
 reads them (§node-startup), so they need no lock.

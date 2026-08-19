@@ -155,18 +155,38 @@ consensus-fork warning, since these switches must match across the validator set
 
 ### All flags
 
+The **complete catalogue** — every parameter with its type, default, valid range,
+the code location where it is defined and validated, and its exact effect on
+consensus — lives in
+**[src/wpoa/docs/protocol-parameters.md](src/wpoa/docs/protocol-parameters.md)**. That file is the
+single authoritative source; the table below is a summary.
+
+Everything except `-weight` is a chain parameter, **hash-enforced** (it takes part in
+the `params.dat` hash), so it must be identical across the validator set.
+
 | Flag (CLI) / parameter (`params.dat`) | Phase | Default | Meaning |
 |---|---|---|---|
 | `-enablewpoa` / `-wpoaenable` &nbsp; (`enable-wpoa`) | master | `0` | Enable the **whole** protocol. Specific flags below override it per phase. |
 | `-enablewpoaweights` &nbsp; (`enable-wpoa-weights`) | 1 | `0` | Run the `wpoa-weights` stream (validators register their weight). Can run standalone; forced on by any higher phase. |
 | `-enablewpoaselection` &nbsp; (`enable-wpoa-selection`) | 2 | `0` | Weighted proposer selection (Efraimidis–Spirakis). Requires phase 1. |
-| `-dumpfunction=<none\|sqrt\|log>` &nbsp; (`dump-function`) | 2 | `none` | Weight-dumping (damping) function applied before the draw. Consensus-critical. |
+| `-dumpfunction=<none\|sqrt\|log>` &nbsp; (`dump-function`) | 2 | `none` | Weight-dumping (damping) function `f(w)` applied before the draw. |
 | `-enablewpoavrf` &nbsp; (`enable-wpoa-vrf`) | 3a | `0` | VRF randomness beacon (verifiable per-block reveal). Requires phase 2. |
 | `-enablewpoarandao` &nbsp; (`enable-wpoa-randao`) | 3b | `0` | RANDAO beacon seed from accumulated reveals. Requires phase 3a. |
-| `-wpoarandaolookback=<k>` &nbsp; (`wpoa-randao-lookback`) | 3b | `1` | RANDAO lookback distance `k`. Consensus-critical. |
-| `-enablewpoasortition` &nbsp; (`enable-wpoa-sortition`) | 4 | `0` | Private (VRF-scored) sortition. Requires phase 3b and `k≥1`. |
-| `-wpoasortitiondelay=<s>` &nbsp; (`wpoa-sortition-delay`) | 4 | `1` | Sortition delay scale in seconds. Consensus-critical. |
-| `-weight=<n>` | — | `100` | This node's own validator weight (per-node, **not** a chain parameter). |
+| `-wpoarandaolookback=<k>` &nbsp; (`wpoa-randao-lookback`) | 3b | `1` | RANDAO lookback distance `k`. Must be `≥ 1` when sortition is on. |
+| `-enablewpoasortition` &nbsp; (`enable-wpoa-sortition`) | 4 | `0` | Private (VRF-scored) sortition. Requires phase 3b and `k ≥ 1`. |
+| `-wpoasortitiondelta=<x>` &nbsp; (`wpoa-sortition-delta`) | 4 | `0.5` | Delay-band half-width as a **fraction of `target-block-time`**, `x ∈ (0,1)`. |
+| `-wpoasortitionlambda=<x>` &nbsp; (`wpoa-sortition-lambda`) | 4 | `0` | Gain `λ ∈ [0,1]` of the global feedback `Φ` that recentres the mean block time on target. `0` = off. |
+| `-enablewpoamalus` &nbsp; (`enable-wpoa-malus`) | malus | `0` | Behavioural malus registry; elect on the effective weight `w_eff = w · Ψ`. Requires phase 4. |
+| `-wpoamalusmu=<x>` &nbsp; (`wpoa-malus-mu`) | malus | `0.5` | Accumulator persistence `μ ∈ [0,1)`. `μ < 1` is what makes an exclusion reversible. |
+| `-wpoamalusmax=<x>` &nbsp; (`wpoa-malus-max`) | malus | `4` | Threshold `M_max > 0` at which `Ψ` reaches `0`. |
+| `-wpoamalusequivpoints=<x>` &nbsp; (`wpoa-malus-equiv-points`) | malus | `4` | Score of one proved equivocation. Must exceed the delay score. |
+| `-wpoamalusdelaypoints=<x>` &nbsp; (`wpoa-malus-delay-points`) | malus | `0.25` | Score of one proved delay violation. |
+| `-enableweightengine` &nbsp; (`enable-weight-engine`) | weight | `0` | Derive each cluster's weight from the on-chain inputs (membership / ESG / activity / reconciliation) once per epoch, **instead of** a static `-weight`. Requires phase 1. |
+| `-weightepochlength=<n>` &nbsp; (`weight-epoch-length`) | weight | `100` | Epoch length in blocks. The epoch is **1-based**: `epoch(height) = height / n + 1`. |
+| `-weightkappa=<x>` &nbsp; (`weight-kappa`) | weight | `100` | Normalization `κ > 0` in the company contribution `c_i = ESG_i · τ_i / κ`. |
+| `-weightalpha=<x>` &nbsp; (`weight-alpha`) | weight | `0.2` | Allocation constant `α ∈ [0,1]` in `A_k = α · Θ · W_k / W_tot`. |
+| `-weightlambda=<x>` &nbsp; (`weight-lambda`) | weight | `0.5` | Behavioural-feedback damping `λ ∈ [0,1)`. `λ < 1` is a correctness requirement. |
+| `-weight=<n>` | — | `100` | This node's own validator weight (per-node runtime flag, **not** a chain parameter). See the note below. |
 
 **Master + precedence.** `-enablewpoa` (alias `-wpoaenable`) turns every phase on; a more
 specific `-enablewpoa*` flag overrides its phase. Example — full stack except sortition:
@@ -176,11 +196,24 @@ specific `-enablewpoa*` flag overrides its phase. Example — full stack except 
 ```
 
 **Dependency constraints (hard fail).** Phases must be enabled bottom-up —
-`weights → selection → vrf → randao → sortition` — and sortition additionally requires
-`wpoa-randao-lookback ≥ 1`. In particular **RANDAO requires the VRF beacon** and
-**sortition requires the VRF beacon** (transitively, via RANDAO). Enabling a phase
-without its prerequisite is rejected with a clear error at chain creation *and* at node
-startup; the node refuses to start rather than run a phase inert.
+`weights → selection → vrf → randao → sortition → malus` — the weight engine
+additionally requires phase 1, and sortition requires `wpoa-randao-lookback ≥ 1`
+(the sortition reveal feeds `R_tot[n]` while its own seed reads `R_tot[n-k]`, so
+`k = 0` would make the seed circular). Enabling a phase without its prerequisite is
+rejected with a clear error at chain creation *and* at node startup; the node refuses
+to start rather than run a phase inert.
+
+**Where a validator's weight actually comes from.** `-weight` is the **fallback**, not
+the primary path. With `-enableweightengine=1` the two publishers are mutually
+exclusive at startup: the weight engine computes the weight from the on-chain inputs
+and publishes it, and `-weight` is parsed, validated and logged but **never
+published**. Both paths write the same `wpoa-weights` stream, which is created
+**closed** — publishing needs the `wpoa-weights.write` permission, so a node that
+does not hold it carries no weight in the election and **cannot set its own weight by
+any means**. The three attestation streams behind the engine are written only through
+the admin-gated RPCs `weightsetesg`, `weightsetmembership` and
+`weightsetreconciliation`. Full detail:
+[src/wpoa/docs/weight-engine.md](src/wpoa/docs/weight-engine.md).
 
 Windows Build Notes
 =====================

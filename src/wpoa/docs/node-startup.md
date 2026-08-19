@@ -1,33 +1,44 @@
 # `core/init.h` + `core/init.cpp` (wPoA parts)
 
-> **⚠ Updated in protocol 20014 — the wPoA switches are now chain parameters.**
+> **Registro: tecnico-diretto.** Walkthrough del codice di avvio. Per il modello
+> teorico si rimanda a [thesis-project-overview.md](thesis-project-overview.md).
+
+> **⚠ Updated in protocol 20014 — the wPoA switches are chain parameters.**
 > The per-section walkthrough below (§2.4-§2.8) describes the *original* model, in
 > which each phase was a standalone runtime flag read with `GetBoolArg(...)`. That
 > single resolution block has since been replaced. The current behaviour is:
 >
-> - **Every wPoA switch is a `params.dat` chain parameter** (defined in
->   [`chainparams/paramlist.h`](../../chainparams/paramlist.h), relevant from protocol
->   `20014`, `MC_PRM_NOHASH`): `enablewpoa` (master), `enablewpoaweights`,
->   `enablewpoaselection`, `dumpfunction`, `enablewpoavrf`, `enablewpoarandao`,
->   `wpoarandaolookback`, `enablewpoasortition`, `wpoasortitiondelta`, `wpoasortitionlambda`. They are set at
->   `multichain-util create` time (or edited into `params.dat`) and **inherited** by
->   every node that joins — a fresh node needs no wPoA command-line flags.
+> - **Every wPoA and weight-engine switch is a `params.dat` chain parameter**, defined
+>   in [`chainparams/paramlist.h`](../../chainparams/paramlist.h) from protocol
+>   `20014`. They are set at `multichain-util create` time (or edited into
+>   `params.dat`) and **inherited** by every node that joins — a fresh node needs no
+>   wPoA command-line flags.
+> - **They are hash-enforced.** No entry in the wPoA/weight block of `paramlist.h`
+>   carries `MC_PRM_NOHASH`: every one is `MC_PRM_USER | MC_PRM_CLONE` plus its type,
+>   so the values take part in the `params.dat` hash. A local CLI override therefore
+>   diverges this node from the validator set and **risks a silent fork**; `AppInit2`
+>   logs a loud warning but does **not** prevent startup.
+>   *(An earlier revision of this document described them as `MC_PRM_NOHASH`. That
+>   description was wrong and has been corrected against the code.)*
 > - **`AppInit2` resolves each phase** as: explicit runtime `-enablewpoa*` flag → else
->   the runtime master `-enablewpoa`/`-wpoaenable` (on/off) → else the inherited
->   `params.dat` value. The runtime flag overriding the inherited value logs a
->   consensus-fork warning.
-> - **The `-enablewpoa` master switch** (creation-time master expansion lives in
->   [`chainparams/params.cpp`](../../chainparams/params.cpp) `Read`) turns the whole
->   protocol on; specific `-enablewpoa*` flags override it per phase.
-> - **Dependency constraints are hard failures** (both at creation and startup):
->   `weights → selection → vrf → randao → sortition`, and sortition needs `k≥1`.
-> - **Phase 1 (the weights stream) is gated** on `enablewpoaweights` / `g_wpoa_weights_enabled`
->   (default off) — the registration thread only launches when it is on. It is forced
->   on whenever any higher phase is active.
+>   the runtime master `-enablewpoa`/`-wpoaenable` → else the inherited `params.dat`
+>   value. Creation-time master expansion lives in
+>   [`chainparams/params.cpp`](../../chainparams/params.cpp) (`Read`).
+> - **Dependency constraints are hard failures**, at both creation and startup:
+>   `weights → selection → vrf → randao → sortition → malus`; the weight engine
+>   requires `weights`; and sortition requires lookback `k ≥ 1`.
+> - **Phase 1 (the weights stream) is gated** on `enablewpoaweights` /
+>   `g_wpoa_weights_enabled` — the publication thread only launches when it is on, and
+>   it is forced on whenever any higher phase is active.
 >
-> See the **Startup configuration** section of [`../README.md`](../README.md) and the
-> `/* MCHN START - wPoA startup resolution */` block in `init.cpp` for the authoritative
-> current logic; the code snippets below are retained for phase-by-phase background.
+> **The complete parameter set — names, types, defaults, valid ranges, defining and
+> validating code lines — is catalogued in
+> [protocol-parameters.md](protocol-parameters.md).** This document explains *how* the
+> values are read, resolved and wired; it deliberately does not restate them.
+>
+> The `/* MCHN START - wPoA startup resolution */` block in `init.cpp` is the
+> authoritative current logic; the snippets below are retained for phase-by-phase
+> background.
 
 > Documentation of the **node-startup integration** for wPoA. `init.cpp` is huge (it
 > drives the entire MultiChain node bootstrap); here we document **only** the wPoA parts:

@@ -190,19 +190,21 @@ proved violation, so enabling the mechanism on a clean chain is a no-op.
 
 ## 8. Configuration
 
-Inheritable chain parameters, resolved like every other wPoA switch (params.dat baseline,
-CLI override, loud warning on a local divergence). All consensus-critical.
+The registry is governed by five inheritable chain parameters, resolved like every
+other wPoA switch (`params.dat` baseline, CLI override, loud warning on a local
+divergence). All are consensus-critical.
 
-| Switch | Meaning | Default |
-|---|---|---|
-| `-enablewpoamalus` | Run the registry and elect on `w_eff`. Requires `-enablewpoasortition`. | off |
-| `-wpoamalusmu` | Persistence `mu` in `[0,1)`. `mu < 1` is what makes exclusion reversible. | `0.5` |
-| `-wpoamalusmax` | Threshold `M_max > 0` at which `Psi` reaches 0. | `4` |
-| `-wpoamalusequivpoints` | `p(Equiv)` — a safety fault. Must exceed the delay score. | `4` |
-| `-wpoamalusdelaypoints` | `p(Delay)` — a scheduling fault. | `0.25` |
+> **Names, types, defaults and valid ranges:
+> [protocol-parameters.md §3](protocol-parameters.md#3-catalogo--registro-del-malus-comportamentale).**
 
-Two constraints are hard failures at startup: the registry requires private sortition
-(both proofs rest on the block's VRF reveal), and `p(Equiv) > p(Delay)`.
+Two constraints are **hard failures** at startup, and both are structural rather than
+stylistic:
+
+1. **The registry requires private sortition.** Both evidence kinds are proved against
+   the block's VRF reveal over the beacon seed, which only exists once sortition runs.
+2. **`p(Equiv) > p(Delay)`.** An equivocation is a *safety* fault, a delay violation
+   only a *scheduling* one; inverting the order would let the lighter fault dominate
+   the accumulator.
 
 ---
 

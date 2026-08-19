@@ -123,8 +123,12 @@ by Phase 5's VDF — [thesis §7.3](thesis-project-overview.md#73-bias-analysis-
 
 Nodes touch two new knobs:
 
-- `-enablewpoarandao` (default **off**; requires `-enablewpoavrf`), and
-- `-wpoarandaolookback=<k>` (default **1**; consensus-critical, must match on all nodes).
+- `-enablewpoarandao` — the activation gate; requires `-enablewpoavrf`, and
+- `-wpoarandaolookback=<k>` — the lookback distance; consensus-critical, must match on
+  all nodes.
+
+Defaults and valid ranges:
+[protocol-parameters.md §2](protocol-parameters.md#2-catalogo--fasi-wpoa).
 
 Everything else (the accumulator math, the block-index walk, reveal extraction, the seed
 derivation) is internal and hidden behind the `RandaoAccumulator` class, the

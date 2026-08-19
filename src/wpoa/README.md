@@ -96,47 +96,29 @@ election math — is hidden behind the `StreamWeightRegistry` facade and the
 
 ### Startup configuration — flags & `params.dat` inheritance
 
-Every wPoA switch is a **chain parameter**: it can be set when the chain is created
-(`multichain-util create <chain> -enablewpoa=1 …`) and is then written into
-`params.dat`. Any node that joins the network **inherits** it automatically, so a
-fresh node needs no command-line flags — it just runs `multichaind <chain>@<seed>`
-and picks up the right protocol. A chain created with no wPoA flags is a plain
-MultiChain instance (everything off), exactly as before.
+Every wPoA switch is a **chain parameter**: it is set when the chain is created
+(`multichain-util create <chain> -enablewpoa=1 …`), written into `params.dat`, and
+**inherited** by any node that joins. A fresh node therefore needs no command-line
+flags — it just runs `multichaind <chain>@<seed>` and picks up the right protocol.
+A chain created with no wPoA flags is a plain MultiChain instance.
 
-The same names also work as **runtime flags** on `multichaind`. A runtime flag
-overrides the inherited `params.dat` value for that node only (CLI wins); because
-the switches are consensus-critical, a divergent override logs a loud fork warning.
+The same names also work as **runtime flags** on `multichaind`, overriding the
+inherited value for that node only. Because the parameters are **hash-enforced**,
+a divergent override risks a silent fork; `AppInit2` logs a loud warning but does
+not prevent startup.
 
-| Switch | Phase | Meaning |
-|---|---|---|
-| `-enablewpoa` / `-wpoaenable` | master | Enable the **whole** protocol. More specific flags below override it. |
-| `-enablewpoaweights` | 1 | Run the `wpoa-weights` stream. Standalone-capable; forced on by any higher phase. |
-| `-enablewpoaselection` | 2 | Weighted proposer selection. Requires `-enablewpoaweights`. |
-| `-dumpfunction=<none\|sqrt\|log>` | 2 | Weight-dumping function applied before the draw. |
-| `-enablewpoavrf` | 3a | VRF randomness beacon. Requires `-enablewpoaselection`. |
-| `-enablewpoarandao` | 3b | RANDAO beacon seed. Requires `-enablewpoavrf`. |
-| `-wpoarandaolookback=<k>` | 3b | RANDAO lookback distance `k` (default `1`). |
-| `-enablewpoasortition` | 4 | Private (VRF-scored) sortition. Requires `-enablewpoarandao` and `k≥1`. |
-| `-wpoasortitiondelta=<x>` | 4 | Delay band half-width as a fraction of target-block-time, `δ ∈ (0,1)` (default `0.5`). |
-| `-wpoasortitionlambda=<x>` | 4 | Global delay-feedback gain `λ ∈ [0,1]` (default `0` = off). |
-| `-enablewpoamalus` | malus | Behavioural malus registry; elect on `w_eff = w * Psi`. Requires `-enablewpoasortition`. |
-| `-wpoamalusmu=<x>` | malus | Accumulator persistence `mu` in `[0,1)` (default `0.5`). |
-| `-wpoamalusmax=<x>` | malus | Threshold `M_max > 0` at which `Psi` reaches 0 (default `4`). |
-| `-wpoamalusequivpoints=<x>` | malus | Score of one proved equivocation (default `4`). |
-| `-wpoamalusdelaypoints=<x>` | malus | Score of one proved delay violation (default `0.25`). |
+The master switch `-enablewpoa` (alias `-wpoaenable`) turns every phase on; a more
+specific `-enablewpoa*` flag then overrides its phase. Phases must be enabled
+bottom-up — `weights → selection → vrf → randao → sortition → malus` — and a
+violation is a **hard failure** at both chain creation and node startup.
 
-**Precedence.** The master (`-enablewpoa` / `-wpoaenable`) turns every phase on; a
-more specific `-enablewpoa*` flag then overrides its phase. So
-`-enablewpoa=1 -enablewpoasortition=0` runs the full stack *except* sortition.
+> **Every parameter — name, type, default, valid range, defining and validating code
+> line, and effect on consensus — is catalogued in one place:
+> [docs/protocol-parameters.md](docs/protocol-parameters.md).**
+> Do not duplicate parameter values here.
 
-**Dependency constraints (hard fail).** Phases must be enabled bottom-up:
-`weights → selection → vrf → randao → sortition → malus`. Enabling a phase without its
-prerequisite (e.g. RANDAO without VRF, or sortition without RANDAO / with `k=0`) is
-rejected at chain creation **and** at node startup with a clear error — the node
-refuses to start rather than run a phase inert. `-enablewpoa`, `-dumpfunction`,
-`-wpoarandaolookback`, `-wpoasortitiondelta` and `-wpoasortitionlambda` are consensus-critical and must be
-identical across the validator set (inheritance via `params.dat` guarantees this for
-nodes that join without overriding flags).
+How the switches are read, resolved and wired into `AppInit2`:
+[docs/node-startup.md](docs/node-startup.md).
 
 ---
 
