@@ -1,5 +1,12 @@
 # `vrf_wrapper.h` + `vrf_wrapper.cpp`
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 > Detailed technical walkthrough of the **pure cryptographic core of wPoA Phase 3a**: the
 > `WPoAVRF` class — an ECVRF / Chaum–Pedersen DLEQ Verifiable Random Function over the
 > secp256k1 curve already bundled with MultiChain.
@@ -38,6 +45,29 @@ the intent directly:
 
 ---
 
+## Indice
+
+  - [1. Why is the whole thing node-free?](#1-why-is-the-whole-thing-node-free)
+- [2. vrf_wrapper.h](#2-vrf_wrapperh)
+  - [2.1 Includes and their provenance](#21-includes-and-their-provenance)
+  - [2.2 The wire-format size constants](#22-the-wire-format-size-constants)
+  - [2.3 The Prove entry points](#23-the-prove-entry-points)
+  - [2.4 The Verify entry points](#24-the-verify-entry-points)
+  - [2.5 The std::vector convenience overloads](#25-the-stdvector-convenience-overloads)
+- [3. vrf_wrapper.cpp — the implementation](#3-vrf_wrappercpp-—-the-implementation)
+  - [3.1 Includes and the static-constant definitions](#31-includes-and-the-static-constant-definitions)
+  - [3.2 Which secp256k1 functions, and why they are safe here](#32-which-secp256k1-functions-and-why-they-are-safe-here)
+  - [3.3 The anonymous-namespace constants and the context singleton](#33-the-anonymous-namespace-constants-and-the-context-singleton)
+  - [3.4 SerializePoint — compress a point to 33 bytes](#34-serializepoint-—-compress-a-point-to-33-bytes)
+  - [3.5 HashToCurve — deterministic map from bytes to a curve point](#35-hashtocurve-—-deterministic-map-from-bytes-to-a-curve-point)
+  - [3.6 HashToScalar — uniform scalar in [1, n-1]](#36-hashtoscalar-—-uniform-scalar-in-1-n-1)
+  - [3.7 ComputeOutput and ComputeChallenge](#37-computeoutput-and-computechallenge)
+  - [3.8 WPoAVRF::Prove — putting it together](#38-wpoavrfprove-—-putting-it-together)
+  - [3.9 WPoAVRF::Verify — recompute and compare](#39-wpoavrfverify-—-recompute-and-compare)
+  - [3.10 The std::vector overloads](#310-the-stdvector-overloads)
+- [4. Connections to the other files](#4-connections-to-the-other-files)
+
+---
 ## 2. `vrf_wrapper.h`
 
 ### 2.1 Includes and their provenance

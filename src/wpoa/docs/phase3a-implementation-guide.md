@@ -1,5 +1,12 @@
 # wPoA VRF Randomness Beacon — Implementation Guide (Phase 3a)
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 This document explains **how the Phase 3a code works, why every choice was made, and
 how to change it**. It is the Phase 3a sibling of
 [phase1-implementation-guide.md](phase1-implementation-guide.md) and
@@ -69,8 +76,7 @@ subsystem end to end.
 
 ---
 
-## Table of contents
-
+## Indice
 1. [What this module does](#1-what-this-module-does)
 2. [File map](#2-file-map)
 3. [Mental model: 5 facts you must hold in your head](#3-mental-model)

@@ -1,5 +1,12 @@
 # `private_sortition.{h,cpp}` — line-by-line walkthrough (Phase 4)
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 This is the per-file companion to
 [phase4-implementation-guide.md](phase4-implementation-guide.md). It walks the pure core
 (`private_sortition.h`, class `PrivateSortition`) and the node glue
@@ -8,6 +15,24 @@ This is the per-file companion to
 
 ---
 
+## Indice
+
+- [1. The pure core (private_sortition.h)](#1-the-pure-core-private_sortitionh)
+  - [1.1 VRFInput(seed32, height, out) — the public VRF input](#11-vrfinputseed32-height-out-—-the-public-vrf-input)
+  - [1.2 ScoreFromVRFOutput(vrf_output, weight, dumping) — the private score](#12-scorefromvrfoutputvrf_output-weight-dumping-—-the-private-score)
+  - [1.3 MiningDelay(score, total_eff_weight, scale) — score-timing / time bar](#13-miningdelayscore-total_eff_weight-scale-—-score-timing--time-bar)
+- [2. The node glue (private_sortition.cpp)](#2-the-node-glue-private_sortitioncpp)
+  - [2.1 Flags](#21-flags)
+  - [2.1b WPoASortitionFeedback(pindexTip) — Φ](#21b-wpoasortitionfeedbackpindextip-—-φ)
+  - [2.2 WPoASortitionActiveAtHeight(height)](#22-wpoasortitionactiveatheightheight)
+  - [2.3 BuildSortitionContext(pindexTip, weights, &Σf(w), seed) — shared read path](#23-buildsortitioncontextpindextip-weights-σfw-seed-—-shared-read-path)
+  - [2.4 WPoASortitionLocalScoreDelay(pindexTip, address, sk32, &score, &delay) — miner](#24-wpoasortitionlocalscoredelaypindextip-address-sk32-score-delay-—-miner)
+  - [2.5 WPoASortitionVRFInputForBlock(block, &input) — miner, at signing](#25-wpoasortitionvrfinputforblockblock-input-—-miner-at-signing)
+  - [2.6 WPoASortitionVerifyProposer(parent, height, pubkey, addr, reveal, proof, block_ntime, &reason) — validator](#26-wpoasortitionverifyproposerparent-height-pubkey-addr-reveal-proof-block_ntime-reason-—-validator)
+  - [2.7 Anti-respin guard](#27-anti-respin-guard)
+- [3. Why this file is split core-vs-glue](#3-why-this-file-is-split-core-vs-glue)
+
+---
 ## 1. The pure core (`private_sortition.h`)
 
 `PrivateSortition` is header-only and node-free (it depends only on the Phase-2 score
@@ -53,7 +78,9 @@ which now just does `HMAC → FoldTop64 → ScoreFromEntropy64`.
 ### 1.3 `MiningDelay(score, total_eff_weight, scale)` — score-timing / time bar
 
 ```
-delay = clamp( scale · score · total_eff_weight , 0 , MaxDelaySeconds() )
+norm  = NormalizedScore(score, total_eff_weight)      // 1 - e^(-W·score)
+delay = clamp( T_block + delta·T_block·DelayShape(norm) + lambda·Phi ,
+               0 , MaxDelaySeconds() )                  // MaxDelaySeconds() = 100000.0
 ```
 
 - **Strictly increasing in `score`** ⇒ the argmin has the smallest delay ⇒ it proposes

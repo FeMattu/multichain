@@ -1,5 +1,12 @@
 # `stream_weight_registry.h` + `stream_weight_registry.cpp`
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 > Detailed technical walkthrough of the **core of wPoA (Weighted Proof-of-Authority)
 > weight management — Phase 1**.
 
@@ -37,6 +44,30 @@ entire wallet subsystem.
 
 ---
 
+## Indice
+
+  - [Why the .h / .cpp split?](#why-the-h--cpp-split)
+- [The class at a glance](#the-class-at-a-glance)
+- [1. The header stream_weight_registry.h](#1-the-header-stream_weight_registryh)
+  - [1.1 Includes and where they come from](#11-includes-and-where-they-come-from)
+  - [1.2 The two constants (#define)](#12-the-two-constants-define)
+  - [1.3 The StreamWeightRegistry class — the "facade"](#13-the-streamweightregistry-class-—-the-facade)
+  - [1.4 Global elements declared in the header](#14-global-elements-declared-in-the-header)
+- [2. The implementation stream_weight_registry.cpp](#2-the-implementation-stream_weight_registrycpp)
+  - [2.1 Includes and what they bring](#21-includes-and-what-they-bring)
+  - [2.2 The global variable and module-level constants](#22-the-global-variable-and-module-level-constants)
+  - [2.3 Constructor, destructor and address resolution](#23-constructor-destructor-and-address-resolution)
+  - [2.4 Stream management](#24-stream-management)
+  - [2.5 Writing a record: PublishWeightRecord()](#25-writing-a-record-publishweightrecord)
+  - [2.6 Orchestrating the write: RegisterLocalWeight()](#26-orchestrating-the-write-registerlocalweight)
+  - [2.7 Reading records — the most delicate path](#27-reading-records-—-the-most-delicate-path)
+  - [2.8 The public read methods (thin wrappers over ReadAllRecords)](#28-the-public-read-methods-thin-wrappers-over-readallrecords)
+  - [2.9 The deferred registration thread](#29-the-deferred-registration-thread)
+  - [2.10 The three RPC functions (defined here, registered in rpclist.cpp)](#210-the-three-rpc-functions-defined-here-registered-in-rpclistcpp)
+- [3. How this file connects to the others](#3-how-this-file-connects-to-the-others)
+- [Related documents](#related-documents)
+
+---
 ## The class at a glance
 
 ```mermaid

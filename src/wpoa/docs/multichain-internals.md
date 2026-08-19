@@ -1,5 +1,12 @@
 # MultiChain Internals Used by the wPoA Weight Registry
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 > Reference to the MultiChain host-codebase symbols this module depends on, with exact
 > `file:line` pointers so you can navigate and modify with confidence. Line numbers
 > are accurate as of this branch; if the tree moves, `grep` the symbol name.
@@ -10,6 +17,21 @@ this document is the "where does this come from in MultiChain?" companion. See t
 
 ---
 
+## Indice
+
+- [Where these APIs sit in the two data paths](#where-these-apis-sit-in-the-two-data-paths)
+- [1. Global objects & how includes reach them](#1-global-objects--how-includes-reach-them)
+- [2. Streams are entities (mc_AssetDB / mc_EntityDetails)](#2-streams-are-entities-mc_assetdb--mc_entitydetails)
+- [3. Writing to a stream = a transaction](#3-writing-to-a-stream--a-transaction)
+- [4. Reading a stream = the wallet-tx store (mc_WalletTxs, non-WRP API)](#4-reading-a-stream--the-wallet-tx-store-mc_wallettxs-non-wrp-api)
+- [5. Decoding an item's data (mc_Script + OpReturnFormatEntry)](#5-decoding-an-items-data-mc_script--opreturnformatentry)
+- [6. Reusing RPC handlers in-process (writes)](#6-reusing-rpc-handlers-in-process-writes)
+- [7. Permissions & node address](#7-permissions--node-address)
+- [8. Mining (why reads lag writes)](#8-mining-why-reads-lag-writes)
+- [9. Quick symbol index](#9-quick-symbol-index)
+- [Related documents](#related-documents)
+
+---
 ## Where these APIs sit in the two data paths
 
 The module touches the host codebase along exactly two paths — a **write** path that

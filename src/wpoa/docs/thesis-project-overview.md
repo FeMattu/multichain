@@ -1,5 +1,12 @@
 # Private Proposer Sortition for Weighted Proof-of-Authority: A Thesis Overview
 
+> **Registro: formale-accademico.** Documento a prevalenza teorica: modello di
+> consenso, proprietà di sicurezza, motivazioni progettuali e confronto con altri
+> meccanismi (PoW / PoS / PoA / PoSA). Le trattazioni implementative a registro
+> tecnico-diretto vivono nei file per-componente; lo stato in
+> [implementation-status.md](implementation-status.md), i parametri in
+> [protocol-parameters.md](protocol-parameters.md).
+
 > **Scope of this document.** This is the *research* companion to the wPoA
 > project: problem, threat model, formal model, and
 > theoretical justification for the design. It contains **no implementation
@@ -16,8 +23,7 @@ consensus, not a novel algorithm.
 
 ---
 
-## Table of Contents
-
+## Indice
 1. [Abstract](#1-abstract)
 2. [Problem Statement](#2-problem-statement)
 3. [Threat Model & Vulnerabilities](#3-threat-model--vulnerabilities)

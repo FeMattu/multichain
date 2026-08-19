@@ -53,6 +53,23 @@ interface/implementation pair: `init.h` declares the global symbols that the oth
 modules (including `stream_weight_registry.cpp`) use; `init.cpp` defines them and
 contains `AppInit2`, the startup function.
 
+## Indice
+
+- [1. What init.h provides to the weight subsystem](#1-what-inith-provides-to-the-weight-subsystem)
+- [2. The integration in init.cpp](#2-the-integration-in-initcpp)
+  - [2.1 The include (line 43)](#21-the-include-line-43)
+  - [2.2 The help text for the -weight parameter (line 564)](#22-the-help-text-for-the--weight-parameter-line-564)
+  - [2.3 The registration block (lines 3171-3191)](#23-the-registration-block-lines-3171-3191)
+  - [2.4 wPoA Phase 2: the -enablewpoa flag (lines 3183-3187)](#24-wpoa-phase-2-the--enablewpoa-flag-lines-3183-3187)
+  - [2.5 wPoA Phase 2: the -dumpfunction flag](#25-wpoa-phase-2-the--dumpfunction-flag)
+  - [2.6 wPoA Phase 3a: the -enablewpoavrf flag](#26-wpoa-phase-3a-the--enablewpoavrf-flag)
+  - [2.7 wPoA Phase 3b: the -enablewpoarandao / -wpoarandaolookback flags](#27-wpoa-phase-3b-the--enablewpoarandao---wpoarandaolookback-flags)
+  - [2.8 wPoA Phase 4: the -enablewpoasortition / -wpoasortitiondelta / -wpoasortitionlambda flags](#28-wpoa-phase-4-the--enablewpoasortition---wpoasortitiondelta---wpoasortitionlambda-flags)
+- [3. The complete startup flow](#3-the-complete-startup-flow)
+- [4. Links to the other files](#4-links-to-the-other-files)
+- [Related documents](#related-documents)
+
+---
 ## 1. What `init.h` provides to the weight subsystem
 
 `init.h` is the header that `stream_weight_registry.cpp` includes
@@ -207,9 +224,16 @@ registration thread is launched:
 // ... inside AppInit2, after the -weight handling:
 // wPoA Phase 2: weighted proposer selection. Default off — when unset the
 // node keeps its native round-robin mining-diversity behavior unchanged.
-g_wpoa_enabled = GetBoolArg("-enablewpoa", false);
-LogPrintf("[wPoA] Weighted proposer selection %s\n",
-          g_wpoa_enabled ? "ENABLED (-enablewpoa=1)" : "disabled (native mining-diversity)");
+// Current code (init.cpp, /* MCHN START - wPoA startup resolution */ block).
+// Each phase is resolved as: explicit runtime flag -> runtime master -> params.dat.
+LogPrintf("[wPoA] weights-stream %s; weighted-selection %s; VRF %s; RANDAO %s (k=%d); "
+          "sortition %s (delta=%g, lambda=%g); dumping=%s\n",
+          weights   ? "ON" : "off",
+          selection ? "ON" : "off",
+          vrf       ? "ON" : "off",
+          randao    ? "ON" : "off", g_wpoa_randao_lookback,
+          sortition ? "ON" : "off", g_wpoa_sortition_delta, g_wpoa_sortition_lambda,
+          dump_arg.c_str());
 ```
 
 Line-by-line:

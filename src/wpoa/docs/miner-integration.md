@@ -1,5 +1,12 @@
 # `miner/miner.cpp` (wPoA Phase 2 parts)
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 > Documentation of the **miner-side integration** of wPoA weighted selection.
 > `miner.cpp` is a large file that drives MultiChain block production; here we document
 > **only** the wPoA branch added to `GetMinerAndExpectedMiningStartTime`. The rest is the
@@ -8,6 +15,19 @@
 This is a **modified host file**, not a new module file. The change is one self-contained
 branch delimited by `/* MCHN START - wPoA Phase 2 */ … /* MCHN END */`.
 
+## Indice
+
+- [1. Where the change lives and why there](#1-where-the-change-lives-and-why-there)
+- [2. The added branch, line by line](#2-the-added-branch-line-by-line)
+  - [if(WPoAActiveAtHeight(pindexTip->nHeight + 1))](#ifwpoaactiveatheightpindextip-nheight--1)
+  - [Resolving the local mining key](#resolving-the-local-mining-key)
+  - [No local mining key → wait](#no-local-mining-key--wait)
+  - [Compute the seed and elect](#compute-the-seed-and-elect)
+  - [Elected → mine now; else → wait](#elected--mine-now-else--wait)
+- [3. Effect on the native path](#3-effect-on-the-native-path)
+- [4. Connections to the other files](#4-connections-to-the-other-files)
+
+---
 ## 1. Where the change lives and why there
 
 The function:

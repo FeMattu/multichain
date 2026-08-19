@@ -1,5 +1,12 @@
 # wPoA Private Sortition — Implementation Guide (Phase 4)
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 This document explains **how the Phase 4 code works, why every choice was made, and
 how to change it**. It is the Phase 4 sibling of
 [phase1-implementation-guide.md](phase1-implementation-guide.md),
@@ -67,8 +74,7 @@ box; this guide walks the whole subsystem end to end.
 
 ---
 
-## Table of contents
-
+## Indice
 1. [What this module does](#1-what-this-module-does)
 2. [File map](#2-file-map)
 3. [Mental model: 6 facts you must hold in your head](#3-mental-model)
@@ -262,7 +268,7 @@ the existing block relay, the existing mining-start-time gate and the existing f
 fork choice, with **no** P2P or fork-choice changes. It is the natural continuation of the
 Phase 2/3a/3b architecture (pure core + node glue + miner/validator hooks + one flag).
 
-**Why the delay `scale · score · Σf(w)` and not just `scale · score`?** Multiplying by the
+**Why normalize the score by `Σf(w)` instead of using the raw score?** Dividing by the
 effective-weight sum makes the delay weight-**scale** invariant: the minimum score across
 `m` validators is `~Exp(Σf(w))`, so `score·Σf(w)` is `~Exp(1)`-scaled regardless of the
 absolute weight magnitudes, and `scale` (seconds) then sets the real-time spread between
@@ -321,7 +327,8 @@ See [private-sortition.md](private-sortition.md) for the line-by-line core walkt
 
 - **`PrivateSortition::VRFInput`** concatenates `seed(32) ‖ "PROPOSER"(8) ‖ BE32(height)` →
   44 bytes. **`ScoreFromVRFOutput`** = `WPoASelector::ScoreFromEntropy64(FoldTop64(y), w, dump)`.
-  **`MiningDelay`** = `clamp(scale · score · Σf(w), 0, MaxDelaySeconds)`, with degenerate
+  **`MiningDelay`** = `clamp(T_block + delta·T_block·DelayShape(norm) + lambda·Phi, 0, MaxDelaySeconds())`
+  where `norm = 1 - e^(-Sigma f(w)·score)`, with degenerate
   inputs saturating to the max (stand down).
 - **`WPoASortitionLocalScoreDelay`** (miner): build context (seed + weights + Σf(w)); look up
   this node's weight; `VRFInput`; `WPoAVRF::Prove` under the node's secret key; score; delay.
@@ -348,7 +355,7 @@ sequenceDiagram
     participant Net as Network / peers
 
     Note over Tip: seed[n+1] = H(R_tot[n-k]‖h[n]‖n+1)  (public)
-    Vlow->>Vlow: score_low = -ln(u)/f(w), delay_low = scale·score_low·W  (small)
+    Vlow->>Vlow: score_low = -ln(u)/f(w); score_norm_low = 1-e^(-W·score_low); delay_low = T+δT(2·score_norm_low-1)+λΦ
     Vhigh->>Vhigh: score_high, delay_high  (larger)
     Note over Vlow,Vhigh: neither can compute the other's score (private VRF key)
     Vlow->>Net: after delay_low: mine block(n+1), embed (y_low, π_low)

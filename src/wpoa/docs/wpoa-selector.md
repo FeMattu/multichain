@@ -1,5 +1,12 @@
 # `wpoa_selector.h` + `wpoa_selector.cpp`
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 > Detailed technical walkthrough of the **core of wPoA (Weighted Proof-of-Authority)
 > weighted miner selection — Phase 2**: the deterministic proposer election.
 
@@ -38,6 +45,27 @@ self-contained, namespaced unit with no per-instance state — you never constru
 
 ---
 
+## Indice
+
+  - [1. Why is the math in the header and the glue in the .cpp?](#1-why-is-the-math-in-the-header-and-the-glue-in-the-cpp)
+- [2. wpoa_selector.h](#2-wpoa_selectorh)
+  - [2.1 Includes and their provenance](#21-includes-and-their-provenance)
+  - [2.2 Weight-dumping (-dumpfunction) — whale compression](#22-weight-dumping--dumpfunction-—-whale-compression)
+  - [2.3 WPoASelector::ComputeScore — the per-node score](#23-wpoaselectorcomputescore-—-the-per-node-score)
+  - [2.4 WPoASelector::SelectProposer — the argmin](#24-wpoaselectorselectproposer-—-the-argmin)
+  - [2.5 The node-glue declarations (bottom of the header)](#25-the-node-glue-declarations-bottom-of-the-header)
+- [3. wpoa_selector.cpp — the node glue](#3-wpoa_selectorcpp-—-the-node-glue)
+  - [3.1 Includes](#31-includes)
+  - [3.2 The flag definitions](#32-the-flag-definitions)
+  - [3.3 WPoAActiveAtHeight — the activation predicate](#33-wpoaactiveatheight-—-the-activation-predicate)
+  - [3.4 WPoASelectProposer — registry-backed election](#34-wpoaselectproposer-—-registry-backed-election)
+- [4. Connections to the other files](#4-connections-to-the-other-files)
+- [5. wPoA Phase 3a — VRF beacon activation glue](#5-wpoa-phase-3a-—-vrf-beacon-activation-glue)
+  - [5.1 Header declarations (bottom of wpoa_selector.h)](#51-header-declarations-bottom-of-wpoa_selectorh)
+  - [5.2 Definitions (wpoa_selector.cpp)](#52-definitions-wpoa_selectorcpp)
+  - [5.3 What is *not* here](#53-what-is-not-here)
+
+---
 ## 2. `wpoa_selector.h`
 
 ### 2.1 Includes and their provenance

@@ -1,5 +1,12 @@
 # `protocol/multichainblock.cpp` (wPoA Phase 2 parts)
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 > Documentation of the **validator-side integration** of wPoA weighted selection.
 > `multichainblock.cpp` is a large file implementing MultiChain's block-level protocol
 > checks; here we document **only** the wPoA addition: the new `VerifyBlockMinerWPoA`
@@ -10,6 +17,21 @@ This is a **modified host file**, not a new module file. The change is one new s
 function plus a guarded early-return, both delimited by `/* MCHN START - wPoA Phase 2 */`
 markers.
 
+## Indice
+
+- [1. The role of VerifyBlockMiner](#1-the-role-of-verifyblockminer)
+  - [1.1 The other diversity gate: CheckBlockPermissions](#11-the-other-diversity-gate-checkblockpermissions)
+- [2. The delegation in VerifyBlockMiner](#2-the-delegation-in-verifyblockminer)
+- [3. VerifyBlockMinerWPoA — line by line](#3-verifyblockminerwpoa-—-line-by-line)
+  - [3.1 Obtain the block data (with native leniency)](#31-obtain-the-block-data-with-native-leniency)
+  - [3.2 Recover the signer address](#32-recover-the-signer-address)
+  - [3.3 Recompute the election](#33-recompute-the-election)
+  - [3.4 Empty-registry leniency](#34-empty-registry-leniency)
+  - [3.5 The enforcement check](#35-the-enforcement-check)
+- [4. Miner ↔ validator symmetry](#4-miner--validator-symmetry)
+- [5. Connections to the other files](#5-connections-to-the-other-files)
+
+---
 ## 1. The role of `VerifyBlockMiner`
 
 `VerifyBlockMiner(CBlock* block_in, CBlockIndex* pindexNew)` is the receiving-side check

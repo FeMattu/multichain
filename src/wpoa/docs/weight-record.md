@@ -1,7 +1,32 @@
 # `weight_record.h`
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 > Detailed technical walkthrough of the **pure weight-record helpers** — wPoA Phase 1.
 
+## Indice
+
+- [1. Role and philosophy of the file](#1-role-and-philosophy-of-the-file)
+  - [Why a separate, "dependency-light" file?](#why-a-separate-dependency-light-file)
+  - [Why inline and header-only?](#why-inline-and-header-only)
+- [2. Includes](#2-includes)
+- [3. mc_ParseWeightRecordJson — parsing and validation](#3-mc_parseweightrecordjson-—-parsing-and-validation)
+  - [Contract (from the Doxygen comment)](#contract-from-the-doxygen-comment)
+  - [3.1 Zeroing and type check](#31-zeroing-and-type-check)
+  - [3.2 The two OpReturnFormatEntry shapes (robustness)](#32-the-two-opreturnformatentry-shapes-robustness)
+  - [3.3 Extracting the "json" object](#33-extracting-the-json-object)
+  - [3.4 Reading the node_address and weight fields](#34-reading-the-node_address-and-weight-fields)
+  - [3.5 Final validation and conversion](#35-final-validation-and-conversion)
+- [4. mc_AccumulateLatestWeight — "newest wins" aggregation](#4-mc_accumulatelatestweight-—-newest-wins-aggregation)
+- [5. Links to the other files](#5-links-to-the-other-files)
+- [Related documents](#related-documents)
+
+---
 ## 1. Role and philosophy of the file
 
 This is a **header-only** header (all functions are `inline`, there is no associated

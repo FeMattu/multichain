@@ -1,5 +1,12 @@
 # `miner/miner.cpp` (wPoA Phase 3b — the RANDAO seed on the miner side)
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 > Documentation of the **miner-side integration** of the RANDAO beacon seed: how the block
 > producer, when the beacon governs the next height, seeds proposer selection from the
 > accumulator instead of the raw previous block hash. `miner.cpp` is a large file; this doc
@@ -19,6 +26,21 @@ block inside the existing wPoA election branch. The include added at the top of 
 (`WPoAActiveAtHeight` / `WPoASelectProposer` come from `wpoa/wpoa_selector.h`, already
 included for Phase 2; `WPoAVRF` from `wpoa/vrf_wrapper.h`, included for Phase 3a.)
 
+## Indice
+
+- [1. Where the change lives and why there](#1-where-the-change-lives-and-why-there)
+- [2. The added block, line by line](#2-the-added-block-line-by-line)
+  - [uint256 hWPoASeed=pindexTip->GetBlockHash();](#uint256-hwpoaseedpindextip-getblockhash)
+  - [unsigned char randao_seed[32];](#unsigned-char-randao_seed32)
+  - [if(WPoARANDAOActiveAtHeight(nWPoAHeight) && WPoARandaoSelectionSeed(pindexTip,randao_seed))](#ifwpoarandaoactiveatheightnwpoaheight--wpoarandaoselectionseedpindextiprandao_seed)
+  - [memcpy(hWPoASeed.begin(),randao_seed,sizeof(randao_seed));](#memcpyhwpoaseedbeginrandao_seedsizeofrandao_seed)
+  - [std::string sProposer=WPoASelectProposer(hWPoASeed.begin(),hWPoASeed.size(),nWPoAHeight);](#stdstring-sproposerwpoaselectproposerhwpoaseedbeginhwpoaseedsizenwpoaheight)
+- [3. What happens after (unchanged)](#3-what-happens-after-unchanged)
+- [4. Effect on the native / Phase 2 / Phase 3a path](#4-effect-on-the-native--phase-2--phase-3a-path)
+- [5. Miner ↔ validator symmetry (the seed)](#5-miner--validator-symmetry-the-seed)
+- [6. Connections to the other files](#6-connections-to-the-other-files)
+
+---
 ## 1. Where the change lives and why there
 
 The function (`miner.cpp:1026`):

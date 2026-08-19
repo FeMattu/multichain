@@ -1,5 +1,12 @@
 # Behavioural malus registry (`malus_record.h` + `malus_registry.{h,cpp}`)
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 > The second of the two registries wPoA maintains, and the deliberate mirror image of
 > the first. Where [`stream-weight-registry.md`](stream-weight-registry.md) documents the
 > **closed** stream that says how much a validator is worth, this one documents the
@@ -8,6 +15,23 @@
 
 ---
 
+## Indice
+
+- [1. Why a second registry](#1-why-a-second-registry)
+- [2. The two streams are opposites, on purpose](#2-the-two-streams-are-opposites-on-purpose)
+- [3. What can be reported, and why only these two](#3-what-can-be-reported-and-why-only-these-two)
+  - [equiv — equivocation](#equiv-—-equivocation)
+  - [delay — scheduling-delay violation](#delay-—-scheduling-delay-violation)
+- [4. Valid(e) — the local decidability predicate](#4-valide-—-the-local-decidability-predicate)
+- [5. Accumulation, and why exclusion is always temporary](#5-accumulation-and-why-exclusion-is-always-temporary)
+- [6. Epoch alignment, and the acyclicity it buys](#6-epoch-alignment-and-the-acyclicity-it-buys)
+- [7. Where it enters consensus](#7-where-it-enters-consensus)
+- [8. Configuration](#8-configuration)
+- [9. RPC surface](#9-rpc-surface)
+- [10. Tests](#10-tests)
+- [11. Files](#11-files)
+
+---
 ## 1. Why a second registry
 
 The weight `w_i` on `wpoa-weights` is produced entirely outside the consensus: an ESG

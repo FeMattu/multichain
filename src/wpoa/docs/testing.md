@@ -1,5 +1,12 @@
 # wPoA Weight Registry — Testing Guide
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 > How to build, unit-test and functionally test the module — plus the MultiChain
 > mining model that explains why reads lag writes.
 
@@ -17,6 +24,27 @@ This document covers:
 Throughout, `CHAIN` is the blockchain name and the binaries are in `./src`
 (`multichaind`, `multichain-cli`, `multichain-util`).
 
+## Indice
+
+- [Test layers at a glance](#test-layers-at-a-glance)
+- [1. Automated unit tests](#1-automated-unit-tests)
+- [2. How MultiChain mining works](#2-how-multichain-mining-works)
+  - [2.1 Proof-of-Authority round-robin](#21-proof-of-authority-round-robin)
+  - [2.2 The lifecycle of a weight registration](#22-the-lifecycle-of-a-weight-registration)
+  - [2.3 Confirmed vs. unconfirmed — the key point](#23-confirmed-vs-unconfirmed-—-the-key-point)
+- [4. Manual test — single node (quick)](#4-manual-test-—-single-node-quick)
+- [5. Manual test — three nodes (full)](#5-manual-test-—-three-nodes-full)
+  - [5.1 Create the chain and start node A (admin)](#51-create-the-chain-and-start-node-a-admin)
+  - [5.2 Start node B, grant permissions](#52-start-node-b-grant-permissions)
+  - [5.3 Start node C, (same steps of node B)](#53-start-node-c-same-steps-of-node-b)
+  - [5.4 Verify (from any node)](#54-verify-from-any-node)
+- [6. When exactly do records appear?](#6-when-exactly-do-records-appear)
+- [7. Automated functional test (single system-level run)](#7-automated-functional-test-single-system-level-run)
+- [8. Troubleshooting](#8-troubleshooting)
+  - [8.1 Deep debugging: -wpoadebug](#81-deep-debugging--wpoadebug)
+- [Related documents](#related-documents)
+
+---
 ## Test layers at a glance
 
 ```mermaid

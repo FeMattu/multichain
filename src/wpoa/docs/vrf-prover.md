@@ -1,5 +1,12 @@
 # `miner/miner.cpp` (wPoA Phase 3a — the VRF prover)
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 > Documentation of the **prover-side integration** of the wPoA VRF beacon: how the elected
 > proposer produces its reveal and embeds it in the block. `miner.cpp` is a large file; this
 > doc covers **only** the Phase 3a branch added to `CreateBlockSignature`. The Phase 2
@@ -9,6 +16,19 @@
 This is a **modified host file**, not a new module. The change is one self-contained branch
 delimited by `/* MCHN START - wPoA Phase 3a … */ … /* MCHN END */`.
 
+## Indice
+
+- [1. Where the change lives and why there](#1-where-the-change-lives-and-why-there)
+- [2. The added branch, line by line](#2-the-added-branch-line-by-line)
+  - [if(g_wpoa_vrf_enabled)](#ifg_wpoa_vrf_enabled)
+  - [The output buffers](#the-output-buffers)
+  - [WPoAVRF::Prove(key.begin(), block->hashPrevBlock.begin(), block->hashPrevBlock.size(), …)](#wpoavrfprovekeybegin-block-hashprevblockbegin-block-hashprevblocksize-)
+  - [On success — SetBlockVRF](#on-success-—-setblockvrf)
+  - [On failure — log and embed nothing (fail-safe)](#on-failure-—-log-and-embed-nothing-fail-safe)
+- [3. Effect on the native / Phase 2 path](#3-effect-on-the-native--phase-2-path)
+- [4. Connections to the other files](#4-connections-to-the-other-files)
+
+---
 ## 1. Where the change lives and why there
 
 The function (`miner.cpp:120`):

@@ -1,9 +1,28 @@
 # `rpc/rpclist.cpp` (wPoA parts only)
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 > This file is documented at **the minimum necessary level**: what it is, how the RPC
 > command registration mechanism works and **how the three wPoA commands were added**.
 > The rest of the file is MultiChain's standard RPC command table and is not detailed.
 
+## Indice
+
+- [1. What this file is for](#1-what-this-file-is-for)
+- [2. Adding the wPoA commands](#2-adding-the-wpoa-commands)
+  - [2.1 The include (line 13)](#21-the-include-line-13)
+  - [2.2 The three registered rows (lines 135-140)](#22-the-three-registered-rows-lines-135-140)
+  - [2.3 How the table reaches the RPC server](#23-how-the-table-reaches-the-rpc-server)
+- [3. Summary: what was "touched" to add the commands](#3-summary-what-was-touched-to-add-the-commands)
+- [4. Links to the other files](#4-links-to-the-other-files)
+- [Related documents](#related-documents)
+
+---
 ## 1. What this file is for
 
 `rpclist.cpp` contains the **dispatch table** of all the node's RPC commands: the map

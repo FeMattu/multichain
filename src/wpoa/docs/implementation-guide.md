@@ -1,5 +1,12 @@
 # wPoA Implementation Guide — Master Index
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 > **What this file is.** A lightweight, high-level map of the whole wPoA
 > implementation across all phases. It says, in a few sentences per phase, what
 > each phase adds and how the phases build on one another, and links to the

@@ -1,5 +1,12 @@
 # `miner/miner.cpp` — the Phase 4 miner-side hook (walkthrough)
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 Per-file companion to [phase4-implementation-guide.md](phase4-implementation-guide.md),
 covering the three miner-side changes for private sortition. See
 [private-sortition.md](private-sortition.md) for the helpers called here and

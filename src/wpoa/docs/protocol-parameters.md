@@ -19,6 +19,24 @@ come parametro di catena; la colonna «Validazione» dove il suo valore è
 
 ---
 
+## Indice
+
+- [1. Modello di configurazione](#1-modello-di-configurazione)
+  - [1.1 I parametri sono hash-enforced](#11-i-parametri-sono-hash-enforced)
+  - [1.2 Master switch e precedenza](#12-master-switch-e-precedenza)
+  - [1.3 Vincoli di dipendenza (fallimento netto)](#13-vincoli-di-dipendenza-fallimento-netto)
+- [2. Catalogo — fasi wPoA](#2-catalogo-—-fasi-wpoa)
+  - [2.1 Il ritardo di mining della Fase 4](#21-il-ritardo-di-mining-della-fase-4)
+- [3. Catalogo — registro del malus comportamentale](#3-catalogo-—-registro-del-malus-comportamentale)
+- [4. Catalogo — weight engine](#4-catalogo-—-weight-engine)
+- [5. Parametro per-nodo — -weight](#5-parametro-per-nodo-—--weight)
+  - [5.1 -weight è la via di ripiego, non quella principale](#51--weight-è-la-via-di-ripiego-non-quella-principale)
+  - [5.2 Impostare il proprio peso richiede autorizzazione](#52-impostare-il-proprio-peso-richiede-autorizzazione)
+- [6. Validazione dei valori all'avvio](#6-validazione-dei-valori-allavvio)
+- [7. Ricette di configurazione](#7-ricette-di-configurazione)
+- [8. Riferimenti](#8-riferimenti)
+
+---
 ## 1. Modello di configurazione
 
 Ogni switch wPoA e ogni parametro del weight engine è un **parametro di catena**
@@ -132,7 +150,7 @@ D_i        = T_block + delta * T_block * (2 * score_norm - 1) + lambda * Phi   (
 ```
 
 dove `T_block` è il nativo `targetblocktime`
-([`paramlist.h:29`](../../chainparams/paramlist.h#L29)), `delta` è
+([`paramlist.h`, voce `targetblocktime`](../../chainparams/paramlist.h)), `delta` è
 `-wpoasortitiondelta`, `lambda` è `-wpoasortitionlambda`, e `W` è la somma dei
 pesi efficaci compressi. Implementazione: `PrivateSortition::MiningDelay()` in
 [`private_sortition.h`](../private_sortition.h).

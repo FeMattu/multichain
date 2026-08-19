@@ -1,5 +1,12 @@
 # `randao_accumulator.{h,cpp}` — Line-by-Line Walkthrough (Phase 3b)
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 > Exhaustive walkthrough of the **RANDAO beacon module**: every instruction, variable and
 > library call in the two files that make up Phase 3b, why it is written the way it is, and
 > how the file connects to the rest of the tree. This is the Phase 3b analogue of
@@ -30,8 +37,7 @@ For the design rationale and the end-to-end picture see
 
 ---
 
-## Table of contents
-
+## Indice
 1. [The pure core (`randao_accumulator.h`)](#1-the-pure-core-randao_accumulatorh)
 2. [The node glue (`randao_accumulator.cpp`)](#2-the-node-glue-randao_accumulatorcpp)
 3. [How the two call sites use it](#3-how-the-two-call-sites-use-it)

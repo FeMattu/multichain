@@ -1,5 +1,12 @@
 # `protocol/multichainblock.cpp` (wPoA Phase 3a — the VRF verifier)
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 > Documentation of the **verifier-side integration** of the wPoA VRF beacon: how every peer
 > extracts the proposer's reveal and rejects a block whose reveal is missing or invalid.
 > This doc covers **only** the Phase 3a additions — the new static `FindBlockVRF` and the
@@ -15,6 +22,19 @@ This is a **modified host file**, not a new module. The additions are delimited 
 
 (`WPoAVRFActiveAtHeight` comes from `wpoa/wpoa_selector.h`, already included for Phase 2.)
 
+## Indice
+
+- [1. FindBlockVRF — extract the reveal from the coinbase](#1-findblockvrf-—-extract-the-reveal-from-the-coinbase)
+- [2. The VRF check in VerifyBlockMinerWPoA](#2-the-vrf-check-in-verifyblockminerwpoa)
+  - [if(WPoAVRFActiveAtHeight(pindexNew->nHeight))](#ifwpoavrfactiveatheightpindexnew-nheight)
+  - [Missing reveal → reject](#missing-reveal--reject)
+  - [Recompute the input and verify](#recompute-the-input-and-verify)
+  - [Success → trace only](#success--trace-only)
+  - [Why *before* the proposer check](#why-before-the-proposer-check)
+- [3. Miner ↔ validator symmetry (VRF)](#3-miner--validator-symmetry-vrf)
+- [4. Connections to the other files](#4-connections-to-the-other-files)
+
+---
 ## 1. `FindBlockVRF` — extract the reveal from the coinbase
 
 ```cpp

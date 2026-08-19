@@ -1,5 +1,11 @@
 # Implementation Roadmap — wPoA Selector with Efraimidis–Spirakis Sortition
 
+> **Registro: misto, dichiarato per sezione.** Le sezioni di razionale progettuale e
+> di confronto fra meccanismi di consenso sono a registro **formale-accademico**; le
+> sezioni su componenti, piano per fasi e rischi sono a registro
+> **tecnico-diretto**. Stato in [implementation-status.md](implementation-status.md),
+> parametri in [protocol-parameters.md](protocol-parameters.md).
+
 > **Scope of this document.** This is the *engineering* companion to the wPoA
 > project: current status, phased plan, branch strategy, components, and
 > known risks — self-contained. For the research background, formal model,
@@ -12,8 +18,7 @@
 
 ---
 
-## Table of Contents
-
+## Indice
 1. [Executive Summary](#1-executive-summary)
 2. [Rationale: Why Efraimidis over Public WRS](#2-rationale-why-efraimidis-over-public-wrs)
 3. [Current Implementation Status](#3-current-implementation-status)
@@ -376,7 +381,7 @@ glue + miner/validator hooks + one flag).
 |---|---|
 | `PrivateSortition::VRFInput` | Builds the consensus-critical VRF input `seed ‖ "PROPOSER" ‖ BE32(height)` (the beacon seed is the public input). |
 | `PrivateSortition::ScoreFromVRFOutput` | Folds `y_i` and runs the **same** transform as the Phase-2 selector (`WPoASelector::ScoreFromEntropy64`): `score_i = -ln(u_i)/f(w_i)`. Single source of truth ⇒ distribution provably unchanged. |
-| `PrivateSortition::MiningDelay` | The score→time map `scale · score · Σf(w)`: strictly increasing (argmin proposes first) and weight-scale invariant. Serves as **both** the miner's start-time delay and the validator's time bar. |
+| `PrivateSortition::MiningDelay` | The score→time map, a **band** around target-block-time: `T + δ·T·(2·score_norm − 1) + λ·Φ` with `score_norm = 1 − e^{−W·score}`. Strictly increasing (argmin proposes first) and weight-scale invariant. Serves as **both** the miner's start-time delay and the validator's time bar. See [protocol-parameters.md §2.1](protocol-parameters.md#21-il-ritardo-di-mining-della-fase-4). |
 | miner hook (`miner.cpp`) | `WPoASortitionLocalScoreDelay` scores this node privately; the node mines at `now + delay`. Anti-respin guard + reveal-input switch. |
 | validator hook (`multichainblock.cpp`) | `WPoASortitionVerifyProposer`: verify the VRF over the sortition input, recompute the score, accept iff `block.nTime ≥ parent.nTime + delay`. Replaces the argmin equality. |
 
@@ -436,7 +441,10 @@ predictability-fix track (Phases 1–5) and are not phase-numbered here:
   D_i        = T_block + delta*T_block*(2*score_norm - 1) + lambda*Phi   (Def. 5.13)
   ```
 
-  It previously was `delay = scale · score · Σ f(w_j)`, which satisfied everything
+  It previously was `delay = scale · score · Σ f(w_j)` — an open-ended ramp, since
+replaced by the band around target-block-time (see
+[protocol-parameters.md §2.1](protocol-parameters.md#21-il-ritardo-di-mining-della-fase-4)).
+That earlier form satisfied everything
   §5.10 *proves* — strictly increasing in the score, so `argmin(delay) = argmin(score)`
   and the weighted election preserved exactly (Prop. 5.11, Cor. 5.12) — but not what
   §5.10 *defines*, and it missed the section's second stated goal: a realized mean

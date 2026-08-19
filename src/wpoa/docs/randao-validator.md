@@ -1,5 +1,12 @@
 # `protocol/multichainblock.cpp` (wPoA Phase 3b — the RANDAO seed on the validator side)
 
+> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
+> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
+> invariata. Per il modello teorico del consenso si rimanda a
+> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
+> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> [implementation-status.md](implementation-status.md).
+
 > Documentation of the **validator-side integration** of the RANDAO beacon seed: how every
 > peer, when the beacon governs a received block, recomputes the selection seed from the
 > accumulator over the block's parent and checks the signer against the proposer that seed
@@ -20,6 +27,20 @@ top of the file:
 included for Phase 2; `WPoAVRF` / `WPoAVRFActiveAtHeight` from `wpoa/vrf_wrapper.h` +
 `wpoa_selector.h`, from Phase 3a.)
 
+## Indice
+
+- [1. Where the change lives and why there](#1-where-the-change-lives-and-why-there)
+- [2. The added block, line by line](#2-the-added-block-line-by-line)
+  - [uint256 hSeed=pindexNew->pprev->GetBlockHash();](#uint256-hseedpindexnew-pprev-getblockhash)
+  - [unsigned char randao_seed[32];](#unsigned-char-randao_seed32)
+  - [if(WPoARANDAOActiveAtHeight(pindexNew->nHeight) && WPoARandaoSelectionSeed(pindexNew->pprev,randao_seed))](#ifwpoarandaoactiveatheightpindexnew-nheight--wpoarandaoselectionseedpindexnew-pprevrandao_seed)
+  - [memcpy(hSeed.begin(),randao_seed,sizeof(randao_seed));](#memcpyhseedbeginrandao_seedsizeofrandao_seed)
+  - [std::string sProposer=WPoASelectProposer(hSeed.begin(),hSeed.size(),pindexNew->nHeight);](#stdstring-sproposerwpoaselectproposerhseedbeginhseedsizepindexnew-nheight)
+- [3. What happens after (unchanged)](#3-what-happens-after-unchanged)
+- [4. Miner ↔ validator symmetry (the seed)](#4-miner--validator-symmetry-the-seed)
+- [5. Connections to the other files](#5-connections-to-the-other-files)
+
+---
 ## 1. Where the change lives and why there
 
 `VerifyBlockMinerWPoA` (`multichainblock.cpp:768`) is the receiving-side enforcement of the
