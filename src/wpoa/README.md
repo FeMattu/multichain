@@ -236,108 +236,122 @@ flowchart TD
 
 ---
 
-## Documentation Structure
+## Documentation map
 
-This project contains multiple levels of documentation:
+All detailed documentation lives in [`docs/`](docs/). Each file declares its
+**linguistic register** in its opening note: *tecnico-diretto* for API, data
+structures, RPC flows, configuration and build/troubleshooting;
+*formale-accademico* for the consensus model, security properties and comparison
+with other mechanisms.
 
-1. **[Thesis Project Overview](docs/thesis-project-overview.md)**
-   - For researchers & students: Theory, threat modeling, literature review, mathematical foundations
-   - Learn WHY we use Efraimidis–Spirakis and what security properties it provides
+Three files are **single sources of truth**. Nothing else in this repository restates
+their content — the other files link to them:
 
-2. **[Implementation Roadmap](docs/implementation-roadmap.md)**
-   - For developers & contributors: Phased plan, current status, components, vulnerabilities
-   - Understand what's implemented, what's planned, and how pieces connect
+| Single source | What only it may state |
+|---|---|
+| **[implementation-status.md](docs/implementation-status.md)** | What is implemented and what is not, the high-level architecture, the **authoritative weight-assignment diagram**, and the `mining-turnover` vs `mining-diversity` distinction. |
+| **[protocol-parameters.md](docs/protocol-parameters.md)** | Every parameter: name, type, default, valid range, defining and validating code line, consensus effect, network-fixed vs locally overridable. |
+| **[testing.md](docs/testing.md)** | Build steps, unit and functional test invocation, troubleshooting. |
 
-3. **[Implementation Guide (master index)](docs/implementation-guide.md)**
-   - The high-level map of all phases + links to each phase's dedicated technical
-     guide, and the **Documentation Maintenance** process for future features
-   - Start here for code, then dive into the phase guide you need:
-     [Phase 1](docs/phase1-implementation-guide.md) ·
-     [Phase 2](docs/phase2-implementation-guide.md)
+### Theory and rationale — *formale-accademico*
+
+| Document | What it covers |
+|---|---|
+| [thesis-project-overview.md](docs/thesis-project-overview.md) | Problem statement, threat model, literature review, formal model, security properties, probability preservation, comparison with PoW / PoS / PoA / PoSA. The research companion. |
+| [implementation-roadmap.md](docs/implementation-roadmap.md) | Rationale for private (Efraimidis) sortition over public WRS, phased plan, vulnerabilities and mitigations, success criteria. Mixed register, declared per section. |
+| [implementation-guide.md](docs/implementation-guide.md) | Phase map: how the phases build on one another, plus the Documentation Maintenance process. |
+
+### Configuration and startup — *tecnico-diretto*
+
+| Document | What it covers |
+|---|---|
+| [protocol-parameters.md](docs/protocol-parameters.md) | **The parameter catalogue.** All 21 parameters, with the two authorization gates and the `-weight` precedence rule. |
+| [node-startup.md](docs/node-startup.md) | How the switches are read from `params.dat`, resolved (master + per-phase precedence + hard-fail constraints) and wired into `AppInit2`; how the publication thread is launched. |
+| [weight-engine.md](docs/weight-engine.md) | The weight-production layer: the four input streams, the `c_i → W_k → A_k → ρ_k → B_k → w_k` pipeline, the three admin RPCs, the two-gate security model and its known limit. |
+
+### Component architecture — *tecnico-diretto*
+
+One file per real source unit under `src/wpoa/`.
+
+| Document | Source unit |
+|---|---|
+| [stream-weight-registry.md](docs/stream-weight-registry.md) | `stream_weight_registry.h` / `.cpp` — the registry class and background thread. |
+| [weight-record.md](docs/weight-record.md) | `weight_record.h` — pure parsing/aggregation helpers. |
+| [wpoa-selector.md](docs/wpoa-selector.md) | `wpoa_selector.h` / `.cpp` — the Efraimidis–Spirakis selector core and node glue. |
+| [vrf-wrapper.md](docs/vrf-wrapper.md) | `vrf_wrapper.h` / `.cpp` — the ECVRF/DLEQ core over secp256k1. |
+| [randao-accumulator.md](docs/randao-accumulator.md) | `randao_accumulator.h` / `.cpp` — the fold, the lookback seed, the memoized walk. |
+| [private-sortition.md](docs/private-sortition.md) | `private_sortition.h` / `.cpp` — VRF input, score, the banded mining delay. |
+| [malus-registry.md](docs/malus-registry.md) | `malus_record.h`, `malus_registry.h` / `.cpp` — the open report stream, `Valid(e)`, the decaying accumulator, `w_eff`. |
+| [multichain-internals.md](docs/multichain-internals.md) | The MultiChain host APIs this module builds on. |
+| [native-poa-block-delay.md](docs/native-poa-block-delay.md) | The native PoA timing gate that Phase 4 supersedes, with its convergence analysis. |
+
+### Integration points — *tecnico-diretto*
+
+Eight files document how the phases hook into **two** host functions. Use this matrix
+to find the right one:
+
+| | Miner side — `GetMinerAndExpectedMiningStartTime` | Validator side — `VerifyBlockMinerWPoA` |
+|---|---|---|
+| **Phase 2** — weighted election | [miner-integration.md](docs/miner-integration.md) | [block-validation.md](docs/block-validation.md) |
+| **Phase 3a** — VRF reveal | [vrf-prover.md](docs/vrf-prover.md) | [vrf-verifier.md](docs/vrf-verifier.md) |
+| **Phase 3b** — RANDAO seed swap | [randao-miner.md](docs/randao-miner.md) | [randao-validator.md](docs/randao-validator.md) |
+| **Phase 4** — private sortition | [sortition-miner.md](docs/sortition-miner.md) | [sortition-validator.md](docs/sortition-validator.md) |
+
+On-chain carriage of the reveal is separate:
+[block-vrf-encoding.md](docs/block-vrf-encoding.md).
+
+### RPC and testing — *tecnico-diretto*
+
+| Document | What it covers |
+|---|---|
+| [rpc-registration.md](docs/rpc-registration.md) | How the RPC commands are added to the dispatch table (`rpc/rpclist.cpp`). |
+| [testing.md](docs/testing.md) | Build steps, the MultiChain mining model, unit suites, the single system-level functional run, and troubleshooting. |
+
+### Per-phase development history — *tecnico-diretto*
+
+Retained as the design record of each phase: mental model, design decisions with their
+alternatives, code walkthrough, edge cases. **They no longer carry status tables** —
+current status lives only in
+[implementation-status.md](docs/implementation-status.md).
+
+[Phase 1](docs/phase1-implementation-guide.md) ·
+[Phase 2](docs/phase2-implementation-guide.md) ·
+[Phase 3a](docs/phase3a-implementation-guide.md) ·
+[Phase 3b](docs/phase3b-implementation-guide.md) ·
+[Phase 4](docs/phase4-implementation-guide.md)
 
 ---
 
-## Documentation
-
-All detailed documentation lives in [`docs/`](docs/). Start at the master
-**[implementation-guide.md](docs/implementation-guide.md)** (phase map + links),
-or the **[Documentation Structure](#documentation-structure)** above if you're
-new to the project.
-
-| Document | What it covers |
-|----------|----------------|
-| [implementation-guide.md](docs/implementation-guide.md) | **Master index.** High-level map of all phases, how they build on each other, links to every per-phase guide, and the Documentation Maintenance process. |
-| [phase1-implementation-guide.md](docs/phase1-implementation-guide.md) | **Phase 1 — full technical guide.** Weight registry: mental model, data model, design decisions, threading & locking, full code walkthrough, control flow, "how to modify" recipes. |
-| [phase2-implementation-guide.md](docs/phase2-implementation-guide.md) | **Phase 2 — full technical guide.** Weighted miner selection: mental model, algorithm, design decisions, threading, full code walkthrough, control flow, edge cases, "how to modify" recipes, tests, and accepted risks / Phase 3-4 hooks. |
-| [phase3a-implementation-guide.md](docs/phase3a-implementation-guide.md) | **Phase 3a — full technical guide.** VRF randomness beacon: the ECVRF/DLEQ construction over secp256k1, on-chain carriage of the reveal, prover/verifier control flow, design decisions, edge cases, tests, and Phase 3b/4 hooks. |
-| [phase3b-implementation-guide.md](docs/phase3b-implementation-guide.md) | **Phase 3b — full technical guide.** RANDAO beacon seed: the accumulator fold + lookback seed (thesis §5.4–§5.5), the memoized block-index walk, the seed swap at both selection call sites, design decisions, edge cases, tests, and Phase 4 hooks. |
-| [phase4-implementation-guide.md](docs/phase4-implementation-guide.md) | **Phase 4 — full technical guide.** Efraimidis private sortition (the security fix): the private VRF score, score-timed self-election, the validator-side VRF-verify + score + time-bar eligibility that replaces the public argmin, the auto-relaxing liveness fallback, design decisions, edge cases, tests, and Phase 5 hooks. |
-| [thesis-project-overview.md](docs/thesis-project-overview.md) | Research companion: problem statement, threat model, literature review, theoretical contributions behind the wPoA design (bachelor's thesis, Università di Pisa). |
-| [implementation-roadmap.md](docs/implementation-roadmap.md) | Engineering companion: phased plan, rationale for private (Efraimidis) sortition over public WRS, current status, vulnerabilities & mitigations. |
-| [multichain-internals.md](docs/multichain-internals.md) | Reference to the MultiChain host APIs this module builds on, with exact `file:line` pointers — entities, the wallet-tx store, script decoding, RPC-handler reuse, permissions, mining. |
-| [stream-weight-registry.md](docs/stream-weight-registry.md) | Line-by-line walkthrough of the Phase 1 registry class and background thread (`stream_weight_registry.h` + `.cpp`). |
-| [weight-record.md](docs/weight-record.md) | Walkthrough of the pure, dependency-light parsing/aggregation helpers (`weight_record.h`) that are unit-tested in isolation. |
-| [wpoa-selector.md](docs/wpoa-selector.md) | Line-by-line walkthrough of the Phase 2 selector core and node glue (`wpoa_selector.h` + `.cpp`): scoring, argmin, activation gate, registry read. §5 covers the Phase 3a `g_wpoa_vrf_enabled` / `WPoAVRFActiveAtHeight` glue. |
-| [miner-integration.md](docs/miner-integration.md) | How the weighted election is wired into block production (`miner/miner.cpp`, `GetMinerAndExpectedMiningStartTime`). |
-| [block-validation.md](docs/block-validation.md) | How the election is enforced on the receiving side (`protocol/multichainblock.cpp`, `VerifyBlockMiner` → `VerifyBlockMinerWPoA`). |
-| [vrf-wrapper.md](docs/vrf-wrapper.md) | **Phase 3a.** Line-by-line walkthrough of the pure VRF core (`vrf_wrapper.h` + `.cpp`): hash-to-curve, deterministic nonce, DLEQ prove/verify, point/scalar helpers over secp256k1. |
-| [block-vrf-encoding.md](docs/block-vrf-encoding.md) | **Phase 3a.** How the reveal is carried on-chain (`protocol/multichainscript.h` + `.cpp`): `SetBlockVRF`/`GetBlockVRF` and the `GetBlockSignature` length relaxation. |
-| [vrf-prover.md](docs/vrf-prover.md) | **Phase 3a.** How the reveal is produced and embedded (`miner/miner.cpp`, `CreateBlockSignature`). |
-| [vrf-verifier.md](docs/vrf-verifier.md) | **Phase 3a.** How the reveal is extracted and enforced (`protocol/multichainblock.cpp`, `FindBlockVRF` + `VerifyBlockMinerWPoA`). |
-| [randao-accumulator.md](docs/randao-accumulator.md) | **Phase 3b.** Deep line-by-line walkthrough of the pure accumulator/seed core (`randao_accumulator.h`) and the node glue (`.cpp`): the fold, the seed derivation, the memoized block-index walk, reveal extraction. |
-| [randao-miner.md](docs/randao-miner.md) | **Phase 3b.** The miner-side seed swap (`miner/miner.cpp`, `GetMinerAndExpectedMiningStartTime`): defaulting to the prev-hash seed, then overwriting with the RANDAO seed when the beacon governs the next height. |
-| [randao-validator.md](docs/randao-validator.md) | **Phase 3b.** The validator-side seed swap (`protocol/multichainblock.cpp`, `VerifyBlockMinerWPoA`): recomputing the same seed over the block's parent and enforcing the elected proposer. |
-| [private-sortition.md](docs/private-sortition.md) | **Phase 4.** Line-by-line walkthrough of the pure sortition core (`private_sortition.h`: `VRFInput`/`ScoreFromVRFOutput`/`MiningDelay`) and the node glue (`.cpp`): activation gate, shared context, local score+delay, reveal-input builder, eligibility/time-bar verdict, anti-respin guard. |
-| [sortition-miner.md](docs/sortition-miner.md) | **Phase 4.** The miner-side hook (`miner/miner.cpp`): score-timed self-election, the anti-respin guard, the reveal-input switch, and marking the proposed height. |
-| [sortition-validator.md](docs/sortition-validator.md) | **Phase 4.** The validator-side hook (`protocol/multichainblock.cpp`, `VerifyBlockMinerWPoA`): the VRF-verify + score-recompute + time-bar eligibility check that replaces the public argmin equality on sortition heights. |
-| [malus-registry.md](docs/malus-registry.md) | **Behavioural malus.** Why a second registry exists, why the two streams carry opposite write policies, the two evidence kinds and the `Valid(e)` predicate that makes an open stream safe, the decaying accumulator and the reversibility of an exclusion, epoch alignment, and the single point where `w_eff` enters consensus. |
-| [node-startup.md](docs/node-startup.md) | How the wPoA switches — the `-enablewpoa` master, `-enablewpoaweights` (Phase 1), `-enablewpoaselection`/`-dumpfunction` (Phase 2), `-enablewpoavrf` (Phase 3a), `-enablewpoarandao`/`-wpoarandaolookback` (Phase 3b), `-enablewpoasortition`/`-wpoasortitiondelta`/`-wpoasortitionlambda` (Phase 4) — are read from `params.dat` (inherited) with CLI override, resolved (master + precedence + hard-fail constraints) and wired into `AppInit2`, and how the background thread is launched (`core/init.h` + `.cpp`, wPoA parts). |
-| [rpc-registration.md](docs/rpc-registration.md) | How the three RPC commands are added to the dispatch table (`rpc/rpclist.cpp`). |
-| [testing.md](docs/testing.md) | Build steps, unit tests, the MultiChain mining model, manual single-/multi-node tests, the automated smoke test, and troubleshooting. |
-
-### Source & test files
+## Source & test files
 
 | File | Role |
 |------|------|
-| [`stream_weight_registry.h`](stream_weight_registry.h) / [`.cpp`](stream_weight_registry.cpp) | Phase 1: public API + implementation of the registry, background thread and RPC handlers. |
-| [`weight_record.h`](weight_record.h) | Phase 1: pure parsing/aggregation helpers (json_spirit-only, unit-testable). |
-| [`wpoa_selector.h`](wpoa_selector.h) / [`.cpp`](wpoa_selector.cpp) | Phase 2: pure Efraimidis–Spirakis selector core (header-only) + node-coupled glue (flag, activation predicate, registry-backed election). Phase 3a adds the `g_wpoa_vrf_enabled` flag and `WPoAVRFActiveAtHeight`. |
-| [`vrf_wrapper.h`](vrf_wrapper.h) / [`.cpp`](vrf_wrapper.cpp) | Phase 3a: pure `WPoAVRF` ECVRF/DLEQ core over secp256k1 (`Prove`/`Verify`), node-free and unit-testable. |
-| [`randao_accumulator.h`](randao_accumulator.h) / [`.cpp`](randao_accumulator.cpp) | Phase 3b: pure `RandaoAccumulator` core (`Fold`/`DeriveSeed`/`Genesis`, node-free) + node glue (flag/lookback, `WPoARANDAOActiveAtHeight`, the memoized accumulator walk, and the `WPoARandaoSelectionSeed` helper). |
-| [`private_sortition.h`](private_sortition.h) / [`.cpp`](private_sortition.cpp) | Phase 4: pure `PrivateSortition` core (`VRFInput`/`ScoreFromVRFOutput`/`MiningDelay`, node-free) + node glue (flag/scale, `WPoASortitionActiveAtHeight`, local score+delay, reveal-input builder, `WPoASortitionVerifyProposer`, anti-respin guard). Reuses the Phase-2 score transform (`WPoASelector::ScoreFromEntropy64`). |
-| [`malus_record.h`](malus_record.h) | Behavioural malus: pure record parsing + accumulator core (`Fold`/`CorrectionFactor`/`EffectiveWeight`/`EpochsToClear`), node-free and unit-testable. |
-| [`malus_registry.h`](malus_registry.h) / [`.cpp`](malus_registry.cpp) | Behavioural malus: the open `wpoa-weights-malus` stream, the `Valid(e)` evidence predicate, the per-epoch accumulator, `WPoAApplyMalus` (the single consensus entry point) and the RPCs. |
-| [`test/wpoa_weight_tests.cpp`](test/wpoa_weight_tests.cpp) | Phase 1: Boost.Test unit tests for the pure registry logic. |
-| [`test/wpoa_malus_tests.cpp`](test/wpoa_malus_tests.cpp) | Behavioural malus: Boost.Test unit tests for the pure core (parsing, EMA fold, `Psi`, `w_eff`, reversibility of an exclusion). |
-| [`test/wpoa_selector_tests.cpp`](test/wpoa_selector_tests.cpp) | Phase 2: Boost.Test unit tests for the pure selector math (determinism, order-independence, probability preservation). |
-| [`test/vrf_wrapper_tests.cpp`](test/vrf_wrapper_tests.cpp) | Phase 3a: Boost.Test unit tests for the pure VRF core (roundtrip, determinism, tamper/forgery/cross-key rejection, pseudorandomness). |
-| [`test/randao_accumulator_tests.cpp`](test/randao_accumulator_tests.cpp) | Phase 3b: Boost.Test unit tests for the pure accumulator/seed core (spec conformance vs. an independent reference, determinism, order/input sensitivity, chain consistency). |
-| [`test/private_sortition_tests.cpp`](test/private_sortition_tests.cpp) | Phase 4: Boost.Test unit tests for the pure sortition core (VRF-input encoding, score reuse vs. the shared transform, delay map, key-dependence/privacy, and probability preservation with real VRF keys). |
-| [`test/run_unit_tests.sh`](test/run_unit_tests.sh) | Build + run **all** unit suites, or a named subset — `run_unit_tests.sh selector vrf` (no node build needed). |
-| [`test/run_functional_tests.sh`](test/run_functional_tests.sh) | Wrapper around the single system run: warning banner, hard timeout, correct exit code. |
-| [`test/run_all_tests.sh`](test/run_all_tests.sh) | Single entrypoint: run unit tests, then the functional run, to validate the whole system. See [`test/README.md`](test/README.md). |
-| [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) / [`test/functional_lib.sh`](test/functional_lib.sh) / [`test/analyze_distribution.py`](test/analyze_distribution.py) | **The** functional test: ONE full-stack network, warmed up once, then all feature checks (weight, stream permissions, malus, multi-node consistency, VRF, RANDAO, sortition, chi-square distribution) on the shared run. `INCLUDE_PUBLIC_SELECTOR=1` adds the sortition-off (public argmin) regime; `QUICK=1` uses a smaller sample. |
+| [`stream_weight_registry.h`](stream_weight_registry.h) / [`.cpp`](stream_weight_registry.cpp) | Phase 1: registry API and implementation, background thread, RPC handlers. |
+| [`weight_record.h`](weight_record.h) | Phase 1: pure parsing/aggregation helpers (json_spirit only, unit-testable). |
+| [`wpoa_selector.h`](wpoa_selector.h) / [`.cpp`](wpoa_selector.cpp) | Phase 2: pure Efraimidis–Spirakis selector core + node glue (flag, activation predicate, registry-backed election). |
+| [`vrf_wrapper.h`](vrf_wrapper.h) / [`.cpp`](vrf_wrapper.cpp) | Phase 3a: pure `WPoAVRF` ECVRF/DLEQ core over secp256k1 (`Prove`/`Verify`). |
+| [`randao_accumulator.h`](randao_accumulator.h) / [`.cpp`](randao_accumulator.cpp) | Phase 3b: pure `RandaoAccumulator` core + node glue (memoized walk, `WPoARandaoSelectionSeed`). |
+| [`private_sortition.h`](private_sortition.h) / [`.cpp`](private_sortition.cpp) | Phase 4: pure `PrivateSortition` core (`VRFInput` / `ScoreFromVRFOutput` / `NormalizedScore` / `MiningDelay`) + node glue. |
+| [`malus_record.h`](malus_record.h) | Malus: pure record parsing + accumulator core (`Fold` / `CorrectionFactor` / `EffectiveWeight` / `EpochsToClear`). |
+| [`malus_registry.h`](malus_registry.h) / [`.cpp`](malus_registry.cpp) | Malus: the open report stream, the `Valid(e)` predicate, `WPoAApplyMalus` (the single consensus entry point), the RPCs. |
+| [`../weight_engine/`](../weight_engine/) | The weight-production layer. See [weight-engine.md](docs/weight-engine.md). |
 
-Integration points in the host tree: [`../core/init.cpp`](../core/init.cpp)
-(startup flags, incl. `-enablewpoavrf`, `-enablewpoarandao`/`-wpoarandaolookback`
-and `-enablewpoasortition`/`-wpoasortitiondelta`/`-wpoasortitionlambda`),
-[`../rpc/rpclist.cpp`](../rpc/rpclist.cpp) /
+Unit suites live in [`test/`](test/) and run node-free:
+
+```bash
+./test/run_unit_tests.sh                    # weight malus selector vrf randao sortition
+../weight_engine/test/run_unit_tests.sh     # records engine
+./test/run_all_tests.sh                     # unit + the single functional system run
+```
+
+Host-tree integration points: [`../core/init.cpp`](../core/init.cpp) (startup
+resolution), [`../rpc/rpclist.cpp`](../rpc/rpclist.cpp) /
 [`../rpc/rpchelp.cpp`](../rpc/rpchelp.cpp) (RPCs),
-[`../miner/miner.cpp`](../miner/miner.cpp) (Phase 2 mining hook + Phase 3a reveal
-embedding + Phase 3b selection-seed swap + Phase 4 score-timed self-election &
-reveal-input switch),
-[`../protocol/multichainblock.cpp`](../protocol/multichainblock.cpp)
-(Phase 2 validation hook + Phase 3a reveal verification + Phase 3b selection-seed
-swap + Phase 4 eligibility/time-bar check),
-[`../protocol/multichainscript.cpp`](../protocol/multichainscript.cpp)
-(Phase 3a `SetBlockVRF`/`GetBlockVRF` reveal carriage, reused unchanged by Phase 4),
-[`../Makefile.am`](../Makefile.am) (build). See
-[phase1-implementation-guide.md §7](docs/phase1-implementation-guide.md),
-[phase2-implementation-guide.md §5](docs/phase2-implementation-guide.md),
-[phase3a-implementation-guide.md §2](docs/phase3a-implementation-guide.md),
-[phase3b-implementation-guide.md §2](docs/phase3b-implementation-guide.md) and
-[phase4-implementation-guide.md §2](docs/phase4-implementation-guide.md) for
-details.
+[`../miner/miner.cpp`](../miner/miner.cpp) (all miner-side hooks),
+[`../protocol/multichainblock.cpp`](../protocol/multichainblock.cpp) (all
+validator-side hooks),
+[`../protocol/multichainscript.cpp`](../protocol/multichainscript.cpp) (reveal
+carriage), [`../Makefile.am`](../Makefile.am) (build).
 
 ---
 
@@ -404,3 +418,32 @@ system-level run,
 starts ONE full-stack network and verifies weight, multi-node consistency, VRF,
 RANDAO, sortition and the chi-square distribution on that shared run. Run
 absolutely everything with [`test/run_all_tests.sh`](test/run_all_tests.sh).
+
+---
+
+## Glossario terminologico
+
+Un termine canonico per concetto, usato in modo uniforme in tutto l'albero. Dove il
+nome nel codice è imperfetto, la documentazione **segue comunque il codice**: un
+lettore che cerca un identificatore deve trovarlo.
+
+| Termine canonico | Significato | Da non confondere con |
+|---|---|---|
+| **weight** / **peso** (`w`) | Il peso **grezzo** di un validatore, intero `> 0`, come pubblicato sullo stream `wpoa-weights`. È l'unità del contratto on-chain. | Non è il valore su cui si sorteggia: prima passa da malus e dumping. |
+| **effective weight** (`w_eff`) | `w_eff = w · Ψ`, il peso dopo la correzione del malus comportamentale. È ciò che entra nell'elezione. | Non è `f(w_eff)`, che è il passo successivo. |
+| **dumping** | La compressione whale `f(w)` applicata prima del sorteggio, `none` / `sqrt` / `log`. **Termine canonico perché è quello del codice** (`-dumpfunction`, `DumpingFunction`, `ApplyDumping`). In italiano tecnico sarebbe più corretto *smorzamento*, e in inglese *damping*; la documentazione glossa il termine dove serve ma non lo rinomina. | Il `λ` del weight engine, che è un damping diverso (vedi sotto). |
+| **behavioural-feedback damping** (`λ`, weight engine) | Lo smorzamento in `w_k = W_k · [ρ_{k,e−1}·λ + (1−λ)]`: quanto la conformità dell'epoca precedente influenza il peso. | Il `λ` della sortition (`-wpoasortitionlambda`), che è il guadagno del feedback sul **tempo di blocco**. Due `λ` distinti, in due livelli distinti. |
+| **score** | `score_i = −ln(u_i)/f(w_eff,i)`, la variabile di Efraimidis–Spirakis. Il **minimo** vince. | Non è una probabilità: è una variabile esponenziale, e non è confrontabile fra reti con pesi di scala diversa senza normalizzazione. |
+| **normalized score** (`score_norm`) | `1 − e^{−W·score}`, uniforme su `(0,1)` per il vincitore. È ciò che mappa lo score sulla banda di ritardo. | Non è `score`. |
+| **proposer** | Il validatore che produce il blocco a una data altezza. | *miner* nel senso PoW: qui non c'è lavoro computazionale. |
+| **beacon seed** (`seed[n+1]`) | `H(R_tot[n−k] ‖ h[n] ‖ n+1)`, il seed pubblico e concordato dell'elezione. | Il **reveal** `R[n]`, che è il contributo VRF di un singolo blocco. |
+| **reveal** (`R`, `π`) | La coppia output-VRF e prova pubblicata dal proposer nel proprio blocco. | Il *seed*, che è aggregato e derivato. |
+| **malus** (`M`, `Ψ`) | L'accumulatore di cattivo comportamento e la correzione `Ψ = max(0, 1 − M/M_max)` che ne deriva. | *slashing*: qui nulla viene confiscato, e `μ < 1` rende ogni esclusione **reversibile**. |
+| **mining-diversity** | Regola di consenso **vincolante** e hash-enforced. Un blocco che viola lo spacing è invalido. | **mining-turnover**, che è `NOHASH` e solo un hint di temporizzazione locale. Vedi [implementation-status.md §0.2](docs/implementation-status.md#02-mining-turnover-e-mining-diversity--hint-operativo-contro-regola-vincolante). |
+| **epoch** | Unità temporale del weight engine e del malus, **1-based**: `epoch(height) = height / n + 1`. | Il *lookback* `k` di RANDAO, che si misura in blocchi, non in epoche. |
+| **closed stream** | Stream che richiede il permesso `<stream>.write` per pubblicare. `wpoa-weights` e i tre stream di attestazione sono chiusi. | **open stream**: `wpoa-weights-malus` è deliberatamente aperto, perché ogni segnalazione è ri-verificata da ogni nodo. |
+
+**Registro linguistico.** Nella documentazione italiana si usa *peso* per `weight` e si
+mantengono invariati in inglese i nomi di identificatori, RPC, flag, stream e classi:
+sono stringhe che il lettore deve poter cercare nel codice. Il termine inglese *weight*
+resta quindi nei nomi (`wpoa-weights`, `-weight`, `WeightEngine`) e *peso* nella prosa.

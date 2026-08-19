@@ -217,7 +217,8 @@ choice, realized as a continuous time bar rather than discrete threshold rounds)
 **Fact 5 — Sortition engages exactly where the RANDAO beacon does.**
 `WPoASortitionActiveAtHeight(h) = g_wpoa_sortition_enabled AND WPoARANDAOActiveAtHeight(h)`.
 Sortition consumes the beacon seed as its public VRF input, so it can only run where that
-seed exists. A lone `-enablewpoasortition` (no RANDAO) is inert (and warned about at
+seed exists. A lone `-enablewpoasortition` (no RANDAO) is a **hard startup failure**
+(`InitError` in `AppInit2`), not an inert configuration (it was previously only warned about at
 startup). It also requires lookback `k ≥ 1`: the reveal `R[n]` feeds `R_tot[n]` while its
 own seed reads `R_tot[n-k]`, so `k = 0` would make the seed circular (rejected in AppInit2).
 

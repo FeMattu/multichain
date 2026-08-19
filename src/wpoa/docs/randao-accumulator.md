@@ -551,7 +551,8 @@ The RANDAO seed engages iff (a) the operator turned it on (`g_wpoa_randao_enable
 
 The **AND with the VRF gate** is the load-bearing part: the accumulator *consumes* the
 per-block VRF reveals, so it can only run where those reveals are mandated — a lone
-`-enablewpoarandao` (VRF off) is inert, and `AppInit2` warns about it
+`-enablewpoarandao` (VRF off) is a **hard startup failure** — `AppInit2` returns
+`InitError` and the node refuses to start
 ([node-startup.md §2.7](node-startup.md)). Being a **pure function of shared data** (two
 process-wide flags + chain params + the height argument), the miner and every validator
 compute the same answer from the height alone, so they never disagree about which blocks are

@@ -622,7 +622,7 @@ sequenceDiagram
     Note over AnyObserver: Observer cannot compute any score_i - no key
     Winner->>Chain: Broadcasts (score, y, pi, PK) only upon winning
     Chain->>AnyObserver: Proposer identity revealed together with the block
-    Note over AnyObserver,Winner: Warning window collapses to gossip latency (~sub-second)
+    Note over AnyObserver,Winner: Warning window collapses to block-propagation latency (~sub-second)
 ```
 
 ### 9.3 Stream-Based Weight Retrieval Flow

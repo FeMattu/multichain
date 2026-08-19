@@ -371,7 +371,8 @@ after the `-enablewpoavrf` handling:
 // wPoA Phase 3b: RANDAO accumulator + lookback selection seed. Default off.
 // When enabled, selection is seeded by H(R_tot[n-k] ‖ h[n] ‖ n+1) over the
 // accumulated Phase-3a reveals instead of the plain previous block hash. It
-// REQUIRES -enablewpoavrf (it consumes those reveals); a lone flag stays inert.
+// REQUIRES -enablewpoavrf (it consumes those reveals); a lone flag is a HARD FAILURE
+// (InitError), not an inert configuration — see the dependency table above.
 g_wpoa_randao_enabled = GetBoolArg("-enablewpoarandao", false);
 int64_t randao_k = GetArg("-wpoarandaolookback", MC_WPOA_DEFAULT_RANDAO_LOOKBACK);
 if (randao_k < 0 || randao_k > 1000000)

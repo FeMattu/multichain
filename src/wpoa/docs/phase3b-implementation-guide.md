@@ -202,7 +202,8 @@ not assumed.
 **Fact 4 — The beacon engages exactly where the VRF does.**
 `WPoARANDAOActiveAtHeight(h) = g_wpoa_randao_enabled AND WPoAVRFActiveAtHeight(h)`. The
 accumulator *consumes* the per-block reveals, so it can only run where those reveals are
-mandated. This also means a lone `-enablewpoarandao` (no `-enablewpoavrf`) is inert (and
+mandated. A lone `-enablewpoarandao` (no `-enablewpoavrf`) is a **hard startup failure**
+(`InitError` in `AppInit2`), not an inert configuration (and
 warned about at startup) — there is nothing to accumulate.
 
 **Fact 5 — The accumulator math is pure; only the walk touches the node.**
@@ -514,7 +515,7 @@ is identical network-wide.
 | Situation | Where handled | Behaviour |
 |-----------|---------------|-----------|
 | `-enablewpoarandao` unset | `WPoARANDAOActiveAtHeight` | returns false → prev-hash seed (Phase 3a behavior). |
-| `-enablewpoarandao` set but `-enablewpoavrf` unset | `WPoARANDAOActiveAtHeight` + startup warning | returns false (no reveals to fold) → inert; startup logs a warning. |
+| `-enablewpoarandao` set but `-enablewpoavrf` unset | `AppInit2` dependency check | **Hard failure**: `InitError("wPoA: -enablewpoarandao requires the VRF beacon (-enablewpoavrf).")`. The node refuses to start rather than run the phase inert. |
 | Height not beacon-governed (bootstrap/native) | `WPoARANDAOActiveAtHeight` | returns false → prev-hash seed. |
 | Lookback `n-k` before the first governed block | `GetAccumulator` (pre-beacon `pindex`) | returns the genesis accumulator (deterministic base). |
 | `k` larger than the chain height | `WPoARandaoSelectionSeed` | target clamped to height 0 → genesis-based `R_tot`. |

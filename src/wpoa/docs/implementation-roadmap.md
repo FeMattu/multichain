@@ -54,7 +54,7 @@ flowchart TD
     L1["Layer 1 - Weight registry<br/>wpoa-weights stream, backward-scan, opaque read API"]
     L2["Layer 2 - Randomness generation (the beacon)<br/>VRF reveal + RANDAO accumulator + lookback seed"]
     L3["Layer 3 - Randomness consumption (the election)<br/>Efraimidis private sortition: local score, argmin winner"]
-    L4["Layer 4 - Reveal and agreement<br/>gossip auto-reveal, tie-break, liveness fallback"]
+    L4["Layer 4 - Reveal and agreement<br/>score-timed self-election, nTime time bar,<br/>auto-relaxing liveness (no gossip window)"]
     CROSS["Cross-cutting: penalties/slashing (deferred, S6.5); future VDF (Phase 5)"]
 
     L0 --> L1 --> L2 --> L3 --> L4
@@ -65,9 +65,9 @@ flowchart TD
 
 **Phases:**
 
-| Phase | Layer | Deliverable | Status |
-|:-----:|---|---|---|
-| 1 | 1 | `StreamWeightRegistry` — on-chain weight registry, backward-search read path | Implemented |
+| Phase | Layer | Deliverable |
+|:-----:|---|---|
+| 1 | 1 | `StreamWeightRegistry` — on-chain weight registry, backward-search read path |
 | 2 | 1 (consumer) | Weighted miner selection via an intentionally **public** baseline WRS, to validate the registry substrate before adding privacy | **Current — implemented** |
 | 3a | 2 | VRF integration — per-block verifiable reveal `(R, π)` embedded and verified by peers (the VRF half of the randomness *generation* layer) | **Implemented** |
 | 3b | 2 | RANDAO accumulator + lookback seed over the reveals (the beacon half of *generation*) | **Implemented** |
