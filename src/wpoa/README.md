@@ -133,18 +133,32 @@ How the switches are read, resolved and wired into `AppInit2`:
 
 ```mermaid
 flowchart TD
-    OP([Operator: multichaind -weight=N -enablewpoa]):::ext --> INIT
-    INIT["AppInit2<br/>validate weight; set g_node_weight, g_wpoa_enabled<br/>launch registration thread"]
-
-    subgraph P1 [Phase 1 — Weight registry]
-        REG["StreamWeightRegistry<br/>deferred register + read core"]
-        STREAM[(wpoa-weights stream<br/>append-only, on-chain)]
-        REG -->|write via in-process RPC handlers| STREAM
-        STREAM -->|non-WRP confirmed reads| REG
+    subgraph SRC [Weight assignment — see implementation-status.md §0.1 for the full flow]
+        ADM([Authorized node: admin / governance]):::ok
+        ADM -->|"RPC weightset* — CanAdmin gate"| ENG["WeightEngine<br/>w_k from on-chain inputs, per epoch"]
+        OPCLI([Local flag -weight=N]):::weak
+        OPCLI -.->|"fallback, only if -enableweightengine=0"| STATREG["ThreadRegisterNodeWeight"]
+        GATE{{"wpoa-weights.write required<br/>the stream is CLOSED"}}:::gate
+        ENG -->|"authoritative channel"| GATE
+        STATREG --> GATE
+        UNAUTH([Unauthorized node]):::bad -.->|"write refused — no weight at all"| GATE
     end
 
+    subgraph P1 [Phase 1 — Weight registry]
+        STREAM[(wpoa-weights stream<br/>append-only, on-chain, CLOSED)]
+        REG["StreamWeightRegistry<br/>deferred register + read core"]
+        REG -->|write via in-process RPC handlers| STREAM
+        STREAM -->|"non-WRP confirmed reads, newest wins"| REG
+    end
+
+    GATE --> STREAM
+    REG ==>|"OVERRIDE: the on-chain value governs,<br/>never the local flag"| OPCLI
+
+    MALUS["WPoAApplyMalus<br/>w_eff = w · Ψ  (behavioural malus)"]
+    REG -->|"w"| MALUS
+
     subgraph P2 [Phase 2 — Weighted selection]
-        SEL["WPoASelector<br/>score_i = -ln(u_i)/w_i; argmin"]
+        SEL["WPoASelector<br/>score_i = −ln(u_i)/f(w_eff); argmin"]
         MINE["miner.cpp<br/>mine only if elected"]
         VAL["multichainblock.cpp<br/>reject non-elected proposer"]
         SEL --> MINE
@@ -160,31 +174,34 @@ flowchart TD
     end
 
     subgraph P3B [Phase 3b — RANDAO beacon seed]
-        RND["RandaoAccumulator<br/>R_tot=H(R_tot⊕H(R)); seed=H(R_tot[n-k]‖h[n]‖n+1)"]
-        RSEED["miner.cpp / multichainblock.cpp<br/>seed selection from R_tot instead of prevhash"]
+        RND["RandaoAccumulator<br/>R_tot=H(R_tot⊕H(R)); seed=H(R_tot[n−k]‖h[n]‖n+1)"]
+        RSEED["miner.cpp / multichainblock.cpp<br/>seed from R_tot instead of prevhash"]
         RND --> RSEED
     end
 
     subgraph P4 [Phase 4 — Private sortition]
-        PS["PrivateSortition<br/>u=VRF_sk(seed‖PROPOSER‖h); score=-ln(u)/f(w); delay=s·score·Σf(w)"]
-        PMINE["miner.cpp<br/>self-elect: mine at now + delay(score)"]
-        PVAL["multichainblock.cpp<br/>verify VRF + score; accept iff nTime ≥ parent + delay"]
+        PS["PrivateSortition<br/>u=VRF_sk(seed‖PROPOSER‖h); score=−ln(u)/f(w_eff)<br/>score_norm = 1−e^(−W·score)<br/>D = T + δ·T·(2·score_norm−1) + λ·Φ"]
+        PMINE["miner.cpp<br/>self-elect: mine at now + D"]
+        PVAL["multichainblock.cpp<br/>verify VRF + score;<br/>accept iff nTime ≥ parent.nTime + D"]
         PS --> PMINE
         PS --> PVAL
     end
 
-    INIT --> REG
-    REG -->|"GetAllNodesWeights()"| SEL
+    MALUS -->|"GetAllNodesWeights() → w_eff"| SEL
+    MALUS -->|"w_eff + Σf(w_eff)"| PS
     MINE -.->|"elected proposer signs"| MVRF
     VAL -.->|"on wPoA-VRF heights"| VVRF
     VVRF -.->|"reveals R[n]"| RND
-    RSEED -.->|"seed &rarr; WPoASelectProposer (unchanged argmin)"| SEL
+    RSEED -.->|"seed → WPoASelectProposer (unchanged argmin)"| SEL
     RSEED -.->|"beacon seed = private VRF input"| PS
-    REG -->|"weight + Σf(w)"| PS
     PVAL -.->|"reveal R[n] over sortition input"| RND
     CLI([multichain-cli getlocalweight / getnodeweight / getallweights]):::ext --> REG
 
-    classDef ext fill:#eee,stroke:#999,color:#333;
+    classDef ext  fill:#eee,stroke:#999,color:#333;
+    classDef ok   fill:#e8f5e9,stroke:#4c9a51,color:#1b3d1f;
+    classDef bad  fill:#fdd,stroke:#c66,color:#633;
+    classDef weak fill:#f4f4f4,stroke:#aaa,color:#555;
+    classDef gate fill:#fff4d6,stroke:#c9a227,color:#5a4708;
 ```
 
 - **Phase 1** records and serves weights on the `wpoa-weights` stream via the

@@ -514,63 +514,34 @@ code-level treatment of the registry.
 
 ## 8. Diagrams
 
-> **Note (as-built vs. original sketch).** The three diagrams below are the
-> *original planning* sketch of Phase 4 as an explicit **gossip-window** protocol
-> (`VRFSelector` / `ScoreComputation` / `GossipWindow` / `TiebreakerLogic`,
-> per-round P2P `ProposerClaim` broadcast). The phase was **implemented instead as
-> score-timed self-election** (no new P2P messages; the argmin reveals itself by
-> proposing first, bounded by a validator-side time bar) — see the design-decision
-> note in [§6.3](#63-phase-4--efraimidis-private-sortition-the-security-fix). For
-> the **accurate as-built** component and control-flow diagrams, see
-> [phase4-implementation-guide.md](phase4-implementation-guide.md) (§"Module
-> structure at a glance" and §8). The sketches are retained here as a record of the
-> alternative that was considered and deliberately not built.
+> **Registro: tecnico-diretto.**
 
-### 8.1 Component Architecture — Phase 4 (original gossip-window sketch)
+This section previously carried three diagrams — *Component Architecture (gossip-window
+sketch)*, *Weight Retrieval + Sortition Data Flow* and *Gossip Window Resolution
+(Timing)* — that depicted Phase 4 as an explicit **P2P gossip-window protocol**, with
+validators broadcasting `ProposerClaim` messages resolved inside a timing window by a
+`GossipWindow` / `TiebreakerLogic` pair.
 
-```mermaid
-flowchart TD
-    REG["StreamWeightRegistry<br/>(Phase 1, existing)"] --> SC["ScoreComputation"]
-    VRF["VRFSelector"] -->|"y_i, pi_i"| SC
-    SC -->|"score_i"| GW["GossipWindow"]
-    GW -->|"reveal if score_i below threshold"| NET["P2P broadcast"]
-    NET --> PEER["Peer nodes:<br/>verify VRF proof,<br/>track minimum score"]
-    PEER --> TB["TiebreakerLogic<br/>(only on score collision)"]
-    TB --> ACC["Accept block from<br/>argmin(score) proposer"]
-```
+**That protocol was never implemented.** Phase 4 was built instead as **score-timed
+self-election**: no new network message, no claim tracking, no window timer. Each
+validator computes its score privately and simply *mines later* in proportion to it, so
+the argmin reveals itself by acting first (commit `7227c01`, *"private sortition without
+gossip window"*). The three diagrams have therefore been removed rather than kept with a
+caveat: a diagram of a protocol that does not exist misleads a reader faster than prose
+can correct it.
 
-### 8.2 Weight Retrieval + Sortition Data Flow
+The as-built diagrams live in their single canonical locations:
 
-```mermaid
-flowchart LR
-    STREAM["wpoa-weights stream"] --> READ["Backward-scan read<br/>(StreamWeightRegistry)"]
-    READ --> WMAP["address to weight map"]
-    WMAP --> SC["ScoreComputation:<br/>score_i = -ln(u_i)/w_i"]
-    SEED["RANDAO seed (Phase 3)"] --> VRF["VRFSelector:<br/>y_i = VRF_sk_i(seed)"]
-    VRF --> SC
-    SC --> GW["GossipWindow"]
-```
+| Concept | Canonical diagram |
+|---|---|
+| Weight assignment — the two authorization gates, the stream/flag precedence | [implementation-status.md §0.1](implementation-status.md#01-assegnazione-del-peso-di-un-nodo--flusso-autorevole) |
+| Whole-stack architecture across phases | [`../README.md`](../README.md) |
+| Score-timed self-election, miner and validator sides | [phase4-implementation-guide.md](phase4-implementation-guide.md) |
+| Efraimidis transform pipeline | [thesis-project-overview.md §9.5](thesis-project-overview.md) |
 
-### 8.3 Gossip Window Resolution (Timing)
-
-```mermaid
-sequenceDiagram
-    participant V1 as Validator (low score, wins)
-    participant V2 as Validator (higher score)
-    participant Net as Network / peers
-
-    Note over V1,V2: t0 - new seed becomes available
-    V1->>V1: compute score_1 (below threshold)
-    V2->>V2: compute score_2 (below threshold)
-    V1->>Net: broadcast claim (score_1, y_1, pi_1)
-    V2->>Net: broadcast claim (score_2, y_2, pi_2)
-    Net->>Net: verify both proofs
-    Net->>Net: compare score_1 vs score_2
-    Note over Net: score_1 < score_2 -> V1 wins
-    Net->>V1: accept block from V1
-    Net--xV2: discard V2's claim
-    Note over V1,Net: Target: resolved within gossip window (~500ms)
-```
+Rationale for score-timed self-election over a gossip window is in
+[§6.3](#63-phase-4--efraimidis-private-sortition-the-security-fix) and
+[phase4-implementation-guide.md](phase4-implementation-guide.md).
 
 ---
 

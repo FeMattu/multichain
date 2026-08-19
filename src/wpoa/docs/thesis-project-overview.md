@@ -625,34 +625,59 @@ sequenceDiagram
     Note over AnyObserver,Winner: Warning window collapses to gossip latency (~sub-second)
 ```
 
-### 9.3 Stream-Based Weight Retrieval Flow (Conceptual)
+### 9.3 Stream-Based Weight Retrieval Flow
+
+> **Sede unica.** Il diagramma del flusso di assegnazione e lettura del peso — con i due
+> gate di autorizzazione e la precedenza dello stream sul flag locale — vive in un solo
+> file, per evitare che due copie divergano:
+> **[implementation-status.md §0.1](implementation-status.md#01-assegnazione-del-peso-di-un-nodo--flusso-autorevole)**.
+
+Ai fini del modello formale, del meccanismo di recupero conta una sola proprietà: la
+mappa dei pesi che alimenta l'elezione è una funzione **deterministica dei soli dati
+confermati on-chain**. Ogni nodo onesto, leggendo lo stesso stream, ricostruisce la
+stessa mappa `w_1 … w_m` — la regola di risoluzione è *newest-confirmed-wins* per
+indirizzo — e quindi calcola la stessa distribuzione di elezione.
+
+È questa proprietà, e non la meccanica dello stream, che il Teorema di preservazione
+della probabilità (§7.4) assume. Ne segue che il livello che *produce* i pesi può essere
+sostituito senza toccare le garanzie del consenso, purché il contratto dello stream sia
+rispettato: peso intero, strettamente positivo, per indirizzo autorizzato.
+
+### 9.4 Leader Election Decision Tree (as built: score-timed self-election)
+
+> **Note on the model.** An earlier revision of this diagram showed a *gossip-window*
+> protocol: validators testing their score against a threshold, broadcasting
+> `ProposerClaim` messages, and peers resolving the minimum inside a timing window. That
+> design was **not** the one implemented. There is no threshold, no claim message and no
+> window: the score maps to a *delay*, and the argmin reveals itself by proposing first.
+> The decision tree below is the as-built behaviour.
 
 ```mermaid
 flowchart TD
-    S["wpoa-weights stream<br/>(append-only, on-chain)"] --> N1["Node startup:<br/>backward scan"]
-    N1 --> N2{"First record<br/>seen per address?"}
-    N2 -->|yes| N3["Keep as current weight"]
-    N2 -->|no, older record| N4["Skip (superseded)"]
-    N3 --> M["In-memory weight map<br/>w_1 ... w_m"]
-    N4 --> N1
-    M --> WRS["Fed into election<br/>(public WRS baseline or<br/>private Efraimidis sortition)"]
+    Start(["Validator i observes tip h[n], derives seed[n+1]"]) --> Eval["Compute privately, under its OWN secret key:<br/>u_i = VRF_sk_i(seed ‖ 'PROPOSER' ‖ n+1)<br/>score_i = −ln(u_i)/f(w_eff,i)"]
+    Eval --> Norm["score_norm = 1 − e^(−W·score_i)<br/>D_i = T + δ·T·(2·score_norm − 1) + λ·Φ"]
+    Norm --> Timer["Schedule own mining attempt at<br/>parent.nTime + D_i"]
+
+    Timer --> Race{"A valid block for h[n+1]<br/>arrives before the timer fires?"}
+    Race -->|yes| Stand["Stand down: new tip observed.<br/>Restart at the next height"]
+    Race -->|no| Propose["Timer fires first — i is the argmin.<br/>Mine, embedding its reveal (y_i, π_i)"]
+
+    Propose --> Peer["Every peer, on receipt"]
+    Peer --> V1{"π_i verifies over<br/>seed ‖ 'PROPOSER' ‖ n+1 ?"}
+    V1 -->|no| Rej1["Reject: invalid reveal"]
+    V1 -->|yes| V2{"block.nTime ≥ parent.nTime + D_i<br/>recomputed from y_i and w_eff,i ?"}
+    V2 -->|no| Rej2["Reject: mined earlier than<br/>its score entitled — a delay violation,<br/>reportable to the malus registry"]
+    V2 -->|yes| Acc["Accept"]
+
+    Stand -.->|"no zero-proposer gap:<br/>the time bar auto-relaxes,<br/>so the minimum-score ONLINE<br/>validator always eventually proposes"| Timer
 ```
 
-### 9.4 Leader Election Decision Tree (Auto-Reveal Condition)
-
-```mermaid
-flowchart TD
-    Start(["Validator i receives seed[n+1]"]) --> Eval["Compute u_i, E_i, score_i locally"]
-    Eval --> Check{"score_i below<br/>gossip-window threshold?"}
-    Check -->|no| Wait["Stay silent this round"]
-    Check -->|yes| Reveal["Broadcast (score_i, y_i, pi_i, PK_i)"]
-    Reveal --> Collect["Peers collect all reveals<br/>within gossip window"]
-    Collect --> Min{"Is score_i the<br/>global minimum revealed?"}
-    Min -->|yes| Accept["Block from i accepted"]
-    Min -->|no| Discard["Block from i discarded<br/>(a lower score exists)"]
-    Wait --> Timeout{"Gossip window<br/>expires with 0 reveals?"}
-    Timeout -->|yes| Fallback["Liveness fallback<br/>(see implementation-roadmap.md, Vulnerabilities and Mitigations)"]
-```
+Three properties distinguish this from the gossip-window sketch. There is **no
+threshold**, so no round can end with zero proposers — the bar relaxes with time and the
+lowest-score online validator always eventually acts. There is **no extra message**, so
+the privacy of the score is never traded away for coordination. And the validator's
+check is an **inequality on `nTime`**, not an equality on a publicly recomputed argmin,
+which is precisely what lets the proposer stay unknowable until it commits.
 
 ### 9.5 Efraimidis Transformation Pipeline
 
