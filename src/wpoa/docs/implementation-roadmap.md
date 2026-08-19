@@ -153,43 +153,11 @@ chooses to broadcast).
 
 ## 3. Current Implementation Status
 
-| Phase | Area | Status | Notes |
-|:-----:|---|---|---|
-| 1 | Weight configuration (`-weight`) & validation | Done | Validated in `AppInit2`; startup fails on `-weight <= 0`. |
-| 1 | Deferred registration (background thread) | Done | Waits for readiness, retries, bounded budget before giving up. |
-| 1 | On-chain append-only registry (`wpoa-weights`) | Done | Create + subscribe + publish via reused RPC handlers; idempotent re-registration. |
-| 1 | Opaque read API (`GetLocalWeight`, `GetAllNodesWeights`, `GetNodeWeight`) | Done | Backward-search per address; hides stream mechanics from callers. |
-| 1 | RPC surface (`getlocalweight`, `getnodeweight`, `getallweights`) | Done | Confirmed-only, thread-safe. |
-| 1 | Unit tests (pure parsing / aggregation) | Done | Boost.Test suite, node-free — [`test/wpoa_weight_tests.cpp`](../test/wpoa_weight_tests.cpp). |
-| 1 | Single-node functional smoke test | Done | [`test/functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh) with `NODES=1` (`check_weight`). |
-| 1 | Multi-node functional smoke test | Done | [`test/functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh) (`check_weight` + `check_multinode_consistency`). |
-| 2 | Weighted miner selection (`WPoASelector` + miner hook) | Done | Efraimidis–Spirakis argmin seeded by prev-block hash, consuming `GetAllNodesWeights()`. [phase2-implementation-guide.md](phase2-implementation-guide.md). |
-| 2 | `-enablewpoa` runtime toggle | Done | Default off; native round-robin unchanged when unset. Gates the miner + validation hooks via `WPoAActiveAtHeight`. |
-| 2 | Proposer validation (`VerifyBlockMiner` hook) | Done | Recomputes the election on receipt; rejects blocks whose miner ≠ elected proposer. |
-| 2 | Deterministic tie-break | Done | Lexicographically smallest address on exact score collision (§9). |
-| 2 | Unit tests (pure selector math) | Done | [`test/wpoa_selector_tests.cpp`](../test/wpoa_selector_tests.cpp); probability preservation over 200k seeds. |
-| 2 | Multi-node distribution test (chi-square) | Done | [`test/functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh) `check_distribution` + [`test/analyze_distribution.py`](../test/analyze_distribution.py); observed vs. expected over the sample window (public-argmin regime via `INCLUDE_PUBLIC_SELECTOR=1`). |
-| 3a | VRF wrapper (ECVRF/DLEQ on bundled secp256k1) | Done | Pure `WPoAVRF::Prove`/`Verify`; node-free unit suite (roundtrip, determinism, tamper/forgery/cross-key rejection). [phase3a-implementation-guide.md](phase3a-implementation-guide.md). |
-| 3a | Per-block VRF reveal — embed + verify | Done | Proposer embeds `(R, π)` as a suffix of the block-signature element; `VerifyBlockMinerWPoA` rejects a missing/invalid reveal on wPoA-VRF heights. Gated by `-enablewpoavrf`. |
-| 3a | Multi-node functional test | Done | [`test/functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh) `check_vrf`: reveals carried & verified network-wide, 0 rejects, chain live and fork-free under mandatory verification (standalone `VRF reveal OK` log via `INCLUDE_PUBLIC_SELECTOR=1`). |
-| 3b | RANDAO accumulator + lookback seed | Done | `RandaoAccumulator` folds the 3a reveals into `R_tot[n]=H(R_tot[n-1]⊕H(R[n]))` and derives `seed[n+1]=H(R_tot[n-k]‖h[n]‖n+1)`, swapped into selection at both the miner and validator call sites. Gated by `-enablewpoarandao` (+ `-wpoarandaolookback=k`); consumes the seed only, election unchanged. [phase3b-implementation-guide.md](phase3b-implementation-guide.md). |
-| **4** | **Efraimidis private sortition** | **Done** | **The security fix.** Private per-validator VRF score over the beacon seed; score-timed self-election (argmin proposes first); validator-side VRF-verify + score-recompute + time-bar eligibility replaces the public argmin equality; auto-relaxing time bar is the liveness fallback (no zero-proposer gap). Gated by `-enablewpoasortition` (+ `-wpoasortitiondelta`/`-wpoasortitionlambda`; requires `-enablewpoarandao` and `k>=1`). `wpoa/private_sortition.{h,cpp}` + miner/validator hooks. See [§6.3](#63-phase-4--efraimidis-private-sortition-the-security-fix) and [phase4-implementation-guide.md](phase4-implementation-guide.md). |
-| 5 | VDF over beacon seed | Future | See [§6.4](#64-phase-5--vdf-future). |
-
-Phase 1 is fully merged into `master` (see [§5](#5-branches--branch-strategy)).
-Phase 2 is implemented on `feature/wpoa-miner-integration`
-(`wpoa/wpoa_selector.{h,cpp}` plus the miner/validation hooks); see
-[phase2-implementation-guide.md](phase2-implementation-guide.md). Phase 3a (VRF
-reveal) is implemented (`wpoa/vrf_wrapper.{h,cpp}`; see
-[phase3a-implementation-guide.md](phase3a-implementation-guide.md)) and Phase 3b
-(RANDAO accumulator) is implemented on `feature/wpoa-randao`
-(`wpoa/randao_accumulator.{h,cpp}` plus the seed swap at the two selection call
-sites; see [phase3b-implementation-guide.md](phase3b-implementation-guide.md)).
-Phase 4 (private sortition — the security fix) is implemented on
-`feature/wpoa-private-sortition` (`wpoa/private_sortition.{h,cpp}` plus the
-score-timed miner hook and the validator-side eligibility/time-bar check; see
-[phase4-implementation-guide.md](phase4-implementation-guide.md)). Phase 5 is not
-yet implemented (see [§4](#4-directory-structure)).
+> **Spostato.** Questa sezione duplicava la tabella di stato del README. Lo stato di
+> implementazione ha ora una **sede unica**:
+> **[implementation-status.md](implementation-status.md)**.
+>
+> Non reintrodurre qui una tabella di stato: due copie divergono.
 
 ---
 

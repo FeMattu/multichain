@@ -344,78 +344,19 @@ details.
 
 ## Implementation status
 
-| Phase | Area | Status | Notes |
-|:-----:|------|--------|-------|
-| **1** | Weight configuration (`-weight`) & validation | Done | Validated in `AppInit2`; startup fails on `-weight <= 0`. |
-| **1** | Deferred registration (background thread) | Done | Waits for readiness, retries, bounded budget before giving up. |
-| **1** | On-chain append-only registry (`wpoa-weights`) | Done | Create + subscribe + publish via reused RPC handlers; idempotent re-registration. |
-| **1** | Opaque read API (`GetLocalWeight`, `GetAllNodesWeights`, `GetNodeWeight`) | Done | Backward-search per address; hides stream mechanics from callers. |
-| **1** | RPC surface (`getlocalweight`, `getnodeweight`, `getallweights`) | Done | Confirmed-only, thread-safe. |
-| **1** | Read-path correctness fixes | Done | non-WRP read family (WRP snapshot bug) and 6-arg `OpReturnFormatEntry` overload. |
-| **1** | Unit tests (pure parsing / aggregation) | Done | Boost.Test suite, node-free. |
-| **1** | Single-node functional smoke test | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) with `NODES=1` (`check_weight`). |
-| **1** | Multi-node functional smoke test | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) `check_weight` + `check_multinode_consistency` — bootstraps `connect`/`send`/`receive`/`mine`/`wpoa-weights.write` from node 0; asserts aggregate weight. |
-| **2** | Weighted miner selection (`WPoASelector` + `miner.cpp` hook) | Done | Efraimidis–Spirakis argmin seeded by prev-block hash; consumes `GetAllNodesWeights()`. See [docs/phase2-implementation-guide.md](docs/phase2-implementation-guide.md). |
-| **2** | `-enablewpoaselection` toggle (chain param + runtime) | Done | Default off (native round-robin unchanged); requires `-enablewpoaweights`. Inherited via `params.dat`; `-enablewpoa` master turns it on. Gates miner + validation hooks. |
-| **2** | Proposer validation (`VerifyBlockMiner` hook) | Done | Recomputes the election on receipt; rejects blocks not from the elected proposer. |
-| **2** | Deterministic tie-break | Done | Lexicographically smallest address on exact score collision. |
-| **2** | Unit tests (pure selector math) | Done | [`test/wpoa_selector_tests.cpp`](test/wpoa_selector_tests.cpp); probability preservation over 200k seeds. |
-| **2** | Multi-node distribution test (chi-square) | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) `check_distribution` + [`test/analyze_distribution.py`](test/analyze_distribution.py); observed vs. expected over the sample window. Public-argmin regime via `INCLUDE_PUBLIC_SELECTOR=1`. |
-| **3a** | VRF wrapper (`WPoAVRF`, ECVRF/DLEQ over secp256k1) | Done | Pure `Prove`/`Verify`; no new build dependency. [docs/phase3a-implementation-guide.md](docs/phase3a-implementation-guide.md). |
-| **3a** | `-enablewpoavrf` toggle (chain param + runtime) | Done | Default off; requires `-enablewpoaselection`. Inherited via `params.dat`. Gates reveal production + verification via `WPoAVRFActiveAtHeight`. |
-| **3a** | Per-block reveal embed + verify | Done | Proposer embeds `(R, π)` as a suffix of the block-signature element; `VerifyBlockMinerWPoA` rejects a missing/invalid reveal on wPoA-VRF heights. |
-| **3a** | Unit tests (pure VRF crypto) | Done | [`test/vrf_wrapper_tests.cpp`](test/vrf_wrapper_tests.cpp); roundtrip, determinism, tamper/forgery/cross-key rejection. |
-| **3a** | Multi-node functional test | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) `check_vrf`; reveals carried & verified network-wide (via the sortition path), 0 rejects, chain live and fork-free. Standalone `VRF reveal OK` log via `INCLUDE_PUBLIC_SELECTOR=1`. |
-| **3b** | RANDAO accumulator + seed (`RandaoAccumulator`) | Done | `R_tot[n]=H(R_tot[n-1]⊕H(R[n]))` folded over the 3a reveals; `seed[n+1]=H(R_tot[n-k]‖h[n]‖n+1)` derived and memoized. [docs/phase3b-implementation-guide.md](docs/phase3b-implementation-guide.md). |
-| **3b** | `-enablewpoarandao` + `-wpoarandaolookback=k` | Done | Default off; requires `-enablewpoavrf`. Gates the seed swap via `WPoARANDAOActiveAtHeight`; `k` is consensus-critical, validated at startup. |
-| **3b** | Selection-seed swap (miner + validator) | Done | Both call sites replace the prev-hash seed with `WPoARandaoSelectionSeed(tip)`; the Efraimidis election is otherwise unchanged (stays weight-proportional). |
-| **3b** | Unit tests (pure accumulator/seed math) | Done | [`test/randao_accumulator_tests.cpp`](test/randao_accumulator_tests.cpp); spec conformance vs. an independent reference, order/input sensitivity, chain consistency. |
-| **3b** | Multi-node functional test | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) `check_randao`; liveness + no-fork under the beacon seed, seed derivations logged, 0 fallback folds, weight-proportional distribution (chi-square). |
-| **4** | Private sortition core (`PrivateSortition`) | Done | `VRFInput`/`ScoreFromVRFOutput`/`MiningDelay`, node-free; reuses the Phase-2 score transform so the distribution is provably unchanged. [docs/phase4-implementation-guide.md](docs/phase4-implementation-guide.md). |
-| **4** | `-enablewpoasortition` + `-wpoasortitiondelta`/`-wpoasortitionlambda` | Done | Default off; requires `-enablewpoarandao` and lookback `k>=1` (seed↔reveal acyclicity, validated at startup). Gates the private path via `WPoASortitionActiveAtHeight`; both band parameters are consensus-critical and range-checked at startup. |
-| **4** | Score-timed self-election (miner) | Done | Each validator scores itself privately (VRF under its own key) and mines at `now + delay(score)`, so the argmin proposes first; anti-respin guard + reveal-input switch to `seed‖"PROPOSER"‖height`. |
-| **4** | Eligibility / time-bar validation (`VerifyBlockMinerWPoA`) | Done | Replaces the public argmin equality: verify the VRF over the sortition input, recompute the score, accept iff `block.nTime ≥ parent.nTime + delay`. Auto-relaxing bar = liveness fallback (no zero-proposer gap). |
-| **4** | Unit tests (pure sortition math + real VRF) | Done | [`test/private_sortition_tests.cpp`](test/private_sortition_tests.cpp); VRF-input encoding, score reuse, delay map, privacy, and probability preservation with real VRF keys (chi-square). |
-| malus | Behavioural malus core (`MalusAccumulator`) | Done | EMA fold, `Psi`, `w_eff`, `EpochsToClear`; node-free. [docs/malus-registry.md](docs/malus-registry.md). |
-| malus | Open `wpoa-weights-malus` stream + `Valid(e)` | Done | Anyone may report; every node re-derives the evidence (VRF over the beacon seed, plus the time bar for a delay violation), so a false report is discarded identically everywhere. |
-| malus | `w_eff = w * Psi` in the election | Done | Applied in one place (`WPoAApplyMalus`), consumed by the public selector and by both sides of the private sortition. Inert when disabled or when nobody carries a violation. |
-| malus | `-enablewpoamalus` + mu / M_max / point weights | Done | Inheritable chain parameters; requires `-enablewpoasortition`, and `p(Equiv) > p(Delay)` enforced at startup. |
-| malus | Unit + functional tests | Done | [`test/wpoa_malus_tests.cpp`](test/wpoa_malus_tests.cpp); `check_stream_permissions` and `check_malus` in the system run. |
-| **4** | Multi-node functional test | Done | [`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh) `check_sortition`; liveness, no persistent fork, zero public-argmin acceptances (selection is private), weight-proportional distribution (chi-square). This is the default full-stack run. |
+Lo stato di implementazione di ogni fase — componenti fatti, non fatti, con
+riferimento diretto ai file di codice e ai test che li validano — vive in **una sola
+sede**:
 
-**Phases 1, 2, 3a, 3b and 4 are complete and validated end-to-end.** The multi-node
-functional test bootstraps a permissioned network with distinct per-node
-weights, confirms the weight map converges on every node, then mines a long run
-of wPoA-governed blocks and verifies the observed proposer distribution matches
-the configured weight ratios via a chi-square goodness-of-fit test (with the
-observed-vs-expected table printed as evidence). The Phase 3a VRF beacon is
-validated by its own multi-node test: with `-enablewpoavrf=1` every wPoA block
-carries a reveal that every peer must verify to accept, so the chain advancing
-past the setup height with all nodes agreeing (no fork) and zero VRF rejections
-is direct end-to-end evidence that reveals are produced and verified network-wide.
-The Phase 3b RANDAO beacon seed is validated by its own multi-node test: with
-`-enablewpoarandao=1` the proposer is elected from `seed[n+1]=H(R_tot[n-k]‖h[n]‖n+1)`,
-which every node recomputes by folding the on-chain reveals, so the chain
-advancing past setup with no fork (and zero fallback folds) is direct evidence
-that the accumulator and seed are bit-identical network-wide — while the observed
-proposer distribution still matches the weight ratios under the new seed.
-The Phase 4 private sortition is validated by its own multi-node test: with
-`-enablewpoasortition=1` each validator scores itself privately under its own VRF
-key and self-elects by a score-proportional mining delay, so the chain advancing
-past setup with no persistent fork **and zero public-argmin acceptances** (nobody
-elected the proposer from public data) is direct evidence that selection is
-private, while the observed proposer distribution still matches the weight ratios
-(chi-square) — the argmin over private scores preserves `Pr[i]=w_i/Σw`. Phase 5
-(a VDF over the beacon output) is planned.
+> **[docs/implementation-status.md](docs/implementation-status.md)**
 
-See [docs/phase3b-implementation-guide.md](docs/phase3b-implementation-guide.md)
-for the Phase 3b design,
-[docs/phase3a-implementation-guide.md](docs/phase3a-implementation-guide.md)
-for the Phase 3a design,
-[docs/phase2-implementation-guide.md](docs/phase2-implementation-guide.md)
-for the Phase 2 design, and
-[phase1-implementation-guide.md §12](docs/phase1-implementation-guide.md#12-limitations--phase-2-hooks)
-for the full limitations register.
+Quel file contiene anche l'architettura di alto livello, il diagramma autorevole del
+flusso di assegnazione del peso, e la distinzione fra `mining-turnover` (hint
+operativo locale) e `mining-diversity` (regola di consenso vincolante).
+
+**In sintesi:** le fasi 1, 2, 3a, 3b e 4 sono complete e validate end-to-end, così
+come il registro del malus comportamentale e il weight engine. La fase 5 (VDF sopra
+l'output del beacon) è pianificata e non implementata.
 
 ---
 
