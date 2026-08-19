@@ -1,10 +1,10 @@
 # `miner/miner.cpp` (wPoA Phase 3b — the RANDAO seed on the miner side)
 
-> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
-> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
-> invariata. Per il modello teorico del consenso si rimanda a
-> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
-> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> **Register: technical-direct.** A developer reference: APIs, function signatures,
+> data structures and control flow, with code terminology left verbatim. For the
+> theoretical consensus model see
+> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
+> [protocol-parameters.md](protocol-parameters.md); for implementation status see
 > [implementation-status.md](implementation-status.md).
 
 > Documentation of the **miner-side integration** of the RANDAO beacon seed: how the block
@@ -26,8 +26,7 @@ block inside the existing wPoA election branch. The include added at the top of 
 (`WPoAActiveAtHeight` / `WPoASelectProposer` come from `wpoa/wpoa_selector.h`, already
 included for Phase 2; `WPoAVRF` from `wpoa/vrf_wrapper.h`, included for Phase 3a.)
 
-## Indice
-
+## Table of contents
 - [1. Where the change lives and why there](#1-where-the-change-lives-and-why-there)
 - [2. The added block, line by line](#2-the-added-block-line-by-line)
   - [uint256 hWPoASeed=pindexTip->GetBlockHash();](#uint256-hwpoaseedpindextip-getblockhash)

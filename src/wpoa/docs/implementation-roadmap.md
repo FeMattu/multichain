@@ -1,10 +1,10 @@
 # Implementation Roadmap — wPoA Selector with Efraimidis–Spirakis Sortition
 
-> **Registro: misto, dichiarato per sezione.** Le sezioni di razionale progettuale e
-> di confronto fra meccanismi di consenso sono a registro **formale-accademico**; le
-> sezioni su componenti, piano per fasi e rischi sono a registro
-> **tecnico-diretto**. Stato in [implementation-status.md](implementation-status.md),
-> parametri in [protocol-parameters.md](protocol-parameters.md).
+> **Register: mixed, declared per section.** The sections on design rationale and on
+> comparison between consensus mechanisms are in the **formal-academic** register; the
+> sections on components, the phased plan and risks are in the **technical-direct**
+> register. Status in [implementation-status.md](implementation-status.md), parameters
+> in [protocol-parameters.md](protocol-parameters.md).
 
 > **Scope of this document.** This is the *engineering* companion to the wPoA
 > project: current status, phased plan, branch strategy, components, and
@@ -18,7 +18,7 @@
 
 ---
 
-## Indice
+## Table of contents
 1. [Executive Summary](#1-executive-summary)
 2. [Rationale: Why Efraimidis over Public WRS](#2-rationale-why-efraimidis-over-public-wrs)
 3. [Current Implementation Status](#3-current-implementation-status)
@@ -158,11 +158,11 @@ chooses to broadcast).
 
 ## 3. Current Implementation Status
 
-> **Spostato.** Questa sezione duplicava la tabella di stato del README. Lo stato di
-> implementazione ha ora una **sede unica**:
+> **Moved.** This section duplicated the status table in the README. Implementation
+> status now has a **single source**:
 > **[implementation-status.md](implementation-status.md)**.
 >
-> Non reintrodurre qui una tabella di stato: due copie divergono.
+> Do not reintroduce a status table here: two copies diverge.
 
 ---
 
@@ -381,7 +381,7 @@ glue + miner/validator hooks + one flag).
 |---|---|
 | `PrivateSortition::VRFInput` | Builds the consensus-critical VRF input `seed ‖ "PROPOSER" ‖ BE32(height)` (the beacon seed is the public input). |
 | `PrivateSortition::ScoreFromVRFOutput` | Folds `y_i` and runs the **same** transform as the Phase-2 selector (`WPoASelector::ScoreFromEntropy64`): `score_i = -ln(u_i)/f(w_i)`. Single source of truth ⇒ distribution provably unchanged. |
-| `PrivateSortition::MiningDelay` | The score→time map, a **band** around target-block-time: `T + δ·T·(2·score_norm − 1) + λ·Φ` with `score_norm = 1 − e^{−W·score}`. Strictly increasing (argmin proposes first) and weight-scale invariant. Serves as **both** the miner's start-time delay and the validator's time bar. See [protocol-parameters.md §2.1](protocol-parameters.md#21-il-ritardo-di-mining-della-fase-4). |
+| `PrivateSortition::MiningDelay` | The score→time map, a **band** around target-block-time: `T + δ·T·(2·score_norm − 1) + λ·Φ` with `score_norm = 1 − e^{−W·score}`. Strictly increasing (argmin proposes first) and weight-scale invariant. Serves as **both** the miner's start-time delay and the validator's time bar. See [protocol-parameters.md §2.1](protocol-parameters.md#21-the-phase-4-mining-delay). |
 | miner hook (`miner.cpp`) | `WPoASortitionLocalScoreDelay` scores this node privately; the node mines at `now + delay`. Anti-respin guard + reveal-input switch. |
 | validator hook (`multichainblock.cpp`) | `WPoASortitionVerifyProposer`: verify the VRF over the sortition input, recompute the score, accept iff `block.nTime ≥ parent.nTime + delay`. Replaces the argmin equality. |
 
@@ -443,7 +443,7 @@ predictability-fix track (Phases 1–5) and are not phase-numbered here:
 
   It previously was `delay = scale · score · Σ f(w_j)` — an open-ended ramp, since
 replaced by the band around target-block-time (see
-[protocol-parameters.md §2.1](protocol-parameters.md#21-il-ritardo-di-mining-della-fase-4)).
+[protocol-parameters.md §2.1](protocol-parameters.md#21-the-phase-4-mining-delay)).
 That earlier form satisfied everything
   §5.10 *proves* — strictly increasing in the score, so `argmin(delay) = argmin(score)`
   and the weighted election preserved exactly (Prop. 5.11, Cor. 5.12) — but not what

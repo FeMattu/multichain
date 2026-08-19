@@ -53,8 +53,7 @@ interface/implementation pair: `init.h` declares the global symbols that the oth
 modules (including `stream_weight_registry.cpp`) use; `init.cpp` defines them and
 contains `AppInit2`, the startup function.
 
-## Indice
-
+## Table of contents
 - [1. What init.h provides to the weight subsystem](#1-what-inith-provides-to-the-weight-subsystem)
 - [2. The integration in init.cpp](#2-the-integration-in-initcpp)
   - [2.1 The include (line 43)](#21-the-include-line-43)

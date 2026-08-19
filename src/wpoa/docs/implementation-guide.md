@@ -1,10 +1,10 @@
 # wPoA Implementation Guide — Master Index
 
-> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
-> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
-> invariata. Per il modello teorico del consenso si rimanda a
-> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
-> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> **Register: technical-direct.** A developer reference: APIs, function signatures,
+> data structures and control flow, with code terminology left verbatim. For the
+> theoretical consensus model see
+> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
+> [protocol-parameters.md](protocol-parameters.md); for implementation status see
 > [implementation-status.md](implementation-status.md).
 
 > **What this file is.** A lightweight, high-level map of the whole wPoA
@@ -58,9 +58,9 @@ Phase 2.
 
 ## Phases at a glance
 
-> **Lo stato di ciascuna fase non e' ripetuto qui.** Vive in una sola sede:
-> [implementation-status.md](implementation-status.md). Questa tabella descrive *cosa*
-> aggiunge ogni fase, non se sia fatta.
+> **Per-phase status is not repeated here.** It lives in a single place:
+> [implementation-status.md](implementation-status.md). The table below describes *what*
+> each phase adds, not whether it is done.
 
 | Phase | What it adds (summary) | Technical guide |
 |:-----:|------------------------|-----------------|

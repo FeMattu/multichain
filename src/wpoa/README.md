@@ -357,19 +357,18 @@ carriage), [`../Makefile.am`](../Makefile.am) (build).
 
 ## Implementation status
 
-Lo stato di implementazione di ogni fase — componenti fatti, non fatti, con
-riferimento diretto ai file di codice e ai test che li validano — vive in **una sola
-sede**:
+Per-phase implementation status — what is done, what is not, with direct pointers to the
+source files and to the tests that validate them — lives in **a single place**:
 
 > **[docs/implementation-status.md](docs/implementation-status.md)**
 
-Quel file contiene anche l'architettura di alto livello, il diagramma autorevole del
-flusso di assegnazione del peso, e la distinzione fra `mining-turnover` (hint
-operativo locale) e `mining-diversity` (regola di consenso vincolante).
+That file also carries the high-level architecture, the authoritative weight-assignment
+diagram, and the distinction between `mining-turnover` (a local operational hint) and
+`mining-diversity` (a binding consensus rule).
 
-**In sintesi:** le fasi 1, 2, 3a, 3b e 4 sono complete e validate end-to-end, così
-come il registro del malus comportamentale e il weight engine. La fase 5 (VDF sopra
-l'output del beacon) è pianificata e non implementata.
+**In short:** Phases 1, 2, 3a, 3b and 4 are complete and validated end-to-end, as are the
+behavioural malus registry and the weight engine. Phase 5 (a VDF over the beacon output)
+is planned and not implemented.
 
 ---
 
@@ -421,29 +420,28 @@ absolutely everything with [`test/run_all_tests.sh`](test/run_all_tests.sh).
 
 ---
 
-## Glossario terminologico
+## Glossary
 
-Un termine canonico per concetto, usato in modo uniforme in tutto l'albero. Dove il
-nome nel codice è imperfetto, la documentazione **segue comunque il codice**: un
-lettore che cerca un identificatore deve trovarlo.
+One canonical term per concept, used uniformly across the tree. Where the name in the code
+is imperfect, the documentation **still follows the code**: a reader searching for an
+identifier must find it.
 
-| Termine canonico | Significato | Da non confondere con |
+| Canonical term | Meaning | Not to be confused with |
 |---|---|---|
-| **weight** / **peso** (`w`) | Il peso **grezzo** di un validatore, intero `> 0`, come pubblicato sullo stream `wpoa-weights`. È l'unità del contratto on-chain. | Non è il valore su cui si sorteggia: prima passa da malus e dumping. |
-| **effective weight** (`w_eff`) | `w_eff = w · Ψ`, il peso dopo la correzione del malus comportamentale. È ciò che entra nell'elezione. | Non è `f(w_eff)`, che è il passo successivo. |
-| **dumping** | La compressione whale `f(w)` applicata prima del sorteggio, `none` / `sqrt` / `log`. **Termine canonico perché è quello del codice** (`-dumpfunction`, `DumpingFunction`, `ApplyDumping`). In italiano tecnico sarebbe più corretto *smorzamento*, e in inglese *damping*; la documentazione glossa il termine dove serve ma non lo rinomina. | Il `λ` del weight engine, che è un damping diverso (vedi sotto). |
-| **behavioural-feedback damping** (`λ`, weight engine) | Lo smorzamento in `w_k = W_k · [ρ_{k,e−1}·λ + (1−λ)]`: quanto la conformità dell'epoca precedente influenza il peso. | Il `λ` della sortition (`-wpoasortitionlambda`), che è il guadagno del feedback sul **tempo di blocco**. Due `λ` distinti, in due livelli distinti. |
-| **score** | `score_i = −ln(u_i)/f(w_eff,i)`, la variabile di Efraimidis–Spirakis. Il **minimo** vince. | Non è una probabilità: è una variabile esponenziale, e non è confrontabile fra reti con pesi di scala diversa senza normalizzazione. |
-| **normalized score** (`score_norm`) | `1 − e^{−W·score}`, uniforme su `(0,1)` per il vincitore. È ciò che mappa lo score sulla banda di ritardo. | Non è `score`. |
-| **proposer** | Il validatore che produce il blocco a una data altezza. | *miner* nel senso PoW: qui non c'è lavoro computazionale. |
-| **beacon seed** (`seed[n+1]`) | `H(R_tot[n−k] ‖ h[n] ‖ n+1)`, il seed pubblico e concordato dell'elezione. | Il **reveal** `R[n]`, che è il contributo VRF di un singolo blocco. |
-| **reveal** (`R`, `π`) | La coppia output-VRF e prova pubblicata dal proposer nel proprio blocco. | Il *seed*, che è aggregato e derivato. |
-| **malus** (`M`, `Ψ`) | L'accumulatore di cattivo comportamento e la correzione `Ψ = max(0, 1 − M/M_max)` che ne deriva. | *slashing*: qui nulla viene confiscato, e `μ < 1` rende ogni esclusione **reversibile**. |
-| **mining-diversity** | Regola di consenso **vincolante** e hash-enforced. Un blocco che viola lo spacing è invalido. | **mining-turnover**, che è `NOHASH` e solo un hint di temporizzazione locale. Vedi [implementation-status.md §0.2](docs/implementation-status.md#02-mining-turnover-e-mining-diversity--hint-operativo-contro-regola-vincolante). |
-| **epoch** | Unità temporale del weight engine e del malus, **1-based**: `epoch(height) = height / n + 1`. | Il *lookback* `k` di RANDAO, che si misura in blocchi, non in epoche. |
-| **closed stream** | Stream che richiede il permesso `<stream>.write` per pubblicare. `wpoa-weights` e i tre stream di attestazione sono chiusi. | **open stream**: `wpoa-weights-malus` è deliberatamente aperto, perché ogni segnalazione è ri-verificata da ogni nodo. |
+| **weight** (`w`) | A validator's **raw** weight: an integer `> 0`, as published on the `wpoa-weights` stream. It is the unit of the on-chain contract. | Not the value the draw operates on: it passes through malus and dumping first. |
+| **effective weight** (`w_eff`) | `w_eff = w · Ψ`, the weight after the behavioural-malus correction. This is what enters the election. | Not `f(w_eff)`, which is the next step. |
+| **dumping** | The whale compression `f(w)` applied before the draw: `none` / `sqrt` / `log`. **Canonical because it is the name in the code** (`-dumpfunction`, `DumpingFunction`, `ApplyDumping`). *Damping* would be the more accurate English word; the documentation glosses the term where useful but does not rename it. | The weight engine's `λ`, which is a different damping (below). |
+| **behavioural-feedback damping** (`λ`, weight engine) | The damping in `w_k = W_k · [ρ_{k,e−1}·λ + (1−λ)]`: how much the previous epoch's compliance influences the weight. | The sortition `λ` (`-wpoasortitionlambda`), which is the gain of the feedback on **block time**. Two distinct `λ`, in two distinct layers. |
+| **score** | `score_i = −ln(u_i)/f(w_eff,i)`, the Efraimidis–Spirakis variate. The **minimum** wins. | Not a probability: it is an exponential variate, and it is not comparable across networks with different weight scales without normalisation. |
+| **normalized score** (`score_norm`) | `1 − e^{−W·score}`, uniform on `(0,1)` for the winner. This is what maps the score onto the delay band. | Not `score`. |
+| **proposer** | The validator that produces the block at a given height. | *miner* in the PoW sense: there is no computational work here. |
+| **beacon seed** (`seed[n+1]`) | `H(R_tot[n−k] ‖ h[n] ‖ n+1)`, the public agreed seed of the election. | The **reveal** `R[n]`, which is a single block's VRF contribution. |
+| **reveal** (`R`, `π`) | The VRF-output and proof pair published by the proposer in its own block. | The *seed*, which is aggregated and derived. |
+| **malus** (`M`, `Ψ`) | The misbehaviour accumulator and the correction `Ψ = max(0, 1 − M/M_max)` derived from it. | *slashing*: nothing is confiscated here, and `μ < 1` makes every exclusion **reversible**. |
+| **mining-diversity** | A **binding**, hash-enforced consensus rule. A block violating the spacing is invalid. | **mining-turnover**, which is `NOHASH` and only a local timing hint. See [implementation-status.md §0.2](docs/implementation-status.md#02-mining-turnover-and-mining-diversity--operational-hint-vs-binding-rule). |
+| **epoch** | The time unit of the weight engine and the malus registry, **1-based**: `epoch(height) = height / n + 1`. | The RANDAO *lookback* `k`, which is measured in blocks, not epochs. |
+| **closed stream** | A stream requiring the `<stream>.write` permission to publish. `wpoa-weights` and the three attestation streams are closed. | **open stream**: `wpoa-weights-malus` is deliberately open, because every report is re-verified by every node. |
 
-**Registro linguistico.** Nella documentazione italiana si usa *peso* per `weight` e si
-mantengono invariati in inglese i nomi di identificatori, RPC, flag, stream e classi:
-sono stringhe che il lettore deve poter cercare nel codice. Il termine inglese *weight*
-resta quindi nei nomi (`wpoa-weights`, `-weight`, `WeightEngine`) e *peso* nella prosa.
+**Language.** This documentation is written in English throughout. Identifier, RPC, flag,
+stream and class names are always left verbatim: they are strings the reader must be able
+to grep for in the source.

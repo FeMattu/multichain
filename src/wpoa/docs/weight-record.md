@@ -1,16 +1,15 @@
 # `weight_record.h`
 
-> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
-> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
-> invariata. Per il modello teorico del consenso si rimanda a
-> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
-> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> **Register: technical-direct.** A developer reference: APIs, function signatures,
+> data structures and control flow, with code terminology left verbatim. For the
+> theoretical consensus model see
+> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
+> [protocol-parameters.md](protocol-parameters.md); for implementation status see
 > [implementation-status.md](implementation-status.md).
 
 > Detailed technical walkthrough of the **pure weight-record helpers** — wPoA Phase 1.
 
-## Indice
-
+## Table of contents
 - [1. Role and philosophy of the file](#1-role-and-philosophy-of-the-file)
   - [Why a separate, "dependency-light" file?](#why-a-separate-dependency-light-file)
   - [Why inline and header-only?](#why-inline-and-header-only)

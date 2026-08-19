@@ -1,112 +1,110 @@
-# wPoA — Stato dell'implementazione
+# wPoA — Implementation status
 
-> **Registro: tecnico-diretto.** Tabella di stato con puntatori a codice e test.
-> Nessuna argomentazione progettuale: per il *perché* di ciascuna scelta si
-> rimanda alle guide di fase, per il modello teorico a
-> [thesis-project-overview.md](thesis-project-overview.md).
+> **Register: technical-direct.** A status table with pointers to code and tests. No
+> design argumentation: for the *why* of each choice see the phase guides, for the
+> theoretical model see [thesis-project-overview.md](thesis-project-overview.md).
 
-> **Fonte unica.** Questo file è l'**unica** sede autoritativa dello stato di
-> implementazione. Nessun altro documento deve ripetere tabelle di stato: gli altri
-> file lo **linkano**. Parametri e default stanno invece in
-> [protocol-parameters.md](protocol-parameters.md), anch'esso a fonte unica.
+> **Single source.** This file is the **only** authoritative place for implementation
+> status. No other document carries status tables — the others link here. Parameters and
+> defaults live in [protocol-parameters.md](protocol-parameters.md), likewise a single
+> source.
 
-**Riepilogo.** Le fasi 1, 2, 3a, 3b e 4 sono complete e validate end-to-end, così
-come il registro del malus comportamentale e il weight engine. La fase 5 (VDF sopra
-l'output del beacon, per rimuovere il bias residuo dell'ultimo rivelatore) è
-pianificata e non implementata.
+**Summary.** Phases 1, 2, 3a, 3b and 4 are complete and validated end-to-end, as are the
+behavioural malus registry and the weight engine. Phase 5 (a VDF over the beacon output,
+to remove the residual last-revealer bias) is planned and not implemented.
 
 ---
 
-## Indice
+## Table of contents
 
-- [0. Architettura di alto livello](#0-architettura-di-alto-livello)
-  - [0.1 Assegnazione del peso di un nodo — flusso autorevole](#01-assegnazione-del-peso-di-un-nodo--flusso-autorevole)
-  - [0.2 mining-turnover e mining-diversity](#02-mining-turnover-e-mining-diversity--hint-operativo-contro-regola-vincolante)
-- [1. Fase 1 — Registro dei pesi](#1-fase-1--registro-dei-pesi)
-- [2. Fase 2 — Selezione pesata del proposer](#2-fase-2--selezione-pesata-del-proposer)
-- [3. Fase 3a — Beacon di casualità VRF](#3-fase-3a--beacon-di-casualità-vrf)
-- [4. Fase 3b — Seed RANDAO del beacon](#4-fase-3b--seed-randao-del-beacon)
-- [5. Fase 4 — Sortition privata di Efraimidis](#5-fase-4--sortition-privata-di-efraimidis)
-- [6. Registro del malus comportamentale](#6-registro-del-malus-comportamentale)
+- [0. High-level architecture](#0-high-level-architecture)
+  - [0.1 How a node's weight is assigned — the authoritative flow](#01-how-a-nodes-weight-is-assigned--the-authoritative-flow)
+  - [0.2 mining-turnover and mining-diversity — operational hint vs binding rule](#02-mining-turnover-and-mining-diversity--operational-hint-vs-binding-rule)
+- [1. Phase 1 — Weight registry](#1-phase-1--weight-registry)
+- [2. Phase 2 — Weighted proposer selection](#2-phase-2--weighted-proposer-selection)
+- [3. Phase 3a — VRF randomness beacon](#3-phase-3a--vrf-randomness-beacon)
+- [4. Phase 3b — RANDAO beacon seed](#4-phase-3b--randao-beacon-seed)
+- [5. Phase 4 — Efraimidis private sortition](#5-phase-4--efraimidis-private-sortition)
+- [6. Behavioural malus registry](#6-behavioural-malus-registry)
 - [7. Weight engine](#7-weight-engine)
-- [8. Validazione end-to-end](#8-validazione-end-to-end)
-- [9. Non implementato](#9-non-implementato)
+- [8. End-to-end validation](#8-end-to-end-validation)
+- [9. Not implemented](#9-not-implemented)
 
 ---
 
-## 0. Architettura di alto livello
+## 0. High-level architecture
 
-Il sistema è stratificato: ogni livello dipende solo da quello sotto di sé, e
-l'accoppiamento fra il livello che *produce* i pesi e quello che li *consuma* passa
-per un unico stream on-chain.
+The system is layered: each layer depends only on the one below it, and the coupling
+between the layer that *produces* weights and the layer that *consumes* them goes through
+a single on-chain stream.
 
 ```
                     +-----------------------------------------------+
-   Livello peso     |  src/weight_engine/                           |
-   (governance)     |  WeightEngine: da ESG/membership/activity/     |
-                    |  reconciliation  ->  w_k per epoca            |
+   Weight layer     |  src/weight_engine/                           |
+   (governance)     |  WeightEngine: from ESG/membership/activity/  |
+                    |  reconciliation  ->  w_k per epoch            |
                     +----------------------+------------------------+
-                                           |  pubblica su
+                                           |  publishes to
                                            v
                     +-----------------------------------------------+
-   Contratto        |  stream on-chain "wpoa-weights"  (CLOSED)     |
-   on-chain         |  {address, integer weight > 0}                |
+   On-chain         |  "wpoa-weights" stream  (CLOSED)              |
+   contract         |  {address, integer weight > 0}                |
                     +----------------------+------------------------+
-                                           |  legge (newest-confirmed-wins)
+                                           |  reads (newest-confirmed-wins)
                                            v
                     +-----------------------------------------------+
-   Livello          |  src/wpoa/                                    |
-   consenso         |  StreamWeightRegistry -> malus -> dumping     |
-                    |  -> VRF -> RANDAO -> sortition privata        |
+   Consensus        |  src/wpoa/                                    |
+   layer            |  StreamWeightRegistry -> malus -> dumping     |
+                    |  -> VRF -> RANDAO -> private sortition        |
                     +-----------------------------------------------+
 ```
 
-Il livello del consenso non apprende mai **come** `w_k` è stato prodotto: vede solo
-il contratto dello stream. Questo permette di sostituire la politica di assegnazione
-del peso senza toccare la meccanica dell'elezione.
+The consensus layer never learns **how** `w_k` was produced: it sees only the stream
+contract. This makes it possible to replace the weight-assignment policy without touching
+the election mechanics.
 
-### 0.1 Assegnazione del peso di un nodo — flusso autorevole
+### 0.1 How a node's weight is assigned — the authoritative flow
 
-> **Sede unica.** Questo è l'**unico** diagramma di assegnazione del peso in tutto il
-> repository. Gli altri file lo linkano; nessuno lo duplica.
+> **Single source.** This is the **only** weight-assignment diagram in the repository.
+> Other files link to it; none duplicates it.
 
-Il canale primario e autorevole è la **scrittura sullo stream on-chain dei pesi
-tramite RPC**, effettuata da un nodo **già autorizzato**. Il flag `-weight=<n>` è
-solo un valore locale di ripiego.
+The primary and authoritative channel is an **RPC write to the on-chain weights stream**,
+performed by an **already authorized** node. The `-weight=<n>` flag is merely a local
+fallback value.
 
 ```mermaid
 flowchart TD
-    ADM([Nodo GIA' AUTORIZZATO<br/>admin / governance]):::ok
-    UNAUTH([Nodo NON autorizzato]):::bad
+    ADM([ALREADY AUTHORIZED node<br/>admin / governance]):::ok
+    UNAUTH([UNAUTHORIZED node]):::bad
 
     ADM -->|"RPC: weightsetesg · weightsetmembership<br/>weightsetreconciliation"| GATE_ADM
-    UNAUTH -.->|"RPC rifiutata"| GATE_ADM
+    UNAUTH -.->|"RPC refused"| GATE_ADM
 
-    GATE_ADM{{"GATE 1 — CanAdmin&#40;&#41;<br/>solo amministratori globali"}}:::gate
-    GATE_ADM -->|passa| PUB["WeightPublisher<br/>valida lo schema in round-trip"]
-    GATE_ADM -.->|"blocca: RPC_INSUFFICIENT_PERMISSIONS"| DENY1([nessuna scrittura]):::bad
+    GATE_ADM{{"GATE 1 — CanAdmin&#40;&#41;<br/>global administrators only"}}:::gate
+    GATE_ADM -->|passes| PUB["WeightPublisher<br/>round-trip schema validation"]
+    GATE_ADM -.->|"blocks: RPC_INSUFFICIENT_PERMISSIONS"| DENY1([no write]):::bad
 
     PUB --> INS[("weight-engine-esg · -membership<br/>-reconciliation  (CLOSED)")]
-    CHAIN[("catena: blocchi confermati")] -->|"ComputeActivityForEpoch&#40;&#41;<br/>derivato, mai pubblicato"| INS
+    CHAIN[("chain: confirmed blocks")] -->|"ComputeActivityForEpoch&#40;&#41;<br/>derived, never published"| INS
 
-    INS --> ENG["WeightEngine — solo epoche sepolte<br/>c_i → W_k → A_k → ρ_k → B_k → w_k"]
+    INS --> ENG["WeightEngine — buried epochs only<br/>c_i → W_k → A_k → ρ_k → B_k → w_k"]
 
-    CLI([Flag locale -weight=N]):::weak
-    CLI -.->|"SOLO se -enableweightengine=0<br/>valore locale di ripiego"| STAT["ThreadRegisterNodeWeight"]
+    CLI([Local flag -weight=N]):::weak
+    CLI -.->|"ONLY if -enableweightengine=0<br/>local fallback value"| STAT["ThreadRegisterNodeWeight"]
 
-    ENG -->|"-enableweightengine=1 — canale AUTOREVOLE"| GATE_W
+    ENG -->|"-enableweightengine=1 — AUTHORITATIVE channel"| GATE_W
     STAT --> GATE_W
 
-    GATE_W{{"GATE 2 — permesso wpoa-weights.write<br/>lo stream e' CLOSED"}}:::gate
-    GATE_W -->|passa| WSTREAM[("wpoa-weights (CLOSED)<br/>append-only, on-chain")]
-    GATE_W -.->|"blocca: publish fallisce"| DENY2([nessun peso nell'elezione]):::bad
-    UNAUTH -.->|"publish diretta rifiutata"| GATE_W
+    GATE_W{{"GATE 2 — wpoa-weights.write required<br/>the stream is CLOSED"}}:::gate
+    GATE_W -->|passes| WSTREAM[("wpoa-weights (CLOSED)<br/>append-only, on-chain")]
+    GATE_W -.->|"blocks: publish fails"| DENY2([no weight in the election]):::bad
+    UNAUTH -.->|"direct publish refused"| GATE_W
 
-    WSTREAM -->|"lettura newest-confirmed-wins"| REG["StreamWeightRegistry<br/>GetAllNodesWeights&#40;&#41;"]
-    REG ==>|"OVERRIDE: il valore on-chain<br/>prevale sul flag locale"| CLI
+    WSTREAM -->|"newest-confirmed-wins read"| REG["StreamWeightRegistry<br/>GetAllNodesWeights&#40;&#41;"]
+    REG ==>|"OVERRIDE: the on-chain value governs,<br/>never the local flag"| CLI
 
     REG -->|"w"| MAL["WPoAApplyMalus<br/>w_eff = w · Ψ"]
-    MAL -->|"f&#40;w_eff&#41; — whale compression"| ELECT["Elezione del proposer<br/>Efraimidis–Spirakis"]
+    MAL -->|"f&#40;w_eff&#41; — whale compression"| ELECT["Proposer election<br/>Efraimidis–Spirakis"]
 
     classDef ok   fill:#e8f5e9,stroke:#4c9a51,color:#1b3d1f;
     classDef bad  fill:#fdd,stroke:#c66,color:#633;
@@ -114,63 +112,61 @@ flowchart TD
     classDef gate fill:#fff4d6,stroke:#c9a227,color:#5a4708;
 ```
 
-Tre proprietà che il diagramma rende esplicite, tutte verificate nel codice:
+Three properties the diagram makes explicit, all verified against the code:
 
-**(a) Il canale autorevole è lo stream, non il flag.** Il peso che governa
-l'elezione è sempre quello letto da `wpoa-weights` tramite
-`StreamWeightRegistry::GetAllNodesWeights()`. Nessun percorso del consenso legge
-`g_node_weight` — quella variabile serve solo al thread di pubblicazione statico.
+**(a) The authoritative channel is the stream, not the flag.** The weight that governs
+the election is always the one read from `wpoa-weights` through
+`StreamWeightRegistry::GetAllNodesWeights()`. No consensus path reads `g_node_weight` —
+that variable serves only the static publication thread.
 
-**(b) Il valore on-chain prevale sul flag locale.** La freccia `OVERRIDE` va dal ramo
-stream verso il ramo CLI, non il contrario. Il meccanismo è un **XOR di thread
-all'avvio**: con `-enableweightengine=1` il registrar statico non parte affatto, e
-`-weight` viene parsato, validato e registrato nel log ma **mai pubblicato**. La
-differenza è osservabile — `-weight=500` non produce un record poi superato: non
-produce **nessun** record. Anche nel caso statico, ciò che conta per il consenso è il
-record confermato sullo stream, non il valore in memoria.
+**(b) The on-chain value overrides the local flag.** The `OVERRIDE` arrow runs from the
+stream branch **towards** the CLI branch, not the other way round. The mechanism is an
+**XOR of threads at startup**: with `-enableweightengine=1` the static registrar never
+launches, and `-weight` is parsed, validated and logged but **never published**. The
+difference is observable — `-weight=500` does not produce a record that is later
+superseded: it produces **no** record. Even in the static case, what matters to consensus
+is the confirmed record on the stream, not the in-memory value.
 
-**(c) Un nodo non autorizzato non può imporre il proprio peso, per nessuna via.**
-I due gate sono indipendenti e coprono entrambi i percorsi:
+**(c) An unauthorized node cannot impose its own weight by any route.** The two gates are
+independent and cover both paths:
 
-| Tentativo | Esito |
+| Attempt | Outcome |
 |---|---|
-| `-weight=999999` senza `wpoa-weights.write` | La publish fallisce (Gate 2). L'indirizzo non compare nella mappa dei pesi: peso **nullo** nell'elezione. |
-| `weightsetesg` / `weightsetmembership` / `weightsetreconciliation` senza essere admin | `RPC_INSUFFICIENT_PERMISSIONS` (Gate 1). Nessuna scrittura. |
-| `publish` / `publishfrom` diretta su `wpoa-weights` senza permesso | Rifiutata dal consenso: lo stream è CLOSED (Gate 2). |
-| `publishfrom` diretta su uno stream di attestazione **con** `.write` ma senza admin | **Riesce**, e il reader la accetta. È il limite noto del §9 — la garanzia admin-only dipende dal concedere `.write` solo a indirizzi di governance. |
+| `-weight=999999` without `wpoa-weights.write` | The publish fails (Gate 2). The address never appears in the weight map: **zero** weight in the election. |
+| `weightsetesg` / `weightsetmembership` / `weightsetreconciliation` without being an admin | `RPC_INSUFFICIENT_PERMISSIONS` (Gate 1). No write. |
+| Direct `publish` / `publishfrom` on `wpoa-weights` without permission | Refused by consensus: the stream is CLOSED (Gate 2). |
+| Direct `publishfrom` on an attestation stream **with** `.write` but without admin | **Succeeds**, and the reader accepts it. This is the known limit in [§9](#9-not-implemented) — the admin-only guarantee depends on granting `.write` only to governance addresses. |
 
-Concessione esplicita dei permessi:
+Granting the permissions explicitly:
 
 ```bash
 multichain-cli <chain> grant <address> wpoa-weights.write
 multichain-cli <chain> grant <address> weight-engine-esg.write
 ```
 
-Dettaglio del modello di autorizzazione: [weight-engine.md §6](weight-engine.md).
-Dettaglio dello stream e dell'API di lettura:
-[stream-weight-registry.md](stream-weight-registry.md).
+Authorization model in detail: [weight-engine.md §6](weight-engine.md). Stream and read
+API in detail: [stream-weight-registry.md](stream-weight-registry.md).
 
-### 0.2 mining-turnover e mining-diversity — hint operativo contro regola vincolante
+### 0.2 mining-turnover and mining-diversity — operational hint vs binding rule
 
-I due parametri nativi di MultiChain hanno nomi simili e ruoli **opposti**. La
-distinzione è verificabile dai loro flag in
-[`paramlist.h`](../../chainparams/paramlist.h) e conta perché wPoA interagisce con
-uno solo dei due.
+These two native MultiChain parameters have similar names and **opposite** roles. The
+distinction is verifiable from their flags in
+[`paramlist.h`](../../chainparams/paramlist.h), and it matters because wPoA interacts with
+only one of them.
 
 | | `mining-diversity` | `mining-turnover` |
 |---|---|---|
-| Flag | `UINT32 \| USER \| CLONE \| DECIMAL` — **senza `NOHASH`** | `... \| DECIMAL \| `**`NOHASH`** |
-| Partecipa all'hash di `params.dat` | **Sì** | No |
-| Natura | **Regola di consenso vincolante** | **Hint operativo locale** |
+| Flags | `UINT32 \| USER \| CLONE \| DECIMAL` — **no `NOHASH`** | `... \| DECIMAL \| `**`NOHASH`** |
+| Part of the `params.dat` hash | **Yes** | No |
+| Nature | **Binding consensus rule** | **Local operational hint** |
 | Default | `0.3` | `0.5` |
-| Dove agisce | `mc_Permissions::CanMine()` e `GetActiveMinerCount()` in [`permission.cpp`](../../permissions/permission.cpp) | `dMinerDrift = Params().MiningTurnover()` in [`miner.cpp`](../../miner/miner.cpp) |
-| Effetto | Un miner deve attendere `diversity × (miner attivi)` blocchi prima di minare di nuovo. Un blocco che viola lo spacing è **invalido**: viene rifiutato dai peer. | Influenza solo la temporizzazione locale del proprio tentativo di mining. Non rende invalido alcun blocco. |
-| Conseguenza di una divergenza fra nodi | Fork | Nessuna: ogni nodo può avere il proprio valore |
+| Where it acts | `mc_Permissions::CanMine()` and `GetActiveMinerCount()` in [`permission.cpp`](../../permissions/permission.cpp) | `dMinerDrift = Params().MiningTurnover()` in [`miner.cpp`](../../miner/miner.cpp) |
+| Effect | A miner must wait `diversity × (active miners)` blocks before mining again. A block violating the spacing is **invalid**: peers reject it. | Affects only the local timing of one's own mining attempt. Makes no block invalid. |
+| Consequence of divergence between nodes | Fork | None: every node may hold its own value |
 
-**Come wPoA interagisce con ciascuno.** Sulle altezze governate da wPoA lo
-**spacing** di `mining-diversity` è deliberatamente **bypassato**, ma il permesso
-`mine` continua a fare da gate sul firmatario. In
-[`multichainblock.cpp`](../../protocol/multichainblock.cpp):
+**How wPoA interacts with each.** On wPoA-governed heights the **spacing** of
+`mining-diversity` is deliberately **bypassed**, but the `mine` permission still gates the
+signer. In [`multichainblock.cpp`](../../protocol/multichainblock.cpp):
 
 ```cpp
 int nMinerPerm;
@@ -180,193 +176,189 @@ if(WPoAActiveAtHeight(prev_block->nHeight+1))
 }
 else
 {
-    // ... CanMine() nativo, con spacing round-robin
+    // ... native CanMine(), with round-robin spacing
 }
 ```
 
-La motivazione è strutturale, non una scorciatoia: sotto selezione pesata **ogni**
-indirizzo con permesso `mine` partecipa a **ogni** round, e un validatore più pesante
-può legittimamente vincere due altezze consecutive — cosa che lo spacing round-robin
-di `CanMine()` rifiuterebbe. `CanCustom(..., MC_PTP_MINE)` verifica il permesso
-grezzo senza applicare lo spacing. Ogni altra altezza conserva `CanMine()` invariato.
+The reason is structural, not a shortcut: under weighted selection **every** address
+holding `mine` takes part in **every** round, and a heavier validator may legitimately win
+two consecutive heights — which `CanMine()`'s round-robin spacing would reject.
+`CanCustom(..., MC_PTP_MINE)` checks the raw permission without applying the spacing.
+Every other height keeps `CanMine()` unchanged.
 
-`mining-turnover` non è invece toccato da wPoA: resta l'hint di temporizzazione
-nativo, e la Fase 4 lo **riusa** come termine di feedback `Φ` che ricentra il tempo
-medio di blocco sul target (vedi [§5](#5-fase-4--sortition-privata-di-efraimidis)).
+`mining-turnover` is not touched by wPoA: it remains the native timing hint, and Phase 4
+**reuses** it as the feedback term `Phi` that recentres the mean block time on target (see
+[§5](#5-phase-4--efraimidis-private-sortition)).
 
 ---
 
-## 1. Fase 1 — Registro dei pesi
+## 1. Phase 1 — Weight registry
 
-| Area | Stato | Note |
+| Area | Status | Notes |
 |---|---|---|
-| Configurazione e validazione di `-weight` | Fatto | Validato in `AppInit2`; l'avvio fallisce su `-weight <= 0`. |
-| Registrazione differita (thread di background) | Fatto | Attende la readiness, ritenta, budget limitato prima di rinunciare. Non blocca mai l'avvio. |
-| Registro on-chain append-only (`wpoa-weights`) | Fatto | Create + subscribe + publish tramite handler RPC riusati; ri-registrazione idempotente. |
-| Stream **CLOSED** (scrittura ristretta) | Fatto | Creato con `create ["stream","wpoa-weights",false]`: serve `wpoa-weights.write`. Un nodo non autorizzato non porta peso. |
-| API di lettura opaca | Fatto | `GetLocalWeight`, `GetAllNodesWeights`, `GetNodeWeight`. Ricerca a ritroso per indirizzo; nasconde ai chiamanti la meccanica dello stream. |
-| Superficie RPC | Fatto | `getlocalweight`, `getnodeweight`, `getallweights`. Solo dati confermati, thread-safe. |
-| Correzioni del percorso di lettura | Fatto | Famiglia di lettura non-WRP (bug dello snapshot WRP) e overload a 6 argomenti di `OpReturnFormatEntry`. |
-| Unit test (parsing / aggregazione puri) | Fatto | [`wpoa_weight_tests.cpp`](../test/wpoa_weight_tests.cpp), node-free. |
+| `-weight` configuration and validation | Done | Validated in `AppInit2`; startup fails on `-weight <= 0`. |
+| Deferred registration (background thread) | Done | Waits for readiness, retries, bounded budget before giving up. Never blocks startup. |
+| Append-only on-chain registry (`wpoa-weights`) | Done | Create + subscribe + publish through reused RPC handlers; idempotent re-registration. |
+| **CLOSED** stream (restricted write) | Done | Created with `create ["stream","wpoa-weights",false]`: `wpoa-weights.write` required. An unauthorized node carries no weight. |
+| Opaque read API | Done | `GetLocalWeight`, `GetAllNodesWeights`, `GetNodeWeight`. Backward search per address; hides the stream mechanics from callers. |
+| RPC surface | Done | `getlocalweight`, `getnodeweight`, `getallweights`. Confirmed-only, thread-safe. |
+| Read-path correctness fixes | Done | The non-WRP read family (WRP snapshot bug) and the 6-argument `OpReturnFormatEntry` overload. |
+| Unit tests (pure parsing / aggregation) | Done | [`wpoa_weight_tests.cpp`](../test/wpoa_weight_tests.cpp), node-free. |
 
-Dettaglio: [phase1-implementation-guide.md](phase1-implementation-guide.md) ·
+Detail: [phase1-implementation-guide.md](phase1-implementation-guide.md) ·
 [stream-weight-registry.md](stream-weight-registry.md) ·
 [weight-record.md](weight-record.md).
 
 ---
 
-## 2. Fase 2 — Selezione pesata del proposer
+## 2. Phase 2 — Weighted proposer selection
 
-| Area | Stato | Note |
+| Area | Status | Notes |
 |---|---|---|
-| Selezione pesata (`WPoASelector` + hook nel miner) | Fatto | Argmin di Efraimidis–Spirakis; consuma `GetAllNodesWeights()`. |
-| Switch `-enablewpoaselection` | Fatto | Parametro di catena ereditato più flag runtime. Gatekeeper degli hook di mining e validazione. |
-| Validazione del proposer (hook in `VerifyBlockMiner`) | Fatto | Ricalcola l'elezione alla ricezione; rifiuta i blocchi che non provengono dal proposer eletto. |
-| Bypass dello spacing mining-diversity | Fatto | Il gate round-robin nativo è rimosso sulle altezze governate da wPoA. |
-| Tie-break deterministico | Fatto | Indirizzo lessicograficamente minore in caso di collisione esatta degli score. |
-| Compressione whale (`-dumpfunction`) | Fatto | `none` / `sqrt` / `log`, applicata prima del sorteggio. |
-| Unit test (matematica pura del selettore) | Fatto | [`wpoa_selector_tests.cpp`](../test/wpoa_selector_tests.cpp); preservazione della probabilità su 200k seed. |
+| Weighted selection (`WPoASelector` + miner hook) | Done | Efraimidis–Spirakis argmin; consumes `GetAllNodesWeights()`. |
+| `-enablewpoaselection` switch | Done | Inherited chain parameter plus runtime flag. Gates both the miner and the validation hooks. |
+| Proposer validation (`VerifyBlockMiner` hook) | Done | Recomputes the election on receipt; rejects blocks not from the elected proposer. |
+| mining-diversity spacing bypass | Done | The native round-robin gate is removed on wPoA-governed heights. |
+| Deterministic tie-break | Done | Lexicographically smallest address on exact score collision. |
+| Whale compression (`-dumpfunction`) | Done | `none` / `sqrt` / `log`, applied before the draw. |
+| Unit tests (pure selector math) | Done | [`wpoa_selector_tests.cpp`](../test/wpoa_selector_tests.cpp); probability preservation over 200k seeds. |
 
-Dettaglio: [phase2-implementation-guide.md](phase2-implementation-guide.md) ·
-[wpoa-selector.md](wpoa-selector.md) ·
-[miner-integration.md](miner-integration.md) ·
+Detail: [phase2-implementation-guide.md](phase2-implementation-guide.md) ·
+[wpoa-selector.md](wpoa-selector.md) · [miner-integration.md](miner-integration.md) ·
 [block-validation.md](block-validation.md).
 
 ---
 
-## 3. Fase 3a — Beacon di casualità VRF
+## 3. Phase 3a — VRF randomness beacon
 
-| Area | Stato | Note |
+| Area | Status | Notes |
 |---|---|---|
-| Wrapper VRF (`WPoAVRF`, ECVRF/DLEQ su secp256k1) | Fatto | `Prove` / `Verify` puri; nessuna nuova dipendenza di build. |
-| Switch `-enablewpoavrf` | Fatto | Gate della produzione e verifica del reveal via `WPoAVRFActiveAtHeight`. |
-| Embed + verifica del reveal per blocco | Fatto | Il proposer inserisce `(R, pi)` come suffisso dell'elemento di firma del blocco; `VerifyBlockMinerWPoA` rifiuta un reveal assente o non valido. |
-| Unit test (crittografia VRF pura) | Fatto | [`vrf_wrapper_tests.cpp`](../test/vrf_wrapper_tests.cpp); roundtrip, determinismo, rifiuto di tamper / forgery / chiave incrociata. |
+| VRF wrapper (`WPoAVRF`, ECVRF/DLEQ over secp256k1) | Done | Pure `Prove` / `Verify`; no new build dependency. |
+| `-enablewpoavrf` switch | Done | Gates reveal production and verification via `WPoAVRFActiveAtHeight`. |
+| Per-block reveal embed + verify | Done | The proposer embeds `(R, pi)` as a suffix of the block-signature element; `VerifyBlockMinerWPoA` rejects a missing or invalid reveal. |
+| Unit tests (pure VRF crypto) | Done | [`vrf_wrapper_tests.cpp`](../test/vrf_wrapper_tests.cpp); roundtrip, determinism, tamper / forgery / cross-key rejection. |
 
-Dettaglio: [phase3a-implementation-guide.md](phase3a-implementation-guide.md) ·
+Detail: [phase3a-implementation-guide.md](phase3a-implementation-guide.md) ·
 [vrf-wrapper.md](vrf-wrapper.md) · [vrf-prover.md](vrf-prover.md) ·
-[vrf-verifier.md](vrf-verifier.md) ·
-[block-vrf-encoding.md](block-vrf-encoding.md).
+[vrf-verifier.md](vrf-verifier.md) · [block-vrf-encoding.md](block-vrf-encoding.md).
 
 ---
 
-## 4. Fase 3b — Seed RANDAO del beacon
+## 4. Phase 3b — RANDAO beacon seed
 
-| Area | Stato | Note |
+| Area | Status | Notes |
 |---|---|---|
-| Accumulatore e seed (`RandaoAccumulator`) | Fatto | `R_tot[n] = H(R_tot[n-1] XOR H(R[n]))` ripiegato sui reveal di 3a; `seed[n+1] = H(R_tot[n-k] || h[n] || n+1)` derivato e memoizzato. |
-| `-enablewpoarandao` + `-wpoarandaolookback=k` | Fatto | `k` consensus-critical, validato all'avvio. |
-| Ancoraggio del seed a `h[n]` e `n+1` | Fatto | Conforme alla Def. 5.4 della tesi. |
-| Swap del seed di selezione (miner + validatore) | Fatto | Entrambi i call site sostituiscono il seed prev-hash con `WPoARandaoSelectionSeed(tip)`; l'elezione resta proporzionale al peso. |
-| Unit test (matematica pura accumulatore / seed) | Fatto | [`randao_accumulator_tests.cpp`](../test/randao_accumulator_tests.cpp); conformità alla specifica contro un riferimento indipendente, sensibilità a ordine e input, consistenza di catena. |
+| Accumulator and seed (`RandaoAccumulator`) | Done | `R_tot[n] = H(R_tot[n-1] XOR H(R[n]))` folded over the 3a reveals; `seed[n+1] = H(R_tot[n-k] \|\| h[n] \|\| n+1)` derived and memoized. |
+| `-enablewpoarandao` + `-wpoarandaolookback=k` | Done | `k` is consensus-critical, validated at startup. |
+| Seed anchored to `h[n]` and `n+1` | Done | Conforms to Def. 5.4 of the thesis. |
+| Selection-seed swap (miner + validator) | Done | Both call sites replace the prev-hash seed with `WPoARandaoSelectionSeed(tip)`; the election stays weight-proportional. |
+| Unit tests (pure accumulator / seed math) | Done | [`randao_accumulator_tests.cpp`](../test/randao_accumulator_tests.cpp); spec conformance against an independent reference, order and input sensitivity, chain consistency. |
 
-Dettaglio: [phase3b-implementation-guide.md](phase3b-implementation-guide.md) ·
-[randao-accumulator.md](randao-accumulator.md) ·
-[randao-miner.md](randao-miner.md) · [randao-validator.md](randao-validator.md).
+Detail: [phase3b-implementation-guide.md](phase3b-implementation-guide.md) ·
+[randao-accumulator.md](randao-accumulator.md) · [randao-miner.md](randao-miner.md) ·
+[randao-validator.md](randao-validator.md).
 
 ---
 
-## 5. Fase 4 — Sortition privata di Efraimidis
+## 5. Phase 4 — Efraimidis private sortition
 
-È la correzione di sicurezza: rende il proposer imprevedibile finché non agisce.
+This is the security fix: it makes the proposer unpredictable until it acts.
 
-| Area | Stato | Note |
+| Area | Status | Notes |
 |---|---|---|
-| Core della sortition (`PrivateSortition`) | Fatto | `VRFInput` / `ScoreFromVRFOutput` / `MiningDelay`, node-free; riusa la trasformazione di score della Fase 2, quindi la distribuzione è dimostrabilmente invariata. |
-| `-enablewpoasortition` + `-wpoasortitiondelta` / `-wpoasortitionlambda` | Fatto | Richiede il beacon RANDAO e `k >= 1` (aciclicità seed↔reveal, validata all'avvio). Entrambi i parametri di banda sono consensus-critical e range-checked. |
-| Auto-elezione temporizzata sullo score (miner) | Fatto | Ogni validatore calcola il proprio score privatamente (VRF sotto la propria chiave) e mina a `now + delay(score)`, così l'argmin propone per primo. Include guardia anti-respin e switch dell'input del reveal a `seed || "PROPOSER" || height`. |
-| **Ritardo a banda** su `target-block-time` | Fatto | `D = T + delta·T·(2·score_norm − 1) + lambda·Phi` con `score_norm = 1 − e^{−W·score}`. Sostituisce la rampa aperta precedente. Il fattore `W` mantiene i candidati distribuiti sulla banda anziché schiacciati sul bordo iniziale. |
-| Feedback nativo riusato come `Phi` | Fatto | Il termine di correzione globale ricentra il tempo medio di blocco sul target; `lambda = 0` lo disattiva. |
-| Validazione di eleggibilità / barriera temporale | Fatto | Sostituisce l'uguaglianza sull'argmin pubblico: verifica il VRF sull'input di sortition, ricalcola lo score, accetta se e solo se `block.nTime >= parent.nTime + delay`. La barriera auto-distendente **è** il fallback di liveness: nessun intervallo a zero proposer. |
-| Unit test (matematica pura + VRF reale) | Fatto | [`private_sortition_tests.cpp`](../test/private_sortition_tests.cpp); encoding dell'input VRF, riuso dello score, mappa del ritardo, dipendenza dalla chiave (privacy), uniformità del ritardo del vincitore, e preservazione della probabilità con chiavi VRF reali. |
+| Sortition core (`PrivateSortition`) | Done | `VRFInput` / `ScoreFromVRFOutput` / `NormalizedScore` / `MiningDelay`, node-free; reuses the Phase-2 score transform, so the distribution is provably unchanged. |
+| `-enablewpoasortition` + `-wpoasortitiondelta` / `-wpoasortitionlambda` | Done | Requires the RANDAO beacon and `k >= 1` (seed↔reveal acyclicity, validated at startup). Both band parameters are consensus-critical and range-checked. |
+| Score-timed self-election (miner) | Done | Each validator scores itself privately (VRF under its own key) and mines at `now + delay(score)`, so the argmin proposes first. Includes an anti-respin guard and the reveal-input switch to `seed \|\| "PROPOSER" \|\| height`. |
+| **Banded delay** on `target-block-time` | Done | `D = T + delta·T·(2·score_norm − 1) + lambda·Phi` with `score_norm = 1 − e^{−W·score}`. Replaces the earlier open-ended ramp. The `W` factor keeps candidates spread across the band instead of crushed against its early edge. |
+| Native feedback reused as `Phi` | Done | The global correction term recentres the mean block time on target; `lambda = 0` disables it. |
+| Eligibility / time-bar validation | Done | Replaces the public-argmin equality: verify the VRF over the sortition input, recompute the score, accept iff `block.nTime >= parent.nTime + delay`. The auto-relaxing bar **is** the liveness fallback: no zero-proposer gap. |
+| Unit tests (pure math + real VRF) | Done | [`private_sortition_tests.cpp`](../test/private_sortition_tests.cpp); VRF-input encoding, score reuse, delay map, key-dependence (privacy), winner-delay uniformity, and probability preservation with real VRF keys. |
 
-Dettaglio: [phase4-implementation-guide.md](phase4-implementation-guide.md) ·
+Detail: [phase4-implementation-guide.md](phase4-implementation-guide.md) ·
 [private-sortition.md](private-sortition.md) ·
 [sortition-miner.md](sortition-miner.md) ·
-[sortition-validator.md](sortition-validator.md). Per il gate di ritardo nativo che
-questa fase sostituisce: [native-poa-block-delay.md](native-poa-block-delay.md).
+[sortition-validator.md](sortition-validator.md). For the native delay gate this phase
+supersedes: [native-poa-block-delay.md](native-poa-block-delay.md).
 
 ---
 
-## 6. Registro del malus comportamentale
+## 6. Behavioural malus registry
 
-| Area | Stato | Note |
+| Area | Status | Notes |
 |---|---|---|
-| Core del malus (`MalusAccumulator`) | Fatto | Fold EMA, `Psi`, `w_eff`, `EpochsToClear`; node-free. |
-| Stream **aperto** `wpoa-weights-malus` + predicato `Valid(e)` | Fatto | Chiunque può segnalare, nessuno è creduto: ogni nodo ri-deriva l'evidenza (VRF sul seed del beacon, più la barriera temporale per una violazione di ritardo), quindi una segnalazione falsa è scartata in modo identico su tutti i nodi. |
-| `w_eff = w * Psi` nell'elezione | Fatto | Applicato in un solo punto (`WPoAApplyMalus`), consumato dal selettore pubblico e da entrambi i lati della sortition privata. Inerte quando disabilitato o quando nessuno porta violazioni. |
-| Parametri `-enablewpoamalus` + `mu` / `M_max` / punteggi | Fatto | Parametri di catena ereditabili; richiede la sortition, e `p(Equiv) > p(Delay)` è imposto all'avvio. |
-| Reversibilità dell'esclusione | Fatto | `M` è una media mobile esponenziale con `mu < 1`, quindi un'esclusione si azzera dopo un numero finito di epoche pulite: nessun ban permanente. Limite di azzeramento corretto alla soglia. |
-| Unit test | Fatto | [`wpoa_malus_tests.cpp`](../test/wpoa_malus_tests.cpp); parsing, fold EMA, `Psi`, `w_eff`, reversibilità. |
+| Malus core (`MalusAccumulator`) | Done | EMA fold, `Psi`, `w_eff`, `EpochsToClear`; node-free. |
+| **Open** `wpoa-weights-malus` stream + `Valid(e)` | Done | Anyone may report, nobody is believed: every node re-derives the evidence (VRF over the beacon seed, plus the time bar for a delay violation), so a false report is discarded identically everywhere. |
+| `w_eff = w * Psi` in the election | Done | Applied in one place (`WPoAApplyMalus`), consumed by the public selector and by both sides of the private sortition. Inert when disabled or when nobody carries a violation. |
+| `-enablewpoamalus` + `mu` / `M_max` / point weights | Done | Inheritable chain parameters; requires sortition, and `p(Equiv) > p(Delay)` is enforced at startup. |
+| Reversibility of an exclusion | Done | `M` is an exponential moving average with `mu < 1`, so an exclusion clears after a finite number of clean epochs: no permanent ban. Clearing bound corrected at the threshold. |
+| Unit tests | Done | [`wpoa_malus_tests.cpp`](../test/wpoa_malus_tests.cpp); parsing, EMA fold, `Psi`, `w_eff`, reversibility. |
 
-Dettaglio: [malus-registry.md](malus-registry.md).
+Detail: [malus-registry.md](malus-registry.md).
 
 ---
 
 ## 7. Weight engine
 
-| Area | Stato | Note |
+| Area | Status | Notes |
 |---|---|---|
-| Core puro di calcolo (`WeightEngine`) | Fatto | Pipeline `c_i → W_k → A_k → rho_k → B_k → w_k` verbatim dal capitolo di tesi. Solo libreria standard. |
-| Parser dei record (W1) | Fatto | `mc_Parse*RecordJson`; ricostruzione del cluster `C_k` dal merge JSON nativo. |
-| Reader degli stream di input (W3) | Fatto | `WeightStreamReader`: ciclo di vita degli stream (create CLOSED + subscribe), letture solo confermate, `ComputeActivityForEpoch` derivato dalla catena. |
-| Publisher + RPC admin (W3) | Fatto | `weightsetesg`, `weightsetmembership`, `weightsetreconciliation`; validazione in round-trip più `CanAdmin`. |
-| Thread di calcolo e pubblicazione | Fatto | `ThreadWeightEngine`; pubblica solo per l'ultima epoca **sepolta** e solo se il nodo è un cluster miner. Mutuamente esclusivo con il registrar statico. |
-| Parametri `-enableweightengine` + `epochlength` / `kappa` / `alpha` / `lambda` | Fatto | Parametri di catena hash-enforced; richiede la Fase 1; range-checked all'avvio. |
-| Unit test | Fatto | Runner proprio: `src/weight_engine/test/run_unit_tests.sh`, suite `records` e `engine`. |
+| Pure computation core (`WeightEngine`) | Done | The `c_i → W_k → A_k → rho_k → B_k → w_k` pipeline, verbatim from the thesis chapter. Standard library only. |
+| Record parsers (W1) | Done | `mc_Parse*RecordJson`; cluster `C_k` reconstruction from the native JSON merge. |
+| Input-stream reader (W3) | Done | `WeightStreamReader`: stream lifecycle (create CLOSED + subscribe), confirmed-only reads, chain-derived `ComputeActivityForEpoch`. |
+| Publisher + admin RPCs (W3) | Done | `weightsetesg`, `weightsetmembership`, `weightsetreconciliation`; round-trip validation plus `CanAdmin`. |
+| Computation and publication thread | Done | `ThreadWeightEngine`; publishes only for the latest **buried** epoch and only if the node is a cluster miner. Mutually exclusive with the static registrar. |
+| `-enableweightengine` + `epochlength` / `kappa` / `alpha` / `lambda` | Done | Hash-enforced chain parameters; requires Phase 1; range-checked at startup. |
+| Unit tests | Done | Its own runner: `src/weight_engine/test/run_unit_tests.sh`, suites `records` and `engine`. |
 
-Dettaglio: [weight-engine.md](weight-engine.md).
+Detail: [weight-engine.md](weight-engine.md).
 
 ---
 
-## 8. Validazione end-to-end
+## 8. End-to-end validation
 
-I test funzionali sono un **unico** run di sistema:
-[`functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh)
-(incapsulato da [`run_functional_tests.sh`](../test/run_functional_tests.sh)). Avvia
-UNA rete full-stack, la scalda una volta, poi esegue tutti i controlli sul run
-condiviso.
+The functional tests are a **single** system run:
+[`functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh) (wrapped by
+[`run_functional_tests.sh`](../test/run_functional_tests.sh)). It starts ONE full-stack
+network, warms it up once, then runs every check on the shared run.
 
-| Controllo | Cosa dimostra |
+| Check | What it demonstrates |
 |---|---|
-| `check_weight` | Il peso è registrato e leggibile. |
-| `check_stream_permissions` | Le politiche di scrittura opposte dei due registri sono effettive: `wpoa-weights` chiuso, `wpoa-weights-malus` aperto. |
-| `check_multinode_consistency` | La mappa dei pesi converge identica su ogni nodo. Bootstrap di `connect`/`send`/`receive`/`mine`/`wpoa-weights.write` dal nodo 0. |
-| `check_malus` | Segnalazione, `Valid(e)`, accumulo e correzione di `Psi`. |
-| `check_vrf` | I reveal sono prodotti e verificati a livello di rete, 0 rifiuti, catena viva e senza fork. |
-| `check_randao` | Accumulatore e seed bit-identici su tutta la rete (0 fold di fallback), liveness sotto il seed del beacon. |
-| `check_sortition` | Liveness, nessun fork persistente, e **zero accettazioni da argmin pubblico**: prova diretta che la selezione è privata. È il run full-stack di default. |
-| `check_distribution` | La distribuzione osservata dei proposer corrisponde ai rapporti di peso configurati (chi-quadro, con tabella osservato-vs-atteso stampata come evidenza). |
+| `check_weight` | The weight is registered and readable. |
+| `check_stream_permissions` | The two registries' opposite write policies are effective: `wpoa-weights` closed, `wpoa-weights-malus` open. |
+| `check_multinode_consistency` | The weight map converges identically on every node. Bootstraps `connect`/`send`/`receive`/`mine`/`wpoa-weights.write` from node 0. |
+| `check_malus` | Reporting, `Valid(e)`, accumulation and the `Psi` correction. |
+| `check_vrf` | Reveals are produced and verified network-wide, 0 rejections, chain live and fork-free. |
+| `check_randao` | Accumulator and seed bit-identical network-wide (0 fallback folds), liveness under the beacon seed. |
+| `check_sortition` | Liveness, no persistent fork, and **zero public-argmin acceptances**: direct evidence that selection is private. This is the default full-stack run. |
+| `check_distribution` | The observed proposer distribution matches the configured weight ratios (chi-square, with the observed-vs-expected table printed as evidence). |
 
-`INCLUDE_PUBLIC_SELECTOR=1` aggiunge il regime a sortition disattiva (argmin
-pubblico), necessario per osservare i log del selettore pubblico e il
-`VRF reveal OK` standalone. `QUICK=1` usa un campione più piccolo.
+`INCLUDE_PUBLIC_SELECTOR=1` adds the sortition-off regime (public argmin), which is
+required to observe the public-selector logs and the standalone `VRF reveal OK` line.
+`QUICK=1` uses a smaller sample.
 
-**Perché la logica di validazione è a regime esclusivo.** Un singolo run full-stack
-non può mostrare sia le accettazioni da argmin pubblico sia la loro assenza: la
-sortition privata *sostituisce* l'argmin pubblico. I due regimi vanno quindi
-esercitati in run separati.
+**Why the validation logic is regime-exclusive.** A single full-stack run cannot show both
+public-argmin acceptances and their absence: private sortition *replaces* the public
+argmin. The two regimes must therefore be exercised in separate runs.
 
-Unit test, tutti node-free:
+Unit tests, all node-free:
 
 ```bash
 ./src/wpoa/test/run_unit_tests.sh                  # weight malus selector vrf randao sortition
 ./src/weight_engine/test/run_unit_tests.sh         # records engine
-./src/wpoa/test/run_all_tests.sh                   # unit + funzionale
+./src/wpoa/test/run_all_tests.sh                   # unit + functional
 ```
 
-Dettaglio: [testing.md](testing.md) · [`test/README.md`](../test/README.md).
+Detail: [testing.md](testing.md) · [`test/README.md`](../test/README.md).
 
 ---
 
-## 9. Non implementato
+## 9. Not implemented
 
-| Area | Stato | Note |
+| Area | Status | Notes |
 |---|---|---|
-| **Fase 5 — VDF sopra l'output del beacon** | Pianificata | Rimuoverebbe il bias residuo dell'ultimo rivelatore. Nessun codice. Vedi il teorema di impossibilità di Cleve in [thesis-project-overview.md](thesis-project-overview.md). |
-| Margine di stabilità come parametro di catena | Non fatto | `MC_WEIGHT_DEFAULT_STABILITY_MARGIN` è una costante a tempo di compilazione. Il codice raccomanda di promuoverlo a parametro hash-enforced prima della produzione. |
-| Reader che impone `CanAdmin(publisher)` | Non fatto | Rischio accettato: il reader accetta qualunque record schema-valido confermato. La garanzia admin-only dipende dal concedere `.write` solo a indirizzi di governance. Vedi [weight-engine.md §6.3](weight-engine.md). |
-| Suite `weight_engine` nel runner wPoA | Per scelta | Le due suite hanno un runner proprio (`src/weight_engine/test/run_unit_tests.sh`), non sono in `ALL_SUITES` di quello wPoA. Vanno lanciate separatamente. |
+| **Phase 5 — VDF over the beacon output** | Planned | Would remove the residual last-revealer bias. No code. See Cleve's impossibility theorem in [thesis-project-overview.md](thesis-project-overview.md). |
+| Stability margin as a chain parameter | Not done | `MC_WEIGHT_DEFAULT_STABILITY_MARGIN` is a compile-time constant. The code recommends promoting it to a hash-enforced parameter before production. |
+| Reader enforcing `CanAdmin(publisher)` | Not done | Accepted risk: the reader accepts any schema-valid confirmed record. The admin-only guarantee depends on granting `.write` only to governance addresses. See [weight-engine.md §6.3](weight-engine.md). |
+| `weight_engine` suites in the wPoA runner | By design | The two suites have their own runner (`src/weight_engine/test/run_unit_tests.sh`); they are not in the wPoA runner's `ALL_SUITES`. They must be invoked separately. |
 
-Registro completo delle limitazioni:
+Full limitations register:
 [phase1-implementation-guide.md §12](phase1-implementation-guide.md#12-limitations--phase-2-hooks).

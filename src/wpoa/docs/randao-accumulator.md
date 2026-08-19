@@ -1,10 +1,10 @@
 # `randao_accumulator.{h,cpp}` — Line-by-Line Walkthrough (Phase 3b)
 
-> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
-> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
-> invariata. Per il modello teorico del consenso si rimanda a
-> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
-> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> **Register: technical-direct.** A developer reference: APIs, function signatures,
+> data structures and control flow, with code terminology left verbatim. For the
+> theoretical consensus model see
+> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
+> [protocol-parameters.md](protocol-parameters.md); for implementation status see
 > [implementation-status.md](implementation-status.md).
 
 > Exhaustive walkthrough of the **RANDAO beacon module**: every instruction, variable and
@@ -37,7 +37,7 @@ For the design rationale and the end-to-end picture see
 
 ---
 
-## Indice
+## Table of contents
 1. [The pure core (`randao_accumulator.h`)](#1-the-pure-core-randao_accumulatorh)
 2. [The node glue (`randao_accumulator.cpp`)](#2-the-node-glue-randao_accumulatorcpp)
 3. [How the two call sites use it](#3-how-the-two-call-sites-use-it)

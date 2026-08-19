@@ -1,383 +1,358 @@
-# Weight engine — derivazione on-chain del peso dei validatori
+# Weight engine — on-chain derivation of validator weights
 
-> **Registro: tecnico-diretto.** Documento di riferimento per API, strutture dati,
-> flussi RPC e ciclo di vita degli stream. Per la giustificazione teorica del modello
-> di peso si rimanda al capitolo di tesi «Gestione del peso», sintetizzato in
+> **Register: technical-direct.** A reference for APIs, data structures, RPC flows and
+> stream lifecycle. For the theoretical justification of the weight model see the thesis
+> chapter *"Gestione del peso"*, summarised in
 > [thesis-project-overview.md](thesis-project-overview.md).
 
-Il weight engine (`src/weight_engine/`) sta **sopra** il consenso wPoA
-(`src/wpoa/`). Ogni epoca legge un insieme di stream di input pubblici, calcola il
-peso per-cluster `w_k^{(e)}` e lo pubblica sullo **stesso** stream `wpoa-weights`
-che il consenso già consuma.
+The weight engine (`src/weight_engine/`) sits **above** the wPoA consensus
+(`src/wpoa/`). Each epoch it reads a set of public on-chain input streams, computes the
+per-cluster weight `w_k^{(e)}`, and publishes it to the **same** `wpoa-weights` stream
+the consensus already consumes.
 
-I due livelli sono accoppiati **solo** attraverso quello stream: il consenso non
-apprende mai *come* `w_k` è stato prodotto. Questo separa la politica di
-assegnazione del peso dalla meccanica dell'elezione, e rende il contratto di
-`wpoa-weights` — `{address, integer weight > 0}` — l'unica interfaccia da
-preservare.
+The two layers are coupled **only** through that stream: the consensus never learns *how*
+`w_k` was produced. This separates weight-assignment policy from election mechanics, and
+makes the `wpoa-weights` contract — `{address, integer weight > 0}` — the only interface
+to preserve.
 
-Parametri di configurazione: [protocol-parameters.md §4](protocol-parameters.md).
+Configuration parameters: [protocol-parameters.md §4](protocol-parameters.md#4-catalogue--weight-engine).
 
 ---
 
-## Indice
+## Table of contents
 
-- [1. Perché esiste](#1-perché-esiste)
-- [2. Gli stream di input](#2-gli-stream-di-input)
-  - [2.1 L'attività non è pubblicata da nessuno](#21-lattività-non-è-pubblicata-da-nessuno)
-  - [2.2 Ricostruzione del cluster C_k](#22-ricostruzione-del-cluster-c_k)
-  - [2.3 Ciclo di vita degli stream](#23-ciclo-di-vita-degli-stream)
-- [3. La pipeline di calcolo](#3-la-pipeline-di-calcolo)
-  - [3.1 Determinismo consensus-critical](#31-determinismo-consensus-critical)
-  - [3.2 Epoche e margine di stabilità](#32-epoche-e-margine-di-stabilità)
-  - [3.3 Relazione col selettore — due livelli distinti](#33-relazione-col-selettore-—-due-livelli-distinti)
-  - [3.4 Scostamento deliberato dalla simulazione di riferimento](#34-scostamento-deliberato-dalla-simulazione-di-riferimento)
-- [4. Il thread dell'engine](#4-il-thread-dellengine)
-- [5. Precedenza: quale publisher scrive](#5-precedenza-quale-publisher-scrive)
-- [6. Modello di sicurezza — due gate indipendenti](#6-modello-di-sicurezza-—-due-gate-indipendenti)
-  - [6.1 Gate on-chain — imposto dal consenso](#61-gate-on-chain-—-imposto-dal-consenso)
-  - [6.2 Gate applicativo — solo questi RPC](#62-gate-applicativo-—-solo-questi-rpc)
-  - [6.3 Limite noto — rischio accettato](#63-limite-noto-—-rischio-accettato)
-- [7. Il flusso completo](#7-il-flusso-completo)
+- [1. Why it exists](#1-why-it-exists)
+- [2. The input streams](#2-the-input-streams)
+- [3. The computation pipeline](#3-the-computation-pipeline)
+- [4. The engine thread](#4-the-engine-thread)
+- [5. Precedence: which publisher writes](#5-precedence-which-publisher-writes)
+- [6. Security model — two independent gates](#6-security-model--two-independent-gates)
+- [7. The complete flow](#7-the-complete-flow)
 - [8. Threading](#8-threading)
-- [9. File del modulo](#9-file-del-modulo)
-  - [9.1 Test](#91-test)
-- [10. Riferimenti](#10-riferimenti)
+- [9. Module files](#9-module-files)
+- [10. References](#10-references)
 
 ---
-## 1. Perché esiste
 
-Il consenso wPoA elegge i proposer in proporzione al peso. La domanda «da dove
-viene il peso» non ha una risposta interna al consenso: è una decisione di
-governance.
+## 1. Why it exists
 
-Due risposte sono implementate, mutuamente esclusive:
+wPoA elects proposers in proportion to weight. The question *where the weight comes from*
+has no answer internal to consensus: it is a governance decision.
 
-| | Sorgente del peso | Quando |
+Two answers are implemented, mutually exclusive:
+
+| | Weight source | When |
 |---|---|---|
-| **Statica** | Il flag per-nodo `-weight=<n>`, pubblicato così com'è | `-enableweightengine=0` (default) |
-| **Dinamica** | `w_k` calcolato dagli input on-chain, una volta per epoca | `-enableweightengine=1` |
+| **Static** | The per-node flag `-weight=<n>`, published verbatim | `-enableweightengine=0` (default) |
+| **Dynamic** | `w_k` computed from the on-chain inputs, once per epoch | `-enableweightengine=1` |
 
-La via dinamica è quella prevista per l'esercizio reale. La via statica resta come
-ripiego e per i test.
+The dynamic path is the one intended for real operation. The static path remains as a
+fallback and for tests.
 
-> **`-weight` non è la via principale.** Con l'engine attivo il valore di `-weight`
-> viene parsato, validato, scritto in `g_node_weight` e registrato nel log — e poi
-> **mai pubblicato**. Vedi [§5](#5-precedenza-quale-publisher-scrive).
+> **`-weight` is not the primary path.** With the engine on, the value of `-weight` is
+> parsed, validated, written into `g_node_weight` and logged — and then **never
+> published**. See [§5](#5-precedence-which-publisher-writes).
 
 ---
 
-## 2. Gli stream di input
+## 2. The input streams
 
-I quattro input sono deliberatamente chiamati `weight-engine-*`, **non** `wpoa-*`:
-appartengono al livello del peso e ai suoi attori esterni (il certificatore,
-l'aggregatore di attività, il processo di riconciliazione), non al consenso. Solo lo
-stream di **output** `wpoa-weights` appartiene a wPoA. La separazione dei nomi
-rispecchia quella delle directory.
+The four inputs are deliberately named `weight-engine-*`, **not** `wpoa-*`: they belong to
+the weight layer and its external actors (the certifier, the activity aggregator, the
+reconciliation process), not to consensus. Only the **output** stream `wpoa-weights`
+belongs to wPoA. The naming split mirrors the directory split.
 
-Definizioni in [`weight_streams.h`](../../weight_engine/weight_streams.h).
+Definitions in [`weight_streams.h`](../../weight_engine/weight_streams.h).
 
-| Stream | Chiave dell'item | Payload | Origine |
+| Stream | Item key | Payload | Origin |
 |---|---|---|---|
-| `weight-engine-membership` | indirizzo del miner | `{"<azienda_addr>": <ts>, ...}` | Admin, via RPC |
-| `weight-engine-esg` | indirizzo del nodo | `{"node_address":…, "esg":…}` | Admin, via RPC |
-| `weight-engine-reconciliation` | indirizzo del miner | `{"node_address":…, "reconciled":…, "epoch":…}` | Admin, via RPC |
-| `weight-engine-activity` | indirizzo del nodo | `{"node_address":…, "tau":…, "epoch":…}` | **Derivato dalla catena** |
+| `weight-engine-membership` | miner address | `{"<company_addr>": <ts>, ...}` | Admin, via RPC |
+| `weight-engine-esg` | node address | `{"node_address":…, "esg":…}` | Admin, via RPC |
+| `weight-engine-reconciliation` | miner address | `{"node_address":…, "reconciled":…, "epoch":…}` | Admin, via RPC |
+| `weight-engine-activity` | node address | `{"node_address":…, "tau":…, "epoch":…}` | **Chain-derived** |
 
-### 2.1 L'attività non è pubblicata da nessuno
+### 2.1 Activity is published by nobody
 
-`tau_i^{(e)}`, il contatore di attività per epoca, è ricavato **direttamente dai
-blocchi confermati** dell'epoca da `ComputeActivityForEpoch()`
-([`weight_reader.h`](../../weight_engine/weight_reader.h)). È una funzione
-deterministica dei blocchi, quindi ogni nodo onesto ricalcola lo stesso valore:
-nessun publisher, nessun rischio di scrittura duplicata, nessuna fiducia richiesta.
+`tau_i^{(e)}`, the per-epoch activity counter, is derived **directly from the confirmed
+blocks** of the epoch by `ComputeActivityForEpoch()`
+([`weight_reader.h`](../../weight_engine/weight_reader.h)). It is a deterministic function
+of the blocks, so every honest node recomputes the identical value: no publisher, no
+duplicate-write risk, no trust required.
 
-### 2.2 Ricostruzione del cluster `C_k`
+### 2.2 Reconstructing the cluster `C_k`
 
-La membership sfrutta il `jsonobjectmerge` nativo di MultiChain
-(`getstreamkeysummary` / `mc_MergeValues`): tutti gli item pubblicati sotto la
-chiave di un miner sono ripiegati in un unico oggetto i cui **nomi di campo** sono
-gli indirizzi delle aziende associate. Il set `C_k` è quindi ricostruito senza
-strutture ausiliarie. Parser:
+Membership exploits MultiChain's native `jsonobjectmerge`
+(`getstreamkeysummary` / `mc_MergeValues`): every item published under a miner's key is
+folded into a single object whose **field names** are the associated company addresses. The
+set `C_k` is therefore reconstructed with no auxiliary structure. Parser:
 `mc_ParseMembershipClusterJson` in
 [`weight_records.h`](../../weight_engine/weight_records.h).
 
-### 2.3 Ciclo di vita degli stream
+### 2.3 Stream lifecycle
 
-`WeightStreamReader::EnsureInputStreams()` **crea** gli stream mancanti e vi si
-**iscrive**: il primo nodo con permesso di creazione (il nodo genesis / admin) li
-porta in esistenza, tutti gli altri li trovano già presenti e si iscrivono.
+`WeightStreamReader::EnsureInputStreams()` **creates** missing streams and **subscribes**
+to them: the first node with create permission (the genesis / admin node) brings them into
+existence, everyone else finds them present and subscribes.
 
-Gli stream sono creati **CLOSED**: serve `MC_PTP_WRITE` per pubblicare.
+The streams are created **CLOSED**: `MC_PTP_WRITE` is required to publish.
 
 ---
 
-## 3. La pipeline di calcolo
+## 3. The computation pipeline
 
-Implementata verbatim dal capitolo di tesi «Gestione del peso» in
-[`weight_engine.h`](../../weight_engine/weight_engine.h), che è un core **puro**:
-dipende solo dalla libreria standard C++, quindi è testabile in isolamento.
+Implemented verbatim from the thesis chapter *"Gestione del peso"* in
+[`weight_engine.h`](../../weight_engine/weight_engine.h), which is a **pure** core: it
+depends only on the C++ standard library, so it is testable in isolation.
 
 ```
-c_i^(e)   = ESG_i * tau_i^(e) / kappa                            (contributo-pesato)
-W_k^(e)   = ESG_Mk * ( tau_Mk^(e) + sum_{i in C_k} c_i^(e) )     (peso-grezzo)
-A_k^(e)   = alpha * Theta^(e) * W_k^(e) / W_tot^(e)              (allocazione)
-rho_k^(e) = R_k^(e) / ( A_k^(e) + B_k^(e-1) )  in [0,1]          (tasso-conformita)
-B_k^(e)   = A_k^(e) - R_k^(e) + B_k^(e-1),  B_k^(0) = 0          (riconciliazione)
-w_k^(1)   = W_k^(1)                                              (peso-finale, e = 1)
+c_i^(e)   = ESG_i * tau_i^(e) / kappa                            (weighted contribution)
+W_k^(e)   = ESG_Mk * ( tau_Mk^(e) + sum_{i in C_k} c_i^(e) )     (raw weight)
+A_k^(e)   = alpha * Theta^(e) * W_k^(e) / W_tot^(e)              (allocation)
+rho_k^(e) = R_k^(e) / ( A_k^(e) + B_k^(e-1) )  in [0,1]          (compliance rate)
+B_k^(e)   = A_k^(e) - R_k^(e) + B_k^(e-1),  B_k^(0) = 0          (reconciliation)
+w_k^(1)   = W_k^(1)                                              (final weight, e = 1)
 w_k^(e)   = W_k^(e) * [ rho_k^(e-1) * lambda + (1 - lambda) ]    (e >= 2)
 ```
 
-Il peso intero finale è `ToIntegerWeight(w_k)`, sempre `>= 1` — requisito di
-positività del peso, e anche il requisito di Efraimidis–Spirakis
+The final integer weight is `ToIntegerWeight(w_k)`, always `>= 1` — the weight-positivity
+requirement, and also the Efraimidis–Spirakis requirement
 ([`wpoa_selector.h`](../wpoa_selector.h)).
 
-### 3.1 Determinismo consensus-critical
+### 3.1 Consensus-critical determinism
 
-`w_k` governa l'elezione del proposer, quindi **ogni nodo onesto deve calcolare lo
-stesso intero**. Quattro scelte esplicite lo garantiscono:
+`w_k` governs proposer election, so **every honest node must compute the same integer**.
+Four explicit choices guarantee it:
 
-1. **Doppia precisione** su tutta la pipeline, coerente col core del selettore
-   (`ScoreFromEntropy64`), che già tratta il `double` IEEE-754 come deterministico
-   sul validator set a binario identico.
-2. **Somme in ordine di indirizzo ascendente** — sia `sum_i c_i` sia `W_tot`. Il
-   floating point non è associativo: senza un ordine fissato il risultato
-   dipenderebbe dall'ordine di input.
-3. **Denominatore `<= 0` in `rho` restituisce `0`**, mai `NaN`/`Inf`. È la
-   degenerazione che nella simulazione di riferimento propagava `#DIV/0!`; la forma
-   di tesi con `lambda < 1` la evita per costruzione.
-4. **`ToIntegerWeight`** arrotonda half-away-from-zero e clampa a
-   `[1, UINT32_MAX]`.
+1. **Double precision** throughout, matching the selector core (`ScoreFromEntropy64`),
+   which already treats IEEE-754 `double` as deterministic across the identical-binary
+   validator set.
+2. **Sums taken in ascending address order** — both `sum_i c_i` and `W_tot`. Floating
+   point is not associative: without a fixed order the result would depend on input
+   order.
+3. **A denominator `<= 0` in `rho` yields `0`**, never `NaN`/`Inf`. This is the
+   degeneration that propagated `#DIV/0!` through the reference simulation; the thesis
+   form with `lambda < 1` avoids it by construction.
+4. **`ToIntegerWeight`** rounds half-away-from-zero and clamps to `[1, UINT32_MAX]`.
 
-### 3.2 Epoche e margine di stabilità
+### 3.2 Epochs and the stability margin
 
-L'epoca è **1-based**:
+The epoch is **1-based**:
 
 ```
 epoch(height) = height / g_weight_epoch_length + 1
 ```
 
-`HeightToEpoch()` in [`weight_engine.cpp`](../../weight_engine/weight_engine.cpp).
-La stessa funzione è riusata dal registro del malus per allineare le epoche
+`HeightToEpoch()` in [`weight_engine.cpp`](../../weight_engine/weight_engine.cpp). The
+same function is reused by the malus registry to align epochs
 ([malus-registry.md](malus-registry.md)).
 
-Un'epoca è calcolata **solo quando è sepolta**: il suo ultimo blocco deve stare
-almeno `MC_WEIGHT_DEFAULT_STABILITY_MARGIN` (attualmente `6`) blocchi sotto la
-punta della catena. Poiché `tau` è derivato dai blocchi confermati dell'epoca,
-questo impedisce che un riorg superficiale vicino alla punta faccia leggere blocchi
-diversi a due nodi.
+An epoch is computed **only once it is buried**: its last block must sit at least
+`MC_WEIGHT_DEFAULT_STABILITY_MARGIN` (currently `6`) blocks below the chain tip. Because
+`tau` is derived from the epoch's confirmed blocks, this prevents a shallow reorg near the
+tip from making two nodes read different blocks.
 
-> Il margine è una costante a tempo di compilazione, non un parametro di catena. Il
-> codice stesso raccomanda di promuoverlo a parametro hash-enforced prima della
-> produzione, insieme a `weightepochlength`. Vedi
-> [protocol-parameters.md §4](protocol-parameters.md).
+> The margin is a compile-time constant, not a chain parameter. The code itself recommends
+> promoting it to a hash-enforced parameter before production, alongside
+> `weightepochlength`. See
+> [protocol-parameters.md §4](protocol-parameters.md#4-catalogue--weight-engine).
 
-### 3.3 Relazione col selettore — due livelli distinti
+### 3.3 Relation to the selector — three distinct levels
 
-Il weight engine produce il peso **grezzo** `w_k`. La compressione whale `f(w_k)`
-(`WPoASelector::ApplyDumping`, governata da `-dumpfunction`) resta applicata **a
-valle**, al momento dell'elezione, e così il malus `w_eff = w * Psi`.
+The weight engine produces the **raw** weight `w_k`. The whale compression `f(w_k)`
+(`WPoASelector::ApplyDumping`, governed by `-dumpfunction`) is applied **downstream**, at
+election time, and so is the malus correction `w_eff = w * Psi`.
 
 ```
-w_k  (engine)  ->  wpoa-weights  ->  w_eff = w * Psi  (malus)  ->  f(w_eff)  (dumping)  ->  elezione
+w_k  (engine)  ->  wpoa-weights  ->  w_eff = w * Psi  (malus)  ->  f(w_eff)  (dumping)  ->  election
 ```
 
-I tre livelli sono complementari e vanno tenuti distinti nei diagrammi: `w_k` non è
-il valore su cui si sorteggia.
+The three levels are complementary and must be kept distinct in diagrams: `w_k` is not the
+value the draw operates on.
 
-### 3.4 Scostamento deliberato dalla simulazione di riferimento
+### 3.4 Deliberate divergence from the reference simulation
 
-Questo core segue la **tesi**, che definisce l'allocazione `A_k` sul peso **grezzo**
-`W_k`. La simulazione di riferimento `Vers_2` ricava invece la propria voce
-"GuadagnoEx" dal peso normalizzato e già corretto dal feedback.
+This core follows the **thesis**, which defines the allocation `A_k` on the **raw** weight
+`W_k`. The reference `Vers_2` simulation instead derives its *"GuadagnoEx"* entry from the
+normalised, feedback-adjusted weight.
 
-Le due formulazioni **coincidono** per l'epoca 1 e per `W_k` in ogni epoca, ma le
-quantità derivate dall'allocazione (`A_k`, `rho_k`, `B_k`) possono divergere dalla
-seconda epoca in avanti. La forma di tesi è usata deliberatamente: l'allocazione
-segue il merito certificato e corrente (`W_k`), evitando un anello di
-feedback-sul-feedback.
+The two formulations **coincide** for epoch 1 and for `W_k` in every epoch, but the
+allocation-derived quantities (`A_k`, `rho_k`, `B_k`) can diverge from epoch 2 onwards. The
+thesis form is used deliberately: allocation tracks certified and current merit (`W_k`),
+avoiding a feedback-on-feedback loop.
 
 ---
 
-## 4. Il thread dell'engine
+## 4. The engine thread
 
 `ThreadWeightEngine()` in
-[`weight_engine.cpp`](../../weight_engine/weight_engine.cpp), lanciato da
-`AppInit2`.
+[`weight_engine.cpp`](../../weight_engine/weight_engine.cpp), launched from `AppInit2`.
 
-Ciclo, a ogni iterazione:
+The loop, on each iteration:
 
-1. attende che il wallet, i permessi e la connettività siano pronti, e che l'initial
-   block download sia concluso (stesso gate del thread wPoA);
-2. `reader.EnsureInputStreams()` — crea gli stream mancanti e si iscrive;
-3. individua l'**ultima epoca sepolta**;
-4. calcola `w_k` **solo per il proprio** indirizzo di miner, e solo se il nodo locale
-   è esso stesso un cluster miner (`ComputeLocalWeightForEpoch`: se
-   `clusters.find(local_miner) == clusters.end()`, non c'è nulla da pubblicare);
-5. pubblica tramite il percorso condiviso del registry, che assicura l'esistenza di
-   `wpoa-weights` e l'idempotenza;
-6. dorme `MC_WEIGHT_RETRY_INTERVAL_MS` e ripete.
+1. waits for the wallet, permissions and connectivity to be ready, and for the initial
+   block download to finish (the same gate as the wPoA thread);
+2. calls `reader.EnsureInputStreams()` — creates missing streams and subscribes;
+3. identifies the **latest buried epoch**;
+4. computes `w_k` **only for its own** miner address, and only if the local node is itself
+   a cluster miner (`ComputeLocalWeightForEpoch`: if
+   `clusters.find(local_miner) == clusters.end()`, there is nothing to publish);
+5. publishes through the shared registry path, which ensures `wpoa-weights` exists and
+   keeps the write idempotent;
+6. sleeps `MC_WEIGHT_RETRY_INTERVAL_MS` and repeats.
 
-Un nodo non ancora certificato, con input incompleti, o la cui epoca non è ancora
-sepolta, semplicemente non pubblica: nessun errore, nessun valore parziale.
+A node not yet certified, with incomplete inputs, or whose epoch is not yet buried, simply
+does not publish: no error, no partial value.
 
 ---
 
-## 5. Precedenza: quale publisher scrive
+## 5. Precedence: which publisher writes
 
-**I due publisher sono mutuamente esclusivi già all'avvio.** Non esiste alcuna
-sovrascrittura a runtime. In `AppInit2`, alla fine del blocco wPoA
-([`init.cpp`](../../core/init.cpp)):
+**The two publishers are mutually exclusive at startup.** There is no runtime overwrite. In
+`AppInit2`, at the end of the wPoA block ([`init.cpp`](../../core/init.cpp)):
 
 ```cpp
 if (g_wpoa_weights_enabled && pwalletMain && pwalletTxsMain && !fDisableWallet)
 {
     if (g_weight_engine_enabled)
-        threadGroup.create_thread(boost::bind(&ThreadWeightEngine));                     // peso dinamico w_k
+        threadGroup.create_thread(boost::bind(&ThreadWeightEngine));                     // dynamic w_k
     else
-        threadGroup.create_thread(boost::bind(&ThreadRegisterNodeWeight, g_node_weight)); // peso statico
+        threadGroup.create_thread(boost::bind(&ThreadRegisterNodeWeight, g_node_weight)); // static weight
 }
 ```
 
-La differenza è **osservabile**: con l'engine attivo, `-weight=500` non produce un
-record poi superato — non produce **nessun** record.
+The difference is **observable**: with the engine on, `-weight=500` does not produce a
+record that is later superseded — it produces **no** record.
 
-Entrambi i percorsi scrivono lo stesso stream. La lettura è
-**newest-confirmed-wins** (`mc_AccumulateLatestWeight`,
-[`weight_record.h`](../weight_record.h)), quindi il consenso è indifferente a quale
-publisher abbia prodotto il record.
+Both paths write the same stream. Reads are **newest-confirmed-wins**
+(`mc_AccumulateLatestWeight`, [`weight_record.h`](../weight_record.h)), so consensus is
+indifferent to which publisher produced the record.
 
 ---
 
-## 6. Modello di sicurezza — due gate indipendenti
+## 6. Security model — two independent gates
 
-Questa è la parte da leggere con attenzione: i due gate sono distinti e proteggono
-cose diverse.
+This is the part to read carefully: the two gates are distinct and protect different
+things.
 
-### 6.1 Gate on-chain — imposto dal consenso
+### 6.1 On-chain gate — consensus-enforced
 
-Tutti gli stream in gioco — i tre di attestazione e `wpoa-weights` — sono
-**CLOSED**. Solo un indirizzo che detiene `MC_PTP_WRITE` sullo stream può
-pubblicare. È questo che blocca le scritture arbitrarie, ed è imposto dalle
-permission granulari di MultiChain, non per convenzione.
+Every stream involved — the three attestation streams and `wpoa-weights` — is **CLOSED**.
+Only an address holding `MC_PTP_WRITE` on the stream can publish. This is what blocks
+arbitrary writes, and it is enforced by MultiChain's granular permissions, not by
+convention.
 
 ```bash
 multichain-cli <chain> grant <address> wpoa-weights.write
 multichain-cli <chain> grant <address> weight-engine-esg.write
 ```
 
-Un nodo senza il permesso vede la propria publish fallire e **non compare nella
-mappa dei pesi: non ha alcun peso nell'elezione.**
+A node without the permission sees its publish fail and **does not appear in the weight
+map: it carries no weight in the election.**
 
-> **Un nodo non autorizzato non può imporre il proprio peso in alcun modo**, né via
-> `-weight`, né via RPC, né pubblicando direttamente.
+> **An unauthorized node cannot impose its own weight by any means** — not through
+> `-weight`, not through RPC, not by publishing directly.
 
-### 6.2 Gate applicativo — solo questi RPC
+### 6.2 Application gate — these RPCs only
 
-Tre input sono **attestazioni esterne** non derivabili on-chain, quindi sono
-pubblicati dalla governance tramite RPC admin, ciascuno instradato attraverso
-`WeightPublisher` — l'**unico** punto di scrittura per questi stream.
+Three inputs are **external attestations** that cannot be derived on-chain, so they are
+published by governance through admin RPCs, each routed through `WeightPublisher` — the
+**single** write path for these streams.
 
-| RPC (categoria `weight`) | Stream | Payload |
+| RPC (category `weight`) | Stream written | Payload |
 |---|---|---|
 | `weightsetesg` | `weight-engine-esg` | `{node_address, esg}`, `esg > 0` |
-| `weightsetmembership` | `weight-engine-membership` | chiave `miner`, payload `{<azienda>: ts}` |
+| `weightsetmembership` | `weight-engine-membership` | key `miner`, payload `{<company>: ts}` |
 | `weightsetreconciliation` | `weight-engine-reconciliation` | `{node_address, reconciled, epoch}`, `R >= 0`, `epoch >= 1` |
 
-Registrati in [`rpclist.cpp`](../../rpc/rpclist.cpp). Ogni metodo, **prima** di
-pubblicare:
+Registered in [`rpclist.cpp`](../../rpc/rpclist.cpp). Each method, **before** publishing:
 
-1. valida il record in **round-trip** con lo *stesso* parser W1 che usa il reader
-   (`mc_Parse*RecordJson`) — non può quindi emettere un record malformato che il
-   reader rifiuterebbe;
-2. verifica che l'indirizzo agente sia un **amministratore globale** (`CanAdmin`,
+1. validates the record in **round-trip** with the *same* W1 parser the reader uses
+   (`mc_Parse*RecordJson`) — so it cannot emit a malformed record the reader would
+   reject;
+2. verifies that the acting address is a **global administrator** (`CanAdmin`,
    [`weight_publisher.cpp`](../../weight_engine/weight_publisher.cpp));
-3. verifica che quell'indirizzo abbia permesso di scrittura sullo stream;
-4. pubblica **da** quell'indirizzo.
+3. verifies that the address has write permission on the stream;
+4. publishes **from** that address.
 
-Ogni fallimento solleva `JSONRPCError`, così l'RPC chiamante restituisce un errore
-preciso.
+Any failure raises `JSONRPCError`, so the calling RPC returns a precise error.
 
-### 6.3 Limite noto — rischio accettato
+### 6.3 Known limit — accepted risk
 
-Il permesso di scrittura è una concessione **indipendente** dallo status di admin, e
-il reader **si fida di qualunque record confermato schema-valido, indipendentemente
-dal publisher**.
+Write permission is an **independent** grant from admin status, and the reader **trusts any
+schema-valid confirmed record, regardless of its publisher**.
 
-> La garanzia «admin-only» tiene **solo se** gli operatori concedono `.write` su
-> questi stream **esclusivamente** a indirizzi admin / di governance. Un non-admin a
-> cui sia stato concesso `.write` potrebbe pubblicare un record schema-valido ma
-> **forgiato**, usando il `publishfrom` generico anziché gli RPC `weightset*`, e il
-> reader lo accetterebbe.
+> The "admin-only" guarantee holds **only if** operators grant `.write` on these streams
+> **exclusively** to admin / governance addresses. A non-admin who has been granted
+> `.write` could publish a schema-valid but **forged** record using the generic
+> `publishfrom` rather than the `weightset*` RPCs, and the reader would accept it.
 
-Irrigidimento raccomandato dal codice stesso: fare in modo che il reader richieda
-`CanAdmin(publisher)` prima di ripiegare un record nella matematica del peso. Non
-ancora implementato. Fino ad allora, la concessione dei permessi `.write` **è** il
-controllo di sicurezza, e va trattata come tale.
+Hardening recommended by the code itself: have the reader additionally require
+`CanAdmin(publisher)` before folding a record into the weight math. Not yet implemented.
+Until then, granting `.write` **is** the security control, and must be treated as such.
 
 ---
 
-## 7. Il flusso completo
+## 7. The complete flow
 
-Il diagramma del flusso di assegnazione del peso — dai due gate di autorizzazione
-fino all'elezione del proposer — vive in **una sola sede** per evitare che due copie
-divergano:
+The diagram of the weight-assignment flow — from the two authorization gates through to
+proposer election — lives in **one place**, so that two copies cannot diverge:
 
-> **[implementation-status.md §0.1 — Assegnazione del peso di un nodo](implementation-status.md#01-assegnazione-del-peso-di-un-nodo--flusso-autorevole)**
+> **[implementation-status.md §0.1 — How a node's weight is assigned](implementation-status.md#01-how-a-nodes-weight-is-assigned--the-authoritative-flow)**
 
-Quel diagramma mostra esplicitamente che il canale autorevole è la scrittura RPC
-sullo stream on-chain da parte di un nodo già autorizzato, che il valore on-chain
-prevale sul flag locale `-weight`, e che un nodo non autorizzato non può imporre il
-proprio peso per nessuna via.
+That diagram shows explicitly that the authoritative channel is an RPC write to the
+on-chain stream by an already-authorized node, that the on-chain value takes precedence
+over the local `-weight` flag, and that an unauthorized node cannot impose its own weight
+by any route.
+
+---
 
 ## 8. Threading
 
-Ogni lettura usa l'API wallet **non-WRP**, di basso livello e auto-lockante, e solo
-item **confermati** — mai la famiglia `WRP*` / `getstreamkeysummary`, che restituisce
-dati stantii fuori dal thread proprietario (vedi la nota in
+Every read uses the low-level, self-locking **non-WRP** wallet API and **confirmed** items
+only — never the `WRP*` / `getstreamkeysummary` family, which returns stale data off the
+owning thread (see the note in
 [stream-weight-registry.md](stream-weight-registry.md)).
 
-`ComputeActivityForEpoch` legge i file di blocco/undo fuori thread, prendendo
-`cs_main` solo per uno snapshot minimo della catena.
+`ComputeActivityForEpoch` reads the block/undo files off-thread, taking `cs_main` only for
+a minimal chain snapshot.
 
 ---
 
-## 9. File del modulo
+## 9. Module files
 
-| File | Ruolo |
+| File | Role |
 |---|---|
-| [`weight_streams.h`](../../weight_engine/weight_streams.h) | W1: nomi degli stream, nomi dei campi JSON, default dei parametri. Nessuna logica. |
-| [`weight_records.h`](../../weight_engine/weight_records.h) | W1: parser puri dei record (`mc_Parse*RecordJson`), testabili in isolamento. |
-| [`weight_engine.h`](../../weight_engine/weight_engine.h) | W2: il core puro di calcolo. Solo libreria standard. |
-| [`weight_engine.cpp`](../../weight_engine/weight_engine.cpp) | W3: `HeightToEpoch`, `ThreadWeightEngine`, glue di nodo, globali di configurazione. |
-| [`weight_reader.h`](../../weight_engine/weight_reader.h) / [`.cpp`](../../weight_engine/weight_reader.cpp) | W3: `WeightStreamReader` — ciclo di vita degli stream, letture confermate, `ComputeActivityForEpoch`. |
-| [`weight_publisher.h`](../../weight_engine/weight_publisher.h) / [`.cpp`](../../weight_engine/weight_publisher.cpp) | W3: l'unico percorso di scrittura validato, e i tre RPC admin. |
+| [`weight_streams.h`](../../weight_engine/weight_streams.h) | W1: stream names, JSON field names, parameter defaults. No logic. |
+| [`weight_records.h`](../../weight_engine/weight_records.h) | W1: pure record parsers (`mc_Parse*RecordJson`), testable in isolation. |
+| [`weight_engine.h`](../../weight_engine/weight_engine.h) | W2: the pure computation core. Standard library only. |
+| [`weight_engine.cpp`](../../weight_engine/weight_engine.cpp) | W3: `HeightToEpoch`, `ThreadWeightEngine`, node glue, configuration globals. |
+| [`weight_reader.h`](../../weight_engine/weight_reader.h) / [`.cpp`](../../weight_engine/weight_reader.cpp) | W3: `WeightStreamReader` — stream lifecycle, confirmed reads, `ComputeActivityForEpoch`. |
+| [`weight_publisher.h`](../../weight_engine/weight_publisher.h) / [`.cpp`](../../weight_engine/weight_publisher.cpp) | W3: the single validated write path, and the three admin RPCs. |
 
-### 9.1 Test
+### 9.1 Tests
 
-Suite di unit test **proprie**, con un runner separato da quello wPoA:
+The module has its **own** unit suites, with a runner separate from the wPoA one:
 
 ```bash
-./src/weight_engine/test/run_unit_tests.sh              # entrambe le suite
-./src/weight_engine/test/run_unit_tests.sh engine       # solo una
+./src/weight_engine/test/run_unit_tests.sh              # both suites
+./src/weight_engine/test/run_unit_tests.sh engine       # one only
 ```
 
-| Suite | File | Copertura |
+| Suite | File | Coverage |
 |---|---|---|
-| `records` | [`weight_records_tests.cpp`](../../weight_engine/test/weight_records_tests.cpp) | Parsing dei record, ricostruzione del cluster dal merge JSON. |
-| `engine` | [`weight_engine_tests.cpp`](../../weight_engine/test/weight_engine_tests.cpp) | Indipendenza dall'ordine, guardia sul totale nullo, limiti di `rho`, ricorsione del bilancio, positività del peso, clamp di `ToIntegerWeight`, identità di allocazione su più cluster. |
+| `records` | [`weight_records_tests.cpp`](../../weight_engine/test/weight_records_tests.cpp) | Record parsing, cluster reconstruction from the JSON merge. |
+| `engine` | [`weight_engine_tests.cpp`](../../weight_engine/test/weight_engine_tests.cpp) | Order independence, zero-total guard, `rho` bounds, balance recursion, weight positivity, `ToIntegerWeight` clamp, multi-cluster allocation identity. |
 
-Entrambe sono node-free: non richiedono la build del nodo. Vedi
-[testing.md](testing.md).
+Both are node-free: they do not require building the node. See [testing.md](testing.md).
 
 ---
 
-## 10. Riferimenti
+## 10. References
 
-- [protocol-parameters.md](protocol-parameters.md) — i cinque parametri dell'engine, con range e
-  validazione.
-- [stream-weight-registry.md](stream-weight-registry.md) — lo stream `wpoa-weights`
-  e la sua API di lettura.
-- [malus-registry.md](malus-registry.md) — il registro del malus, che riusa
+- [protocol-parameters.md](protocol-parameters.md) — the engine's five parameters, with
+  ranges and validation.
+- [stream-weight-registry.md](stream-weight-registry.md) — the `wpoa-weights` stream and
+  its read API.
+- [malus-registry.md](malus-registry.md) — the malus registry, which reuses
   `HeightToEpoch`.
-- [implementation-status.md](implementation-status.md) — stato di implementazione.
+- [implementation-status.md](implementation-status.md) — implementation status.

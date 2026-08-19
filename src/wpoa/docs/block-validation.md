@@ -1,10 +1,10 @@
 # `protocol/multichainblock.cpp` (wPoA Phase 2 parts)
 
-> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
-> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
-> invariata. Per il modello teorico del consenso si rimanda a
-> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
-> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> **Register: technical-direct.** A developer reference: APIs, function signatures,
+> data structures and control flow, with code terminology left verbatim. For the
+> theoretical consensus model see
+> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
+> [protocol-parameters.md](protocol-parameters.md); for implementation status see
 > [implementation-status.md](implementation-status.md).
 
 > Documentation of the **validator-side integration** of wPoA weighted selection.
@@ -17,8 +17,7 @@ This is a **modified host file**, not a new module file. The change is one new s
 function plus a guarded early-return, both delimited by `/* MCHN START - wPoA Phase 2 */`
 markers.
 
-## Indice
-
+## Table of contents
 - [1. The role of VerifyBlockMiner](#1-the-role-of-verifyblockminer)
   - [1.1 The other diversity gate: CheckBlockPermissions](#11-the-other-diversity-gate-checkblockpermissions)
 - [2. The delegation in VerifyBlockMiner](#2-the-delegation-in-verifyblockminer)

@@ -1,10 +1,10 @@
 # `wpoa_selector.h` + `wpoa_selector.cpp`
 
-> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
-> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
-> invariata. Per il modello teorico del consenso si rimanda a
-> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
-> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> **Register: technical-direct.** A developer reference: APIs, function signatures,
+> data structures and control flow, with code terminology left verbatim. For the
+> theoretical consensus model see
+> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
+> [protocol-parameters.md](protocol-parameters.md); for implementation status see
 > [implementation-status.md](implementation-status.md).
 
 > Detailed technical walkthrough of the **core of wPoA (Weighted Proof-of-Authority)
@@ -45,8 +45,7 @@ self-contained, namespaced unit with no per-instance state — you never constru
 
 ---
 
-## Indice
-
+## Table of contents
   - [1. Why is the math in the header and the glue in the .cpp?](#1-why-is-the-math-in-the-header-and-the-glue-in-the-cpp)
 - [2. wpoa_selector.h](#2-wpoa_selectorh)
   - [2.1 Includes and their provenance](#21-includes-and-their-provenance)

@@ -1,10 +1,10 @@
 # Behavioural malus registry (`malus_record.h` + `malus_registry.{h,cpp}`)
 
-> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
-> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
-> invariata. Per il modello teorico del consenso si rimanda a
-> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
-> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> **Register: technical-direct.** A developer reference: APIs, function signatures,
+> data structures and control flow, with code terminology left verbatim. For the
+> theoretical consensus model see
+> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
+> [protocol-parameters.md](protocol-parameters.md); for implementation status see
 > [implementation-status.md](implementation-status.md).
 
 > The second of the two registries wPoA maintains, and the deliberate mirror image of
@@ -15,8 +15,7 @@
 
 ---
 
-## Indice
-
+## Table of contents
 - [1. Why a second registry](#1-why-a-second-registry)
 - [2. The two streams are opposites, on purpose](#2-the-two-streams-are-opposites-on-purpose)
 - [3. What can be reported, and why only these two](#3-what-can-be-reported-and-why-only-these-two)
@@ -219,7 +218,7 @@ other wPoA switch (`params.dat` baseline, CLI override, loud warning on a local
 divergence). All are consensus-critical.
 
 > **Names, types, defaults and valid ranges:
-> [protocol-parameters.md §3](protocol-parameters.md#3-catalogo--registro-del-malus-comportamentale).**
+> [protocol-parameters.md §3](protocol-parameters.md#3-catalogue--behavioural-malus-registry).**
 
 Two constraints are **hard failures** at startup, and both are structural rather than
 stylistic:

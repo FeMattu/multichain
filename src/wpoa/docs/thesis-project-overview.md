@@ -1,10 +1,10 @@
 # Private Proposer Sortition for Weighted Proof-of-Authority: A Thesis Overview
 
-> **Registro: formale-accademico.** Documento a prevalenza teorica: modello di
-> consenso, proprietà di sicurezza, motivazioni progettuali e confronto con altri
-> meccanismi (PoW / PoS / PoA / PoSA). Le trattazioni implementative a registro
-> tecnico-diretto vivono nei file per-componente; lo stato in
-> [implementation-status.md](implementation-status.md), i parametri in
+> **Register: formal-academic.** A predominantly theoretical document: the consensus
+> model, security properties, design rationale, and comparison with other mechanisms
+> (PoW / PoS / PoA / PoSA). Implementation treatments in the technical-direct register
+> live in the per-component files; status in
+> [implementation-status.md](implementation-status.md), parameters in
 > [protocol-parameters.md](protocol-parameters.md).
 
 > **Scope of this document.** This is the *research* companion to the wPoA
@@ -23,7 +23,7 @@ consensus, not a novel algorithm.
 
 ---
 
-## Indice
+## Table of contents
 1. [Abstract](#1-abstract)
 2. [Problem Statement](#2-problem-statement)
 3. [Threat Model & Vulnerabilities](#3-threat-model--vulnerabilities)
@@ -627,21 +627,21 @@ sequenceDiagram
 
 ### 9.3 Stream-Based Weight Retrieval Flow
 
-> **Sede unica.** Il diagramma del flusso di assegnazione e lettura del peso — con i due
-> gate di autorizzazione e la precedenza dello stream sul flag locale — vive in un solo
-> file, per evitare che due copie divergano:
-> **[implementation-status.md §0.1](implementation-status.md#01-assegnazione-del-peso-di-un-nodo--flusso-autorevole)**.
+> **Single source.** The diagram of the weight-assignment and retrieval flow — with both
+> authorization gates and the precedence of the on-chain value over the local flag —
+> lives in exactly one file, so that two copies cannot diverge:
+> **[implementation-status.md §0.1](implementation-status.md#01-how-a-nodes-weight-is-assigned--the-authoritative-flow)**.
 
-Ai fini del modello formale, del meccanismo di recupero conta una sola proprietà: la
-mappa dei pesi che alimenta l'elezione è una funzione **deterministica dei soli dati
-confermati on-chain**. Ogni nodo onesto, leggendo lo stesso stream, ricostruisce la
-stessa mappa `w_1 … w_m` — la regola di risoluzione è *newest-confirmed-wins* per
-indirizzo — e quindi calcola la stessa distribuzione di elezione.
+For the purposes of the formal model, only one property of the retrieval mechanism
+matters: the weight map that feeds the election is a function of **confirmed on-chain
+data alone**. Every honest node, reading the same stream, reconstructs the same map
+`w_1 … w_m` — the resolution rule being *newest-confirmed-wins* per address — and
+therefore computes the same election distribution.
 
-È questa proprietà, e non la meccanica dello stream, che il Teorema di preservazione
-della probabilità (§7.4) assume. Ne segue che il livello che *produce* i pesi può essere
-sostituito senza toccare le garanzie del consenso, purché il contratto dello stream sia
-rispettato: peso intero, strettamente positivo, per indirizzo autorizzato.
+It is this property, and not the mechanics of the stream, that the Probability
+Preservation Theorem (§7.4) assumes. It follows that the layer which *produces* the
+weights may be replaced without touching the consensus guarantees, provided the stream
+contract is respected: an integer, strictly positive weight per authorized address.
 
 ### 9.4 Leader Election Decision Tree (as built: score-timed self-election)
 

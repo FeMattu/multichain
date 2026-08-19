@@ -1,14 +1,13 @@
 # Native MultiChain PoA — Block-Creation Delay: Formula, Convergence, Edge Cases
 
-> **Registro: tecnico-diretto.** Trascrizione e analisi del codice di temporizzazione
-> nativo. Le sezioni 3 e 4 (convergenza, legge dei grandi numeri) adottano un registro
-> più formale, come esplicitato al loro inizio.
+> **Register: technical-direct** for the code transcription and analysis. Sections 3
+> and 4 (convergence, law of large numbers) shift to a more formal register, as stated
+> at their start.
 >
-> **Criterio di riferimento al codice.** Questo documento cita il codice per **simbolo**
-> (funzione, variabile) e non per numero di riga: gli ancoraggi di riga si degradano a
-> ogni modifica del sorgente, e in una precedente revisione erano scivolati di 30–90
-> righe, puntando a graffe chiuse e righe vuote. Il punto d'ingresso di tutto ciò che
-> segue è **`GetMinerAndExpectedMiningStartTime()`** in
+> **How this document cites code.** References are by **symbol** (function, variable),
+> never by line number: line anchors rot on every edit, and in an earlier revision they
+> had drifted by 30–90 lines, pointing at closing braces and blank lines. The entry
+> point for everything below is **`GetMinerAndExpectedMiningStartTime()`** in
 > [`miner/miner.cpp`](../../miner/miner.cpp).
 
 This documents the **native** (pre-wPoA) MultiChain Proof-of-Authority block-creation
@@ -18,14 +17,13 @@ a weighted election (see the `/* MCHN START - wPoA Phase 2 */` comment at
 round-robin mining-diversity timing gate with a weighted election..."*). It is the
 baseline the wPoA delay formula (`docs/phase4-implementation-guide.md` §4,
 the banded `D = T + δ·T·(2·score_norm − 1) + λ·Φ`, see
-[protocol-parameters.md §2.1](protocol-parameters.md#21-il-ritardo-di-mining-della-fase-4))
+[protocol-parameters.md §2.1](protocol-parameters.md#21-the-phase-4-mining-delay))
 was built to supersede, and is still the code path
 taken whenever wPoA is disabled (`-enablewpoa=0`, the default).
 
 ---
 
-## Indice
-
+## Table of contents
 - [1. Where it lives](#1-where-it-lives)
 - [2. The formula, transcribed from the code](#2-the-formula-transcribed-from-the-code)
   - [2.1 Constants ([miner.cpp](../../miner/miner.cpp))](#21-constants-minercpp)

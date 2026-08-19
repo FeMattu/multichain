@@ -1,10 +1,10 @@
 # wPoA Weight Registry — Testing Guide
 
-> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
-> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
-> invariata. Per il modello teorico del consenso si rimanda a
-> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
-> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> **Register: technical-direct.** A developer reference: APIs, function signatures,
+> data structures and control flow, with code terminology left verbatim. For the
+> theoretical consensus model see
+> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
+> [protocol-parameters.md](protocol-parameters.md); for implementation status see
 > [implementation-status.md](implementation-status.md).
 
 > How to build, unit-test and functionally test the module — plus the MultiChain
@@ -24,8 +24,7 @@ This document covers:
 Throughout, `CHAIN` is the blockchain name and the binaries are in `./src`
 (`multichaind`, `multichain-cli`, `multichain-util`).
 
-## Indice
-
+## Table of contents
 - [Test layers at a glance](#test-layers-at-a-glance)
 - [1. Automated unit tests](#1-automated-unit-tests)
 - [2. How MultiChain mining works](#2-how-multichain-mining-works)

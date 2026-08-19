@@ -1,10 +1,10 @@
 # `vrf_wrapper.h` + `vrf_wrapper.cpp`
 
-> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
-> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
-> invariata. Per il modello teorico del consenso si rimanda a
-> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
-> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> **Register: technical-direct.** A developer reference: APIs, function signatures,
+> data structures and control flow, with code terminology left verbatim. For the
+> theoretical consensus model see
+> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
+> [protocol-parameters.md](protocol-parameters.md); for implementation status see
 > [implementation-status.md](implementation-status.md).
 
 > Detailed technical walkthrough of the **pure cryptographic core of wPoA Phase 3a**: the
@@ -45,8 +45,7 @@ the intent directly:
 
 ---
 
-## Indice
-
+## Table of contents
   - [1. Why is the whole thing node-free?](#1-why-is-the-whole-thing-node-free)
 - [2. vrf_wrapper.h](#2-vrf_wrapperh)
   - [2.1 Includes and their provenance](#21-includes-and-their-provenance)

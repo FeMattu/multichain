@@ -1,10 +1,10 @@
 # wPoA Weight Registry — Implementation Guide (Phase 1)
 
-> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
-> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
-> invariata. Per il modello teorico del consenso si rimanda a
-> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
-> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> **Register: technical-direct.** A developer reference: APIs, function signatures,
+> data structures and control flow, with code terminology left verbatim. For the
+> theoretical consensus model see
+> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
+> [protocol-parameters.md](protocol-parameters.md); for implementation status see
 > [implementation-status.md](implementation-status.md).
 
 This document explains **how the code works, why every choice was made, and how to
@@ -54,7 +54,7 @@ This guide walks the whole subsystem; the per-file walkthroughs
 
 ---
 
-## Indice
+## Table of contents
 1. [What this module does](#1-what-this-module-does)
 2. [File map](#2-file-map)
 3. [Mental model: 4 facts you must hold in your head](#3-mental-model)

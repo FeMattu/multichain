@@ -1,10 +1,10 @@
 # `private_sortition.{h,cpp}` — line-by-line walkthrough (Phase 4)
 
-> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
-> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
-> invariata. Per il modello teorico del consenso si rimanda a
-> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
-> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> **Register: technical-direct.** A developer reference: APIs, function signatures,
+> data structures and control flow, with code terminology left verbatim. For the
+> theoretical consensus model see
+> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
+> [protocol-parameters.md](protocol-parameters.md); for implementation status see
 > [implementation-status.md](implementation-status.md).
 
 This is the per-file companion to
@@ -15,8 +15,7 @@ This is the per-file companion to
 
 ---
 
-## Indice
-
+## Table of contents
 - [1. The pure core (private_sortition.h)](#1-the-pure-core-private_sortitionh)
   - [1.1 VRFInput(seed32, height, out) — the public VRF input](#11-vrfinputseed32-height-out-—-the-public-vrf-input)
   - [1.2 ScoreFromVRFOutput(vrf_output, weight, dumping) — the private score](#12-scorefromvrfoutputvrf_output-weight-dumping-—-the-private-score)
@@ -117,7 +116,7 @@ All three are **consensus-critical**: they enter the validator's time bar, so a 
 holding different values computes a different bar and forks.
 
 > **Defaults and valid ranges:
-> [protocol-parameters.md §2](protocol-parameters.md#2-catalogo--fasi-wpoa).**
+> [protocol-parameters.md §2](protocol-parameters.md#2-catalogue--wpoa-phases).**
 
 #### Sizing δ against the network
 

@@ -1,10 +1,10 @@
 # `miner/miner.cpp` (wPoA Phase 3a — the VRF prover)
 
-> **Registro: tecnico-diretto.** Documento di riferimento per sviluppatori: API,
-> firme di funzione, strutture dati e flussi di controllo, con terminologia di codice
-> invariata. Per il modello teorico del consenso si rimanda a
-> [thesis-project-overview.md](thesis-project-overview.md); per valori di parametri a
-> [protocol-parameters.md](protocol-parameters.md); per lo stato di implementazione a
+> **Register: technical-direct.** A developer reference: APIs, function signatures,
+> data structures and control flow, with code terminology left verbatim. For the
+> theoretical consensus model see
+> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
+> [protocol-parameters.md](protocol-parameters.md); for implementation status see
 > [implementation-status.md](implementation-status.md).
 
 > Documentation of the **prover-side integration** of the wPoA VRF beacon: how the elected
@@ -16,8 +16,7 @@
 This is a **modified host file**, not a new module. The change is one self-contained branch
 delimited by `/* MCHN START - wPoA Phase 3a … */ … /* MCHN END */`.
 
-## Indice
-
+## Table of contents
 - [1. Where the change lives and why there](#1-where-the-change-lives-and-why-there)
 - [2. The added branch, line by line](#2-the-added-branch-line-by-line)
   - [if(g_wpoa_vrf_enabled)](#ifg_wpoa_vrf_enabled)
