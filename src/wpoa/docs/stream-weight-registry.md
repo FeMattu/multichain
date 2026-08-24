@@ -486,12 +486,13 @@ Object data_obj;
 data_obj.push_back(Pair("json", record));
 
 Array params;
+params.push_back(m_LocalAddress);          // publishFROM this address
 params.push_back(m_StreamName);
-params.push_back(m_LocalAddress);
+params.push_back(m_LocalAddress);          // ...and use it as the item key
 params.push_back(data_obj);
 
 try {
-    Value result = publish(params, false);
+    Value result = publishfrom(params, false);
     LogPrintf("... Weight registered: %s = %u (tx %s)\n", ...);
     return true;
 }
@@ -513,9 +514,19 @@ It builds the record's JSON payload:
 - The record is wrapped in `{"json": <record>}`: this is the format MultiChain uses to
   represent a **UBJSON** datum in a stream item.
 
-Finally it calls `publish(["wpoa-weights", <address-as-key>, {"json":{...}}])`. The
-stream item's **key** is the node's address: this way each node writes records under
-its own key, and reading the history shows each address's weight evolution.
+Finally it calls
+`publishfrom([<address>, "wpoa-weights", <address-as-key>, {"json":{...}}])`. The stream
+item's **key** is the node's address: this way each node writes records under its own key,
+and reading the history shows each address's weight evolution.
+
+> **`publishfrom`, not `publish` — and this is not cosmetic.** A weight record is
+> **self-published**: the reader discards it unless the transaction's *signer* is the
+> `node_address` in the payload (§2.7). Plain `publish` lets the wallet choose whichever
+> address funds the transaction, which on a multi-address wallet need not be
+> `m_LocalAddress` — the record would then be perfectly well-formed and silently discarded
+> by every peer. Naming the address explicitly makes the signer and the declared node the
+> same by construction. Full rationale:
+> [weight-engine.md §5.1](weight-engine.md#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others).
 
 ### 2.6 Orchestrating the write: `RegisterLocalWeight()`
 
@@ -542,7 +553,8 @@ method is designed to be called repeatedly in a retry loop without side effects.
 
 ```cpp
 static bool DecodeWeightRecord(const CWalletTx& wtx, const unsigned char* stream_short_txid,
-                               string& out_addr, uint32_t& out_weight)
+                               string& out_addr, uint32_t& out_weight,
+                               std::vector<string>& out_publishers, bool& out_forged)
 {
     mc_Script script; // local instance -> thread-safe (no shared buffer)
 
@@ -577,11 +589,56 @@ static bool DecodeWeightRecord(const CWalletTx& wtx, const unsigned char* stream
 
         string format_text;
         Value v = OpReturnFormatEntry(data, data_size, wtx.GetHash(), j, format, &format_text);
-        if (mc_ParseWeightRecordJson(v, out_addr, out_weight)) return true;
+        if (mc_ParseWeightRecordJson(v, out_addr, out_weight))
+        {
+            ExtractItemPublishers(wtx, j, out_publishers);
+
+            // Self-publication: the signer must BE the node the record is about.
+            if (!mc_StreamItemIsSelfAttested(out_addr, out_publishers))
+            {
+                out_forged = true;      // decodable, but published on another's behalf
+                out_weight = 0;
+                return false;           // DISCARD: never enters the weight map
+            }
+            return true;
+        }
     }
     return false;
 }
 ```
+
+#### The self-publication rule (consensus-critical)
+
+Parsing a record establishes only that it is **well formed**. A weight record describes
+its own publisher's cluster, so it is valid only if the address that **signed** the
+transaction is the `node_address` the payload declares. A record naming another cluster is
+**discarded** — not flagged, not down-weighted — so it never reaches the weight map and no
+node can publish a weight on another cluster's behalf. This is what makes it safe to grant
+`wpoa-weights.write` to **every** node rather than to one designated publisher per cluster.
+
+- `ExtractItemPublishers(...)` recovers the signing addresses from the transaction's
+  **input scripts**, mirroring MultiChain's own extraction in `StreamItemEntry1`
+  ([`rpcwalletutils.cpp`](../../rpc/rpcwalletutils.cpp)): for each input it recovers the
+  address embedded in the `scriptSig` and keeps it only when the signature commits to the
+  whole transaction (`SIGHASH_ALL`) or to this very output (`SIGHASH_SINGLE` at the same
+  index) — a signature committing to neither does not authenticate this item. A payload
+  field can claim anything; an input signature cannot.
+- `mc_StreamItemIsSelfAttested(...)` ([`weight_record.h`](../weight_record.h)) is the rule
+  itself, and it is the **same** predicate `weight-engine-membership` applies. One
+  implementation, shared by both layers: two copies of a consensus-critical predicate
+  could drift into a node discarding a record it does not accuse, or vice versa.
+- It **fails closed**: an item whose signer cannot be recovered is rejected. The evidence
+  — a single transaction — is always available, so its absence means the record is
+  undecodable rather than merely unverified.
+- `out_forged` distinguishes *"discarded because it was published on another's behalf"*
+  from *"this output is not one of our items"*. `ReadAllRecords` logs the former
+  unconditionally (not only under `-wpoadebug`): it is a provable protocol violation and
+  the evidence a malus accusation is built on.
+
+This rule answers only **who wrote** a record. Whether the **value** is correct is a
+separate, independently decidable question, answered by re-running the whole weight
+pipeline over the public inputs — see
+[weight-engine.md §5.1](weight-engine.md#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others).
 
 `static` = a function visible only in this file. It extracts `(address, weight)` from a
 stream-item transaction. Steps:

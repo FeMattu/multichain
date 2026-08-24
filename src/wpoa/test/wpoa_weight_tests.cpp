@@ -2,7 +2,7 @@
 // MultiChain code distributed under the GPLv3 license, see COPYING file.
 //
 // wPoA Phase 1 — unit tests for the pure weight-record parsing/aggregation
-// helpers (src/wpoa/weight_record.h).
+// helpers and the shared self-attestation rule (src/wpoa/weight_record.h).
 //
 // These tests are self-contained: they depend only on json_spirit headers and
 // Boost.Test (header-only "included" variant), NOT on the wallet / node runtime.
@@ -13,6 +13,7 @@
 
 #include <map>
 #include <string>
+#include <vector>
 
 #include "wpoa/weight_record.h"
 
@@ -262,4 +263,91 @@ BOOST_AUTO_TEST_CASE(aggregation_end_to_end_three_nodes)
         total += it->second;
     }
     BOOST_CHECK_EQUAL(total, 230u); // 100 + 80 + 50, as in the spec's expected output
+}
+
+// ---- the shared self-attestation rule -----------------------------------
+//
+// mc_StreamItemIsSelfAttested is the consensus-critical rule behind BOTH
+// self-describing streams, and it lives here, in the lower layer, so the two have one
+// copy: wpoa-weights applies it in DecodeWeightRecord (a weight record must be signed
+// by the cluster it is about) and weight-engine-membership applies it through the
+// mc_MembershipRecordIsSelfAttested wrapper. A record failing it is DISCARDED — never
+// merely flagged — so these cases pin the exact accept/reject boundary.
+
+BOOST_AUTO_TEST_CASE(self_attested_when_the_declared_address_signed)
+{
+    std::vector<std::string> publishers;
+    publishers.push_back("MINER_A");
+    BOOST_CHECK(mc_StreamItemIsSelfAttested("MINER_A", publishers));
+}
+
+// The forged case: a record naming MINER_B, signed by MINER_A. This is what stops a
+// node publishing a weight on another cluster's behalf, and it is why
+// wpoa-weights.write can be granted to every node rather than to one publisher per
+// cluster.
+BOOST_AUTO_TEST_CASE(not_self_attested_when_another_address_signed)
+{
+    std::vector<std::string> publishers;
+    publishers.push_back("MINER_A");
+    BOOST_CHECK(!mc_StreamItemIsSelfAttested("MINER_B", publishers));
+}
+
+// Privilege is irrelevant to the rule: only the signature counts, so an administrator
+// publishing for somebody else is rejected exactly like anyone else.
+BOOST_AUTO_TEST_CASE(admin_signing_for_another_address_is_not_self_attested)
+{
+    std::vector<std::string> publishers;
+    publishers.push_back("ADMIN");
+    BOOST_CHECK(!mc_StreamItemIsSelfAttested("MINER_A", publishers));
+}
+
+// A transaction funded from several addresses has several publishers; the record holds
+// if the declared address is any of them, since each one authorized the transaction.
+BOOST_AUTO_TEST_CASE(multi_publisher_accepts_only_the_addresses_that_signed)
+{
+    std::vector<std::string> publishers;
+    publishers.push_back("FUNDER");
+    publishers.push_back("MINER_A");
+    BOOST_CHECK(mc_StreamItemIsSelfAttested("MINER_A", publishers));
+    BOOST_CHECK(mc_StreamItemIsSelfAttested("FUNDER", publishers));
+    BOOST_CHECK(!mc_StreamItemIsSelfAttested("MINER_B", publishers));
+}
+
+// FAILS CLOSED. An item whose signer could not be recovered, or an empty declared
+// address, is never self-attested: the rule must stay decidable rather than let an
+// undecodable item through. (This is the opposite direction from value verification,
+// which fails OPEN — see weight_verifier.h.)
+BOOST_AUTO_TEST_CASE(self_attestation_fails_closed_on_missing_evidence)
+{
+    std::vector<std::string> none;
+    BOOST_CHECK(!mc_StreamItemIsSelfAttested("MINER_A", none));
+
+    std::vector<std::string> publishers;
+    publishers.push_back("MINER_A");
+    BOOST_CHECK(!mc_StreamItemIsSelfAttested("", publishers));
+
+    std::vector<std::string> empty_pub;
+    empty_pub.push_back("");
+    BOOST_CHECK(!mc_StreamItemIsSelfAttested("", empty_pub));
+}
+
+// A parsed record plus its publishers: the two halves of the validity rule applied
+// together, as DecodeWeightRecord applies them. A well-formed record from the wrong
+// signer parses fine and is still discarded — being decodable is not being valid.
+BOOST_AUTO_TEST_CASE(well_formed_record_from_the_wrong_signer_is_still_discarded)
+{
+    std::string addr;
+    uint32_t w = 0;
+    BOOST_REQUIRE(mc_ParseWeightRecordJson(wrap_json(make_inner("MINER_B", 500)), addr, w));
+    BOOST_CHECK_EQUAL(addr, "MINER_B");
+    BOOST_CHECK_EQUAL(w, 500u);
+
+    std::vector<std::string> publishers;
+    publishers.push_back("MINER_A");                       // signed by someone else
+    BOOST_CHECK(!mc_StreamItemIsSelfAttested(addr, publishers));
+
+    // ...and the honest record with the same shape is accepted.
+    std::vector<std::string> own;
+    own.push_back("MINER_B");
+    BOOST_CHECK(mc_StreamItemIsSelfAttested(addr, own));
 }

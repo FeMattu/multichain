@@ -1,0 +1,283 @@
+// Copyright (c) 2014-2019 Coin Sciences Ltd
+// MultiChain code distributed under the GPLv3 license, see COPYING file.
+//
+// Weight-management layer — universal verification of published weights.
+// ------------------------------------------------------------------------------
+// WHY THIS EXISTS. Under the self-published model every node computes and publishes
+// w_k for its OWN cluster, so the network no longer relies on a single trusted
+// publisher per cluster. That removes a centralization, but on its own it would
+// replace "trust one publisher" with "trust every publisher": a miner could publish
+// any number it liked for its own cluster and the reader would accept it, because the
+// self-publication rule only establishes WHO wrote the record, not whether the VALUE
+// is right.
+//
+// It is now possible to check the value too, and that is what this component does.
+// Every input of the pipeline is public and deterministic:
+//
+//   tau_i^{(e)}      chain-derived from the epoch's confirmed blocks
+//   C_k              chain-derived, self-attested membership records
+//   R_k^{(e)}        published on chain
+//   ESG_i            published on chain
+//
+// so any honest node can re-run the identical pipeline over the identical public
+// inputs and arrive at the identical integer w_k. A published value that does not
+// match the recomputation is provably wrong — not a matter of opinion — and can be
+// rejected by every node independently, with no coordination and no privileged
+// auditor. This is the same epistemic move the malus registry makes: trust the
+// EVIDENCE, not the publisher.
+//
+// EXACT INTEGER EQUALITY is the right comparison, and it is safe because of the
+// determinism disciplines already imposed on the pipeline (weight-engine.md §3.1):
+// double precision throughout, sums taken in ascending-address order, a zero
+// denominator yielding 0 rather than NaN, and ToIntegerWeight rounding
+// half-away-from-zero into [1, UINT32_MAX]. Two honest nodes on the same chain state
+// produce the same uint32_t, so a tolerance band is unnecessary and would only create
+// a margin for a dishonest publisher to hide in.
+//
+// ESG IS THE ONE INPUT THAT CANNOT BE RECOMPUTED, and therefore the one remaining
+// trusted datum in the whole system. Recomputation verifies that a publisher applied
+// the pipeline honestly to the published inputs; it cannot verify that the ESG scores
+// themselves are truthful, because an ESG score is an attestation with nothing inside
+// it to check. The integrity of the weights therefore rests entirely on the
+// Certification Authority role that gates ESG writes. Everything else is now
+// self-checking.
+//
+// ------------------------------------------------------------------------------
+// TWO RULES, TWO FAILURE DIRECTIONS — the asymmetry is deliberate
+// ------------------------------------------------------------------------------
+// The self-publication rule (signer == node_address, wpoa/weight_record.h) FAILS
+// CLOSED: it is decidable from the single publishing transaction, that evidence is
+// always available, so its absence means the record is undecodable and it is
+// discarded.
+//
+// Value verification FAILS OPEN: it needs readable input streams and a BURIED epoch,
+// and their absence is entirely normal — a freshly started node, a node still syncing,
+// an epoch not yet buried. Treating "cannot verify" as "invalid" would zero every
+// weight on such a node and stall the chain, so an unavailable recomputation yields
+// MC_WEIGHT_VERDICT_UNVERIFIED and the filter below leaves those entries untouched.
+// Only a recomputation that SUCCEEDED and DISAGREED is a finding.
+//
+// ------------------------------------------------------------------------------
+// COST, and why verification runs per epoch rather than per round
+// ------------------------------------------------------------------------------
+// Verifying every cluster is O(number of clusters) recomputations per epoch, against
+// O(1) for blindly trusting a publisher. The marginal cost is however far smaller than
+// that suggests: ComputeAllWeightsForEpoch already folds the pipeline forward across
+// EVERY cluster (it always did — the previous code computed the whole map and then
+// used a single entry), so verification adds a map comparison to work already done.
+//
+// What would be prohibitive is running it in the consensus hot path.
+// GetAllNodesWeights() is called by the miner and by every validator on every round,
+// while recomputation must fold forward from epoch 1 and scan each epoch's blocks —
+// O(chain) work. So verification runs where the fold already happens, once per buried
+// epoch inside ThreadWeightEngine, and deposits its verdicts in a cache that the
+// consensus path can consult in O(1).
+//
+// The pure comparison and filter below are node-free and unit-tested in isolation
+// (test/weight_verifier_tests.cpp); the node-coupled orchestration lives in
+// weight_verifier.cpp.
+
+#ifndef MC_WEIGHT_VERIFIER_H
+#define MC_WEIGHT_VERIFIER_H
+
+#include <map>
+#include <string>
+#include <stdint.h>
+
+#include "json/json_spirit_value.h"   // for the RPC declaration at the end
+
+// ---------------------------------------------------------------------------
+// Verdicts
+// ---------------------------------------------------------------------------
+
+/** The outcome of checking one published weight against an independent recomputation. */
+enum WeightVerdict
+{
+    /** No recomputation was available for this address — inputs unreadable, epoch not
+     *  yet buried, or the weight engine disabled. NOT a finding: see the fail-open
+     *  discussion above. The entry is left alone. */
+    MC_WEIGHT_VERDICT_UNVERIFIED = 0,
+
+    /** The published value equals the independently recomputed one. */
+    MC_WEIGHT_VERDICT_OK,
+
+    /** The recomputation succeeded and DISAGREED. Provably wrong: the record is
+     *  dropped from the weight map and is grounds for a malus accusation. */
+    MC_WEIGHT_VERDICT_MISMATCH,
+
+    /** A weight was published for an address that heads no cluster at all, so there is
+     *  nothing the pipeline could have produced for it. Distinguished from MISMATCH
+     *  because the fault differs — publishing a weight for a non-cluster rather than a
+     *  wrong weight for a real one — and an accurate reason makes the log and any
+     *  accusation auditable. Treated as invalid, like MISMATCH. */
+    MC_WEIGHT_VERDICT_NOT_A_CLUSTER
+};
+
+/** One address's verification result: what was published, what was recomputed, and the
+ *  verdict. `recomputed` is meaningful only for OK and MISMATCH. */
+struct WeightVerificationEntry
+{
+    uint32_t      published;
+    uint32_t      recomputed;
+    WeightVerdict verdict;
+
+    WeightVerificationEntry()
+        : published(0), recomputed(0), verdict(MC_WEIGHT_VERDICT_UNVERIFIED) {}
+    WeightVerificationEntry(uint32_t p, uint32_t r, WeightVerdict v)
+        : published(p), recomputed(r), verdict(v) {}
+};
+
+/** Stable, operator-facing name of a verdict (for RPC output and logs). */
+inline const char* mc_WeightVerdictToString(WeightVerdict v)
+{
+    switch (v)
+    {
+        case MC_WEIGHT_VERDICT_OK:             return "ok";
+        case MC_WEIGHT_VERDICT_MISMATCH:       return "mismatch";
+        case MC_WEIGHT_VERDICT_NOT_A_CLUSTER:  return "not-a-cluster";
+        case MC_WEIGHT_VERDICT_UNVERIFIED:
+        default:                               return "unverified";
+    }
+}
+
+/** True for a verdict that invalidates the record, i.e. one that must be dropped from
+ *  the weight map. Single-sourced so the filter, the logs and any accusation agree on
+ *  what "invalid" means. */
+inline bool mc_WeightVerdictIsInvalid(WeightVerdict v)
+{
+    return v == MC_WEIGHT_VERDICT_MISMATCH || v == MC_WEIGHT_VERDICT_NOT_A_CLUSTER;
+}
+
+// ---------------------------------------------------------------------------
+// Pure comparison and filter
+// ---------------------------------------------------------------------------
+
+/**
+ * Compare a published weight map against an independent recomputation.
+ *
+ * @param published        address -> weight, as read from wpoa-weights.
+ * @param recomputed       address -> weight, from an independent run of the pipeline.
+ * @param recompute_ok     Whether the recomputation actually succeeded. When false
+ *                         every entry is UNVERIFIED regardless of `recomputed`: an
+ *                         empty or partial map must never be read as "everyone is
+ *                         wrong" (fail open).
+ * @param out              [out] address -> verification entry (cleared first). One
+ *                         entry per PUBLISHED address; a cluster that exists but has
+ *                         published nothing simply has no entry, since there is no
+ *                         record to accept or reject.
+ */
+inline void mc_VerifyPublishedWeights(const std::map<std::string, uint32_t>& published,
+                                      const std::map<std::string, uint32_t>& recomputed,
+                                      bool recompute_ok,
+                                      std::map<std::string, WeightVerificationEntry>& out)
+{
+    out.clear();
+
+    for (std::map<std::string, uint32_t>::const_iterator it = published.begin();
+         it != published.end(); ++it)
+    {
+        if (!recompute_ok)
+        {
+            out[it->first] = WeightVerificationEntry(it->second, 0,
+                                                     MC_WEIGHT_VERDICT_UNVERIFIED);
+            continue;
+        }
+
+        std::map<std::string, uint32_t>::const_iterator ri = recomputed.find(it->first);
+        if (ri == recomputed.end())
+        {
+            // Published a weight for an address the pipeline knows no cluster for.
+            out[it->first] = WeightVerificationEntry(it->second, 0,
+                                                     MC_WEIGHT_VERDICT_NOT_A_CLUSTER);
+            continue;
+        }
+
+        out[it->first] = WeightVerificationEntry(
+            it->second, ri->second,
+            (it->second == ri->second) ? MC_WEIGHT_VERDICT_OK
+                                       : MC_WEIGHT_VERDICT_MISMATCH);
+    }
+}
+
+/**
+ * Drop every invalidated record from a published weight map.
+ *
+ * An address with no verdict keeps its weight — which is what makes the mechanism
+ * inert on a node that has not verified anything yet, and inert on a clean chain.
+ *
+ * @param published  address -> weight, as read from wpoa-weights.
+ * @param verdicts   address -> verification entry (may be empty, or cover a subset).
+ * @param out        [out] the filtered map (cleared first).
+ */
+inline void mc_FilterVerifiedWeights(const std::map<std::string, uint32_t>& published,
+                                     const std::map<std::string, WeightVerificationEntry>& verdicts,
+                                     std::map<std::string, uint32_t>& out)
+{
+    out.clear();
+
+    for (std::map<std::string, uint32_t>::const_iterator it = published.begin();
+         it != published.end(); ++it)
+    {
+        std::map<std::string, WeightVerificationEntry>::const_iterator vi =
+            verdicts.find(it->first);
+        if (vi != verdicts.end() && mc_WeightVerdictIsInvalid(vi->second.verdict))
+        {
+            continue;   // provably wrong -> never reaches the election
+        }
+        out[it->first] = it->second;
+    }
+}
+
+/** How many entries carry an invalidating verdict (for logs and RPC summaries). */
+inline size_t mc_CountInvalidVerdicts(const std::map<std::string, WeightVerificationEntry>& verdicts)
+{
+    size_t n = 0;
+    for (std::map<std::string, WeightVerificationEntry>::const_iterator it = verdicts.begin();
+         it != verdicts.end(); ++it)
+    {
+        if (mc_WeightVerdictIsInvalid(it->second.verdict))
+        {
+            n++;
+        }
+    }
+    return n;
+}
+
+// ---------------------------------------------------------------------------
+// Node-coupled surface (defined in weight_verifier.cpp)
+// ---------------------------------------------------------------------------
+
+struct WeightStreamReader;
+
+/**
+ * Recompute every cluster's integer weight for `target_epoch` by folding the pipeline
+ * forward from epoch 1 over the public on-chain inputs — the same computation each
+ * honest node performs, which is what makes the comparison meaningful.
+ *
+ * Returns false when the inputs are not yet readable or the epoch is not buried; the
+ * caller must then treat every verdict as UNVERIFIED rather than as a finding.
+ */
+bool WeightEngineComputeAllWeightsForEpoch(WeightStreamReader& reader,
+                                           uint32_t target_epoch,
+                                           std::map<std::string, uint32_t>& out_weights);
+
+/**
+ * Verify the published weight map for `epoch` and CACHE the verdicts, so the consensus
+ * path can consult them without re-running the pipeline (see the cost discussion
+ * above). Called once per buried epoch from ThreadWeightEngine.
+ *
+ * @return true when the recomputation succeeded (verdicts are meaningful).
+ */
+bool WeightEngineVerifyAndCacheEpoch(WeightStreamReader& reader, uint32_t epoch,
+                                     const std::map<std::string, uint32_t>& published);
+
+/** The cached verdicts for `epoch`, or an empty map if that epoch was never verified. */
+std::map<std::string, WeightVerificationEntry> WeightEngineGetVerdicts(uint32_t epoch);
+
+/** The most recent epoch for which verdicts are cached; 0 when none. */
+uint32_t WeightEngineLastVerifiedEpoch();
+
+/** RPC: report the cached verification of the published weights (category "weight"). */
+json_spirit::Value weightverifyweights(const json_spirit::Array& params, bool fHelp);
+
+#endif // MC_WEIGHT_VERIFIER_H

@@ -16,6 +16,7 @@
 
 #include "weight_engine/weight_engine.h"
 #include "weight_engine/weight_reader.h"
+#include "weight_engine/weight_verifier.h"   // verification of the published weights
 
 #include "wpoa/stream_weight_registry.h"  // StreamWeightRegistry (publish port), g_wpoa_weights_enabled
 #include "core/init.h"                     // pwalletMain, pwalletTxsMain, ShutdownRequested
@@ -110,23 +111,26 @@ static bool NodeReadyForWeight()
     return !IsInitialBlockDownload();
 }
 
-// Compute THIS node's own integer cluster weight for `target_epoch` by folding the
-// pipeline forward from epoch 1 using purely public on-chain inputs (so every
-// honest node derives the same value). Returns false when the inputs are not yet
-// readable or the local node is not a cluster miner (nothing to publish).
-static bool ComputeLocalWeightForEpoch(WeightStreamReader& reader, const std::string& local_miner,
-                                       uint32_t target_epoch, uint32_t& out_weight)
+// Compute EVERY cluster's integer weight for `target_epoch` by folding the pipeline
+// forward from epoch 1 using purely public on-chain inputs, so every honest node
+// derives the same map. Returns false when the inputs are not yet readable or the
+// epoch's blocks cannot be scanned identically across nodes.
+//
+// WHY THE WHOLE MAP. This function has always computed every cluster — ComputeEpoch
+// needs W_tot, so a single cluster cannot be evaluated in isolation — and the caller
+// used to keep one entry and discard the rest. Returning the map exposes work already
+// done, which is what makes independent verification of OTHER nodes' published weights
+// (weight_verifier.h) nearly free rather than a new O(clusters) cost.
+bool WeightEngineComputeAllWeightsForEpoch(WeightStreamReader& reader,
+                                           uint32_t target_epoch,
+                                           std::map<std::string, uint32_t>& out_weights)
 {
+    out_weights.clear();
+
     // Static inputs (latest confirmed wins).
     std::map<std::string, std::set<std::string> > clusters;
     std::map<std::string, double> esg;
     if (!reader.ReadMembership(clusters) || !reader.ReadEsg(esg))
-    {
-        return false;
-    }
-
-    // The local node only publishes a weight if it is itself a cluster miner.
-    if (clusters.find(local_miner) == clusters.end())
     {
         return false;
     }
@@ -188,12 +192,32 @@ static bool ComputeLocalWeightForEpoch(WeightStreamReader& reader, const std::st
         state = newstate;
     }
 
-    std::map<std::string, WeightEngine::ClusterResult>::const_iterator it = results.find(local_miner);
-    if (it == results.end())
+    for (std::map<std::string, WeightEngine::ClusterResult>::const_iterator it = results.begin();
+         it != results.end(); ++it)
+    {
+        out_weights[it->first] = it->second.integer_weight;
+    }
+    return true;
+}
+
+// THIS node's own integer cluster weight for `target_epoch`. A thin selection over
+// ComputeAllWeightsForEpoch: a node publishes only its OWN cluster's weight, and only
+// if it is itself a registered cluster head (absent from the map -> nothing to
+// publish, no error).
+static bool ComputeLocalWeightForEpoch(WeightStreamReader& reader, const std::string& local_miner,
+                                       uint32_t target_epoch, uint32_t& out_weight)
+{
+    std::map<std::string, uint32_t> all;
+    if (!WeightEngineComputeAllWeightsForEpoch(reader, target_epoch, all))
     {
         return false;
     }
-    out_weight = it->second.integer_weight;
+    std::map<std::string, uint32_t>::const_iterator it = all.find(local_miner);
+    if (it == all.end())
+    {
+        return false;   // not a cluster miner: nothing to publish
+    }
+    out_weight = it->second;
     return true;
 }
 
@@ -218,6 +242,7 @@ void ThreadWeightEngine()
     std::string local = registry.GetLocalAddress();
 
     uint32_t last_published_epoch = 0;
+    uint32_t last_verified_epoch = 0;
 
     while (!ShutdownRequested())
     {
@@ -267,9 +292,38 @@ void ThreadWeightEngine()
             continue; // nothing buried yet
         }
         uint32_t epoch = (uint32_t)((stableHeight + 1) / len);   // largest e with e*len-1 <= stableHeight
-        if (epoch < 1 || epoch == last_published_epoch)
+        if (epoch < 1)
         {
-            continue; // no buried epoch yet, or already published for it
+            continue; // nothing buried yet
+        }
+
+        // -----------------------------------------------------------------
+        // Verify EVERY other node's published weight, once per buried epoch.
+        // -----------------------------------------------------------------
+        // Runs before the publish and independently of it, for three reasons: a node
+        // that is not itself a cluster miner (and so has nothing to publish) must
+        // still verify; verification must not be skipped just because this epoch's
+        // own weight was already published; and the whole-map recomputation it needs
+        // is the same fold ComputeLocalWeightForEpoch performs, so doing it here
+        // keeps one fold per epoch rather than two.
+        //
+        // This is deliberately NOT in the consensus read path: GetAllNodesWeights()
+        // is called by the miner and every validator on every round, while the
+        // recomputation folds forward from epoch 1 and scans each epoch's blocks —
+        // O(chain) work. Verifying per epoch and caching the verdicts keeps the
+        // consensus path O(1). See weight_verifier.h.
+        if (epoch != last_verified_epoch)
+        {
+            std::map<std::string, uint32_t> published = registry.GetAllNodesWeights();
+            if (WeightEngineVerifyAndCacheEpoch(reader, epoch, published))
+            {
+                last_verified_epoch = epoch;   // only advance on a real recomputation
+            }
+        }
+
+        if (epoch == last_published_epoch)
+        {
+            continue; // already published our own weight for this epoch
         }
 
         uint32_t w = 0;
@@ -281,7 +335,10 @@ void ThreadWeightEngine()
         }
 
         // Publish via the shared registry path (ensures wpoa-weights exists +
-        // subscribed, idempotent when the value is unchanged).
+        // subscribed, idempotent when the value is unchanged). The record is
+        // SELF-PUBLISHED: it names this node and is signed by it, so every peer's
+        // reader accepts it on the self-publication rule and can then check the value
+        // itself by the same recomputation performed just above.
         if (registry.RegisterLocalWeight(w))
         {
             LogPrintf("[WeightEngine] epoch %u (height %d): w_k = %u for %s\n",

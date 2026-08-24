@@ -26,6 +26,7 @@ Configuration parameters: [protocol-parameters.md §4](protocol-parameters.md#4-
 - [3. The computation pipeline](#3-the-computation-pipeline)
 - [4. The engine thread](#4-the-engine-thread)
 - [5. Precedence: which publisher writes](#5-precedence-which-publisher-writes)
+  - [5.1 Every node publishes its own weight, and every node checks the others](#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others)
 - [6. Security model — two independent gates](#6-security-model--two-independent-gates)
   - [6.1 On-chain gate](#61-on-chain-gate--consensus-enforced)
   - [6.2 Application gate — per stream, not uniform](#62-application-gate--per-stream-not-uniform)
@@ -268,8 +269,16 @@ does not publish: no error, no partial value.
 
 ## 5. Precedence: which publisher writes
 
-**The two publishers are mutually exclusive at startup.** There is no runtime overwrite. In
-`AppInit2`, at the end of the wPoA block ([`init.cpp`](../../core/init.cpp)):
+**Two publication MODES, one per node — not one publisher per cluster.** The name of this
+section is about which of a node's *own* two publication paths runs, and that is still an
+exclusive choice made once at startup. It has never meant "one node publishes for
+everybody": each node has always published only its **own** cluster's weight
+(`ComputeLocalWeightForEpoch` returns nothing when the local address heads no cluster). What
+changed is that this is now **enforced and verifiable** rather than merely conventional —
+see [§5.1](#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others).
+
+There is no runtime overwrite. In `AppInit2`, at the end of the wPoA block
+([`init.cpp`](../../core/init.cpp)):
 
 ```cpp
 if (g_wpoa_weights_enabled && pwalletMain && pwalletTxsMain && !fDisableWallet)
@@ -286,7 +295,104 @@ record that is later superseded — it produces **no** record.
 
 Both paths write the same stream. Reads are **newest-confirmed-wins**
 (`mc_AccumulateLatestWeight`, [`weight_record.h`](../weight_record.h)), so consensus is
-indifferent to which publisher produced the record.
+indifferent to which of a node's two paths produced the record.
+
+### 5.1 Every node publishes its own weight, and every node checks the others
+
+`wpoa-weights` stays **CLOSED**, but `.write` is now meant to be granted to **every**
+node, not to one designated publisher per cluster. Two rules make that safe, and they are
+worth separating because they answer different questions and fail in opposite directions.
+
+#### Rule 1 — self-publication: *who* wrote it
+
+A weight record is valid **only if the address that signed the publishing transaction is
+the `node_address` the payload declares.** A record naming another cluster is **discarded**
+by `DecodeWeightRecord` ([`stream_weight_registry.cpp`](../stream_weight_registry.cpp)):
+it never reaches the weight map, so no node can publish a weight on another cluster's
+behalf.
+
+The rule is the *same predicate* the membership stream uses —
+`mc_StreamItemIsSelfAttested` in [`weight_record.h`](../weight_record.h) — with one
+implementation shared by both layers. Two copies of a consensus-critical predicate could
+drift into a node discarding a record it does not accuse, or accusing one it does not
+discard.
+
+> **Consequence for the publisher: `publishfrom`, not `publish`.** `PublishWeightRecord`
+> now names its own address explicitly. Plain `publish` lets the wallet choose whichever
+> address funds the transaction, which on a multi-address wallet need not be the node's
+> own — the record would be perfectly well-formed and silently discarded by every peer.
+> This is not cosmetic; it is what makes the rule satisfiable.
+
+It **fails closed**: an item whose signer cannot be recovered is rejected. The evidence —
+one transaction — is always available, so its absence means the record is undecodable.
+
+#### Rule 2 — universal verification: whether the *value* is right
+
+Rule 1 establishes who wrote a record, not whether the number is correct. On its own it
+would replace *"trust one publisher per cluster"* with *"trust every publisher"*: a miner
+could publish any value it liked for its own cluster.
+
+But the value is now checkable, because **every input of the pipeline is public and
+deterministic**: `tau` is chain-derived, `C_k` is chain-derived from self-attested records,
+`R_k` and `ESG` are published. So any honest node can re-run the identical pipeline over
+the identical inputs and reach the identical integer. A published value that differs is
+**provably wrong** — not a matter of opinion — and every node can reject it independently,
+with no coordination and no privileged auditor. Implementation:
+[`weight_verifier.h`](../../weight_engine/weight_verifier.h) /
+[`.cpp`](../../weight_engine/weight_verifier.cpp), reported by the
+`weightverifyweights` RPC.
+
+The comparison is **exact integer equality**, which is safe precisely because of the
+determinism disciplines of [§3.1](#31-consensus-critical-determinism). A tolerance band
+would only create a margin for a dishonest publisher to hide in.
+
+It **fails open**, deliberately and unlike Rule 1: verification needs readable inputs and
+a **buried** epoch, and their absence is entirely normal (a node still syncing, an epoch
+not yet buried). Treating *"cannot verify"* as *"invalid"* would zero every weight on such
+a node and stall the chain. Only a recomputation that **succeeded and disagreed** is a
+finding.
+
+#### ESG is the one input that cannot be recomputed
+
+Verification establishes that a publisher applied the pipeline **honestly to the published
+inputs**. It cannot establish that the ESG scores are *truthful*, because an ESG score is
+an attestation with nothing inside it to check.
+
+So after this change the trust surface of the whole system is exactly one datum: **ESG**.
+Activity and membership are chain-derived, reconciliation is published and verifiable
+alongside the rest, and every published weight is recomputable. The integrity of the
+weights therefore rests entirely on the Certification Authority role of
+[§6.4](#64-esg--the-certification-authority-role).
+
+#### Complexity: O(clusters) per epoch instead of O(1)
+
+Trusting a publisher blindly costs nothing; verifying every cluster costs one full
+pipeline recomputation per epoch. The trade is accepted deliberately: it is the price of
+removing the implicit trust in a per-cluster publisher, and without it opening `.write` to
+every node would be strictly worse than the model it replaces.
+
+The marginal cost is much smaller than O(clusters) suggests.
+`WeightEngineComputeAllWeightsForEpoch` **already** folds the pipeline across every
+cluster — it always did, because `ComputeEpoch` needs `W_tot` and so cannot evaluate one
+cluster in isolation; the previous code computed the whole map and used a single entry.
+Verification adds a map comparison to work already performed.
+
+What *would* be prohibitive is verifying in the consensus hot path.
+`GetAllNodesWeights()` is called by the miner and every validator on **every round**,
+while recomputation folds forward from epoch 1 and scans each epoch's blocks — O(chain)
+work. So verification runs **once per buried epoch**, inside `ThreadWeightEngine` where
+the fold already happens, and caches its verdicts; the consensus path consults the cache
+in O(1).
+
+> **Where the consequence of a mismatch reaches consensus.** Rule 1's discard is enforced
+> directly in the reader, because it is decidable from a single transaction. Rule 2's
+> verdicts are produced and cached here, and the effective-weight consequence is applied
+> through the malus registry — the mechanism that already sits in the consensus path as
+> `w_eff = w * Psi` ([§3.3](#33-relation-to-the-selector--three-distinct-levels)) and
+> whose whole purpose is to carry *provable* findings into the election. Wiring that
+> accusation is the malus phase's job and is deliberately not anticipated here; until it
+> lands, a mismatch is detected, logged unconditionally and exposed by
+> `weightverifyweights`, but does not yet move any weight.
 
 ---
 
@@ -321,7 +427,7 @@ authorization model:
 | `weight-engine-membership` | **every node on the network** | Records are self-verifiable: a write permission lets a node speak about *itself* and nothing more. |
 | `weight-engine-esg` | **Certification Authorities only** | An unverifiable external attestation about a third party. See [§6.4](#64-esg--the-certification-authority-role). |
 | `weight-engine-reconciliation` | governance only | Likewise. |
-| `wpoa-weights` | authorized publishers only | A claim nobody can check. |
+| `wpoa-weights` | **every node** | The record is self-published *and* the value is independently recomputable — the only input class that is verifiable on both counts. See [§5.1](#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others). |
 
 For membership, network admission is still gated — but **upstream**, by the KYC-backed
 `connect` permission that governs joining the network at all. Once a node is a legitimate
@@ -530,7 +636,8 @@ a minimal chain snapshot.
 | [`weight_engine.h`](../../weight_engine/weight_engine.h) | W2: the pure computation core. Standard library only. |
 | [`weight_engine.cpp`](../../weight_engine/weight_engine.cpp) | W3: `HeightToEpoch`, `ThreadWeightEngine`, node glue, configuration globals. |
 | [`weight_reader.h`](../../weight_engine/weight_reader.h) / [`.cpp`](../../weight_engine/weight_reader.cpp) | W3: `WeightStreamReader` — stream lifecycle, confirmed reads, `ComputeActivityForEpoch`. |
-| [`weight_publisher.h`](../../weight_engine/weight_publisher.h) / [`.cpp`](../../weight_engine/weight_publisher.cpp) | W3: the single validated write path, the two admin attestation RPCs and the public self-write membership RPC. |
+| [`weight_publisher.h`](../../weight_engine/weight_publisher.h) / [`.cpp`](../../weight_engine/weight_publisher.cpp) | W3: the single validated write path, the CA-gated ESG RPC, the admin reconciliation RPC and the public self-write membership RPC. |
+| [`weight_verifier.h`](../../weight_engine/weight_verifier.h) / [`.cpp`](../../weight_engine/weight_verifier.cpp) | Universal verification of the published weights: the pure compare/filter, the per-epoch verdict cache and the `weightverifyweights` RPC. |
 
 ### 9.1 Tests
 
@@ -545,6 +652,7 @@ The module has its **own** unit suites, with a runner separate from the wPoA one
 |---|---|---|
 | `records` | [`weight_records_tests.cpp`](../../weight_engine/test/weight_records_tests.cpp) | Record parsing; the **self-attestation rule** (own declaration accepted, foreign / admin-proxy declaration rejected, fail-closed on an unrecoverable signer); cluster inversion, including a node changing cluster twice so only the last declaration counts, and the no-self-membership rule. |
 | `authorization` | [`weight_authorization_tests.cpp`](../../weight_engine/test/weight_authorization_tests.cpp) | The ESG write decision table: CA authorized; **global admin without the role refused**; generic address refused; revocation biting while `.write` remains; CA lacking `.write`; CA-first error ordering; fail-closed on a chain without custom permissions; and that the role sits in a `high*` slot. |
+| `verifier` | [`weight_verifier_tests.cpp`](../../weight_engine/test/weight_verifier_tests.cpp) | Matching values accepted; an inflated **and** an understated value rejected and dropped from the map; off-by-one rejected (no tolerance band); a weight published for a non-cluster rejected with its own reason; **fail-open** when the recomputation was unavailable, including a partial map; two honest nodes reaching identical verdicts and identical filtered maps. |
 | `engine` | [`weight_engine_tests.cpp`](../../weight_engine/test/weight_engine_tests.cpp) | Order independence, zero-total guard, `rho` bounds, balance recursion, weight positivity, `ToIntegerWeight` clamp, multi-cluster allocation identity. |
 
 Both are node-free: they do not require building the node. See [testing.md](testing.md).

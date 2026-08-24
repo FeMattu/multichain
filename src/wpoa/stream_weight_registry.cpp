@@ -225,22 +225,32 @@ bool StreamWeightRegistry::PublishWeightRecord(uint32_t weight)
     Object data_obj;
     data_obj.push_back(Pair("json", record));
 
-    // publish ["wpoa-weights", <address-as-key>, {"json": {...}}]
+    // publishfrom [<address>, "wpoa-weights", <address-as-key>, {"json": {...}}]
+    //
+    // publishFROM, not publish. This matters and is not cosmetic: a weight record is
+    // now SELF-PUBLISHED — the reader discards it unless the transaction's SIGNER is
+    // the node_address in the payload (DecodeWeightRecord). Plain `publish` lets the
+    // wallet choose whichever address funds the transaction, which on a multi-address
+    // wallet need not be m_LocalAddress; the record would then be perfectly
+    // well-formed and silently discarded by every peer. Naming the address explicitly
+    // makes the signer and the declared node the same by construction.
     Array params;
+    params.push_back(m_LocalAddress);
     params.push_back(m_StreamName);
     params.push_back(m_LocalAddress);
     params.push_back(data_obj);
 
     try
     {
-        Value result = publish(params, false);
+        Value result = publishfrom(params, false);
         LogPrintf("[StreamWeightRegistry] Weight registered: %s = %u (tx %s)\n",
                   m_LocalAddress.c_str(), weight, result.get_str().c_str());
         return true;
     }
     catch (const Object& objError)
     {
-        LogPrintf("[StreamWeightRegistry] ERROR publishing weight (write permission / funds?)\n");
+        LogPrintf("[StreamWeightRegistry] ERROR publishing weight from %s "
+                  "(write permission / funds on that address?)\n", m_LocalAddress.c_str());
     }
     catch (const std::exception& e)
     {
@@ -287,12 +297,86 @@ bool StreamWeightRegistry::RegisterLocalWeight(uint32_t weight)
 // Reads (low-level, self-locking, slot-free — safe from any thread)
 // ---------------------------------------------------------------------------
 
+// Decodes the addresses that SIGNED `wtx` from its input scripts — the item's
+// publishers, i.e. the cryptographic identity of whoever wrote it. Mirrors
+// MultiChain's own extraction in StreamItemEntry1 (rpc/rpcwalletutils.cpp): for each
+// input, recover the address embedded in the scriptSig and keep it only when the
+// signature commits to the whole transaction (SIGHASH_ALL) or to this very output
+// (SIGHASH_SINGLE at the same index) — a signature committing to neither does not
+// authenticate this item. Deduplicated, in canonical CBitcoinAddress form so it can be
+// compared directly against a payload address.
+static void ExtractItemPublishers(const CWalletTx& wtx, int stream_output,
+                                  std::vector<string>& out)
+{
+    out.clear();
+
+    std::set<uint160> seen;
+    for (int i = 0; i < (int)wtx.vin.size(); i++)
+    {
+        const CScript& sig = wtx.vin[i].scriptSig;
+        if (sig.size() == 0)
+        {
+            continue;
+        }
+        CScript::const_iterator pc = sig.begin();
+
+        int op_addr_offset = 0;
+        int op_addr_size = 0;
+        int is_redeem_script = 0;
+        int sighash_type = SIGHASH_NONE;
+
+        const unsigned char* ptr = mc_ExtractAddressFromInputScript(
+            (unsigned char*)(&pc[0]), (int)(sig.end() - pc),
+            &op_addr_offset, &op_addr_size, &is_redeem_script, &sighash_type, 0);
+        if (ptr == NULL)
+        {
+            continue;
+        }
+        if (sighash_type != SIGHASH_ALL &&
+            !(sighash_type == SIGHASH_SINGLE && i == stream_output))
+        {
+            continue;
+        }
+
+        uint160 hash = Hash160(ptr + op_addr_offset, ptr + op_addr_offset + op_addr_size);
+        if (seen.count(hash) != 0)
+        {
+            continue;
+        }
+        seen.insert(hash);
+
+        if (is_redeem_script)
+        {
+            out.push_back(CBitcoinAddress((CScriptID)hash).ToString());
+        }
+        else
+        {
+            out.push_back(CBitcoinAddress((CKeyID)hash).ToString());
+        }
+    }
+}
+
 // Extracts (node_address, weight) from a stream item transaction whose OP_RETURN
 // output belongs to the given stream short-txid. Returns false if the tx does not
 // carry a decodable weight record for that stream.
+//
+// SELF-PUBLICATION IS ENFORCED HERE (consensus-critical). A weight record describes
+// its own publisher's cluster, so it is valid only if the address that SIGNED the
+// transaction is the node_address the payload declares
+// (mc_StreamItemIsSelfAttested, weight_record.h). A record naming somebody else is
+// DISCARDED: it never reaches the weight map, so no node can publish a weight on
+// another cluster's behalf. This is what makes it safe to grant
+// wpoa-weights.write to every node rather than to one publisher per cluster.
+//
+// `out_publishers` carries the recovered signers to the caller for logging and for the
+// malus path, which accuses on exactly the discard this function performs.
 static bool DecodeWeightRecord(const CWalletTx& wtx, const unsigned char* stream_short_txid,
-                               string& out_addr, uint32_t& out_weight)
+                               string& out_addr, uint32_t& out_weight,
+                               std::vector<string>& out_publishers, bool& out_forged)
 {
+    out_publishers.clear();
+    out_forged = false;
+
     mc_Script script; // local instance -> thread-safe (no shared temp buffers)
 
     for (int j = 0; j < (int)wtx.vout.size(); j++)
@@ -360,6 +444,15 @@ static bool DecodeWeightRecord(const CWalletTx& wtx, const unsigned char* stream
         Value v = OpReturnFormatEntry(data, data_size, wtx.GetHash(), j, format, &format_text);
         if (mc_ParseWeightRecordJson(v, out_addr, out_weight))
         {
+            ExtractItemPublishers(wtx, j, out_publishers);
+
+            // Self-publication: the signer must BE the node the record is about.
+            if (!mc_StreamItemIsSelfAttested(out_addr, out_publishers))
+            {
+                out_forged = true;      // decodable, but published on another's behalf
+                out_weight = 0;
+                return false;           // DISCARD: never enters the weight map
+            }
             return true;
         }
     }
@@ -484,10 +577,25 @@ bool StreamWeightRegistry::ReadAllRecords(std::map<std::string, uint32_t>& out_l
 
         string addr;
         uint32_t w = 0;
-        bool decoded = DecodeWeightRecord(wtx, stream_short_txid, addr, w);
+        std::vector<string> publishers;
+        bool forged = false;
+        bool decoded = DecodeWeightRecord(wtx, stream_short_txid, addr, w, publishers, forged);
         if (dbg) LogPrintf("[wpoa-dbg]   row %d: hash=%s vout=%d decode=%s addr=%s w=%u\n",
                            i, hash.ToString().c_str(), (int)wtx.vout.size(),
-                           decoded ? "OK" : "FAIL", addr.c_str(), w);
+                           decoded ? "OK" : (forged ? "DISCARDED(not self-published)" : "FAIL"),
+                           addr.c_str(), w);
+        if (forged)
+        {
+            // A well-formed record published on another address's behalf. Logged
+            // unconditionally, not only under -wpoadebug: it is a provable protocol
+            // violation, and it is the evidence the malus registry accuses on.
+            LogPrintf("[wPoA] wpoa-weights record for '%s' DISCARDED: not signed by that "
+                      "address (signer%s %s), txid=%s\n",
+                      addr.c_str(), publishers.size() == 1 ? "" : "s",
+                      publishers.empty() ? "<unrecoverable>" : publishers[0].c_str(),
+                      hash.ToString().c_str());
+            continue;
+        }
         if (decoded)
         {
             mc_AccumulateLatestWeight(out_latest, addr, w); // newest wins (ascending iteration)

@@ -13,6 +13,7 @@
 #include "wpoa/stream_weight_registry.h"
 #include "wpoa/malus_registry.h"
 #include "weight_engine/weight_publisher.h"
+#include "weight_engine/weight_verifier.h"
 
 
 /* MCHN START */
@@ -150,6 +151,9 @@ static const CRPCCommand vRPCCommands[] =
     { "weight",             "weightsetesg",           &weightsetesg,           false,     false,      true },
     { "weight",             "weightregistermembership",&weightregistermembership,false,   false,      true },
     { "weight",             "weightsetreconciliation",&weightsetreconciliation,false,     false,      true },
+    /* Independent verification of the published weights — a read, open to anyone:
+       every input of the pipeline is public, so any node can check any record. */
+    { "weight",             "weightverifyweights",    &weightverifyweights,    true,      true,       true },
 #endif
 
 /* MCHN END */

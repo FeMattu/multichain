@@ -298,8 +298,18 @@ weight map: it carries no weight in the election**. Grant it explicitly:
 multichain-cli <chain> grant <address> wpoa-weights.write
 ```
 
+**Closed, but granted network-wide.** The permission is now meant for every node, not for
+one designated publisher per cluster, because a weight record no longer has to be taken on
+trust: it is **self-published** (the reader discards it unless the transaction's signer is
+the cluster it is about) and its value is **independently recomputable** by any node from
+the public pipeline inputs. Holding `.write` therefore lets a node state its own cluster's
+weight and nothing more — and state it only correctly.
+
 **An unauthorized node cannot impose its own weight by any means**, neither through
-`-weight` nor through RPC. Detail of the two-gate authorization model:
+`-weight` nor through RPC; and an authorized one cannot impose a *wrong* one, nor one
+belonging to another cluster. Detail:
+[weight-engine.md §5.1](weight-engine.md#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others).
+Two-gate authorization model:
 [weight-engine.md](weight-engine.md) and
 [stream-weight-registry.md](stream-weight-registry.md).
 

@@ -3,14 +3,20 @@
 # Functional test — WeightEngine publish side (admin attestations) + closed streams.
 # -----------------------------------------------------------------------------
 # Brings up a single genesis node with the weight engine enabled, then asserts:
-#   1. the three admin input streams are auto-created (CLOSED);
-#   2. an admin publishes a valid ESG / membership / reconciliation record;
-#   3. an invalid ESG (score <= 0) is rejected by schema round-trip validation;
-#   4. a future-epoch reconciliation is rejected;
-#   5. a raw publish from an address without write permission is rejected (the
+#   1. the three input streams are auto-created (CLOSED);
+#   2. ESG is CERTIFICATION-AUTHORITY-only: a global admin WITHOUT the role is
+#      refused, publishes once granted `high1`, and is refused again after the role
+#      is revoked even though `.write` is still held;
+#   3. membership is SELF-WRITTEN by the node, and a forged record naming another
+#      address is discarded by the reader rather than entering C_k;
+#   4. reconciliation is admin-attested, and a future epoch is rejected;
+#   5. an invalid ESG (score <= 0) is rejected by schema round-trip validation;
+#   6. a raw publish from an address without write permission is rejected (the
 #      CLOSED-stream guard against schema-bypassing writes);
-#   6. the published records are readable back;
-#   7. wpoa-weights (getallweights) still works — the output contract is intact.
+#   7. the published records are readable back;
+#   8. wpoa-weights records are SELF-PUBLISHED: a forged record naming another
+#      cluster never enters the weight map, while the node's own does;
+#   9. independent verification of the published weights is reachable.
 #
 # Self-contained: no external deps beyond python3 (JSON parsing). Fast blocks
 # (target-block-time=1) keep confirmations quick.
@@ -179,6 +185,38 @@ echo "$r" | grep -q '"esg"' && ok "ESG record readable on stream" || bad "ESG re
 # 7. wpoa-weights output contract intact
 r=$(mcli getallweights 2>/dev/null)
 echo "$r" | grep -q 'validators' && ok "getallweights (wpoa-weights) intact" || bad "getallweights broken: $r"
+
+# 8. wpoa-weights is SELF-PUBLISHED: a record naming another address is discarded by the
+# reader even though the publish itself succeeds on chain (the stream only gates .write).
+# The assertion is that the forged address never appears in the weight map.
+FAKE=$(mcli getnewaddress 2>/dev/null | tr -d '"')
+mcli grant "$FAKE" "receive" >/dev/null 2>&1
+sleep 4
+r=$(mcli publishfrom "$ADMIN" wpoa-weights "$FAKE" \
+      "{\"json\":{\"node_address\":\"$FAKE\",\"weight\":999999,\"timestamp\":1700000000,\"height\":1}}")
+if is_txid "$r"; then
+  sleep 6   # let it confirm and be imported
+  w=$(mcli getallweights 2>/dev/null)
+  echo "$w" | grep -q "$FAKE" \
+    && bad "forged wpoa-weights record ENTERED the weight map (self-publication not enforced)" \
+    || ok "forged wpoa-weights record discarded: signer != node_address"
+else
+  ok "forged wpoa-weights publish refused outright: $r"
+fi
+
+# 9. the node's OWN weight is published from its own address, so it survives the same
+# rule — a regression here would mean the node discards its own record.
+w=$(mcli getallweights 2>/dev/null)
+echo "$w" | grep -q "$ADMIN" \
+  && ok "own self-published weight accepted (signer == node_address)" \
+  || bad "own weight missing from the map — is PublishWeightRecord using publishfrom? : $w"
+
+# 10. independent verification is reachable and reports a coherent shape. With the engine
+# off it must refuse explicitly rather than report a vacuous 'all ok'.
+r=$(mcli weightverifyweights 2>&1)
+echo "$r" | grep -qE '"epoch"|weight engine is disabled' \
+  && ok "weightverifyweights reports verification state" \
+  || bad "weightverifyweights unexpected output: $r"
 
 echo ""
 echo "== SUMMARY: PASS=$PASS  FAIL=$FAIL =="

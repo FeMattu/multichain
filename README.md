@@ -183,7 +183,12 @@ only a local fallback:
   **never published**;
 - the `wpoa-weights` stream is created **closed**, so publishing requires the
   `wpoa-weights.write` permission. A node without it carries **no weight in the
-  election** and cannot set its own weight by any means;
+  election** and cannot set its own weight by any means. The permission is granted
+  network-wide rather than to one publisher per cluster, because a weight no longer has
+  to be taken on trust: each record is **self-published** (the reader discards it unless
+  the transaction's signer is the cluster it is about) and its value is **independently
+  recomputable** — every pipeline input is public and deterministic, so any node re-runs
+  the identical computation and a differing value is provably wrong;
 - the two **attestation** streams behind the engine carry records that make an
   unverifiable claim about a third party, so the defence is to restrict who may assert
   them. `weightsetreconciliation` is admin-gated; `weightsetesg` requires the

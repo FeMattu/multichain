@@ -112,15 +112,25 @@ flowchart TD
     CLI([Local flag -weight=N]):::weak
     CLI -.->|"ONLY if -enableweightengine=0<br/>local fallback value"| STAT["ThreadRegisterNodeWeight"]
 
-    ENG -->|"-enableweightengine=1 — AUTHORITATIVE channel"| GATE_W
+    ENG -->|"-enableweightengine=1 — AUTHORITATIVE channel<br/>each node publishes ONLY its own cluster"| GATE_W
     STAT --> GATE_W
 
-    GATE_W{{"GATE 2 — wpoa-weights.write required<br/>the stream is CLOSED"}}:::gate
-    GATE_W -->|passes| WSTREAM[("wpoa-weights (CLOSED)<br/>append-only, on-chain")]
+    GATE_W{{"GATE 2 — wpoa-weights.write required<br/>CLOSED, but granted to every node"}}:::gate
+    GATE_W -->|"passes — publishFROM own address"| WSTREAM[("wpoa-weights (CLOSED)<br/>append-only, on-chain")]
     GATE_W -.->|"blocks: publish fails"| DENY2([no weight in the election]):::bad
     UNAUTH -.->|"direct publish refused"| GATE_W
 
-    WSTREAM -->|"newest-confirmed-wins read"| REG["StreamWeightRegistry<br/>GetAllNodesWeights&#40;&#41;"]
+    WSTREAM -->|"newest-confirmed-wins read"| GATE_SELFW
+    GATE_SELFW{{"GATE 3 — SELF-PUBLICATION<br/>tx signer == payload node_address"}}:::gate
+    GATE_SELFW -.->|"record DISCARDED<br/>weight for another cluster"| DENY3([no weight<br/>+ malus grounds]):::bad
+    GATE_SELFW -->|passes| REG["StreamWeightRegistry<br/>GetAllNodesWeights&#40;&#41;"]
+
+    ENG -.->|"recompute EVERY cluster from the<br/>public inputs, once per buried epoch"| VER
+    WSTREAM -.-> VER
+    VER{{"GATE 4 — UNIVERSAL VERIFICATION<br/>published == independently recomputed?"}}:::gate
+    VER -.->|"mismatch: provably wrong<br/>(consequence via the malus)"| DENY4([dropped from the map<br/>+ malus grounds]):::bad
+    VER -.->|"cannot recompute: FAILS OPEN<br/>record left untouched"| REG
+
     REG ==>|"OVERRIDE: the on-chain value governs,<br/>never the local flag"| CLI
 
     REG -->|"w"| MAL["WPoAApplyMalus<br/>w_eff = w · Ψ"]
@@ -149,7 +159,7 @@ the network are separate competences, and keeping them separate on chain means
 [weight-engine.md §6.3](weight-engine.md#63-why-opening-membership-is-safe--and-where-the-known-limit-still-bites)
 and [§6.4](weight-engine.md#64-esg--the-certification-authority-role).
 
-Four properties the diagram makes explicit, all verified against the code:
+Five properties the diagram makes explicit, all verified against the code:
 
 **(a) The authoritative channel is the stream, not the flag.** The weight that governs
 the election is always the one read from `wpoa-weights` through
@@ -176,8 +186,31 @@ independent and cover both paths:
 | Direct `publish` / `publishfrom` on `wpoa-weights` without permission | Refused by consensus: the stream is CLOSED (Gate 2). |
 | Direct `publishfrom` on an **attestation** stream (ESG / reconciliation) **with** `.write` but without admin | **Succeeds**, and the reader accepts it. This is the known limit in [§9](#9-not-implemented) — the admin-only guarantee depends on granting `.write` only to governance addresses. |
 | Direct `publishfrom` on **membership** with a `node_address` other than the signer | The transaction confirms, but the record is **discarded by every reader** (Gate 1'). It never enters `C_k` — and the discard is itself grounds for a malus accusation. |
+| `publishfrom` on **`wpoa-weights`** naming another cluster's address | The transaction confirms, but the record is **discarded by every reader** (Gate 3): it never enters the weight map. |
+| Publishing a weight for one's **own** cluster that does not match the independent recomputation | Detected by every node that can recompute (Gate 4), logged unconditionally, reported by `weightverifyweights`, and grounds for a malus accusation. |
 
-**(d) A node cannot declare membership for another node, by any route.** This is the one
+**(d) Every node publishes its own weight, and every node checks the others.**
+`wpoa-weights.write` is now granted network-wide instead of to one publisher per cluster,
+and two independent rules replace the trust that used to be placed in that publisher.
+`GATE 3` asks *who wrote it* — the transaction's signer must be the cluster the record is
+about, or the record is discarded — and **fails closed**, because one transaction is always
+enough to decide it. `GATE 4` asks *whether the value is right*: every pipeline input is
+public and deterministic, so any node re-runs the identical computation and a differing
+value is **provably** wrong. That one **fails open**, because it needs readable inputs and
+a buried epoch, and their absence is normal — treating "cannot verify" as "invalid" would
+zero every weight on a syncing node and stall the chain.
+
+`GATE 4` runs **once per buried epoch**, not per round: `GetAllNodesWeights()` is called on
+every round while a recomputation is O(chain), so the verdicts are cached and the consensus
+path consults them in O(1). The effective-weight consequence of a mismatch is carried by the
+malus (`w_eff = w · Ψ`), the mechanism already in the consensus path for provable findings.
+Detail: [weight-engine.md §5.1](weight-engine.md#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others).
+
+**ESG is now the only remaining trusted datum.** Activity and membership are chain-derived,
+and every published weight is recomputable — so the integrity of the whole weight system
+reduces to the Certification Authority role that gates ESG writes.
+
+**(e) A node cannot declare membership for another node, by any route.** This is the one
 input where the guarantee is cryptographic rather than administrative, so it does **not**
 depend on how narrowly `.write` was granted. `weightregistermembership` takes no parameter
 naming whose membership to declare, and a raw `publishfrom` that forges one is discarded on
@@ -360,6 +393,7 @@ Detail: [malus-registry.md](malus-registry.md).
 | Record parsers (W1) | Done | `mc_Parse*RecordJson`; the self-attestation predicate; cluster `C_k` reconstruction by inverting the `node -> miner` relation. |
 | Input-stream reader (W3) | Done | `WeightStreamReader`: stream lifecycle (create CLOSED + subscribe), confirmed-only reads, publisher extraction from the tx inputs, chain-derived `ComputeActivityForEpoch`. |
 | Self-attested membership (W3) | Done | Item key = declaring node; latest confirmed declaration wins, so a node changes cluster autonomously. The reader **discards** any record whose tx signer differs from its declared `node_address`. `weight-engine-membership.write` is meant to be granted network-wide. |
+| Self-published weights + universal verification | Done | `wpoa-weights.write` is granted network-wide; each node publishes only its **own** cluster, with `publishfrom` so the signer *is* the declared address. The reader **discards** a record whose signer differs (fails closed); the weight engine independently **recomputes every cluster** once per buried epoch and reports mismatches (fails open when it cannot recompute). Exposed by `weightverifyweights`. The mismatch consequence on `w_eff` is carried by the malus registry. |
 | Publisher + RPCs (W3) | Done | `weightsetreconciliation` (admin, round-trip validation plus `CanAdmin`), `weightsetesg` (**Certification Authority** only) and `weightregistermembership` (public self-write). The former admin-proxy `weightsetmembership` was **removed**: under self-attestation its records would be discarded. |
 | ESG Certification Authority role (W3) | Done | The role is carried by MultiChain's `high1` custom permission — a **high** slot deliberately, since only those require `admin` rather than `activate` to grant. `weightsetesg` checks `IsCertificationAuthority` **instead of** `CanAdmin`, so an administrator that has not granted itself the role is refused. Revocation bites independently of `.write`. Policy decision table: [`weight_authorization.h`](../../weight_engine/weight_authorization.h). |
 | Computation and publication thread | Done | `ThreadWeightEngine`; publishes only for the latest **buried** epoch and only if the node is a cluster miner. Mutually exclusive with the static registrar. |

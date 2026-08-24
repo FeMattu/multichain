@@ -12,10 +12,59 @@
 
 #include <map>
 #include <string>
+#include <vector>
 #include <stdint.h>
 
 #include "json/json_spirit_value.h"
 #include <boost/foreach.hpp>
+
+/**
+ * THE SELF-ATTESTATION RULE (consensus-critical), shared by every stream whose
+ * records describe their own publisher.
+ *
+ * A record is self-attested iff the address that SIGNED the publishing transaction
+ * is the address the payload declares. A payload field can claim anything; an input
+ * signature cannot. Streams that carry a self-description therefore need no privilege
+ * check at all — the claim verifies itself — while a record failing this test must be
+ * DISCARDED, never merely flagged.
+ *
+ * Two streams rely on it, for the same reason and with the same consequence:
+ *   * weight-engine-membership — a node declaring which cluster it joined;
+ *   * wpoa-weights            — a node declaring its own cluster's weight.
+ *
+ * IT LIVES HERE, in the lower (consensus) layer, so both layers share ONE copy. The
+ * weight layer sits above wPoA and may depend downwards, so
+ * weight_engine/weight_records.h delegates to this function rather than restating it:
+ * two copies of a consensus-critical predicate could drift into a node discarding a
+ * record it does not accuse, or accusing one it does not discard.
+ *
+ * `publishers` are the addresses recovered from the transaction's input scripts. A
+ * transaction funded from several addresses has several publishers, and the record is
+ * accepted if the declared address is ANY of them — each of them did in fact authorize
+ * the transaction. An empty publisher list, i.e. an item whose signer could not be
+ * recovered, is never accepted: failing closed keeps the rule decidable rather than
+ * letting an undecodable item through.
+ *
+ * @param declared_address  The address the payload claims to be about.
+ * @param publishers        The signing addresses of the publishing transaction.
+ * @return true iff the record is self-attested.
+ */
+inline bool mc_StreamItemIsSelfAttested(const std::string& declared_address,
+                                        const std::vector<std::string>& publishers)
+{
+    if (declared_address.empty())
+    {
+        return false;
+    }
+    for (size_t i = 0; i < publishers.size(); i++)
+    {
+        if (publishers[i] == declared_address)
+        {
+            return true;
+        }
+    }
+    return false;   // includes the empty-publisher case: fail closed
+}
 
 /**
  * Parse a wpoa-weights item payload into (node_address, weight).

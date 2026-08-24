@@ -44,6 +44,7 @@
 #include <stdint.h>
 
 #include "weight_engine/weight_streams.h"
+#include "wpoa/weight_record.h"   // mc_StreamItemIsSelfAttested (shared, one copy)
 #include "json/json_spirit_value.h"
 #include <boost/foreach.hpp>
 
@@ -260,21 +261,20 @@ inline bool mc_ParseMembershipRecordJson(const json_spirit::Value& data_value,
 }
 
 /**
- * The SELF-ATTESTATION rule for a membership record (consensus-critical).
+ * The SELF-ATTESTATION rule for a membership record (consensus-critical): valid iff
+ * the address that SIGNED the publishing transaction is the `node_address` the
+ * payload declares. A record failing it is DISCARDED by the reader.
  *
- * A record is valid iff the address that SIGNED the publishing transaction is the
- * `node_address` the payload declares. Kept here, in the pure layer, rather than
- * inline in the reader, for two reasons: the rule is consensus-critical and so
- * deserves node-free unit tests, and both the reader (which discards) and the malus
- * verifier (which accuses) must apply the identical predicate — two copies could
- * drift into a node discarding a record it does not accuse, or vice versa.
+ * A named, membership-specific wrapper over the shared predicate
+ * mc_StreamItemIsSelfAttested (wpoa/weight_record.h), which the wpoa-weights reader
+ * applies to its own records under exactly the same rule. The rule has ONE
+ * implementation on purpose: two copies of a consensus-critical predicate could drift
+ * into a node discarding a record it does not accuse, or vice versa. The wrapper
+ * exists so the call site reads as the membership rule it is, and so the rule's
+ * meaning for this stream is documented where the stream's parsers live.
  *
  * `publishers` are the addresses recovered from the transaction's input scripts
- * (WeightStreamItem::publishers). A transaction funded from several addresses has
- * several publishers; the record is accepted if the declared node is ANY of them,
- * since each of them did in fact authorize the transaction. An empty publisher list
- * — an item whose signer could not be recovered — is never accepted: failing closed
- * keeps the rule decidable rather than letting an undecodable item slip through.
+ * (WeightStreamItem::publishers).
  *
  * @param node_address  The `node_address` from the parsed payload.
  * @param publishers    The signing addresses of the publishing transaction.
@@ -283,18 +283,7 @@ inline bool mc_ParseMembershipRecordJson(const json_spirit::Value& data_value,
 inline bool mc_MembershipRecordIsSelfAttested(const std::string& node_address,
                                              const std::vector<std::string>& publishers)
 {
-    if (node_address.empty())
-    {
-        return false;
-    }
-    for (size_t i = 0; i < publishers.size(); i++)
-    {
-        if (publishers[i] == node_address)
-        {
-            return true;
-        }
-    }
-    return false;   // includes the empty-publisher case: fail closed
+    return mc_StreamItemIsSelfAttested(node_address, publishers);
 }
 
 /**

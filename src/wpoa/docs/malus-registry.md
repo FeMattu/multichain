@@ -35,8 +35,9 @@
 
 The weight `w_i` on `wpoa-weights` is produced entirely outside the consensus: an ESG
 score and a participation measure, computed by the weight-management layer
-([`../../weight_engine/`](../../weight_engine/)) and published as an opaque number. That
-layer has no view of how validator `i` behaves *on the wPoA protocol itself*. A validator
+([`../../weight_engine/`](../../weight_engine/)) and published as a number the consensus
+consumes without knowing how it was derived. That layer has no view of how validator `i`
+behaves *on the wPoA protocol itself*. A validator
 that equivocates, or that tries to jump its scheduling delay, keeps exactly the same
 `w_i` as an honest one — the misbehaviour is invisible to the mechanism that sets the
 weight.
@@ -58,17 +59,41 @@ all unchanged. Only the number handed to the sortition changes.
 
 | | `wpoa-weights` | `wpoa-weights-malus` |
 |---|---|---|
-| Write policy | **CLOSED** — needs `wpoa-weights.write` | **OPEN** — anyone may publish |
-| What it carries | a validator's weight | an accusation against a validator |
-| Trust model | trust the *publisher* (authorized) | trust the *evidence* (re-verified) |
+| Write policy | **CLOSED** — needs `wpoa-weights.write`, now granted network-wide | **OPEN** — anyone may publish |
+| What it carries | a validator's own weight | an accusation against a validator |
+| Trust model | trust the *evidence*: the record is self-published and its value is independently recomputable | trust the *evidence* (re-verified) |
 | Created in | `stream_weight_registry.cpp` | `malus_registry.cpp` |
 
-The asymmetry is the whole design. A weight is a *claim* nobody can check — the value
-comes from outside the chain, so the only defence is to restrict who may assert it. An
-accusation, by contrast, is a *proof*: every node re-derives it from public chain data and
-reaches its own verdict. Restricting who may accuse would buy nothing and would centralize
-the one function that most benefits from being open — anyone who spots misbehaviour can
-report it, and no privileged accuser is needed.
+The asymmetry is still the design, but it has **narrowed**, and the reason is worth being
+precise about.
+
+**Originally** a weight was a *claim nobody could check*: it came from outside the chain, so
+the only defence was to restrict who may assert it — hence the closed stream and one
+authorized publisher per cluster. An accusation, by contrast, has always been a *proof*:
+every node re-derives it from public chain data and reaches its own verdict. Restricting
+who may accuse would buy nothing and would centralize the one function that most benefits
+from being open.
+
+**A weight is now checkable too**, on both counts, so `wpoa-weights.write` is granted to
+every node while the stream stays closed:
+
+- *who wrote it* — the record is **self-published**: the reader discards it unless the
+  transaction's signer is the cluster the record is about;
+- *whether the value is right* — every pipeline input is public and deterministic, so any
+  node **re-runs the identical computation** and a differing value is provably wrong.
+
+The two registries have therefore converged on the **same epistemic principle**: trust the
+evidence, not the publisher. What still separates them is only the *shape* of the evidence
+— a signature plus a recomputation for a weight, a referenced block plus a re-derivation
+for an accusation — and consequently the write policy: closed-but-universal for weights
+(a node may write only about itself), fully open for accusations (anyone may report about
+anyone, because the report proves itself).
+
+**One datum resisted this and still does: the ESG score.** It is an attestation with
+nothing inside it to check, so it is defended the only way such a claim can be — by
+restricting who may assert it, through the Certification Authority role. Detail:
+[weight-engine.md §5.1](weight-engine.md#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others)
+and [§6.4](weight-engine.md#64-esg--the-certification-authority-role).
 
 Opening the stream is therefore free in safety terms. A false, malformed or duplicated
 report is discarded **identically on every honest node** (§4), so it never reaches the
