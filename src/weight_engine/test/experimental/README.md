@@ -17,7 +17,7 @@ The design companion is [`docs/experiment.md`](docs/experiment.md).
 
 | Actor | Count | Role |
 |---|---|---|
-| **ADMIN** (node 0) | 1 | the **Apuana SB stand-in**: genesis / global admin, publishes ESG + membership + reconciliation, issues and distributes GAS, and **receives** every reconciliation transfer. Not a miner — its `mine` permission is revoked once the miner set is live |
+| **ADMIN** (node 0) | 1 | the **Apuana SB stand-in**: genesis / global admin, holds the Certification Authority role and publishes the **ESG** scores, issues and distributes GAS, and is the **treasury address** that receives every reconciliation transfer. It publishes neither membership (each node self-registers) nor `R_k` (derived from the transfers it receives). Not a miner — its `mine` permission is revoked once the miner set is live |
 | **ClusterMinerA..E** | 5 | the wPoA validators; the engine computes and publishes each one's `w_k` |
 | **Azienda_X1..X10** | 10 per cluster → **50** | addresses in the ADMIN wallet that send 10–20 GAS transfers per epoch, generating the activity `τ` |
 | **FEEPOOL** | 1 | stands in for the aggregate of all senders when transaction fees are settled |
@@ -166,12 +166,16 @@ knobs are `WE_*` environment variables — see [`config.py`](config.py):
 `WE_BLOCK_TIME`, …
 
 > **Keep the volume within what the chain absorbs.** If submissions outpace block
-> (HISTORICAL — no longer reachable: `R_k` is derived, so no record can confirm late.)
-> production a mempool backlog builds, `weightsetreconciliation` confirms *after* the
-> epoch it belongs to has buried, and the engine then reads `ρ = 0` and applies the bare
-> `(1−λ)` bracket — every published `w_k` comes out as exactly `round(W_k·κ·(1−λ))` and
+> production a mempool backlog builds and the epoch's **transfers** confirm late — and
+> since `R_k` is derived from exactly those transfers, a transfer that misses its epoch is
+> a transfer the engine never counts. The engine then reads `ρ = 0` and applies the bare
+> `(1−λ)` bracket, so every published `w_k` comes out as exactly `round(W_k·κ·(1−λ))` and
 > the weight comparison fails for a reason that has nothing to do with the engine. The
-> harness now blocks on those records confirming and warns above `WE_MEMPOOL_WARN`
+> harness blocks on the transfers confirming and warns above `WE_MEMPOOL_WARN`
+>
+> *Historical note: the same symptom used to have a second, worse cause — a late
+> `weightsetreconciliation` record. Deriving `R_k` removed that failure mode entirely,
+> because there is no longer a record whose confirmation could lag.*
 > (default 200) — **a run that trips that warning is not a valid measurement.** Lower
 > `WE_TX_MIN`/`WE_TX_MAX` or raise `WE_EPOCH_LENGTH`.
 
@@ -217,7 +221,7 @@ The **run-level checks** then close the run (→ `assertions.csv`):
 |---|---|
 | **`engine_matches_replay`** | **the primary result**: the integer weight each node published equals the harness's independent replay of `w_k`, for ≥ `WE_WEIGHT_MATCH_MIN` (0.95) of the cells. Cells are classed `exact` / `within-tol` (≤ `WE_WEIGHT_REL_EPS`, 1 %) / `off` |
 | `weight_ranking` | the weight ordering agrees with the ESG + activity composite ordering (mean pairwise concordance ≥ `WE_RANK_MIN`, default 0.80 — the feedback factor legitimately reorders near-ties) |
-| `reconciliation_visible_to_engine` | every `R_k` record confirmed before the next epoch buried. **If this fails the weight comparison is meaningless** — the engine reads `ρ = 0` and applies the bare `(1−λ)` bracket. See the caveat below |
+| `reconciliation_is_derived_not_attested` | structural: `R_k` is read from the epoch's confirmed transfers to the treasury address, never from a published record. It replaces the former `reconciliation_visible_to_engine` timing check, which had nothing left to assert once no record could confirm late — the transfers' own confirmation is covered by `settlement_confirmed` |
 | `settlement_confirmed` | every settlement transfer and governance publish made it into a block; GAS in flight is reported here rather than as a phantom supply gap |
 | `tau_coverage` | every transaction in every sampled epoch was attributed to a signer. **This is the precondition for comparing `w_k` by value**; without it the comparison degrades to ranking |
 | `membership_from_chain` | the cluster sets read back off the membership stream are the configured topology — no company double-claimed, none orphaned, no wrong-sized cluster |
@@ -275,11 +279,14 @@ total is node-independent — the comparison is **by value**, not by ranking.
   additionally applies whale-compression at election time, so observed shares track
   these probabilities without being identical (see
   `src/weight_engine/weight_engine.h`).
-* **Two `τ` on purpose**: `epoch_activity` (the business view) counts only network
-  traffic; `engine_tau` (the replay input) also counts a miner's reconciliation
-  transfer, because the engine counts every transaction a cluster member signs.
-* **Reconciliation timing**: `R_k^{(e)}` is published just after epoch `e` closes. That
-  is in time because it feeds `ρ_k^{(e)}`, which the weight formula consumes one epoch
+* **One `τ`, counted the engine's way** (`epoch_tau`): `+1 per distinct signing address
+  per non-coinbase transaction`, settlement and reconciliation traffic included. An
+  earlier revision kept a second "business" counter that excluded them; that was a
+  modelling error, since any second definition can only disagree with the thing being
+  verified. See [docs/experiment.md §6.8](docs/experiment.md).
+* **Reconciliation timing**: `R_k^{(e)}` is not published at all — it is derived from the
+  transfers confirmed inside epoch `e`, so what must be timely is the **transfer**, not a
+  record about it. It feeds `ρ_k^{(e)}`, which the weight formula consumes one epoch
   later, and the engine replays the whole pipeline from epoch 1 on every publish.
 * **Files use `_` not `-`** in module names (`chain_setup.py`, not `chain-setup.py`)
   so they are importable Python modules; `participants.py` and `economics.py` are

@@ -77,14 +77,16 @@ say "admin/node address: $ADMIN"
 [ -n "$ADMIN" ] || { echo "could not resolve node address"; exit 1; }
 
 # 1. streams auto-created (closed)
-say "waiting for the 3 admin input streams to be auto-created"
+say "waiting for the 2 published input streams to be auto-created"
 n=0
 for i in $(seq 1 30); do
   sleep 2
   n=$(mcli liststreams '*' 2>/dev/null | grep -oE 'weight-engine-[a-z]+' | sort -u | wc -l)
-  [ "${n:-0}" -ge 3 ] && break
+  [ "${n:-0}" -ge 2 ] && break
 done
-[ "${n:-0}" -ge 3 ] && ok "3 input streams auto-created" || bad "input streams not created (got ${n:-0})"
+# Exactly two: reconciliation and activity are derived from the blocks, not streams.
+[ "${n:-0}" -eq 2 ] && ok "2 input streams auto-created (membership, esg)" \
+                    || bad "expected exactly 2 input streams, got ${n:-0}"
 
 # confirm they are CLOSED (open=false)
 closed=$(mcli liststreams '*' 2>/dev/null | python3 -c '
@@ -93,7 +95,7 @@ try: d=json.load(sys.stdin)
 except Exception: d=[]
 c=sum(1 for s in d if s.get("name","").startswith("weight-engine-") and s.get("restrict",{}).get("write") is True)
 print(c)' 2>/dev/null)
-[ "${closed:-0}" -ge 3 ] && ok "input streams are CLOSED (write-restricted)" || bad "streams not closed (closed=${closed:-0})"
+[ "${closed:-0}" -ge 2 ] && ok "input streams are CLOSED (write-restricted)" || bad "streams not closed (closed=${closed:-0})"
 
 # Grant write on the 2 published streams to the admin address, then let it confirm.
 # (There is no reconciliation or activity stream: tau and R are derived from the epoch's
@@ -156,7 +158,7 @@ is_txid "$r" && ok "node self-registers membership" || bad "membership failed: $
 # The publish itself succeeds on-chain (the stream only checks .write) — what the
 # assertion below establishes is that the forged record never reaches C_k, which is
 # visible as the foreign node_address not appearing in any cluster.
-FOREIGN=$(mcli getnewaddress 2>/dev/null | tr -d '"')
+FOREIGN=$(mcli getnewaddress 2>/dev/null | tr -d '"[:space:]')
 r=$(mcli publishfrom "$ADMIN" weight-engine-membership "$FOREIGN" \
       "{\"json\":{\"node_address\":\"$FOREIGN\",\"miner_address\":\"$ADMIN\",\"timestamp\":1700000000}}")
 if is_txid "$r"; then
@@ -181,7 +183,7 @@ echo "$r" | grep -qE 'weight-engine-(reconciliation|activity)' \
   || ok "no reconciliation/activity stream: both quantities are derived from blocks"
 
 # 5. raw publish from a fresh (no-write) address is rejected (closed-stream guard)
-NW=$(mcli getnewaddress 2>/dev/null | tr -d '"')
+NW=$(mcli getnewaddress 2>/dev/null | tr -d '"[:space:]')
 r=$(mcli publishfrom "$NW" weight-engine-esg "$ADMIN" "{\"json\":{\"node_address\":\"$ADMIN\",\"esg\":5}}")
 echo "$r" | grep -qiE 'error|permission|not|invalid' && ok "raw write from non-write address rejected (closed stream)" || bad "closed stream bypassable: $r"
 
@@ -199,7 +201,7 @@ echo "$r" | grep -q 'validators' && ok "getallweights (wpoa-weights) intact" || 
 # 8. wpoa-weights is SELF-PUBLISHED: a record naming another address is discarded by the
 # reader even though the publish itself succeeds on chain (the stream only gates .write).
 # The assertion is that the forged address never appears in the weight map.
-FAKE=$(mcli getnewaddress 2>/dev/null | tr -d '"')
+FAKE=$(mcli getnewaddress 2>/dev/null | tr -d '"[:space:]')
 mcli grant "$FAKE" "receive" >/dev/null 2>&1
 sleep 4
 r=$(mcli publishfrom "$ADMIN" wpoa-weights "$FAKE" \
@@ -207,7 +209,7 @@ r=$(mcli publishfrom "$ADMIN" wpoa-weights "$FAKE" \
 if is_txid "$r"; then
   sleep 6   # let it confirm and be imported
   w=$(mcli getallweights 2>/dev/null)
-  echo "$w" | grep -q "$FAKE" \
+  echo "$w" | grep -qF "$FAKE" \
     && bad "forged wpoa-weights record ENTERED the weight map (self-publication not enforced)" \
     || ok "forged wpoa-weights record discarded: signer != node_address"
 else
@@ -217,7 +219,7 @@ fi
 # 9. the node's OWN weight is published from its own address, so it survives the same
 # rule — a regression here would mean the node discards its own record.
 w=$(mcli getallweights 2>/dev/null)
-echo "$w" | grep -q "$ADMIN" \
+echo "$w" | grep -qF "$ADMIN" \
   && ok "own self-published weight accepted (signer == node_address)" \
   || bad "own weight missing from the map — is PublishWeightRecord using publishfrom? : $w"
 

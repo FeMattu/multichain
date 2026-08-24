@@ -144,10 +144,11 @@ static const CRPCCommand vRPCCommands[] =
     { "wpoa",               "getallmalus",            &getallmalus,            true,      true,       true },
     { "wpoa",               "getnodemalus",           &getnodemalus,           true,      true,       true },
     { "wpoa",               "reportmalus",            &reportmalus,            false,     false,      true },
-    /* WeightEngine inputs (Phase W3) — write, wallet-backed.
-       Admin-only where the record is an external attestation about a third party;
-       PUBLIC for membership, which is self-attested and can only ever describe the
-       calling node itself. */
+    /* WeightEngine inputs — write, wallet-backed. No weight RPC requires global
+       admin: ESG needs the delegated Certification Authority role (an unverifiable
+       attestation about a third party, so the writer is restricted), and membership
+       needs no privilege at all, being self-attested and able to describe only the
+       calling node itself. tau and R have no write path — both are derived. */
     { "weight",             "weightsetesg",           &weightsetesg,           false,     false,      true },
     { "weight",             "weightregistermembership",&weightregistermembership,false,   false,      true },
     /* Independent verification of the published weights — a read, open to anyone:

@@ -109,10 +109,10 @@ inert.
 | `enablewpoarandao` requires `enablewpoavrf` | `init.cpp:3338` |
 | `enablewpoasortition` requires `enablewpoarandao` | `init.cpp:3340` |
 | `enablewpoasortition` requires `wpoarandaolookback >= 1` | `init.cpp:3342` |
-| `enablewpoamalus` requires `enablewpoasortition` | `init.cpp:3426` |
+| `enablewpoamalus` requires `enablewpoasortition` | `init.cpp:3455` |
 | `wpoamalusequivpoints` must be `>` `wpoamalusdelaypoints` | `init.cpp:3419` |
-| `wpoamalusbadweightpoints` must be `>` `wpoamalusselfwritepoints` | `init.cpp:3437` |
-| `enableweightengine` requires `enablewpoaweights` | `init.cpp:3498` |
+| `wpoamalusbadweightpoints` must be `>` `wpoamalusselfwritepoints` | `init.cpp:3446` |
+| `enableweightengine` requires `enablewpoaweights` | `init.cpp:3586` |
 
 The `k >= 1` constraint is not arbitrary: the reveal that sortition produces feeds
 `R_tot[n]`, while its own seed reads `R_tot[n-k]`. At `k = 0` the dependency would be
@@ -215,16 +215,16 @@ weights stream. Module detail: [weight-engine.md](weight-engine.md).
 
 | CLI flag | `params.dat` | Type | Default | Valid range | Defined | Effect on consensus |
 |---|---|---|---|---|---|---|
-| `-enableweightengine` | `enable-weight-engine` | `BOOLEAN` | `0` | `0` / `1` | `paramlist.h:225` | Derives each cluster's weight from the on-chain inputs (membership / ESG / activity / reconciliation) once per epoch, **instead of** the static `-weight`. |
-| `-weightepochlength` | `weight-epoch-length` | `UINT32` | `100` | `[1, 1000000]` | `paramlist.h:229` | Epoch length in blocks. The epoch is **1-based**: `epoch(height) = height / n + 1`. Determines the epoch boundaries the miner and every validator must agree on. |
-| `-weightkappa` | `weight-kappa` | `STRING(32)` | `100` | `> 0` | `paramlist.h:233` | Normalisation constant `kappa` in the company contribution `c_i = ESG_i * tau_i / kappa`. |
-| `-weightalpha` | `weight-alpha` | `STRING(32)` | `0.2` | `[0, 1]` | `paramlist.h:237` | Allocation constant `alpha` in `A_k = alpha * Theta * W_k / W_tot`. |
-| `-weightlambda` | `weight-lambda` | `STRING(32)` | `0.5` | `[0, 1)` — `1` excluded | `paramlist.h:241` | Behavioural-feedback damping in `w_k = W_k * [rho_{k,e-1} * lambda + (1 - lambda)]`. **`lambda < 1` is a correctness requirement**, not a preference: it guarantees weight positivity. |
-| `-weighttreasuryaddress` | `weight-treasury-address` | `STRING(64)` | *(empty)* | a valid address, or empty | `paramlist.h:245` | The recipient that defines a reconciliation transfer: `R_k^(e)` is the native-currency value paid to **this** address by transactions the miner signed, in the epoch's confirmed blocks. **Empty is legal** and means `R_k = 0` for every cluster — a uniform scaling that leaves the election unchanged. A non-empty value must parse as an address, or startup fails. |
+| `-enableweightengine` | `enable-weight-engine` | `BOOLEAN` | `0` | `0` / `1` | `paramlist.h:233` | Derives each cluster's weight from the on-chain inputs (membership / ESG / activity / reconciliation) once per epoch, **instead of** the static `-weight`. |
+| `-weightepochlength` | `weight-epoch-length` | `UINT32` | `100` | `[1, 1000000]` | `paramlist.h:237` | Epoch length in blocks. The epoch is **1-based**: `epoch(height) = height / n + 1`. Determines the epoch boundaries the miner and every validator must agree on. |
+| `-weightkappa` | `weight-kappa` | `STRING(32)` | `100` | `> 0` | `paramlist.h:241` | Normalisation constant `kappa` in the company contribution `c_i = ESG_i * tau_i / kappa`. |
+| `-weightalpha` | `weight-alpha` | `STRING(32)` | `0.2` | `[0, 1]` | `paramlist.h:245` | Allocation constant `alpha` in `A_k = alpha * Theta * W_k / W_tot`. |
+| `-weightlambda` | `weight-lambda` | `STRING(32)` | `0.5` | `[0, 1)` — `1` excluded | `paramlist.h:249` | Behavioural-feedback damping in `w_k = W_k * [rho_{k,e-1} * lambda + (1 - lambda)]`. **`lambda < 1` is a correctness requirement**, not a preference: it guarantees weight positivity. |
+| `-weighttreasuryaddress` | `weight-treasury-address` | `STRING(64)` | *(empty)* | a valid address, or empty | `paramlist.h:253` | The recipient that defines a reconciliation transfer: `R_k^(e)` is the native-currency value paid to **this** address by transactions the miner signed, in the epoch's confirmed blocks. **Empty is legal** and means `R_k = 0` for every cluster — a uniform scaling that leaves the election unchanged. A non-empty value must parse as an address, or startup fails. |
 
 ### 4.1 No parameter governs who may write the input streams
 
-The write policy of the four input streams is **not** configurable: it is a property of what
+The write policy of the pipeline's inputs is **not** configurable: it is a property of what
 each record *is*, and it is enforced in code rather than by a switch.
 
 | Stream | Write policy | Enforced by |
@@ -235,7 +235,7 @@ each record *is*, and it is enforced in code rather than by a switch.
 | ~~`weight-engine-activity`~~ | **removed** — never was a mechanism | The name was defined but never created, written or read |
 
 Grants are therefore an **operational** step, documented in
-[weight-engine.md §6](weight-engine.md#6-security-model--two-independent-gates), not a
+[weight-engine.md §6](weight-engine.md#6-security-model--three-independent-layers), not a
 `params.dat` value. Adding a parameter here would be actively wrong for membership: making
 the self-attestation rule switchable would make it non-consensus-critical, and a node that
 turned it off would fold records its peers discard — a fork.
@@ -326,8 +326,8 @@ weight and nothing more — and state it only correctly.
 `-weight` nor through RPC; and an authorized one cannot impose a *wrong* one, nor one
 belonging to another cluster. Detail:
 [weight-engine.md §5.1](weight-engine.md#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others).
-Two-gate authorization model:
-[weight-engine.md](weight-engine.md) and
+The three-layer authorization model (permission, application, verification):
+[weight-engine.md §6](weight-engine.md#6-security-model--three-independent-layers) and
 [stream-weight-registry.md](stream-weight-registry.md).
 
 ---
@@ -347,13 +347,13 @@ NaN/Inf-safe checks: a non-finite value is rejected, not propagated.
 | `-wpoamalusmax` | number `> 0` | `init.cpp:3400` |
 | `-wpoamalusequivpoints` | number `> 0` | `init.cpp:3406` |
 | `-wpoamalusdelaypoints` | number `> 0` | `init.cpp:3412` |
-| `-wpoamalusselfwritepoints` | number `> 0` | `init.cpp:3419` |
-| `-wpoamalusbadweightpoints` | number `> 0`, and `>` selfwrite points | `init.cpp:3425` |
-| `-weightepochlength` | integer in `[1, 1000000]` | `init.cpp:3468` |
-| `-weightkappa` | number `> 0` (and `< 1e18`) | `init.cpp:3479` |
-| `-weightalpha` | number in `[0, 1]` | `init.cpp:3485` |
-| `-weightlambda` | number in `[0, 1)` | `init.cpp:3491` |
-| `-weighttreasuryaddress` | empty, or a valid address | `init.cpp:3514` |
+| `-wpoamalusselfwritepoints` | number `> 0` | `init.cpp:3424` |
+| `-wpoamalusbadweightpoints` | number `> 0`, and `>` selfwrite points | `init.cpp:3430` |
+| `-weightepochlength` | integer in `[1, 1000000]` | `init.cpp:3521` |
+| `-weightkappa` | number `> 0` (and `< 1e18`) | `init.cpp:3535` |
+| `-weightalpha` | number in `[0, 1]` | `init.cpp:3541` |
+| `-weightlambda` | number in `[0, 1)` | `init.cpp:3547` |
+| `-weighttreasuryaddress` | empty, or a valid address | `init.cpp:3569` |
 
 Every violation produces an `InitError` with an explicit message: the node does not
 start.

@@ -148,9 +148,10 @@ the stream directly: it uses only these public methods.
 | Method | What it returns / does |
 |--------|------------------------|
 | `StreamWeightRegistry(mc_WalletTxs* pwalletIn)` | Constructor: resolves the local address and stores the stream name. |
-| `bool RegisterLocalWeight(uint32_t weight)` | Registers this node's weight on the stream (creates stream + subscribes + publishes if needed). |
+| `bool RegisterLocalWeight(uint32_t weight, uint32_t epoch = 0)` | Registers this node's weight on the stream (creates stream + subscribes + publishes if needed). `epoch` is the epoch the value was computed **for**; the weight engine passes it, the static `-weight` path leaves it 0 — see [§2.5](#25-writing-a-record-publishweightrecord). |
 | `uint32_t GetLocalWeight()` | Latest **confirmed** weight of this node, 0 if not registered. |
-| `std::map<std::string,uint32_t> GetAllNodesWeights()` | address→weight map for every validator. |
+| `std::map<std::string,uint32_t> GetAllNodesWeights()` | address→weight map for every validator. Forged records are already gone: see [§2.7](#27-reading-records--the-most-delicate-path). |
+| `void GetAllNodesWeightsWithEpoch(std::map<std::string,uint32_t>& weights, std::map<std::string,uint32_t>& epochs)` | The same map, plus the epoch each value was published for. Consumed by the verifier, which can only compare a value against the epoch it claims. |
 | `uint32_t GetNodeWeight(const std::string&)` | Confirmed weight of a specific address. |
 | `bool IsLocalWeightRegistered()` | true if at least one confirmed record exists for this node. |
 | `void DebugPrintWeights()` | Prints the entire registry state to the log. |
@@ -474,6 +475,10 @@ Object record;
 record.push_back(Pair("timestamp", (int64_t)GetTime()));
 record.push_back(Pair("node_address", m_LocalAddress));
 record.push_back(Pair("weight", (int64_t)weight));
+if (epoch > 0)                                 // omitted by the static -weight path
+{
+    record.push_back(Pair("epoch", (int64_t)epoch));
+}
 
 int height = 0;
 {
@@ -511,6 +516,16 @@ It builds the record's JSON payload:
 - `height` → the current chain height. `chainActive.Tip()` is the top block;
   `chainActive.Height()` its height. Protected by `LOCK(cs_main)` because the chain can
   change concurrently.
+- `epoch` → the epoch the weight was computed **for**, and the only field that is
+  *conditional*. A weight is a claim about a specific epoch, so a verifier can only
+  compare a published value against a recomputation of the *same* epoch; without the
+  field, a value correctly published for epoch `e` would be checked against epoch `e+1`
+  the moment the epoch rolled over, and an honest node would be flagged as wrong. The
+  weight engine stamps it because it knows which epoch it computed for; the static
+  `-weight` path omits it, because a hand-set weight is not derived from any epoch and
+  there is nothing to recompute it against. Its absence therefore means *"not subject to
+  value verification"* — which is correct in both cases, and keeps records written before
+  the field was introduced readable.
 - The record is wrapped in `{"json": <record>}`: this is the format MultiChain uses to
   represent a **UBJSON** datum in a stream item.
 
@@ -553,7 +568,7 @@ method is designed to be called repeatedly in a retry loop without side effects.
 
 ```cpp
 static bool DecodeWeightRecord(const CWalletTx& wtx, const unsigned char* stream_short_txid,
-                               string& out_addr, uint32_t& out_weight,
+                               string& out_addr, uint32_t& out_weight, uint32_t& out_epoch,
                                std::vector<string>& out_publishers, bool& out_forged)
 {
     mc_Script script; // local instance -> thread-safe (no shared buffer)
@@ -763,10 +778,23 @@ for (int i = 0; i < rows.GetCount(); i++)
     CWalletTx wtx = m_pWalletTxs->GetWalletTx(hash, &txdef, &err);
     if (err != MC_ERR_NOERROR) continue;
 
-    string addr; uint32_t w = 0;
-    bool decoded = DecodeWeightRecord(wtx, stream_short_txid, addr, w);
+    string addr; uint32_t w = 0; uint32_t rec_epoch = 0;
+    std::vector<string> publishers; bool forged = false;
+    bool decoded = DecodeWeightRecord(wtx, stream_short_txid, addr, w, rec_epoch,
+                                      publishers, forged);
+    if (forged)
+    {
+        // Logged UNCONDITIONALLY, not only under -wpoadebug: a provable protocol
+        // violation, and the evidence the malus registry accuses on (§2.7).
+        LogPrintf("[wPoA] wpoa-weights record for '%s' DISCARDED: not signed by that "
+                  "address ...", addr.c_str(), ...);
+        continue;
+    }
     if (decoded)
-        mc_AccumulateLatestWeight(out_latest, addr, w); // newest wins
+    {
+        mc_AccumulateLatestWeight(out_latest, addr, w);   // newest wins
+        if (out_epochs != NULL) (*out_epochs)[addr] = rec_epoch;
+    }
 }
 return true;
 ```
@@ -777,7 +805,15 @@ return true;
 - `uint256` — the Bitcoin type for 256-bit hashes. The TXID is reconstructed from the
   row bytes.
 - `GetWalletTx(hash, &txdef, &err)` — retrieves the full transaction from the wallet.
-- `DecodeWeightRecord(...)` — extracts `(addr, w)` as seen above.
+- `DecodeWeightRecord(...)` — extracts `(addr, w, epoch)` and the signing addresses, as
+  seen above, and reports through `forged` whether the record was published on somebody
+  else's behalf.
+- **`forged` short-circuits the accumulation.** A forged record is dropped *before* it can
+  reach the map, so no consumer of `GetAllNodesWeights()` ever has to know about the rule:
+  by the time a weight is visible it has already been checked. The log line is
+  unconditional because it is the evidence an accusation is built on.
+- `out_epochs` is optional (`NULL` when the caller only wants the weights). Filling it is
+  what lets the verifier compare a value against the epoch it actually claims.
 - **`mc_AccumulateLatestWeight(out_latest, addr, w)`** — because we iterate in ascending
   order (old→new), overwriting the per-address map makes the **last record win**. This
   helper lives in `weight_record.h`.

@@ -28,7 +28,7 @@ against (§4.7).
 | | Before | Now |
 |---|---|---|
 | Topology | 4 miners × 5 companies (`M1..M4`, `COMPANY_Mx_Cy`) | **MyLedger**: 5 cluster miners `ClusterMinerA..E` × 10 aziende (`Azienda_A1..E10`), 50 total |
-| ADMIN | governance writer only | governance writer **and** reconciliation counterparty (the Apuana SB stand-in) |
+| ADMIN | governance writer only | ESG certifier **and** treasury address for reconciliation (the Apuana SB stand-in) |
 | ESG | 2 decimals over `[1, 100]` | **integers over `[10, 20]`** (the MyLedger configuration sheet) |
 | Currency | anonymous "activity asset" | **GAS**, a divisible asset with `1 GAS = 1 EUR` |
 | Fees / earnings | none | every transaction costs **α = 0.2 GAS**; the epoch's pot `α·Θ` is split by **weight share** `p_k` and settled on chain |
@@ -72,7 +72,7 @@ configurable number of **epochs** (default 30).
 
 | Actor | Count | On-chain identity | Role |
 |---|---|---|---|
-| **ADMIN** | 1 (node 0) | genesis / global administrator | the **Apuana SB stand-in**: publishes ESG + membership + reconciliation, issues and distributes GAS, and **receives** every reconciliation transfer. **Not a miner** (its `mine` permission is revoked once the miner set is live) |
+| **ADMIN** | 1 (node 0) | genesis / global administrator **and** Certification Authority (`high1`) | the **Apuana SB stand-in**: publishes the **ESG** scores — the one input still taken on trust — issues and distributes GAS, and is the **treasury address** that receives every reconciliation transfer, which is what makes `R_k` derivable. It publishes neither membership (each miner self-registers) nor `R_k`. **Not a miner** (its `mine` permission is revoked once the miner set is live) |
 | **cluster miner** `ClusterMinerA..E` | 5 | one mining node each | the wPoA validators; the engine computes and publishes each one's `w_k`; each earns `Guadagno = A_k` in proportion to its **weight share**, and sends 10–20 transfers of its own per epoch (`τ_Mk`) |
 | **azienda** `Azienda_X1..X10` | 10 per cluster → 50 | a plain address **in the ADMIN wallet** | belongs to a cluster **as recorded on the membership stream**; sends 10–20 GAS transfers per epoch, generating activity `τ_i` and hence `Θ` |
 | **FEEPOOL** | 1 | a plain address in the ADMIN wallet | the aggregate of all transaction senders; pays out each epoch's `α·Θ` pot (§3.5 step 4, §6.6) |
@@ -92,12 +92,20 @@ w_k^(1) = W_k ;  w_k^(e) = W_k · [ρ_{k,e-1}·λ + (1-λ)]   (final weight)
 ```
 
 so the harness must supply **ESG for every miner AND every azienda** (an uncertified
-miner has `W_k = 0`, floored to 1, which would flatten the experiment),
-**membership**, **reconciliation** `R_k` per epoch, and enough on-chain **activity**
-that `τ` is non-zero. Activity is *not* a stream — the engine derives `τ` directly
-from the confirmed blocks of the epoch
-([`weight_reader.cpp::ComputeActivityForEpoch`](../../../weight_reader.cpp)) — so the
-harness produces it by making the aziende transact.
+miner has `W_k = 0`, floored to 1, which would flatten the experiment), and then make the
+chain *contain* the rest. Only ESG is supplied as an attestation; the other three inputs
+are produced as on-chain facts:
+
+| Input | How the harness supplies it |
+|---|---|
+| `ESG_i` | published by the ADMIN, which holds the Certification Authority role. The one datum taken on trust |
+| `C_k` (membership) | each miner node calls `weightregistermembership` **for itself** — the harness cannot declare it on anyone's behalf, because a record whose signer is not its subject is discarded by every reader |
+| `τ` | the aziende **transact**; the engine counts the confirmed transactions directly |
+| `R_k` | the miner **transfers** to the treasury address; the engine sums the value that arrives there |
+
+Both `τ` and `R_k` come from one pass over the epoch's confirmed blocks
+([`weight_reader.cpp::ComputeActivityAndReconciliationForEpoch`](../../../weight_reader.cpp)),
+so neither has a stream and neither has a writer to get wrong.
 
 ### 1.1 Where α sits, and why the weight does not depend on it directly
 
@@ -295,11 +303,12 @@ sampled epoch **buries** and its `w_k` gets published (§6.4).
    `saldo_onchain`, so the accounting balance can be reconciled against the ledger.
 8. **Nothing is published** for reconciliation: the engine derives `R_k` from the very
    transfer made above, by scanning the epoch's confirmed blocks for value paid to the
-   treasury address by transactions the miner signed. The harness's own reading of that
-   transfer is therefore an INDEPENDENT cross-check of the engine rather than a
-   tautology. (Historically this step published `weightsetreconciliation(miner,
-   R_k_from_chain, e)`, so the engine's
-   `ρ_k` is driven by GAS that actually moved.
+   treasury address by transactions the miner signed. So the engine's `ρ_k` is driven by
+   GAS that actually moved, and the harness's own reading of that transfer is an
+   INDEPENDENT cross-check of the engine rather than a tautology — both sides read the
+   same confirmed transaction, neither takes the other's word for it. *Historically this
+   step published `weightsetreconciliation(miner, R_k_from_chain, e)`; the value was
+   already read off chain, so deriving it removed a publish, not a guarantee.*
 9. **Check the five model invariants** on what was just produced
    (`verify_epoch_invariants`, §5) — a violation is recorded and surfaced immediately,
    not at the end of the run.
@@ -307,12 +316,12 @@ sampled epoch **buries** and its `w_k` gets published (§6.4).
 `Total GAIN_k` is the running sum of `A_k`, so it is monotonic by construction — which
 §5 asserts.
 
-**Why publishing `R_k` after the epoch is safe.** `R_k^{(e)}` feeds `ρ_k^{(e)}`, which
-the weight formula consumes one epoch later (`w_k^{(e+1)}`). And
-`ComputeLocalWeightForEpoch` re-reads the whole reconciliation stream and **replays
-from epoch 1** on every publish. So `R_k^{(e)}` only has to be confirmed before epoch
-`e+1` buries — a full epoch plus margin of slack, not the few blocks it might appear
-to need.
+**Why settling `R_k` after the epoch is safe.** `R_k^{(e)}` feeds `ρ_k^{(e)}`, which the
+weight formula consumes one epoch later (`w_k^{(e+1)}`), and the engine **replays from
+epoch 1** on every publish, re-deriving every `R` from the blocks. So the reconciliation
+**transfer** only has to be confirmed before epoch `e+1` buries — a full epoch plus margin
+of slack, not the few blocks it might appear to need. What must be timely is the transfer;
+there is no record whose confirmation could lag behind it.
 
 ### 3.6 Harvest + report — [`weight_reader.py`](../helpers/weight_reader.py) + [`reporters/`](../reporters/)
 
@@ -390,7 +399,7 @@ cluster count no longer leaves stale `M1..M4` headers. `proposer_miner` is the
 ### 4.5 `esg_scores.csv`, `transactions.csv`, `weights_evolution.csv`, `wpoa_proposer_log.csv`
 As before, with
 `type ∈ {funding, company, miner, allocation, reconciliation, publish_esg,
-publish_membership, publish_reconciliation, grant_write}` in `transactions.csv` and
+publish_membership, grant_write}` in `transactions.csv` and
 `amount_gas` in place of the old `amount`. A transaction's `epoch` is the epoch of its
 **confirming block**. The `publish_*` / `grant_write` rows are what make the ledger
 record complete enough for `tau_coverage` to be assertable.
@@ -465,7 +474,7 @@ that caused it rather than aggregated away at the end.
 |---|---|
 | **`engine_matches_replay`** | **the primary result.** The integer weight each node published equals the harness's independent replay of `w_k`, for at least `WE_WEIGHT_MATCH_MIN` (0.95) of the comparable cells. Each cell is classed `exact`, `within-tol` (≤ `WE_WEIGHT_REL_EPS`, default 1 %), `off`, or `unpublished` |
 | `weight_ranking` | the weight ordering agrees with the **ESG + activity composite** `ESG_Mk·(τ_Mk + Σ_i c_i)` ordering, as mean pairwise concordance ≥ `WE_RANK_MIN` (default 0.80). Below 1.0 on purpose: the feedback factor `ρλ + (1−λ)` legitimately reorders clusters whose raw weights are close |
-| `reconciliation_visible_to_engine` | every `R_k` record confirmed before the next epoch buried. **If this fails, `engine_matches_replay` is meaningless** — see §6.9 |
+| `reconciliation_is_derived_not_attested` | structural: `R_k` is read from the epoch's confirmed transfers to the treasury address, never from a published record. It replaces the former `reconciliation_visible_to_engine`, whose timing race no record can lose any more — see §6.9 |
 | `settlement_confirmed` | every allocation/reconciliation transfer and governance publish made it into a block. GAS still in flight is reported here rather than surfacing as a phantom supply gap |
 | `tau_coverage` | every transaction in every sampled epoch was attributed to a signer. **This is the precondition for `engine_matches_replay` being a value comparison at all**; if it fails, treat the weight check as a ranking result |
 | `membership_from_chain` | the cluster sets read back off `weight-engine-membership` are exactly the configured topology — no company claimed by two clusters, none orphaned, no wrong-sized cluster. Every `W_k` depends on this set, so it is checked rather than assumed |
@@ -515,7 +524,7 @@ The engine publishes `w_k` only for the newest **buried** epoch
 derived from block/undo data and a shallow reorg near the tip must not change it. The
 harness drives `STABILITY_MARGIN + 2` blocks past the last sampled epoch before
 harvesting. That same replay-from-epoch-1 behaviour is what makes the post-epoch
-reconciliation publish safe (§3.5).
+reconciliation **settlement** safe (§3.5).
 
 ### 6.5 No native currency → GAS is an issued asset
 A default MultiChain has `initial-block-reward = 0`, so there is no spendable native
@@ -554,23 +563,22 @@ The published integers turned out to be **exactly** `round(W_k · κ · 0.5)` fo
 cluster in every affected epoch — that is, the engine had applied the bare `(1−λ)`
 bracket, meaning it read `ρ_k^(e-1) = 0`. It had not seen the reconciliation records at
 all: submissions were outpacing block production, a mempool backlog had built up, and
-(HISTORICAL, and the reason `R_k` became derived.) `weightsetreconciliation` was
-confirming **20–24 blocks late**, well after the epoch it
+`weightsetreconciliation` was confirming **20–24 blocks late**, well after the epoch it
 belonged to had buried. Two unrelated checks (`gas_supply_conserved`,
 `giacenza_matches_chain`) failed at the same time for the same underlying reason — a
 lagging miner whose transfers were in flight and therefore held by neither party.
 
 Three changes came out of it:
 
-1. **`close_epoch` now blocks until the reconciliation records confirm** before leaving
-   the epoch. That is a correctness condition, not politeness: `R_k^(e)` is the only
-   economic input the engine takes from the harness, and it must be readable before epoch
-   `e+1` buries. Blocking there also throttles the epoch loop to what the chain can
-   absorb, so the backlog cannot grow without bound.
-2. **The failure gets its own name.** `reconciliation_visible_to_engine` and
+1. **`close_epoch` blocks until the reconciliation transfers confirm** before leaving
+   the epoch. That is a correctness condition, not politeness: the transfer must be inside
+   the epoch it belongs to, or the engine — which sums what actually arrived — will not
+   count it. Blocking there also throttles the epoch loop to what the chain can absorb, so
+   the backlog cannot grow without bound.
+2. **The failure gets its own name.** The dedicated visibility check and
    `settlement_confirmed` report the actual condition, and `engine_matches_replay`'s
-   detail line now *names this cause* when it sees the two together, instead of leaving
-   it to be rediscovered.
+   detail line *names this cause* when it sees the two together, instead of leaving it to
+   be rediscovered.
 3. **Supply is checked at minconf 0 as well.** A transfer in flight is held by neither
    sender nor recipient, so a confirmed-only sum under-counts by exactly that amount.
    Passing on either reading separates a confirmation lag from GAS that actually went
@@ -620,14 +628,16 @@ experimental/
 │   ├── chain_setup.py        Network/Node: JSON-RPC transport, bootstrap, grants, waits, teardown
 │   ├── participants.py       label ⇄ address ⇄ owning-node registry (+ ADMIN, FEEPOOL)
 │   ├── esg_generator.py      seeded static integer ESG + the configuration-sheet view
-│   ├── stream_writer.py      ADMIN → esg / reconciliation (validating RPCs);
-│   │                         membership self-declared by each node, self-attested
+│   ├── stream_writer.py      ADMIN → esg only (CA-gated validating RPC);
+│   │                         membership self-declared by each node, self-attested;
+│   │                         no reconciliation writer — R_k is derived
 │   ├── membership_reader.py  cluster sets read BACK off chain (latest confirmed
 │   │                         declaration per node — the engine's own fold), cached
 │   ├── tx_simulator.py       GAS issue/fund + per-epoch transfers (activity τ)
 │   ├── economics.py          the whole Vers_2 pipeline: exact τ, W_k/w_k/Delay/p_k/A_k,
-│   │                         automated on-chain settlement + reconciliation, and the
-│   │                         five per-epoch invariants
+│   │                         automated on-chain settlement + the reconciliation
+│   │                         transfer the engine derives R_k from, and the five
+│   │                         per-epoch invariants
 │   └── weight_reader.py      getallweights + debug.log weight parse + block/proposer
 │                             index + stream publisher index
 ├── reporters/

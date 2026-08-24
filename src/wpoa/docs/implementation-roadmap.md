@@ -534,7 +534,7 @@ The as-built diagrams live in their single canonical locations:
 
 | Concept | Canonical diagram |
 |---|---|
-| Weight assignment — the two authorization gates, the stream/flag precedence | [implementation-status.md §0.1](implementation-status.md#01-assegnazione-del-peso-di-un-nodo--flusso-autorevole) |
+| Weight assignment — the authorization gates, the verification rules, the stream/flag precedence | [implementation-status.md §0.1](implementation-status.md#01-how-a-nodes-weight-is-assigned--the-authoritative-flow) |
 | Whole-stack architecture across phases | [`../README.md`](../README.md) |
 | Score-timed self-election, miner and validator sides | [phase4-implementation-guide.md](phase4-implementation-guide.md) |
 | Efraimidis transform pipeline | [thesis-project-overview.md §9.5](thesis-project-overview.md) |

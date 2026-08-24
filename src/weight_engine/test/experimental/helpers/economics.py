@@ -63,9 +63,10 @@
 # ORDER OF OPERATIONS. Settlement precedes reconciliation, and the balance read
 # follows the reconciliation's CONFIRMATION -- Giacenza is by definition the balance
 # after the epoch has been reconciled. R_k^{(e)} feeds rho_k^{(e)}, which the weight
-# formula consumes one epoch later, and ComputeLocalWeightForEpoch re-reads the whole
-# reconciliation stream and replays from epoch 1 on every publish, so R_k^{(e)} only
-# has to confirm before epoch e+1 buries: a full epoch plus margin of slack.
+# formula consumes one epoch later, and the engine replays from epoch 1 on every publish,
+# re-deriving every R from the blocks, so the reconciliation TRANSFER only has to confirm
+# before epoch e+1 buries: a full epoch plus margin of slack. There is no record to wait
+# for -- the transfer IS the reconciliation.
 
 import random
 import time

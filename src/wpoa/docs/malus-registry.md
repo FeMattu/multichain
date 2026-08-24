@@ -342,15 +342,13 @@ proved violation, so enabling the mechanism on a clean chain is a no-op.
 
 ## 8. Configuration
 
-The registry is governed by five inheritable chain parameters, resolved like every
-other wPoA switch (`params.dat` baseline, CLI override, loud warning on a local
-divergence). All are consensus-critical.
+The registry is governed by **seven** inheritable chain parameters — the two
+data-integrity scores joined the five original ones — resolved like every other wPoA
+switch (`params.dat` baseline, CLI override, loud warning on a local divergence). All are
+consensus-critical.
 
 > **Names, types, defaults and valid ranges:
 > [protocol-parameters.md §3](protocol-parameters.md#3-catalogue--behavioural-malus-registry).**
-
-The registry is governed by seven inheritable chain parameters — the two data-integrity
-scores joined the five original ones.
 
 Three constraints are **hard failures** at startup, and all three are structural rather
 than stylistic:

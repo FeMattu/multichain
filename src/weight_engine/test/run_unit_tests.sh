@@ -52,7 +52,7 @@ build_and_run() {
 
     case "$key" in
         records)
-            desc="input-stream record parsers (membership/esg/activity/reconciliation)"
+            desc="record parsers (membership/esg) + chain-derived reconciliation rules"
             src="$SCRIPT_DIR/weight_records_tests.cpp" ;;
         authorization)
             desc="per-stream write policy (self-attestation, Certification Authority, admin)"

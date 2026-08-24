@@ -36,9 +36,10 @@
 #    pot ALPHA * Theta is split by WEIGHT SHARE p_k (not by who mined a block), the
 #    FEEPOOL settles A_k to each miner, the miner returns R_k to the ADMIN, and
 #    Giacenza is the running balance B_prev + A - R.
-#  * Reconciliation is fully AUTOMATED at each epoch boundary and the amount published
-#    to the reconciliation stream is the amount read back off chain -- never a random
-#    draw, as it was before.
+#  * Reconciliation is fully AUTOMATED at each epoch boundary, and the amount the harness
+#    books is the amount read back off chain -- never a random draw, as it was before.
+#    Nothing is published: the node DERIVES R_k from the same confirmed transfer, so the
+#    harness's replay and the engine's value share a single source.
 #  * Invariants run at two levels: five model invariants per epoch, inside close_epoch
 #    (epoch_checks.csv), and the run-level ledger/engine checks here (assertions.csv).
 #

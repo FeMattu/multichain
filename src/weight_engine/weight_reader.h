@@ -40,8 +40,9 @@
 //
 // THREADING. Every read uses the low-level, self-locking, NON-WRP wallet API and
 // only CONFIRMED items, never the WRP*/getstreamkeysummary family (stale off-thread;
-// see stream_weight_registry.cpp ReadAllRecords). ComputeActivityForEpoch reads the
-// block/undo files off-thread, taking cs_main only for a tiny chain snapshot.
+// see stream_weight_registry.cpp ReadAllRecords).
+// ComputeActivityAndReconciliationForEpoch reads the block/undo files off-thread,
+// taking cs_main only for a tiny chain snapshot.
 
 #ifndef MC_WEIGHT_READER_H
 #define MC_WEIGHT_READER_H

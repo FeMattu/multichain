@@ -3,10 +3,11 @@
 //
 // Weight-management layer — Stage W2: the pure weight-computation core.
 // ------------------------------------------------------------------------------
-// WeightEngine turns the four public input streams (membership, ESG, activity,
-// reconciliation — read by the W1 helpers in weight_records.h) into the
-// per-cluster weight w_k^{(e)} published to "wpoa-weights". It implements, VERBATIM,
-// the "Gestione del peso" thesis chapter:
+// WeightEngine turns the pipeline's four inputs — two PUBLISHED streams (membership,
+// ESG; parsed by the W1 helpers in weight_records.h) and two quantities DERIVED from
+// the epoch's confirmed blocks (activity tau and reconciliation R; see
+// weight_reader.h) — into the per-cluster weight w_k^{(e)} published to
+// "wpoa-weights". It implements, VERBATIM, the "Gestione del peso" thesis chapter:
 //
 //   c_i^{(e)}   = ESG_i * tau_i^{(e)} / kappa                       (Def. contributo-pesato)
 //   W_k^{(e)}   = ESG_{Mk} * ( tau_{Mk}^{(e)} + sum_{i in C_k} c_i^{(e)} )   (Def. peso-grezzo)
@@ -98,7 +99,7 @@ public:
         double               esg_miner;   // ESG_{Mk} > 0
         uint32_t             tau_miner;   // tau_{Mk}^{(e)}
         std::vector<Company> companies;   // the cluster members C_k
-        double               reconciled;  // R_k^{(e)} (from the reconciliation stream)
+        double               reconciled;  // R_k^{(e)} (derived from the epoch's blocks)
 
         ClusterInput() : esg_miner(0.0), tau_miner(0), reconciled(0.0) {}
     };
@@ -471,7 +472,7 @@ bool WeightEngineActiveAtHeight(int height);
 
 /**
  * Background entry point launched from AppInit2 (in place of ThreadRegisterNodeWeight)
- * when -enableweightengine is set. Ensures the four input streams exist and are
+ * when -enableweightengine is set. Ensures the two published input streams exist and are
  * subscribed — creating them on the first node that has create permission (the
  * genesis / admin node) and merely subscribing on every other node — then, at each
  * epoch boundary on the chain tip, recomputes this node's own w_k from the public

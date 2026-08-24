@@ -265,9 +265,9 @@ their content — the other files link to them:
 
 | Document | What it covers |
 |---|---|
-| [protocol-parameters.md](docs/protocol-parameters.md) | **The parameter catalogue.** All 21 parameters, with the two authorization gates and the `-weight` precedence rule. |
+| [protocol-parameters.md](docs/protocol-parameters.md) | **The parameter catalogue.** All 23 parameters, the per-stream write policies (none of which is configurable) and the `-weight` precedence rule. |
 | [node-startup.md](docs/node-startup.md) | How the switches are read from `params.dat`, resolved (master + per-phase precedence + hard-fail constraints) and wired into `AppInit2`; how the publication thread is launched. |
-| [weight-engine.md](docs/weight-engine.md) | The weight-production layer: the four input streams, the `c_i → W_k → A_k → ρ_k → B_k → w_k` pipeline, the three admin RPCs, the two-gate security model and its known limit. |
+| [weight-engine.md](docs/weight-engine.md) | The weight-production layer: the two published input streams plus the two chain-derived quantities, the `c_i → W_k → A_k → ρ_k → B_k → w_k` pipeline, the CA-gated and public write RPCs, universal verification of the published weights, and the one remaining trusted datum. |
 
 ### Component architecture — *tecnico-diretto*
 

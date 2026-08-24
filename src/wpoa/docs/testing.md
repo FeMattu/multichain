@@ -12,13 +12,13 @@
 
 This document covers:
 
-1. [Building](#1-building)
-2. [Automated unit tests](#2-automated-unit-tests)
-3. [How MultiChain mining works (and why it matters here)](#3-how-multichain-mining-works)
+1. [Automated unit tests](#1-automated-unit-tests)
+2. [How MultiChain mining works (and why it matters here)](#2-how-multichain-mining-works)
+3. [Building](#3-building)
 4. [Manual test — single node (quick)](#4-manual-test--single-node-quick)
 5. [Manual test — three nodes with weights 100 / 80 / 50 (full)](#5-manual-test--three-nodes-full)
 6. [When exactly do the records appear?](#6-when-exactly-do-records-appear)
-7. [Automated functional smoke test](#7-automated-functional-smoke-test)
+7. [Automated functional test (single system-level run)](#7-automated-functional-test-single-system-level-run)
 8. [Troubleshooting](#8-troubleshooting)
 
 Throughout, `CHAIN` is the blockchain name and the binaries are in `./src`
@@ -141,6 +141,37 @@ mempool and is **not** in that index yet, so:
 
 > A weight becomes visible only **after the block containing its `publish`
 > transaction has been mined and connected** on the node you are querying.
+
+---
+
+## 3. Building
+
+The unit suites need **no build of the node** — they compile the pure headers directly
+(see [§1](#1-automated-unit-tests)). Everything below does need the binaries.
+
+```bash
+# from the repository root — the three binaries the manual and functional tests use
+cd src && make multichaind multichain-cli multichain-util
+```
+
+To rebuild one translation unit while iterating, name its object file. The targets carry
+the per-library prefix automake generates, which is not obvious from the source path:
+
+```bash
+cd src
+make weight_engine/libbitcoin_wallet_a-weight_engine.o      # weight layer
+make wpoa/libbitcoin_server_a-malus_registry.o              # consensus layer
+make core/libbitcoin_server_a-init.o                        # parameter resolution
+make rpc/multichaind-rpclist.o                              # RPC table
+```
+
+> **After adding or removing a source file** in `src/Makefile.am`, regenerate the
+> gitignored `src/Makefile.in` before `make` will see it:
+> ```bash
+> automake --foreign src/Makefile
+> ```
+> Forgetting this produces a link error naming a symbol whose `.cpp` exists — the object
+> was simply never compiled.
 
 ---
 

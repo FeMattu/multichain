@@ -51,8 +51,9 @@
 #
 # ONCHAIN MIRROR. Every one of those quantities is settled on chain, so the ledger
 # and the table cannot drift: the FEEPOOL pays A_k to the miner, the miner returns
-# R_k to the ADMIN (signed by its own node), and R_k is re-read from the confirmed
-# transaction before being published to the reconciliation stream. B_k is therefore
+# R_k to the ADMIN (signed by its own node), and R_k is re-read from that confirmed
+# transaction -- which is also exactly what the engine derives it from, so the harness
+# and the node cannot disagree about the value. B_k is therefore
 # verifiable as a balance DELTA net of miner<->miner trading (see the
 # giacenza_matches_chain invariant), not as an absolute balance.
 #
@@ -325,9 +326,10 @@ WEIGHT_MATCH_MIN_FRACTION = _env_float("WE_WEIGHT_MATCH_MIN", 0.95)
 
 # Mempool depth above which the harness warns that the chain is not keeping up.
 #
-# This matters more than it looks. Once submissions outpace the blocks, EVERY record
-# lands epochs late -- including weightsetreconciliation, which the engine must read
-# before epoch e+1 buries. When it does not, the engine computes rho_k = 0 and applies
+# This matters more than it looks. Once submissions outpace the blocks, EVERY submission
+# lands epochs late -- including the reconciliation TRANSFERS, from which the engine
+# derives R_k. A transfer that misses its epoch is one the engine never counts for that
+# epoch. When that happens the engine computes rho_k = 0 and applies
 # the bare (1-lambda) bracket, so every published w_k comes out as exactly
 # round(W_k*kappa*(1-lambda)) and the engine-vs-replay comparison fails for a reason that
 # has nothing to do with the engine. A run that trips this warning is not a valid

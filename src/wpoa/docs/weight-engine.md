@@ -27,9 +27,9 @@ Configuration parameters: [protocol-parameters.md §4](protocol-parameters.md#4-
 - [4. The engine thread](#4-the-engine-thread)
 - [5. Precedence: which publisher writes](#5-precedence-which-publisher-writes)
   - [5.1 Every node publishes its own weight, and every node checks the others](#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others)
-- [6. Security model — two independent gates](#6-security-model--two-independent-gates)
-  - [6.1 On-chain gate](#61-on-chain-gate--consensus-enforced)
-  - [6.2 Application gate — per stream, not uniform](#62-application-gate--per-stream-not-uniform)
+- [6. Security model — three independent layers](#6-security-model--three-independent-layers)
+  - [6.1 Permission layer](#61-permission-layer--consensus-enforced)
+  - [6.2 Application layer — per stream, not uniform](#62-application-layer--per-stream-not-uniform)
   - [6.3 Why opening membership is safe](#63-why-opening-membership-is-safe--and-where-the-known-limit-still-bites)
   - [6.4 ESG — the Certification Authority role](#64-esg--the-certification-authority-role)
 - [7. The complete flow](#7-the-complete-flow)
@@ -241,7 +241,7 @@ to them: the first node with create permission (the genesis / admin node) brings
 existence, everyone else finds them present and subscribes.
 
 The streams are created **CLOSED**: `MC_PTP_WRITE` is required to publish. Closed does not
-mean *governance-only* — see [§6.2](#62-application-gate--per-stream-not-uniform) for which
+mean *governance-only* — see [§6.2](#62-application-layer--per-stream-not-uniform) for which
 streams grant write narrowly and which grant it to the whole network.
 
 ---
@@ -429,8 +429,8 @@ would replace *"trust one publisher per cluster"* with *"trust every publisher"*
 could publish any value it liked for its own cluster.
 
 But the value is now checkable, because **every input of the pipeline is public and
-deterministic**: `tau` is chain-derived, `C_k` is chain-derived from self-attested records,
-`R_k` and `ESG` are published. So any honest node can re-run the identical pipeline over
+deterministic**: `tau` and `R_k` are chain-derived, `C_k` is chain-derived from
+self-attested records, `ESG` is published. So any honest node can re-run the identical pipeline over
 the identical inputs and reach the identical integer. A published value that differs is
 **provably wrong** — not a matter of opinion — and every node can reject it independently,
 with no coordination and no privileged auditor. Implementation:
@@ -481,8 +481,8 @@ inputs**. It cannot establish that the ESG scores are *truthful*, because an ESG
 an attestation with nothing inside it to check.
 
 So after this change the trust surface of the whole system is exactly one datum: **ESG**.
-Activity and membership are chain-derived, reconciliation is published and verifiable
-alongside the rest, and every published weight is recomputable. The integrity of the
+Activity and reconciliation are chain-derived, membership is published but self-verifiable,
+and every published weight is recomputable. The integrity of the
 weights therefore rests entirely on the Certification Authority role of
 [§6.4](#64-esg--the-certification-authority-role).
 
@@ -531,12 +531,25 @@ already carries per-epoch findings.
 
 ---
 
-## 6. Security model — two independent gates
+## 6. Security model — three independent layers
 
-This is the part to read carefully: the two gates are distinct and protect different
-things.
+This is the part to read carefully: the layers are distinct, they protect different
+things, and **none of them subsumes another**.
 
-### 6.1 On-chain gate — consensus-enforced
+| Layer | Question it answers | Enforced by | Consequence of failure |
+|---|---|---|---|
+| **Permission** ([§6.1](#61-permission-layer--consensus-enforced)) | may this address publish on this stream *at all*? | MultiChain consensus — every stream is CLOSED | the transaction does not confirm |
+| **Application** ([§6.2](#62-application-layer--per-stream-not-uniform)) | is this the right *kind* of caller for this claim? | the RPC, locally | `RPC_INSUFFICIENT_PERMISSIONS`; nothing is written |
+| **Verification** ([§5.1](#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others)) | is what the confirmed record *says* true? | every reader, independently | the record is discarded or dropped, and the act is malus grounds |
+
+The third layer is what this refactor added, and it is the only one that survives a
+dishonest writer: the first two decide *who may speak*, and can therefore be defeated by
+anyone who legitimately holds the permission. Verification asks instead whether the
+statement holds, which is why opening a write is safe exactly when the claim is checkable
+— the criterion the whole §6.2 split rests on. `§0.1`'s numbered gates map onto these
+three: 1a is application, 2 is permission, and 1'/3/4 are verification.
+
+### 6.1 Permission layer — consensus-enforced
 
 Every stream involved — the two published input streams and `wpoa-weights` — is
 **CLOSED**. Only an address holding `MC_PTP_WRITE` on the stream can publish. This is what blocks arbitrary
@@ -568,7 +581,7 @@ For membership, network admission is still gated — but **upstream**, by the KY
 `connect` permission that governs joining the network at all. Once a node is a legitimate
 member of the consortium, letting it state which cluster it belongs to adds no privilege.
 
-### 6.2 Application gate — per stream, not uniform
+### 6.2 Application layer — per stream, not uniform
 
 The two published inputs do **not** share one authorization model. The split follows a
 single criterion: **can a third party verify the claim?**
@@ -613,7 +626,7 @@ Any failure raises `JSONRPCError`, so the calling RPC returns a precise error.
 The two write policies rest on opposite foundations, and the reason is the same asymmetry
 the malus registry is built on ([malus-registry.md §2](malus-registry.md)):
 
-| | ESG / reconciliation | membership |
+| | ESG | membership |
 |---|---|---|
 | The record is | a **claim** about a third party | a **self-declaration** |
 | Verifiable by a third party? | **No** — an ESG score is an attestation of trust | **Yes** — compare the signer to the declared address |
@@ -745,8 +758,9 @@ grant discipline of [§6.3](#63-why-opening-membership-is-safe--and-where-the-kn
 
 ## 7. The complete flow
 
-The diagram of the weight-assignment flow — from the two authorization gates through to
-proposer election — lives in **one place**, so that two copies cannot diverge:
+The diagram of the weight-assignment flow — from the permission and application gates
+through verification to proposer election — lives in **one place**, so that two copies
+cannot diverge:
 
 > **[implementation-status.md §0.1 — How a node's weight is assigned](implementation-status.md#01-how-a-nodes-weight-is-assigned--the-authoritative-flow)**
 
@@ -764,8 +778,8 @@ only — never the `WRP*` / `getstreamkeysummary` family, which returns stale da
 owning thread (see the note in
 [stream-weight-registry.md](stream-weight-registry.md)).
 
-`ComputeActivityForEpoch` reads the block/undo files off-thread, taking `cs_main` only for
-a minimal chain snapshot.
+`ComputeActivityAndReconciliationForEpoch` reads the block/undo files off-thread, taking
+`cs_main` only for a minimal chain snapshot.
 
 ---
 
@@ -779,7 +793,7 @@ a minimal chain snapshot.
 | [`weight_engine.h`](../../weight_engine/weight_engine.h) | W2: the pure computation core. Standard library only. |
 | [`weight_engine.cpp`](../../weight_engine/weight_engine.cpp) | W3: `HeightToEpoch`, `ThreadWeightEngine`, node glue, configuration globals. |
 | [`weight_reader.h`](../../weight_engine/weight_reader.h) / [`.cpp`](../../weight_engine/weight_reader.cpp) | W3: `WeightStreamReader` — lifecycle of the two published streams, confirmed reads with publisher extraction, and the single-pass `ComputeActivityAndReconciliationForEpoch`. |
-| [`weight_publisher.h`](../../weight_engine/weight_publisher.h) / [`.cpp`](../../weight_engine/weight_publisher.cpp) | W3: the single validated write path, the CA-gated ESG RPC, the admin reconciliation RPC and the public self-write membership RPC. |
+| [`weight_publisher.h`](../../weight_engine/weight_publisher.h) / [`.cpp`](../../weight_engine/weight_publisher.cpp) | W3: the single validated write path, the CA-gated ESG RPC and the public self-write membership RPC. No reconciliation write path exists — the quantity is derived. |
 | [`weight_verifier.h`](../../weight_engine/weight_verifier.h) / [`.cpp`](../../weight_engine/weight_verifier.cpp) | Universal verification of the published weights: the pure compare/filter, the per-epoch verdict cache and the `weightverifyweights` RPC. |
 
 ### 9.1 Tests
@@ -798,7 +812,7 @@ The module has its **own** unit suites, with a runner separate from the wPoA one
 | `verifier` | [`weight_verifier_tests.cpp`](../../weight_engine/test/weight_verifier_tests.cpp) | Matching values accepted; an inflated **and** an understated value rejected and dropped from the map; off-by-one rejected (no tolerance band); a weight published for a non-cluster rejected with its own reason; **fail-open** when the recomputation was unavailable, including a partial map; two honest nodes reaching identical verdicts and identical filtered maps. |
 | `engine` | [`weight_engine_tests.cpp`](../../weight_engine/test/weight_engine_tests.cpp) | Order independence, zero-total guard, `rho` bounds, balance recursion, weight positivity, `ToIntegerWeight` clamp, multi-cluster allocation identity. |
 
-Both are node-free: they do not require building the node. See [testing.md](testing.md).
+All four suites are node-free: they do not require building the node. See [testing.md](testing.md).
 
 ---
 

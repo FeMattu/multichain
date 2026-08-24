@@ -186,7 +186,7 @@ Value weightverifyweights(const Array& params, bool fHelp)
             "\nReports this node's INDEPENDENT verification of the weights published on\n"
             "wpoa-weights, for the most recent epoch it has verified.\n"
             "\nEvery input of the weight pipeline is public and deterministic — activity\n"
-            "and membership are chain-derived, ESG and reconciliation are published — so\n"
+            "and reconciliation are chain-derived, membership and ESG are published — so\n"
             "any node can re-run the identical pipeline and check each published value.\n"
             "A value that does not match the recomputation is provably wrong and is\n"
             "dropped from the weight map the election consumes.\n"

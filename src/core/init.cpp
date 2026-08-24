@@ -584,7 +584,7 @@ std::string HelpMessage(HelpMessageMode mode)                                   
     strUsage += "  -wpoamalusdelaypoints=<x>                " + strprintf(_("wPoA malus score added by one proved scheduling-delay violation (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_MALUS_P_DELAY) + "\n";
     strUsage += "  -wpoamalusselfwritepoints=<x>            " + strprintf(_("wPoA malus score for publishing a self-attested record on another address's behalf; the record is always discarded, so this prices the attempt (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_MALUS_P_SELFWRITE) + "\n";
     strUsage += "  -wpoamalusbadweightpoints=<x>            " + strprintf(_("wPoA malus score for a wpoa-weights value that fails independent recomputation; must exceed the selfwrite score (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_MALUS_P_BADWEIGHT) + "\n";
-    strUsage += "  -enableweightengine                      " + _("Weight engine: derive each cluster's wpoa-weights entry from public on-chain inputs (membership/ESG/activity/reconciliation) every epoch, instead of a static per-node -weight. Requires -enablewpoaweights. Inherited from params.dat; default 0. Must be identical on all nodes.") + "\n";
+    strUsage += "  -enableweightengine                      " + _("Weight engine: derive each cluster's wpoa-weights entry every epoch from public on-chain inputs — the membership and ESG streams, plus activity and reconciliation derived from the blocks themselves — instead of a static per-node -weight. Requires -enablewpoaweights. Inherited from params.dat; default 0. Must be identical on all nodes.") + "\n";
     strUsage += "  -weightepochlength=<n>                   " + strprintf(_("Weight engine epoch length in blocks: epoch(height) = height / n (default: %u). Inherited from params.dat. Must be identical on all nodes."), (unsigned)MC_WEIGHT_DEFAULT_EPOCH_LENGTH) + "\n";
     strUsage += "  -weightkappa=<x>                         " + strprintf(_("Weight engine normalization constant kappa > 0 in c_i = ESG_i * tau_i / kappa (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WEIGHT_DEFAULT_KAPPA) + "\n";
     strUsage += "  -weightalpha=<x>                         " + strprintf(_("Weight engine allocation constant alpha in [0,1] in A_k = alpha * Theta * W_k / W_tot (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WEIGHT_DEFAULT_ALPHA) + "\n";
@@ -3448,11 +3448,14 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
                 return InitError(_("wPoA malus: -wpoamalusbadweightpoints must be strictly greater than -wpoamalusselfwritepoints (a false weight takes effect unless recomputed, while a forged self-attested record is always discarded)."));
             }
 
-            // Both proofs rest on the block-carried VRF reveal over the beacon seed,
-            // which only exists on sortition-governed heights.
+            // The BEHAVIOURAL proofs rest on the block-carried VRF reveal over the
+            // beacon seed, which only exists on sortition-governed heights. The
+            // data-integrity pair is proved against a publishing transaction instead,
+            // but the registry is gated as a whole: enabling it without sortition would
+            // leave two of its four kinds unprovable.
             if (malus_enabled && !sortition)
             {
-                return InitError(_("wPoA malus: -enablewpoamalus requires private sortition (-enablewpoasortition): both evidence kinds are proved against the block's VRF reveal over the beacon seed."));
+                return InitError(_("wPoA malus: -enablewpoamalus requires private sortition (-enablewpoasortition): the behavioural evidence kinds are proved against the block's VRF reveal over the beacon seed, which only exists once sortition runs."));
             }
 
             g_wpoa_malus_enabled    = malus_enabled;

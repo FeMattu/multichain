@@ -88,18 +88,20 @@ flowchart TD
     GATE_CA -->|passes| PUB["WeightPublisher<br/>round-trip schema validation"]
     GATE_CA -.->|"blocks: RPC_INSUFFICIENT_PERMISSIONS"| DENY1([no write]):::bad
 
-    PUB --> INS[("weight-engine-esg  (CLOSED)")]
+    PUB --> ESGS[("weight-engine-esg  (CLOSED)")]
+    ESGS --> INS
 
     ANYNODE -->|"RPC: weightregistermembership<br/>NO privilege required"| PUBM["WeightPublisher<br/>node_address := caller"]
     PUBM --> MEMS[("weight-engine-membership (CLOSED)<br/>.write granted to every node")]
 
     MEMS --> GATE_SELF{{"GATE 1' — SELF-ATTESTATION<br/>tx signer == payload node_address"}}:::gate
-    GATE_SELF -->|passes| INS
+    GATE_SELF -->|"passes — inverted into C_k"| INS
     GATE_SELF -.->|"record DISCARDED<br/>never enters C_k"| DENY_M([no membership<br/>+ malus grounds]):::bad
     UNAUTH -.->|"forged record: node_address ≠ signer"| GATE_SELF
 
     CHAIN[("chain: confirmed blocks")] -->|"ComputeActivityAndReconciliationForEpoch&#40;&#41;<br/>τ AND R — one pass, no stream, NO writer"| INS
 
+    INS[/"PIPELINE INPUTS for epoch e<br/>ESG_i · C_k published — τ · R_k derived"/]
     INS --> ENG["WeightEngine — buried epochs only<br/>c_i → W_k → A_k → ρ_k → B_k → w_k"]
 
     CLI([Local flag -weight=N]):::weak
@@ -177,8 +179,8 @@ difference is observable — `-weight=500` does not produce a record that is lat
 superseded: it produces **no** record. Even in the static case, what matters to consensus
 is the confirmed record on the stream, not the in-memory value.
 
-**(c) An unauthorized node cannot impose its own weight by any route.** The two gates are
-independent and cover both paths:
+**(c) An unauthorized node cannot impose its own weight by any route.** The gates are
+independent, and the verification rules catch what a permission alone cannot:
 
 | Attempt | Outcome |
 |---|---|
@@ -186,7 +188,7 @@ independent and cover both paths:
 | `weightsetesg` without the Certification Authority role — **including from a global administrator** | `RPC_INSUFFICIENT_PERMISSIONS` (Gate 1a). No write. The admin confers the role; it does not hold it automatically. |
 | `weightsetesg` after `revoke <addr> high1`, while `weight-engine-esg.write` is still granted | Refused (Gate 1a): the two grants are independent, and revocation does not wait for `.write` to be withdrawn too. |
 | Direct `publish` / `publishfrom` on `wpoa-weights` without permission | Refused by consensus: the stream is CLOSED (Gate 2). |
-| Direct `publishfrom` on an **attestation** stream (ESG / reconciliation) **with** `.write` but without admin | **Succeeds**, and the reader accepts it. This is the known limit in [§9](#9-not-implemented) — the admin-only guarantee depends on granting `.write` only to governance addresses. |
+| Direct `publishfrom` on the **attestation** stream (ESG — the only one left) **with** `.write` but without the CA role | **Succeeds**, and the reader accepts it. This is the known limit in [§9](#9-not-implemented) — the certifier-only guarantee depends on granting `.write` only to addresses that hold the role. |
 | Direct `publishfrom` on **membership** with a `node_address` other than the signer | The transaction confirms, but the record is **discarded by every reader** (Gate 1'). It never enters `C_k` — and the discard is itself grounds for a malus accusation. |
 | `publishfrom` on **`wpoa-weights`** naming another cluster's address | The transaction confirms, but the record is **discarded by every reader** (Gate 3): it never enters the weight map. |
 | Publishing a weight for one's **own** cluster that does not match the independent recomputation | Detected by every node that can recompute (Gate 4), logged unconditionally, reported by `weightverifyweights`, and grounds for a malus accusation. |
@@ -403,7 +405,7 @@ Detail: [malus-registry.md](malus-registry.md).
 | ESG Certification Authority role (W3) | Done | The role is carried by MultiChain's `high1` custom permission — a **high** slot deliberately, since only those require `admin` rather than `activate` to grant. `weightsetesg` checks `IsCertificationAuthority` **instead of** `CanAdmin`, so an administrator that has not granted itself the role is refused. Revocation bites independently of `.write`. Policy decision table: [`weight_authorization.h`](../../weight_engine/weight_authorization.h). |
 | Computation and publication thread | Done | `ThreadWeightEngine`; publishes only for the latest **buried** epoch and only if the node is a cluster miner. Mutually exclusive with the static registrar. |
 | `-enableweightengine` + `epochlength` / `kappa` / `alpha` / `lambda` / `treasuryaddress` | Done | Hash-enforced chain parameters; requires Phase 1; validated at startup. `weight-treasury-address` may be empty, which makes `R_k = 0` uniformly — a uniform scaling that leaves the election unchanged. |
-| Unit tests | Done | Its own runner: `src/weight_engine/test/run_unit_tests.sh`, suites `records`, `authorization` and `engine`. |
+| Unit tests | Done | Its own runner: `src/weight_engine/test/run_unit_tests.sh`, suites `records`, `authorization`, `engine` and `verifier`. |
 
 Detail: [weight-engine.md](weight-engine.md) ·
 [CHANGELOG-weight-engine-refactor.md](CHANGELOG-weight-engine-refactor.md) (permission
@@ -442,7 +444,7 @@ Unit tests, all node-free:
 
 ```bash
 ./src/wpoa/test/run_unit_tests.sh                  # weight malus selector vrf randao sortition
-./src/weight_engine/test/run_unit_tests.sh         # records authorization engine
+./src/weight_engine/test/run_unit_tests.sh         # records authorization engine verifier
 ./src/wpoa/test/run_all_tests.sh                   # unit + functional
 ```
 
@@ -456,8 +458,8 @@ Detail: [testing.md](testing.md) · [`test/README.md`](../test/README.md).
 |---|---|---|
 | **Phase 5 — VDF over the beacon output** | Planned | Would remove the residual last-revealer bias. No code. See Cleve's impossibility theorem in [thesis-project-overview.md](thesis-project-overview.md). |
 | Stability margin as a chain parameter | Not done | `MC_WEIGHT_DEFAULT_STABILITY_MARGIN` is a compile-time constant. The code recommends promoting it to a hash-enforced parameter before production. |
-| Reader enforcing the writer's role on **ESG / reconciliation** | Not done, and **rejected on determinism grounds** for ESG | The reader accepts any schema-valid confirmed record on those two streams, so an address holding `.write` without the role can still land a forged record via `publishfrom`. Enforcing the role in the reader would close that, but permissions are **mutable**: a later revocation would retroactively invalidate historical records and change already-computed epoch weights, so a node re-syncing would fold a different history than the network did. That hazard is worse than the limit. Granting `.write` narrowly remains the control. See [weight-engine.md §6.4](weight-engine.md#64-esg--the-certification-authority-role). **Does not apply to membership**, whose rule is a fact about a transaction (who signed it) and therefore immutable. |
-| `weight_engine` suites in the wPoA runner | By design | The two suites have their own runner (`src/weight_engine/test/run_unit_tests.sh`); they are not in the wPoA runner's `ALL_SUITES`. They must be invoked separately. |
+| Reader enforcing the Certification Authority role on **ESG** | Not done, and **rejected on determinism grounds** | The reader accepts any schema-valid confirmed record on that stream, so an address holding `.write` without the role can still land a forged record via `publishfrom`. Enforcing the role in the reader would close that, but permissions are **mutable**: a later revocation would retroactively invalidate historical records and change already-computed epoch weights, so a node re-syncing would fold a different history than the network did. That hazard is worse than the limit. Granting `.write` narrowly remains the control. See [weight-engine.md §6.4](weight-engine.md#64-esg--the-certification-authority-role). **Does not apply to membership**, whose rule is a fact about a transaction (who signed it) and therefore immutable. |
+| `weight_engine` suites in the wPoA runner | By design | The four suites have their own runner (`src/weight_engine/test/run_unit_tests.sh`); they are not in the wPoA runner's `ALL_SUITES`. They must be invoked separately. |
 
 Full limitations register:
 [phase1-implementation-guide.md §12](phase1-implementation-guide.md#12-limitations--phase-2-hooks).

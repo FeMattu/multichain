@@ -136,7 +136,7 @@
 #define MC_WEIGHT_DEFAULT_EPOCH_LENGTH   100
 
 /** Stability margin in blocks. The activity counter tau is derived from the
- *  confirmed blocks of an epoch (weight_reader.cpp ComputeActivityForEpoch); to
+ *  confirmed blocks of an epoch (ComputeActivityAndReconciliationForEpoch); to
  *  keep that derivation identical on every node, an epoch is only computed once it
  *  is BURIED — its last block is at least this many blocks below the chain tip —
  *  so a shallow reorg near the tip can never make two nodes read different blocks.
