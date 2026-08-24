@@ -65,13 +65,31 @@ public:
      * false while prerequisites are still pending (e.g. the create tx has not
      * confirmed yet) or on error. Safe to call repeatedly / from a retry loop.
      */
-    bool RegisterLocalWeight(uint32_t weight);
+    /**
+     * Publish this node's own weight, idempotently.
+     *
+     * @param epoch  The epoch the value was computed FOR, or 0 when it was not derived
+     *               from an epoch at all (the static -weight path). It is stamped into
+     *               the record so a verifier can check the value against the RIGHT
+     *               epoch's recomputation: a weight published for epoch e compared
+     *               against epoch e+1's inputs would flag an honest node as wrong.
+     *               A record with epoch 0 is simply not value-verifiable, which is the
+     *               correct outcome for a hand-set weight.
+     */
+    bool RegisterLocalWeight(uint32_t weight, uint32_t epoch = 0);
 
     /** Latest confirmed weight for this node, or 0 if not yet registered. */
     uint32_t GetLocalWeight();
 
     /** address -> latest confirmed weight, for every validator on the stream. */
     std::map<std::string, uint32_t> GetAllNodesWeights();
+
+    /** As GetAllNodesWeights, but also reports the epoch each record was published FOR
+     *  (0 when the record does not say). Used by the weight layer to verify a value
+     *  against the recomputation of its own epoch rather than of whichever epoch happens
+     *  to be current. */
+    void GetAllNodesWeightsWithEpoch(std::map<std::string, uint32_t>& weights,
+                                     std::map<std::string, uint32_t>& epochs);
 
     /** Latest confirmed weight for a specific address, or 0 if not found. */
     uint32_t GetNodeWeight(const std::string& node_address);
@@ -106,8 +124,9 @@ private:
     bool GetStreamEntity(mc_EntityDetails* entity);
     bool EnsureStreamExists();
     bool EnsureSubscribed();
-    bool PublishWeightRecord(uint32_t weight);
-    bool ReadAllRecords(std::map<std::string, uint32_t>& out_latest);
+    bool PublishWeightRecord(uint32_t weight, uint32_t epoch);
+    bool ReadAllRecords(std::map<std::string, uint32_t>& out_latest,
+                        std::map<std::string, uint32_t>* out_epochs = NULL);
 };
 
 /**

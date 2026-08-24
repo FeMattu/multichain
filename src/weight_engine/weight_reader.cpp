@@ -3,9 +3,10 @@
 //
 // Weight-management layer — Stage W3: input-stream reader implementation.
 // See weight_reader.h. Stream access mirrors wpoa/stream_weight_registry.cpp
-// (in-process create/subscribe, non-WRP confirmed reads). The activity counter is
-// NOT read from a stream: ComputeActivityForEpoch derives it deterministically from
-// the confirmed block + undo data of a buried epoch.
+// (in-process create/subscribe, non-WRP confirmed reads). Neither the activity counter
+// nor the reconciled amount is read from a stream: both are derived deterministically
+// from the confirmed block + undo data of a BURIED epoch, in a single shared pass
+// (ComputeActivityAndReconciliationForEpoch).
 
 #include "weight_engine/weight_reader.h"
 
@@ -21,6 +22,7 @@
 #include "script/standard.h"    // CTxDestination
 #include "utils/utilparse.h"    // ExtractDestinationScriptValid
 #include "structs/base58.h"     // CBitcoinAddress
+#include "structs/amount.h"     // COIN
 #include "utils/util.h"         // LogPrintf, GetBoolArg
 
 #include <boost/foreach.hpp>
@@ -37,7 +39,6 @@ WeightStreamReader::WeightStreamReader(mc_WalletTxs* pwalletIn)
     m_pWalletTxs = pwalletIn;
     m_Streams[0].name = MC_WEIGHT_MEMBERSHIP_STREAM_NAME;
     m_Streams[1].name = MC_WEIGHT_ESG_STREAM_NAME;
-    m_Streams[2].name = MC_WEIGHT_RECONCILIATION_STREAM_NAME;
 }
 
 // ---------------------------------------------------------------------------
@@ -137,7 +138,7 @@ bool WeightStreamReader::EnsureInputStreams()
         return false;
     }
     bool all_ready = true;
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 2; i++)
     {
         if (!EnsureOneStream(m_Streams[i]))
         {
@@ -442,29 +443,10 @@ bool WeightStreamReader::ReadEsg(std::map<std::string, double>& esg)
     return true;
 }
 
-bool WeightStreamReader::ReadReconciliationByEpoch(std::map<uint32_t, std::map<std::string, double> >& r_by_epoch)
-{
-    r_by_epoch.clear();
-    std::vector<WeightStreamItem> items;
-    if (!ReadStreamItems(MC_WEIGHT_RECONCILIATION_STREAM_NAME, items))
-    {
-        return false;
-    }
-    BOOST_FOREACH(const WeightStreamItem& item, items)
-    {
-        std::string miner;
-        double reconciled = 0.0;
-        uint32_t epoch = 0;
-        if (mc_ParseReconciliationRecordJson(item.value, miner, reconciled, epoch))
-        {
-            r_by_epoch[epoch][miner] = reconciled; // newest wins
-        }
-    }
-    return true;
-}
-
 // ---------------------------------------------------------------------------
-// Chain-derived activity (no stream) — see the determinism contract in the header.
+// Chain-derived activity AND reconciliation (no stream, one shared pass) — see the
+// determinism contract in the header, and wpoa/docs/adr/reconciliation-onchain.md for
+// why R is derived here rather than attested on a stream.
 // ---------------------------------------------------------------------------
 
 // Immutable per-block facts snapshotted under cs_main so the disk reads below never
@@ -480,9 +462,47 @@ struct WeightBlkSnap
     bool          hasPrev;
 };
 
+// Activity only — a thin wrapper, NOT a second scan.
 bool WeightStreamReader::ComputeActivityForEpoch(uint32_t epoch, std::map<std::string, uint32_t>& tau)
 {
+    std::map<std::string, double> ignored_r;
+    return ComputeActivityAndReconciliationForEpoch(epoch, tau, ignored_r);
+}
+
+bool WeightStreamReader::ComputeActivityAndReconciliationForEpoch(
+    uint32_t epoch, std::map<std::string, uint32_t>& tau, std::map<std::string, double>& r)
+{
     tau.clear();
+    r.clear();
+
+    // The treasury address is the recipient that defines a reconciliation transfer. It
+    // is a hash-enforced chain parameter, so every node resolves the same one; when it
+    // is unset, R is uniformly empty (read as 0 by the pipeline) on every node, which
+    // is deterministic and matches the behaviour of a chain where nobody ever published
+    // a reconciliation record. Parsed once here, outside the block loop.
+    const std::string treasury = g_weight_treasury_address;
+    bool have_treasury = false;
+    if (!treasury.empty())
+    {
+        CBitcoinAddress taddr(treasury);
+        if (taddr.IsValid())
+        {
+            have_treasury = true;
+        }
+        else
+        {
+            // An invalid configured address would silently disable reconciliation, so
+            // say so loudly rather than degrade quietly. Deterministic either way: every
+            // node reads the same (invalid) parameter and derives the same empty R.
+            static bool warned = false;
+            if (!warned)
+            {
+                warned = true;
+                LogPrintf("[WeightEngine] WARNING: weight-treasury-address '%s' is not a valid "
+                          "address; R_k will be 0 for every cluster\n", treasury.c_str());
+            }
+        }
+    }
 
     const int len = g_weight_epoch_length;
     if (epoch < 1 || len < 1)
@@ -528,6 +548,10 @@ bool WeightStreamReader::ComputeActivityForEpoch(uint32_t epoch, std::map<std::s
             snaps.push_back(s);
         }
     }
+
+    // Reconciliation is accumulated in integer base units and converted once at the end
+    // (see the loop below), so the sum itself never rounds.
+    std::map<std::string, int64_t> r_raw;
 
     // Off-lock: iterate oldest -> newest; resolve each input's owner from undo data,
     // using only the snapshotted immutable positions/hashes.
@@ -583,7 +607,51 @@ bool WeightStreamReader::ComputeActivityForEpoch(uint32_t epoch, std::map<std::s
             {
                 tau[*it] += 1; // +1 per distinct signing address
             }
+
+            // R_k^{(e)}: the value this transaction pays to the treasury, credited to
+            // every address that SIGNED it. Same traversal and the same undo-derived
+            // signer set as tau above — which is the whole reason the two are computed
+            // together (adr/reconciliation-onchain.md §3.1).
+            //
+            // The RULES live in the pure layer (weight_records.h), where they are
+            // unit-tested; this loop only supplies the per-output facts. Outputs are
+            // resolved to a destination address with the SAME extraction the input side
+            // used for signers, so "paid to the treasury" and "signed by the miner" mean
+            // exactly corresponding things and the two halves cannot drift.
+            if (!have_treasury)
+            {
+                continue;
+            }
+            std::vector<std::string> out_addresses;
+            std::vector<int64_t> out_values;
+            out_addresses.reserve(txn.vout.size());
+            out_values.reserve(txn.vout.size());
+            for (size_t ov = 0; ov < txn.vout.size(); ov++)
+            {
+                CTxDestination odest;
+                std::string oaddr;
+                if (ExtractDestinationScriptValid(txn.vout[ov].scriptPubKey, odest))
+                {
+                    oaddr = CBitcoinAddress(odest).ToString();
+                }
+                // An OP_RETURN / bare-multisig / non-standard output yields "" and so can
+                // never match the treasury.
+                out_addresses.push_back(oaddr);
+                out_values.push_back((int64_t)txn.vout[ov].nValue);
+            }
+
+            mc_AccumulateReconciliation(
+                r_raw, signers,
+                mc_ValuePaidToTreasury(out_addresses, out_values, treasury),
+                treasury);
         }
+    }
+
+    // One conversion per miner, after all integer accumulation is done.
+    for (std::map<std::string, int64_t>::const_iterator it = r_raw.begin();
+         it != r_raw.end(); ++it)
+    {
+        r[it->first] = (double)it->second / (double)COIN;
     }
     return true;
 }

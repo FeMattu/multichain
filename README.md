@@ -189,13 +189,18 @@ only a local fallback:
   the transaction's signer is the cluster it is about) and its value is **independently
   recomputable** — every pipeline input is public and deterministic, so any node re-runs
   the identical computation and a differing value is provably wrong;
-- the two **attestation** streams behind the engine carry records that make an
-  unverifiable claim about a third party, so the defence is to restrict who may assert
-  them. `weightsetreconciliation` is admin-gated; `weightsetesg` requires the
-  **Certification Authority** role — MultiChain's `high1` custom permission, which the
-  administrator delegates per address and can revoke. Being an administrator is
-  deliberately *not* sufficient to certify: the admin confers the role rather than
-  holding it, so who certifies stays distinguishable on chain from who administers;
+- the engine takes **two published inputs and two derived ones**. `weight-engine-esg`
+  carries the one claim no peer can verify, so the defence is to restrict who may assert
+  it: `weightsetesg` requires the **Certification Authority** role — MultiChain's `high1`
+  custom permission, which the administrator delegates per address and can revoke. Being
+  an administrator is deliberately *not* sufficient to certify: the admin confers the
+  role rather than holding it, so who certifies stays distinguishable on chain from who
+  administers;
+- the activity counters `tau` and the reconciled amounts `R` are **derived from the
+  epoch's confirmed blocks**, in one shared pass, with no stream and no writer. `R` used
+  to be an administrator attestation of a value the chain already recorded; removing that
+  stream closed the asymmetry that treated one transaction fact as derived and the other
+  as declared;
 - `weight-engine-membership` is instead **self-attested**: any node declares its own
   cluster through the public `weightregistermembership`, and the reader discards any
   record whose transaction signer differs from the `node_address` it declares. Joining a

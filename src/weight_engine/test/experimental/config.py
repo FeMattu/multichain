@@ -186,12 +186,18 @@ VALID_ALLOC_BASES = ("raw", "final")
 # ---------------------------------------------------------------------------
 MEMBERSHIP_STREAM = "weight-engine-membership"
 ESG_STREAM = "weight-engine-esg"
-ACTIVITY_STREAM = "weight-engine-activity"
-RECONCILIATION_STREAM = "weight-engine-reconciliation"
 WEIGHTS_STREAM = "wpoa-weights"          # the engine's OUTPUT (owned by src/wpoa)
 
+# There are only TWO published input streams. tau and R_k are DERIVED from the epoch's
+# confirmed blocks in a single shared pass, so neither has a stream, a publisher or a
+# write permission:
+#   * weight-engine-activity       was a name the engine never created, wrote or read;
+#   * weight-engine-reconciliation carried an ADMIN ATTESTATION of a value the chain
+#     already recorded, and was removed when R became a derivation.
+# See src/wpoa/docs/adr/reconciliation-onchain.md.
+
 # The streams the ADMIN must hold a write grant on before it can publish.
-INPUT_STREAMS = (MEMBERSHIP_STREAM, ESG_STREAM, RECONCILIATION_STREAM)
+INPUT_STREAMS = (MEMBERSHIP_STREAM, ESG_STREAM)
 
 # ---------------------------------------------------------------------------
 # GAS / currency model -- 1 GAS = 1 EUR

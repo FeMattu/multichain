@@ -58,6 +58,37 @@
 // Only a recomputation that SUCCEEDED and DISAGREED is a finding.
 //
 // ------------------------------------------------------------------------------
+// WHICH EPOCH IS VERIFIED, and why not every record is checked every time
+// ------------------------------------------------------------------------------
+// A weight is a claim about a SPECIFIC epoch, so it may only be compared against that
+// epoch's recomputation. The record therefore carries the epoch it was computed for, and
+// a record about any other epoch — or about none, as with the static -weight path — is
+// reported as MC_WEIGHT_VERDICT_OTHER_EPOCH and left alone. Without that scoping, a value
+// legitimately published for epoch e would be flagged as wrong the moment epoch e+1
+// arrived, and the malus would turn the false accusation into a real weight penalty.
+// (This was observed in a live run before the epoch field existed: an honest node's own
+// weight was reported as failing verification on every epoch rollover.)
+//
+// Publication necessarily LAGS the epoch it describes — a node can only compute w_k^(e)
+// once epoch e is buried, so its record for e lands during e+1. Verification therefore
+// targets the PREVIOUS epoch: at epoch e it checks the records for e-1, by which time
+// every honest node has had a full epoch to publish. That is also the inter-epoch
+// alignment the rest of the system already uses (rho^(e-1) drives w^(e), and a proved
+// malus takes effect from the epoch after).
+//
+// TWO CONSEQUENCES worth being explicit about:
+//
+//   * A node whose weight did not change publishes nothing, because RegisterLocalWeight
+//     is idempotent. No record is stamped for that epoch, so that node is simply not
+//     compared that round — correctly: there is no new claim to check. Its previous
+//     record was checked when it was made.
+//   * Verification therefore catches every DISHONEST PUBLICATION, not every node every
+//     epoch. That is the right target: to gain from a wrong weight a node must publish
+//     it, and any publication it makes is epoch-stamped and gets compared. A node that
+//     stops publishing keeps its last confirmed weight — pre-existing behaviour of the
+//     newest-confirmed-wins stream, not something this mechanism introduces.
+//
+// ------------------------------------------------------------------------------
 // COST, and why verification runs per epoch rather than per round
 // ------------------------------------------------------------------------------
 // Verifying every cluster is O(number of clusters) recomputations per epoch, against
@@ -110,21 +141,39 @@ enum WeightVerdict
      *  because the fault differs — publishing a weight for a non-cluster rather than a
      *  wrong weight for a real one — and an accurate reason makes the log and any
      *  accusation auditable. Treated as invalid, like MISMATCH. */
-    MC_WEIGHT_VERDICT_NOT_A_CLUSTER
+    MC_WEIGHT_VERDICT_NOT_A_CLUSTER,
+
+    /** The record is about a DIFFERENT epoch than the one being verified, or does not
+     *  say which epoch it is about at all (the static -weight path). NOT a finding.
+     *
+     *  This distinction is what keeps the mechanism from accusing honest nodes. A weight
+     *  is a claim about a specific epoch: w_k^{(e)} is computed from epoch e's inputs.
+     *  A node that legitimately published for epoch e still has that value standing when
+     *  epoch e+1 comes round — publication necessarily lags the epoch it describes — and
+     *  comparing it against e+1's recomputation would flag it as wrong. The malus would
+     *  then turn that false accusation into a real weight penalty.
+     *
+     *  Kept separate from UNVERIFIED because the reasons differ and both are worth
+     *  seeing: UNVERIFIED means *this node* could not recompute, OTHER_EPOCH means the
+     *  record was not about the epoch recomputed. */
+    MC_WEIGHT_VERDICT_OTHER_EPOCH
 };
 
-/** One address's verification result: what was published, what was recomputed, and the
- *  verdict. `recomputed` is meaningful only for OK and MISMATCH. */
+/** One address's verification result: what was published, which epoch it was published
+ *  FOR, what was recomputed, and the verdict. `recomputed` is meaningful only for OK and
+ *  MISMATCH; `published_epoch` is 0 when the record does not state one. */
 struct WeightVerificationEntry
 {
     uint32_t      published;
+    uint32_t      published_epoch;
     uint32_t      recomputed;
     WeightVerdict verdict;
 
     WeightVerificationEntry()
-        : published(0), recomputed(0), verdict(MC_WEIGHT_VERDICT_UNVERIFIED) {}
-    WeightVerificationEntry(uint32_t p, uint32_t r, WeightVerdict v)
-        : published(p), recomputed(r), verdict(v) {}
+        : published(0), published_epoch(0), recomputed(0),
+          verdict(MC_WEIGHT_VERDICT_UNVERIFIED) {}
+    WeightVerificationEntry(uint32_t p, uint32_t pe, uint32_t r, WeightVerdict v)
+        : published(p), published_epoch(pe), recomputed(r), verdict(v) {}
 };
 
 /** Stable, operator-facing name of a verdict (for RPC output and logs). */
@@ -135,6 +184,7 @@ inline const char* mc_WeightVerdictToString(WeightVerdict v)
         case MC_WEIGHT_VERDICT_OK:             return "ok";
         case MC_WEIGHT_VERDICT_MISMATCH:       return "mismatch";
         case MC_WEIGHT_VERDICT_NOT_A_CLUSTER:  return "not-a-cluster";
+        case MC_WEIGHT_VERDICT_OTHER_EPOCH:    return "other-epoch";
         case MC_WEIGHT_VERDICT_UNVERIFIED:
         default:                               return "unverified";
     }
@@ -156,6 +206,10 @@ inline bool mc_WeightVerdictIsInvalid(WeightVerdict v)
  * Compare a published weight map against an independent recomputation.
  *
  * @param published        address -> weight, as read from wpoa-weights.
+ * @param published_epochs address -> the epoch each record was published FOR (0 when the
+ *                         record does not state one).
+ * @param epoch            The epoch `recomputed` was produced for. Only records claiming
+ *                         THIS epoch are compared; see MC_WEIGHT_VERDICT_OTHER_EPOCH.
  * @param recomputed       address -> weight, from an independent run of the pipeline.
  * @param recompute_ok     Whether the recomputation actually succeeded. When false
  *                         every entry is UNVERIFIED regardless of `recomputed`: an
@@ -167,6 +221,8 @@ inline bool mc_WeightVerdictIsInvalid(WeightVerdict v)
  *                         record to accept or reject.
  */
 inline void mc_VerifyPublishedWeights(const std::map<std::string, uint32_t>& published,
+                                      const std::map<std::string, uint32_t>& published_epochs,
+                                      uint32_t epoch,
                                       const std::map<std::string, uint32_t>& recomputed,
                                       bool recompute_ok,
                                       std::map<std::string, WeightVerificationEntry>& out)
@@ -176,10 +232,24 @@ inline void mc_VerifyPublishedWeights(const std::map<std::string, uint32_t>& pub
     for (std::map<std::string, uint32_t>::const_iterator it = published.begin();
          it != published.end(); ++it)
     {
+        std::map<std::string, uint32_t>::const_iterator ei = published_epochs.find(it->first);
+        const uint32_t rec_epoch = (ei != published_epochs.end()) ? ei->second : 0;
+
         if (!recompute_ok)
         {
-            out[it->first] = WeightVerificationEntry(it->second, 0,
+            out[it->first] = WeightVerificationEntry(it->second, rec_epoch, 0,
                                                      MC_WEIGHT_VERDICT_UNVERIFIED);
+            continue;
+        }
+
+        // ONLY compare like with like. A record about another epoch — or one that does
+        // not say which epoch it is about — is left alone: see
+        // MC_WEIGHT_VERDICT_OTHER_EPOCH for why conflating them would produce false
+        // accusations against honest nodes.
+        if (rec_epoch != epoch)
+        {
+            out[it->first] = WeightVerificationEntry(it->second, rec_epoch, 0,
+                                                    MC_WEIGHT_VERDICT_OTHER_EPOCH);
             continue;
         }
 
@@ -187,13 +257,13 @@ inline void mc_VerifyPublishedWeights(const std::map<std::string, uint32_t>& pub
         if (ri == recomputed.end())
         {
             // Published a weight for an address the pipeline knows no cluster for.
-            out[it->first] = WeightVerificationEntry(it->second, 0,
+            out[it->first] = WeightVerificationEntry(it->second, rec_epoch, 0,
                                                      MC_WEIGHT_VERDICT_NOT_A_CLUSTER);
             continue;
         }
 
         out[it->first] = WeightVerificationEntry(
-            it->second, ri->second,
+            it->second, rec_epoch, ri->second,
             (it->second == ri->second) ? MC_WEIGHT_VERDICT_OK
                                        : MC_WEIGHT_VERDICT_MISMATCH);
     }
@@ -269,7 +339,8 @@ bool WeightEngineComputeAllWeightsForEpoch(WeightStreamReader& reader,
  * @return true when the recomputation succeeded (verdicts are meaningful).
  */
 bool WeightEngineVerifyAndCacheEpoch(WeightStreamReader& reader, uint32_t epoch,
-                                     const std::map<std::string, uint32_t>& published);
+                                     const std::map<std::string, uint32_t>& published,
+                                     const std::map<std::string, uint32_t>& published_epochs);
 
 /** The cached verdicts for `epoch`, or an empty map if that epoch was never verified. */
 std::map<std::string, WeightVerificationEntry> WeightEngineGetVerdicts(uint32_t epoch);

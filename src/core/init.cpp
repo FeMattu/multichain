@@ -587,6 +587,7 @@ std::string HelpMessage(HelpMessageMode mode)                                   
     strUsage += "  -weightkappa=<x>                         " + strprintf(_("Weight engine normalization constant kappa > 0 in c_i = ESG_i * tau_i / kappa (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WEIGHT_DEFAULT_KAPPA) + "\n";
     strUsage += "  -weightalpha=<x>                         " + strprintf(_("Weight engine allocation constant alpha in [0,1] in A_k = alpha * Theta * W_k / W_tot (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WEIGHT_DEFAULT_ALPHA) + "\n";
     strUsage += "  -weightlambda=<x>                        " + strprintf(_("Weight engine feedback damping lambda in [0,1) in w_k = W_k * [rho*lambda + (1-lambda)] (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WEIGHT_DEFAULT_LAMBDA) + "\n";
+    strUsage += "  -weighttreasuryaddress=<addr>            " + _("Weight engine treasury address: R_k is the native-currency value transferred to THIS address by transactions the miner signed, derived from the epoch's confirmed blocks (never declared by anyone). Empty (default) means R_k = 0 for every cluster, which scales all weights uniformly and so leaves the election unchanged. Inherited from params.dat. Must be identical on all nodes.") + "\n";
     strUsage += "  -shrinkdebugfilesize=<n>                 " + _("If shrinkdebugfile is 1, this controls the size of the debug file. Whenever the debug.log file reaches over 5 times this number of bytes, it is reduced back down to this size.") + "\n";
     strUsage += "  -shortoutput                             " + _("Only show the node address (if connecting was successful) or an address in the wallet (if connect permissions must be granted by another node)") + "\n";
     strUsage += "  -bantx=<txids>                           " + _("Comma delimited list of banned transactions.") + "\n";
@@ -3491,6 +3492,35 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
                 return InitError(strprintf(_("Invalid -weightlambda value '%s': must be a number in [0, 1) (lambda < 1 is a correctness requirement)."), s));
             }
 
+            // The treasury address defines what counts as a reconciliation transfer:
+            // R_k is the native-currency value paid to THIS address by transactions the
+            // miner signed, derived from the epoch's confirmed blocks (never declared).
+            // Consensus-critical, hence a hash-enforced chain parameter — two nodes
+            // disagreeing about it compute different w_k and fork.
+            //
+            // EMPTY IS LEGAL and means R_k = 0 for every cluster, which is exactly the
+            // old behaviour on a chain where nobody published reconciliation records; a
+            // uniform R = 0 scales every weight identically and so leaves the election
+            // unchanged. A non-empty value must be a VALID address, though: a typo would
+            // otherwise silently disable the feedback term on every node at once.
+            std::string treasury;
+            {
+                if (np != NULL)
+                {
+                    int sz = 0;
+                    const char* p_treasury = (const char*)np->GetParam("weighttreasuryaddress", &sz);
+                    if (p_treasury != NULL && sz > 0)
+                    {
+                        treasury = p_treasury;
+                    }
+                }
+                treasury = GetArg("-weighttreasuryaddress", treasury);
+                if (!treasury.empty() && !CBitcoinAddress(treasury).IsValid())
+                {
+                    return InitError(strprintf(_("Invalid -weighttreasuryaddress value '%s': must be a valid address, or empty to disable the reconciliation term (R_k = 0)."), treasury));
+                }
+            }
+
             // The weight engine PRODUCES the weights the wPoA layer consumes, so it
             // needs the weights stream running.
             if (we_enabled && !g_wpoa_weights_enabled)
@@ -3498,11 +3528,12 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
                 return InitError(_("weight-engine: -enableweightengine requires the wPoA weights stream (-enablewpoaweights)."));
             }
 
-            g_weight_engine_enabled = we_enabled;
-            g_weight_epoch_length   = (int)epoch_len;
-            g_weight_kappa          = kappa;
-            g_weight_alpha          = alpha;
-            g_weight_lambda         = lambda;
+            g_weight_engine_enabled  = we_enabled;
+            g_weight_epoch_length    = (int)epoch_len;
+            g_weight_kappa           = kappa;
+            g_weight_alpha           = alpha;
+            g_weight_lambda          = lambda;
+            g_weight_treasury_address = treasury;
 
             // Consensus-critical divergence warning (mirrors the wPoA block above).
             if (np != NULL && we_enabled != p_we)
@@ -3524,6 +3555,7 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
                 if (mapArgs.count("-weightkappa"))      overridden += " -weightkappa";
                 if (mapArgs.count("-weightalpha"))      overridden += " -weightalpha";
                 if (mapArgs.count("-weightlambda"))     overridden += " -weightlambda";
+                if (mapArgs.count("-weighttreasuryaddress")) overridden += " -weighttreasuryaddress";
                 if (!overridden.empty())
                 {
                     LogPrintf("[WeightEngine] WARNING: local override of hash-enforced consensus "
@@ -3532,9 +3564,13 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
                 }
             }
 
-            LogPrintf("[WeightEngine] %s; epoch-length=%d blocks; kappa=%g; alpha=%g; lambda=%g\n",
+            LogPrintf("[WeightEngine] %s; epoch-length=%d blocks; kappa=%g; alpha=%g; lambda=%g; "
+                      "treasury=%s\n",
                       we_enabled ? "ON" : "off", g_weight_epoch_length,
-                      g_weight_kappa, g_weight_alpha, g_weight_lambda);
+                      g_weight_kappa, g_weight_alpha, g_weight_lambda,
+                      g_weight_treasury_address.empty()
+                          ? "<unset: R_k = 0 for every cluster>"
+                          : g_weight_treasury_address.c_str());
         }
 
         // Launch the weight-publication thread: the dynamic WeightEngine when enabled

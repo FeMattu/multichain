@@ -392,6 +392,28 @@ class Network(object):
         admin.resolve_address()
         self.log.info("ADMIN address: %s" % admin.address)
 
+        # R_k is DERIVED by the engine from each epoch's confirmed transfers to the
+        # TREASURY address, so every node must be told which address that is -- and in
+        # this deployment it is the ADMIN (Apuana SB), the counterparty the miners return
+        # GAS to. The flag can only be added now, because the genesis address does not
+        # exist until the ADMIN node has started and created its wallet.
+        #
+        # It goes into node_args, so every node launched from here on receives the SAME
+        # value: the parameter is consensus-critical, and nodes disagreeing about it would
+        # compute different R_k and therefore different w_k. The ADMIN itself is relaunched
+        # immediately below for the same reason -- it started without the flag, and leaving
+        # it with an empty treasury would make it the one node computing R_k = 0.
+        self.node_args = list(self.node_args) + [
+            "-weighttreasuryaddress=%s" % admin.address]
+        self.log.info("treasury address (defines a reconciliation transfer): %s"
+                      % admin.address)
+        admin.cli("stop")
+        time.sleep(3)
+        self._daemon(admin, connect_seed=None)
+        if not self._wait_rpc(admin, config.RPC_TIMEOUT):
+            raise MCError("ADMIN node did not come back up after setting the treasury "
+                          "address")
+
         # same-host peers dial loopback (getinfo nodeaddress can be a NAT addr on WSL).
         seed = "%s@127.0.0.1:%d" % (self.chain, admin.p2pport)
 

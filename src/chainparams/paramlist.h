@@ -240,8 +240,12 @@ static const mc_OneMultichainParam MultichainParamArray[] =
                    "Weight engine allocation constant alpha in [0,1] in A_k = alpha * Theta * W_k / W_tot. Consensus-critical: must be identical on all nodes. Default 0.2."},
     { "weightlambda"                      , "weight-lambda"               ,
                    MC_PRM_STRING  | MC_PRM_USER | MC_PRM_CLONE  , 32,         0,          0,         0, 0.0, 20014, 0, "-mc-weightlambda",
-                   "initialblockreward","",
+                   "weighttreasuryaddress","",
                    "Weight engine feedback damping lambda in [0,1) in w_k = W_k * [rho*lambda + (1-lambda)]. lambda < 1 is a correctness requirement (weight positivity). Consensus-critical: must be identical on all nodes. Default 0.5."},
+    { "weighttreasuryaddress"             , "weight-treasury-address"     ,
+                   MC_PRM_STRING  | MC_PRM_USER | MC_PRM_CLONE  ,64,         0,          0,         0, 0.0, 20014, 0, "-mc-weighttreasuryaddress",
+                   "initialblockreward","",
+                   "Weight engine treasury address. R_k = value paid to THIS address by transactions the miner signed, derived from the epoch's confirmed blocks, never declared. Empty means R_k = 0 for all clusters. Consensus-critical: identical on all nodes."},
 /*                   
     { "minimumblocktxs"                   , "minimum-block-txs"             ,
                    MC_PRM_UINT32 | MC_PRM_USER | MC_PRM_CLONE  | MC_PRM_NOHASH  , -1,          0,          0,     1000, 0.0, 10007, 0, "-mc-minimumblocktxs",

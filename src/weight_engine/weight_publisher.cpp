@@ -1,7 +1,7 @@
 // Copyright (c) 2014-2019 Coin Sciences Ltd
 // MultiChain code distributed under the GPLv3 license, see COPYING file.
 //
-// Weight-management layer — Stage W3: WeightPublisher + admin RPCs implementation.
+// Weight-management layer — Stage W3: WeightPublisher + input-stream RPCs.
 // See weight_publisher.h. Publication reuses the in-process publishfrom handler and
 // the W1 parsers for round-trip validation; permission checks reuse the native
 // MultiChain permission DB (mc_gState->m_Permissions), exactly as the permission /
@@ -12,13 +12,12 @@
 #include "weight_engine/weight_streams.h"       // stream + field names
 #include "weight_engine/weight_records.h"       // W1 round-trip parsers
 #include "weight_engine/weight_authorization.h" // W1 pure authorization policy
-#include "weight_engine/weight_engine.h"        // HeightToEpoch
+#include "weight_engine/weight_engine.h"        // g_weight_treasury_address (log text)
 
 #include "rpc/rpcwallet.h"      // publishfrom (via rpcserver.h), wallet, multichain, mc_gState
 #include "structs/base58.h"     // CBitcoinAddress
 #include "script/standard.h"    // CTxDestination
 #include "core/init.h"          // pwalletMain
-#include "core/main.h"          // chainActive, cs_main
 #include "utils/util.h"         // strprintf, LogPrintf
 #include "utils/utiltime.h"     // GetTime
 
@@ -93,23 +92,12 @@ static std::string ResolveLocalNodeAddress()
     return CBitcoinAddress(ResolveLocalNodeKeyID()).ToString();
 }
 
-// This node's own address, additionally required to be a GLOBAL administrator.
-// Throws RPC_INSUFFICIENT_PERMISSIONS if not. This is the policy gate for
-// reconciliation, which carries an EXTERNAL attestation — a claim about somebody else
-// that no third party can verify — where restricting who may assert it is the only
-// defence. (The on-chain gate is the closed stream's write permission, checked in
-// WeightPublishTo.)
-static std::string ResolveLocalAdminAddress()
-{
-    CKeyID keyID = ResolveLocalNodeKeyID();
-    if (mc_gState->m_Permissions->CanAdmin(NULL, (unsigned char*)&keyID) == 0)
-    {
-        throw JSONRPCError(RPC_INSUFFICIENT_PERMISSIONS,
-                           "This node's address is not an administrator; "
-                           "reconciliation is admin-only");
-    }
-    return CBitcoinAddress(keyID).ToString();
-}
+// NOTE: there is deliberately no ResolveLocalAdminAddress here any more. Its only
+// caller was the reconciliation RPC, and R_k is now DERIVED from the epoch's confirmed
+// blocks rather than attested by an administrator — so no write path in this file
+// requires global admin. ESG requires the Certification Authority role instead (below),
+// and membership requires no privilege at all. See
+// wpoa/docs/adr/reconciliation-onchain.md.
 
 // The permission BIT behind the CA role's wire name, resolved through MultiChain's
 // OWN name->bit parser. Deriving it rather than restating it keeps
@@ -303,36 +291,8 @@ std::string WeightPublisher::PublishMembership(const std::string& from_address,
     return WeightPublishTo(from_address, MC_WEIGHT_MEMBERSHIP_STREAM_NAME, node_address, data_obj);
 }
 
-std::string WeightPublisher::PublishReconciliation(const std::string& from_address,
-                                                   const std::string& miner, double reconciled,
-                                                   uint32_t epoch)
-{
-    if (miner.empty())
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "miner address must not be empty");
-    }
-
-    Object record;
-    record.push_back(Pair(MC_WEIGHT_FIELD_NODE_ADDR, miner));
-    record.push_back(Pair(MC_WEIGHT_FIELD_RECONCILED, reconciled));
-    record.push_back(Pair(MC_WEIGHT_FIELD_EPOCH, (int64_t)epoch));
-    Object data_obj;
-    data_obj.push_back(Pair("json", record));
-
-    std::string m;
-    double r = 0.0;
-    uint32_t e = 0;
-    if (!mc_ParseReconciliationRecordJson(Value(data_obj), m, r, e))
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER,
-                           "reconciliation record rejected by schema (reconciled >= 0, epoch >= 1)");
-    }
-
-    return WeightPublishTo(from_address, MC_WEIGHT_RECONCILIATION_STREAM_NAME, miner, data_obj);
-}
-
 // ---------------------------------------------------------------------------
-// Admin RPCs
+// RPCs
 // ---------------------------------------------------------------------------
 
 Value weightsetesg(const Array& params, bool fHelp)
@@ -398,72 +358,4 @@ Value weightregistermembership(const Array& params, bool fHelp)
     std::string own = ResolveLocalNodeAddress();
     std::string miner = params[0].get_str();
     return WeightPublisher::PublishMembership(own, own, miner);
-}
-
-Value weightsetreconciliation(const Array& params, bool fHelp)
-{
-    if (fHelp || params.size() != 3)
-    {
-        throw runtime_error(
-            "weightsetreconciliation \"miner_address\" reconciled epoch\n"
-            "\nAdmin-only. Publishes the reconciled allocation R_k for a miner in a\n"
-            "given epoch to the weight-engine-reconciliation stream.\n"
-            "\nArguments:\n"
-            "1. \"miner_address\"  (string, required) the cluster's miner address\n"
-            "2. reconciled         (numeric, required) reconciled amount, >= 0\n"
-            "3. epoch              (numeric, required) 1-based epoch, <= current epoch\n"
-            "\nResult:\n"
-            "\"txid\"  (string) the publish transaction id\n");
-    }
-
-    std::string from = ResolveLocalAdminAddress();
-    std::string miner = params[0].get_str();
-    double reconciled = RecordDouble(params[1], "reconciled");
-
-    int64_t epoch_i = 0;
-    if (params[2].type() == int_type)
-    {
-        epoch_i = params[2].get_int64();
-    }
-    else if (params[2].type() == str_type)   // CLI sends it as a string
-    {
-        const std::string es = params[2].get_str();
-        char* end = NULL;
-        long long v = strtoll(es.c_str(), &end, 10);
-        if (es.empty() || end == es.c_str() || *end != '\0')
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "epoch must be an integer");
-        }
-        epoch_i = (int64_t)v;
-    }
-    else
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "epoch must be an integer");
-    }
-    if (epoch_i < 1 || epoch_i > (int64_t)UINT32_MAX)
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "epoch must be an integer in [1, 4294967295]");
-    }
-
-    // Bound to the current epoch: reject attestations for a future epoch. Compared as
-    // int64 (no truncating uint32 cast) so a huge value cannot wrap past the bound.
-    // This is a publish-time (mempool) guard, not a consensus rule — the reader only
-    // ever consumes closed, buried epochs.
-    int height = 0;
-    {
-        LOCK(cs_main);
-        if (chainActive.Tip() != NULL)
-        {
-            height = chainActive.Height();
-        }
-    }
-    uint32_t current_epoch = HeightToEpoch(height);
-    if (epoch_i > (int64_t)current_epoch)
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER,
-                           strprintf("epoch %lld is in the future (current epoch is %u)",
-                                     (long long)epoch_i, current_epoch));
-    }
-
-    return WeightPublisher::PublishReconciliation(from, miner, reconciled, (uint32_t)epoch_i);
 }

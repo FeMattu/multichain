@@ -1,27 +1,29 @@
 // Copyright (c) 2014-2019 Coin Sciences Ltd
 // MultiChain code distributed under the GPLv3 license, see COPYING file.
 //
-// Weight-management layer — Stage W3: the single validated write path for the
-// admin-attested WeightEngine streams.
+// Weight-management layer — Stage W3: the single validated write path for the two
+// PUBLISHED WeightEngine input streams.
 // ------------------------------------------------------------------------------
-// Three inputs of the weight pipeline are published rather than derived, and they
-// do NOT share one authorization model — the split follows what a third party can
-// verify:
+// TWO inputs of the weight pipeline are published rather than derived, and they do NOT
+// share one authorization model — the split follows what a third party can verify:
 //
-//   weight-engine-esg            <- weightsetesg              ADMIN-ONLY
+//   weight-engine-esg            <- weightsetesg              CERTIFICATION AUTHORITY
 //         An external attestation about a third party. Nobody can check an ESG
 //         score cryptographically, so restricting WHO may assert it is the only
-//         available defence.
+//         available defence — and the writer is a role the administrator delegates
+//         per address and can revoke, NOT the administrator itself. See
+//         weight_authorization.h.
 //   weight-engine-membership     <- weightregistermembership  PUBLIC (self-write)
 //         A node declaring its OWN cluster. The claim is self-verifiable: the
 //         reader compares the payload's node_address against the transaction's
 //         signer and discards any mismatch, so opening the write to every node
 //         costs nothing — nobody can declare membership for somebody else.
-//   weight-engine-reconciliation <- weightsetreconciliation   ADMIN-ONLY
-//         An external attestation about a third party, like ESG.
-//
-// (activity is chain-derived, not published — weight_reader.h; wpoa-weights keeps
-// its own port, StreamWeightRegistry.)
+// (tau AND R are chain-derived, not published — weight_reader.h
+// ComputeActivityAndReconciliationForEpoch. R used to be a third stream carrying an
+// ADMIN ATTESTATION of a value the chain already recorded; it was removed, together
+// with the weightsetreconciliation RPC and PublishReconciliation, when R became a
+// derivation. See wpoa/docs/adr/reconciliation-onchain.md. wpoa-weights keeps its own
+// port, StreamWeightRegistry.)
 //
 // Every WeightPublisher method, before it publishes, ROUND-TRIP validates the
 // record with the SAME W1 parser the reader uses (mc_Parse*RecordJson) — so it
@@ -37,17 +39,17 @@
 //     arbitrary/raw writes. For membership, `.write` is now meant to be granted to
 //     EVERY node on the network (network admission itself stays gated upstream by
 //     the KYC-backed `connect` permission);
-//   * application policy (these RPCs only): the admin-only RPCs additionally
-//     require the acting address to be a GLOBAL admin (CanAdmin);
-//     weightregistermembership requires nothing, because it structurally cannot
-//     write about anyone but the caller.
+//   * application policy (these RPCs only): weightsetesg additionally requires the
+//     acting address to hold the Certification Authority role
+//     (IsCertificationAuthority, NOT CanAdmin); weightregistermembership requires
+//     nothing, because it structurally cannot write about anyone but the caller.
 //
 // KNOWN LIMIT, and where it no longer applies. Write permission is an INDEPENDENT
-// grant from admin status, so for the ADMIN-ONLY streams the "admin-only" guarantee
-// holds only if operators grant `<stream>.write` exclusively to governance
-// addresses: a non-admin holding `.write` could publish a schema-VALID but forged
-// record through the generic `publishfrom`, and the reader accepts any schema-valid
-// confirmed record. MEMBERSHIP IS NO LONGER EXPOSED TO THIS. Its validity rule is
+// grant from the role, so for ESG the guarantee holds only if operators grant
+// `weight-engine-esg.write` exclusively to the intended certifiers: an address holding
+// `.write` without the role could publish a schema-VALID but forged record through the
+// generic `publishfrom`, and the reader accepts any schema-valid confirmed record.
+// MEMBERSHIP IS NOT EXPOSED TO THIS. Its validity rule is
 // enforced by the reader against the transaction's signature rather than against the
 // writer's privileges, so a forged record — one naming a node_address other than the
 // signer — is discarded by every honest node no matter which RPC produced it.
@@ -61,10 +63,11 @@
 #include "json/json_spirit_value.h"
 
 /**
- * WeightPublisher — validated, admin-gated publication of the three attestation
- * streams. Static methods; each returns the publish txid or throws JSONRPCError.
- * `from_address` is the acting address the caller has already verified is a global
- * admin; it is also the tx publisher, so its write permission is what gates the tx.
+ * WeightPublisher — validated publication of the two published input streams. Static
+ * methods; each returns the publish txid or throws JSONRPCError. `from_address` is the
+ * acting address the caller has already authorized (a Certification Authority for ESG,
+ * the caller itself for membership); it is also the tx publisher, so its write
+ * permission is what gates the tx.
  */
 class WeightPublisher
 {
@@ -81,21 +84,15 @@ public:
                                         const std::string& node_address,
                                         const std::string& miner_address);
 
-    /** reconciliation: {node_address=miner, reconciled, epoch}; R>=0, epoch>=1
-     *  (the RPC additionally bounds epoch <= current epoch). Key = miner. */
-    static std::string PublishReconciliation(const std::string& from_address,
-                                             const std::string& miner, double reconciled,
-                                             uint32_t epoch);
 };
 
 // RPCs (registered in src/rpc/rpclist.cpp, category "weight").
 //
-// weightsetesg / weightsetreconciliation are ADMIN-ONLY: they carry an external
-// attestation about a third party, so restricting the writer is the only defence.
-// weightregistermembership is PUBLIC: it can only ever write a record about the
-// calling node itself, which the reader verifies cryptographically.
+// weightsetesg is CERTIFICATION-AUTHORITY-only: it carries an external attestation
+// about a third party that no peer can verify, so restricting the writer is the only
+// defence. weightregistermembership is PUBLIC: it can only ever write a record about
+// the calling node itself, which the reader verifies cryptographically.
 json_spirit::Value weightsetesg(const json_spirit::Array& params, bool fHelp);
 json_spirit::Value weightregistermembership(const json_spirit::Array& params, bool fHelp);
-json_spirit::Value weightsetreconciliation(const json_spirit::Array& params, bool fHelp);
 
 #endif // MC_WEIGHT_PUBLISHER_H

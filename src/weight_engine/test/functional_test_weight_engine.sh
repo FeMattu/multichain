@@ -9,7 +9,8 @@
 #      is revoked even though `.write` is still held;
 #   3. membership is SELF-WRITTEN by the node, and a forged record naming another
 #      address is discarded by the reader rather than entering C_k;
-#   4. reconciliation is admin-attested, and a future epoch is rejected;
+#   4. reconciliation has NO write path and NO stream: R_k is derived from the
+#      epoch's confirmed transfers to the treasury address;
 #   5. an invalid ESG (score <= 0) is rejected by schema round-trip validation;
 #   6. a raw publish from an address without write permission is rejected (the
 #      CLOSED-stream guard against schema-bypassing writes);
@@ -94,13 +95,15 @@ c=sum(1 for s in d if s.get("name","").startswith("weight-engine-") and s.get("r
 print(c)' 2>/dev/null)
 [ "${closed:-0}" -ge 3 ] && ok "input streams are CLOSED (write-restricted)" || bad "streams not closed (closed=${closed:-0})"
 
-# Grant write on the 3 streams to the admin address, then let it confirm.
-# NOTE on membership: all three streams stay CLOSED at the MultiChain level, but
+# Grant write on the 2 published streams to the admin address, then let it confirm.
+# (There is no reconciliation or activity stream: tau and R are derived from the epoch's
+# confirmed blocks, so there is nothing to grant.)
+# NOTE on membership: both streams stay CLOSED at the MultiChain level, but
 # weight-engine-membership.write is now meant to be granted to EVERY node, not only
 # to governance — its records are self-attested, so a write permission grants a node
 # nothing beyond the ability to speak about itself. Here there is only one address,
 # which therefore needs the grant like any other node.
-for s in weight-engine-esg weight-engine-membership weight-engine-reconciliation; do
+for s in weight-engine-esg weight-engine-membership; do
   mcli grant "$ADMIN" "$s.write" >/dev/null 2>&1
 done
 sleep 4
@@ -162,13 +165,20 @@ else
   ok "forged membership publish refused outright: $r"
 fi
 
-# 2c. reconciliation valid (epoch 1)
-r=$(mcli weightsetreconciliation "$ADMIN" 10 1)
-is_txid "$r" && ok "admin publishes reconciliation (epoch 1)" || bad "reconciliation failed: $r"
+# 2c. reconciliation has NO write path at all: R_k is derived from the epoch's confirmed
+# transfers to the treasury address, so the RPC that used to attest it is gone. Asserting
+# its absence is the point — a lingering weightsetreconciliation would mean the admin can
+# still declare a value the chain already records.
+r=$(mcli weightsetreconciliation "$ADMIN" 10 1 2>&1)
+echo "$r" | grep -qiE 'method not found|unknown command|help' \
+  && ok "weightsetreconciliation is gone (R_k is chain-derived)" \
+  || bad "weightsetreconciliation still exists: $r"
 
-# 4. future-epoch reconciliation rejected
-r=$(mcli weightsetreconciliation "$ADMIN" 10 999999)
-echo "$r" | grep -qiE 'future|reject|error|invalid' && ok "future-epoch reconciliation rejected" || bad "future epoch NOT rejected: $r"
+# 2d. and there is no reconciliation or activity stream to write to either.
+r=$(mcli liststreams '*' 2>/dev/null)
+echo "$r" | grep -qE 'weight-engine-(reconciliation|activity)' \
+  && bad "a reconciliation/activity stream still exists" \
+  || ok "no reconciliation/activity stream: both quantities are derived from blocks"
 
 # 5. raw publish from a fresh (no-write) address is rejected (closed-stream guard)
 NW=$(mcli getnewaddress 2>/dev/null | tr -d '"')

@@ -1,35 +1,37 @@
 # Copyright (c) 2014-2019 Coin Sciences Ltd
 # MultiChain code distributed under the GPLv3 license, see COPYING file.
 #
-# stream_writer.py -- the write path onto the three WeightEngine input streams,
+# stream_writer.py -- the write path onto the TWO published WeightEngine input streams,
 # driven the way an operator would drive it rather than by writing raw items.
 #
-#   esg            : one certified score per address (miners + companies), static.
-#                    ADMIN-attested, via weightsetesg.
-#   membership     : each node declares its OWN cluster, SELF-ATTESTED. There is no
-#                    admin path: a record signed by anyone other than the node it
-#                    names is discarded by every reader, so the harness signs each
-#                    declaration with the declaring address itself (publishfrom for
-#                    the wallet-held aziende, weightregistermembership on each miner
-#                    node). See publish_membership.
-#   reconciliation : one R_k per miner per epoch. ADMIN-attested, via
-#                    weightsetreconciliation.
+#   esg        : one certified score per address (miners + companies), static. Written
+#                by a CERTIFICATION AUTHORITY via weightsetesg -- being a global admin
+#                is not sufficient, so the harness grants the ADMIN the role first
+#                (ensure_certification_authority).
+#   membership : each node declares its OWN cluster, SELF-ATTESTED. There is no admin
+#                path: a record signed by anyone other than the node it names is
+#                discarded by every reader, so the harness signs each declaration with
+#                the declaring address itself (publishfrom for the wallet-held aziende,
+#                weightregistermembership on each miner node). See publish_membership.
 #
-# The two ADMIN-attested streams are schema-validated by the node before the record
-# lands (weight_publisher.cpp) and run on the ADMIN (genesis / global-admin) node,
-# the Apuana SB stand-in.
+# NO RECONCILIATION WRITER. tau and R_k are both DERIVED by the engine from the epoch's
+# confirmed blocks, so neither has a stream or a publisher. The harness's job for R is
+# only to MAKE the transfers -- economics.py already sends real GAS from each miner to
+# the ADMIN -- and to point the engine at the recipient by setting
+# -weighttreasuryaddress to the ADMIN address at chain creation.
 #
-# CHANGED FROM THE ORIGINAL (Apuana SB) SETUP. R_k used to be a random draw over
-# [0, 5] with no on-chain counterpart -- the stream asserted a reconciliation that
-# never happened. It is now the GAS that a miner ACTUALLY returned to the ADMIN
-# address in the epoch, read back off chain by economics.py and handed to
-# publish_reconciliation_amount. publish_reconciliation (the seeded-random form) is
-# kept only so the pre-MyLedger flow still runs; the MyLedger path never calls it.
+# THE HISTORY IS WORTH KEEPING. R_k was originally a seeded random draw over [0, 5] with
+# NO on-chain counterpart: the stream asserted a reconciliation that never happened. It
+# was then made honest -- the real GAS returned, read back off chain and re-published as
+# an attestation -- which exposed the next problem: the record confirmed 20-24 blocks
+# AFTER the epoch it described had buried, so the engine read a stale R_k. Deriving the
+# value removes both failures at once: a derived value cannot be fictional and cannot be
+# late, because it is not published at all -- it is read off the very blocks that
+# recorded the transfers. See src/wpoa/docs/adr/reconciliation-onchain.md.
 #
 # Every call returns the publish txid (or None + a logged error), so failures are
 # recorded and the run continues, per the experiment's error-handling rule.
 
-import random
 import time
 
 import config
@@ -41,7 +43,6 @@ class StreamWriter(object):
         self.net = network
         self.reg = registry          # ParticipantRegistry (labels <-> addresses)
         self.log = log
-        self._rng = random.Random(config.SEED ^ 0x5EC0)  # legacy path only
         # Every publish is a TRANSACTION SIGNED BY THE ADMIN, so it is part of the
         # ledger and of the epoch's transaction count. Recording them here lets the
         # harness account for 100% of the transactions in an epoch's blocks -- the
@@ -64,7 +65,7 @@ class StreamWriter(object):
         return txid
 
     def ensure_write_permission(self):
-        """Grant the ADMIN address write on the three (closed) input streams and
+        """Grant the ADMIN address write on the two (closed) published input streams and
         WAIT for the grants to confirm -- publishfrom rejects an unconfirmed write
         permission, so publishing before confirmation silently fails. The engine
         created the streams; publishing needs an explicit per-stream write grant
@@ -195,36 +196,16 @@ class StreamWriter(object):
         self.log.info("published membership: %d self-attested declarations" % len(out))
         return out
 
-    # -- reconciliation (per epoch) ----------------------------------------
-    def publish_reconciliation_amount(self, miner_label, reconciled, epoch):
-        """Attest ONE miner's reconciled amount for `epoch`. `reconciled` is the GAS
-        that economics.py read off chain as credited to the ADMIN address, so the
-        stream and the ledger agree by construction. The engine clamps R_k to
-        [0, A_k + B_k^{(e-1)}] anyway, so any non-negative value is legal.
-        Returns the publish txid or None."""
-        addr = self.reg.address_of(miner_label)
-        if not addr:
-            self.log.error("no address for %s; cannot publish reconciliation" % miner_label)
-            return None
-        ok, res = self.net.admin.cli_ok("weightsetreconciliation", addr,
-                                        float(reconciled), int(epoch))
-        txid = res if (ok and _looks_txid(res)) else None
-        if not txid:
-            self.log.error("reconciliation publish failed %s e%d (%.4f): %s"
-                           % (miner_label, epoch, reconciled, res))
-        return self._record(txid, "publish_reconciliation", miner_label, epoch)
-
-    def publish_reconciliation(self, epoch):
-        """LEGACY (pre-MyLedger): publish a seeded-random R_k for every miner, with no
-        on-chain transfer behind it. Superseded by the automated on-chain path in
-        economics.py; retained so the original flow remains runnable. Returns
-        {miner_label: (reconciled, txid_or_None)}."""
-        out = {}
-        for m in range(config.NUM_MINERS):
-            mlabel = config.miner_id(m)
-            reconciled = round(self._rng.uniform(0.0, 5.0), 4)
-            txid = self.publish_reconciliation_amount(mlabel, reconciled, epoch)
-            out[mlabel] = (reconciled, txid)
-        self.log.info("published reconciliation for epoch %d (%d miners)" %
-                      (epoch, len(out)))
-        return out
+    # -- reconciliation: NO publisher any more ----------------------------
+    #
+    # R_k is DERIVED by the engine from the epoch's confirmed transfers to the treasury
+    # address, so there is nothing to publish and no publish_reconciliation* method here.
+    # The harness's job is now only to MAKE the transfers (economics.py already does, as
+    # real GAS sends from each miner to the ADMIN) and to point the engine at the right
+    # recipient by setting -weighttreasuryaddress to the ADMIN address at chain creation.
+    #
+    # This removed the harness's own worst failure mode: the reconciliation record used
+    # to confirm 20-24 blocks AFTER the epoch it described had already buried, so the
+    # engine read a stale R_k. A derived value cannot be late, because it is not
+    # published -- it is read off the very blocks that recorded the transfers.
+    # See src/wpoa/docs/adr/reconciliation-onchain.md.

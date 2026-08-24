@@ -204,6 +204,7 @@ weights stream. Module detail: [weight-engine.md](weight-engine.md).
 | `-weightkappa` | `weight-kappa` | `STRING(32)` | `100` | `> 0` | `paramlist.h:233` | Normalisation constant `kappa` in the company contribution `c_i = ESG_i * tau_i / kappa`. |
 | `-weightalpha` | `weight-alpha` | `STRING(32)` | `0.2` | `[0, 1]` | `paramlist.h:237` | Allocation constant `alpha` in `A_k = alpha * Theta * W_k / W_tot`. |
 | `-weightlambda` | `weight-lambda` | `STRING(32)` | `0.5` | `[0, 1)` — `1` excluded | `paramlist.h:241` | Behavioural-feedback damping in `w_k = W_k * [rho_{k,e-1} * lambda + (1 - lambda)]`. **`lambda < 1` is a correctness requirement**, not a preference: it guarantees weight positivity. |
+| `-weighttreasuryaddress` | `weight-treasury-address` | `STRING(64)` | *(empty)* | a valid address, or empty | `paramlist.h:245` | The recipient that defines a reconciliation transfer: `R_k^(e)` is the native-currency value paid to **this** address by transactions the miner signed, in the epoch's confirmed blocks. **Empty is legal** and means `R_k = 0` for every cluster — a uniform scaling that leaves the election unchanged. A non-empty value must parse as an address, or startup fails. |
 
 ### 4.1 No parameter governs who may write the input streams
 
@@ -214,8 +215,8 @@ each record *is*, and it is enforced in code rather than by a switch.
 |---|---|---|
 | `weight-engine-membership` | CLOSED, but `.write` is meant to be granted to **every node** | The reader's self-attestation rule: tx signer must equal the payload's `node_address`, else the record is discarded |
 | `weight-engine-esg` | CLOSED, `.write` to **Certification Authorities** only | `IsCertificationAuthority` in the `weightsetesg` RPC — the `high1` custom permission, **not** `CanAdmin` — plus the operator's grant discipline |
-| `weight-engine-reconciliation` | CLOSED, `.write` to governance only | `CanAdmin` in the `weightsetreconciliation` RPC, plus the operator's grant discipline |
-| `weight-engine-activity` | Nobody writes it | Chain-derived; there is no publisher |
+| ~~`weight-engine-reconciliation`~~ | **removed** — `R_k` is chain-derived | Nothing to authorize: there is no stream and no writer. See [adr/reconciliation-onchain.md](adr/reconciliation-onchain.md) |
+| ~~`weight-engine-activity`~~ | **removed** — never was a mechanism | The name was defined but never created, written or read |
 
 Grants are therefore an **operational** step, documented in
 [weight-engine.md §6](weight-engine.md#6-security-model--two-independent-gates), not a
@@ -334,6 +335,7 @@ NaN/Inf-safe checks: a non-finite value is rejected, not propagated.
 | `-weightkappa` | number `> 0` (and `< 1e18`) | `init.cpp:3479` |
 | `-weightalpha` | number in `[0, 1]` | `init.cpp:3485` |
 | `-weightlambda` | number in `[0, 1)` | `init.cpp:3491` |
+| `-weighttreasuryaddress` | empty, or a valid address | `init.cpp:3514` |
 
 Every violation produces an `InitError` with an explicit message: the node does not
 start.
@@ -359,15 +361,18 @@ start.
 # Full stack with the behavioural malus registry:
 ./src/multichain-util create mychain -enablewpoa=1 -enablewpoamalus=1
 
-# Dynamic weights derived from the on-chain inputs, 200-block epochs:
+# Dynamic weights derived from the on-chain inputs, 200-block epochs, with the
+# treasury address that defines a reconciliation transfer:
 ./src/multichain-util create mychain -enablewpoa=1 \
-    -enableweightengine=1 -weightepochlength=200
+    -enableweightengine=1 -weightepochlength=200 \
+    -weighttreasuryaddress=<treasury-address>
 
 # ...then, at runtime, the per-stream authorizations (no params.dat involvement):
 multichain-cli mychain grant <certifier> high1                        # CA role
 multichain-cli mychain grant <certifier> weight-engine-esg.write
-multichain-cli mychain grant <admin>     weight-engine-reconciliation.write
 multichain-cli mychain grant <everynode> weight-engine-membership.write
+multichain-cli mychain grant <everynode> wpoa-weights.write
+# (no grant for reconciliation or activity: both are derived from the blocks)
 
 # Static per-node weight (only meaningful when the weight engine is off):
 ./src/multichaind mychain -weight=250

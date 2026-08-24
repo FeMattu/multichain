@@ -203,13 +203,23 @@ bool StreamWeightRegistry::EnsureSubscribed()
 }
 
 // Publishes one weight record: key = node address, data = {"json": {...}}.
-bool StreamWeightRegistry::PublishWeightRecord(uint32_t weight)
+bool StreamWeightRegistry::PublishWeightRecord(uint32_t weight, uint32_t epoch)
 {
     // Build the JSON payload described in the spec.
     Object record;
     record.push_back(Pair("timestamp", (int64_t)GetTime()));
     record.push_back(Pair("node_address", m_LocalAddress));
     record.push_back(Pair("weight", (int64_t)weight));
+
+    // The epoch the value was computed FOR, when it was computed at all. Stamping it
+    // is what lets a verifier compare the value against the RIGHT epoch's inputs; a
+    // weight published for epoch e checked against epoch e+1's recomputation would
+    // flag an honest node as wrong. Omitted (0) for the static -weight path, which is
+    // not derived from any epoch and so has nothing to be verified against.
+    if (epoch > 0)
+    {
+        record.push_back(Pair("epoch", (int64_t)epoch));
+    }
 
     int height = 0;
     {
@@ -259,7 +269,7 @@ bool StreamWeightRegistry::PublishWeightRecord(uint32_t weight)
     return false;
 }
 
-bool StreamWeightRegistry::RegisterLocalWeight(uint32_t weight)
+bool StreamWeightRegistry::RegisterLocalWeight(uint32_t weight, uint32_t epoch)
 {
     if (weight == 0)
     {
@@ -290,7 +300,7 @@ bool StreamWeightRegistry::RegisterLocalWeight(uint32_t weight)
         return true;
     }
 
-    return PublishWeightRecord(weight);
+    return PublishWeightRecord(weight, epoch);
 }
 
 // ---------------------------------------------------------------------------
@@ -371,11 +381,12 @@ static void ExtractItemPublishers(const CWalletTx& wtx, int stream_output,
 // `out_publishers` carries the recovered signers to the caller for logging and for the
 // malus path, which accuses on exactly the discard this function performs.
 static bool DecodeWeightRecord(const CWalletTx& wtx, const unsigned char* stream_short_txid,
-                               string& out_addr, uint32_t& out_weight,
+                               string& out_addr, uint32_t& out_weight, uint32_t& out_epoch,
                                std::vector<string>& out_publishers, bool& out_forged)
 {
     out_publishers.clear();
     out_forged = false;
+    out_epoch = 0;
 
     mc_Script script; // local instance -> thread-safe (no shared temp buffers)
 
@@ -442,7 +453,7 @@ static bool DecodeWeightRecord(const CWalletTx& wtx, const unsigned char* stream
         // mismatch is exactly why decoding silently failed for every item.
         string format_text;
         Value v = OpReturnFormatEntry(data, data_size, wtx.GetHash(), j, format, &format_text);
-        if (mc_ParseWeightRecordJson(v, out_addr, out_weight))
+        if (mc_ParseWeightRecordJson(v, out_addr, out_weight, &out_epoch))
         {
             ExtractItemPublishers(wtx, j, out_publishers);
 
@@ -462,13 +473,18 @@ static bool DecodeWeightRecord(const CWalletTx& wtx, const unsigned char* stream
 // Reads every record on the stream (oldest -> newest) and keeps, per address,
 // the newest weight seen. Returns false only when the stream is unavailable
 // (does not exist yet, or this node is not subscribed).
-bool StreamWeightRegistry::ReadAllRecords(std::map<std::string, uint32_t>& out_latest)
+bool StreamWeightRegistry::ReadAllRecords(std::map<std::string, uint32_t>& out_latest,
+                                          std::map<std::string, uint32_t>* out_epochs)
 {
     // Verbose, per-read tracing of the stream read path. Off by default; enable
     // with -wpoadebug for troubleshooting (see src/wpoa/TESTING.md).
     static const bool dbg = GetBoolArg("-wpoadebug", false);
 
     out_latest.clear();
+    if (out_epochs != NULL)
+    {
+        out_epochs->clear();
+    }
 
     if (m_pWalletTxs == NULL)
     {
@@ -577,9 +593,11 @@ bool StreamWeightRegistry::ReadAllRecords(std::map<std::string, uint32_t>& out_l
 
         string addr;
         uint32_t w = 0;
+        uint32_t rec_epoch = 0;
         std::vector<string> publishers;
         bool forged = false;
-        bool decoded = DecodeWeightRecord(wtx, stream_short_txid, addr, w, publishers, forged);
+        bool decoded = DecodeWeightRecord(wtx, stream_short_txid, addr, w, rec_epoch,
+                                          publishers, forged);
         if (dbg) LogPrintf("[wpoa-dbg]   row %d: hash=%s vout=%d decode=%s addr=%s w=%u\n",
                            i, hash.ToString().c_str(), (int)wtx.vout.size(),
                            decoded ? "OK" : (forged ? "DISCARDED(not self-published)" : "FAIL"),
@@ -599,6 +617,10 @@ bool StreamWeightRegistry::ReadAllRecords(std::map<std::string, uint32_t>& out_l
         if (decoded)
         {
             mc_AccumulateLatestWeight(out_latest, addr, w); // newest wins (ascending iteration)
+            if (out_epochs != NULL)
+            {
+                (*out_epochs)[addr] = rec_epoch;            // same newest-wins record
+            }
         }
     }
     return true;
@@ -631,6 +653,14 @@ uint32_t StreamWeightRegistry::GetLocalWeight()
         LogPrintf("[StreamWeightRegistry] Local weight: %u\n", w);
     }
     return w;
+}
+
+void StreamWeightRegistry::GetAllNodesWeightsWithEpoch(std::map<std::string, uint32_t>& weights,
+                                                       std::map<std::string, uint32_t>& epochs)
+{
+    weights.clear();
+    epochs.clear();
+    ReadAllRecords(weights, &epochs);
 }
 
 std::map<std::string, uint32_t> StreamWeightRegistry::GetAllNodesWeights()
@@ -769,6 +799,10 @@ void ThreadRegisterNodeWeight(uint32_t weight)
         }
 
         attempts++;
+        // No epoch argument: a static -weight is not derived from any epoch, so the
+        // record carries no epoch field and is deliberately NOT subject to value
+        // verification — there is no pipeline run to check it against. See
+        // mc_ParseWeightRecordJson.
         if (registry.RegisterLocalWeight(weight))
         {
             // The publish tx may still be in the mempool; reads only see confirmed

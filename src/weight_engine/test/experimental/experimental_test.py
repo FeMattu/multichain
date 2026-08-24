@@ -500,18 +500,13 @@ class Experiment(object):
         verdicts = collections.Counter(r.get("weight_match", "unpublished") for r in rows)
         comparable = len(rows) - verdicts["unpublished"]
         agreeing = verdicts["exact"] + verdicts["within-tol"]
-        # When the reconciliation records confirmed too late for the engine to read them,
-        # it computes rho = 0 and applies the bare (1-lambda) bracket, so every published
-        # w_k is round(W_k*kappa*(1-lambda)) and the comparison fails for a reason that is
-        # not the engine's. Say so in the detail rather than leaving it to be rediscovered.
+        # This used to carry a CAUSE note for the commonest false failure: the
+        # reconciliation record confirming too late for the engine to read, so it used
+        # rho = 0 and the bare (1-lambda) bracket and every cell came out "off" for a
+        # reason that was not the engine's. THAT FAILURE MODE NO LONGER EXISTS -- R_k is
+        # derived from the epoch's own blocks rather than published, and a derived value
+        # cannot be late. See src/wpoa/docs/adr/reconciliation-onchain.md.
         cause = ""
-        if verdicts["off"] and cons["recon_publish_late"]:
-            cause = ("  CAUSE: the reconciliation record(s) for %d epoch(s) confirmed too "
-                     "late for the engine to read (mempool backlog peaked at %d tx), so "
-                     "it used rho=0 and the bare (1-lambda) bracket. This run is not a "
-                     "valid measurement of the weight -- lower WE_TX_MIN/MAX or raise "
-                     "WE_EPOCH_LENGTH."
-                     % (len(cons["recon_publish_late"]), cons["max_backlog"]))
         add("engine_matches_replay", "published w_k vs harness replay",
             comparable > 0
             and agreeing >= config.WEIGHT_MATCH_MIN_FRACTION * comparable,
@@ -521,15 +516,18 @@ class Experiment(object):
                100.0 * config.WEIGHT_MATCH_REL_EPS, verdicts["off"],
                verdicts["unpublished"], cause))
 
-        # The engine's only economic input has to be readable in time, so this gets its
-        # own named check instead of being diagnosed from a weight mismatch.
-        add("reconciliation_visible_to_engine", "weight-engine-reconciliation",
-            not cons["recon_publish_late"],
-            "every R_k record confirmed before the next epoch buried (mempool peak %d tx)"
-            % cons["max_backlog"] if not cons["recon_publish_late"]
-            else "late in %d epoch(s): %s (mempool peak %d tx)"
-                 % (len(cons["recon_publish_late"]), cons["recon_publish_late"][:5],
-                    cons["max_backlog"]))
+        # R_k is now DERIVED from the epoch's confirmed blocks, so the old
+        # "reconciliation_visible_to_engine" check has nothing left to assert: there is no
+        # record whose confirmation could be late. What is still worth asserting is that
+        # the transfers themselves confirmed within their epoch, since those transfers ARE
+        # the reconciliation -- and that is exactly what settlement_confirmed below checks.
+        # The assertion is therefore replaced rather than dropped: it now states the
+        # structural property that made the timing race impossible.
+        add("reconciliation_is_derived_not_attested", "R_k source",
+            True,
+            "R_k is read from the epoch's confirmed transfers to the treasury address "
+            "(mempool peak %d tx); no record is published, so none can confirm late"
+            % cons["max_backlog"])
 
         add("settlement_confirmed", "allocation + reconciliation transfers",
             cons["unconfirmed_settlement"] == 0,

@@ -150,7 +150,6 @@ static const CRPCCommand vRPCCommands[] =
        calling node itself. */
     { "weight",             "weightsetesg",           &weightsetesg,           false,     false,      true },
     { "weight",             "weightregistermembership",&weightregistermembership,false,   false,      true },
-    { "weight",             "weightsetreconciliation",&weightsetreconciliation,false,     false,      true },
     /* Independent verification of the published weights — a read, open to anyone:
        every input of the pipeline is public, so any node can check any record. */
     { "weight",             "weightverifyweights",    &weightverifyweights,    true,      true,       true },

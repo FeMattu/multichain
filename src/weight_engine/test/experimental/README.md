@@ -100,7 +100,10 @@ See [`docs/experiment.md` §1.2](docs/experiment.md).
     itself as a cluster head with the public `weightregistermembership`. There is no
     admin path: a record signed by anyone other than the node it names is discarded
     by every reader;
-  * `weightsetreconciliation` — per miner per epoch, **the GAS actually returned**.
+  and reconciliation is **not published at all**: the engine derives `R_k` from the
+  epoch's confirmed transfers to the treasury address, so the harness only has to MAKE
+  the transfers (it already did) and point the engine at the recipient with
+  `-weighttreasuryaddress=<ADMIN>`.
 * The cluster sets are then **read back off chain** by listing the membership stream and
   taking, per declaring address, its latest confirmed `miner_address` — the same
   last-confirmed-wins fold the engine applies internally
@@ -163,6 +166,7 @@ knobs are `WE_*` environment variables — see [`config.py`](config.py):
 `WE_BLOCK_TIME`, …
 
 > **Keep the volume within what the chain absorbs.** If submissions outpace block
+> (HISTORICAL — no longer reachable: `R_k` is derived, so no record can confirm late.)
 > production a mempool backlog builds, `weightsetreconciliation` confirms *after* the
 > epoch it belongs to has buried, and the engine then reads `ρ = 0` and applies the bare
 > `(1−λ)` bracket — every published `w_k` comes out as exactly `round(W_k·κ·(1−λ))` and

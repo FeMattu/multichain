@@ -44,7 +44,8 @@ static std::map<std::string, WeightVerificationEntry> g_verdicts;
 // ---------------------------------------------------------------------------
 
 bool WeightEngineVerifyAndCacheEpoch(WeightStreamReader& reader, uint32_t epoch,
-                                     const std::map<std::string, uint32_t>& published)
+                                     const std::map<std::string, uint32_t>& published,
+                                     const std::map<std::string, uint32_t>& published_epochs)
 {
     // Recompute every cluster from the public inputs. A failure here is NOT a finding
     // about anybody: it means this node cannot verify right now (inputs unreadable,
@@ -54,7 +55,7 @@ bool WeightEngineVerifyAndCacheEpoch(WeightStreamReader& reader, uint32_t epoch,
     bool ok = WeightEngineComputeAllWeightsForEpoch(reader, epoch, recomputed);
 
     std::map<std::string, WeightVerificationEntry> verdicts;
-    mc_VerifyPublishedWeights(published, recomputed, ok, verdicts);
+    mc_VerifyPublishedWeights(published, published_epochs, epoch, recomputed, ok, verdicts);
 
     {
         LOCK(cs_weightVerdicts);
@@ -70,11 +71,28 @@ bool WeightEngineVerifyAndCacheEpoch(WeightStreamReader& reader, uint32_t epoch,
         return false;
     }
 
+    // Count what was actually COMPARED, so the log distinguishes "everything checked out"
+    // from "nothing was about this epoch". Reporting the latter as a clean pass would hide
+    // the fact that nothing was verified at all.
+    size_t compared = 0;
+    for (std::map<std::string, WeightVerificationEntry>::const_iterator it = verdicts.begin();
+         it != verdicts.end(); ++it)
+    {
+        if (it->second.verdict == MC_WEIGHT_VERDICT_OK ||
+            mc_WeightVerdictIsInvalid(it->second.verdict))
+        {
+            compared++;
+        }
+    }
+
     const size_t invalid = mc_CountInvalidVerdicts(verdicts);
     if (invalid == 0)
     {
-        LogPrintf("[WeightEngine] epoch %u: all %u published weight(s) match the "
-                  "independent recomputation\n", epoch, (unsigned)verdicts.size());
+        LogPrintf("[WeightEngine] epoch %u: %u of %u published weight(s) checked against "
+                  "the independent recomputation, all matching (%u about another epoch or "
+                  "not epoch-stamped)\n",
+                  epoch, (unsigned)compared, (unsigned)verdicts.size(),
+                  (unsigned)(verdicts.size() - compared));
         return true;
     }
 
@@ -155,8 +173,10 @@ Value weightverifyweights(const Array& params, bool fHelp)
             "    {\n"
             "      \"address\": \"...\",     (string)  the cluster the record is about\n"
             "      \"published\": n,       (numeric) the value found on chain\n"
+            "      \"published_epoch\": n, (numeric) the epoch it was published FOR, 0 if unstated\n"
             "      \"recomputed\": n,      (numeric) the value this node derived\n"
-            "      \"verdict\": \"...\"      (string)  ok | mismatch | not-a-cluster | unverified\n"
+            "      \"verdict\": \"...\"      (string)  ok | mismatch | not-a-cluster |\n"
+            "                                       other-epoch | unverified\n"
             "    }, ...\n"
             "  ]\n"
             "}\n");
@@ -196,6 +216,7 @@ Value weightverifyweights(const Array& params, bool fHelp)
         Object e;
         e.push_back(Pair("address", it->first));
         e.push_back(Pair("published", (int64_t)it->second.published));
+        e.push_back(Pair("published_epoch", (int64_t)it->second.published_epoch));
         e.push_back(Pair("recomputed", (int64_t)it->second.recomputed));
         e.push_back(Pair("verdict", string(mc_WeightVerdictToString(it->second.verdict))));
         entries.push_back(e);

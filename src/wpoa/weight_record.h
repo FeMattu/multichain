@@ -74,14 +74,37 @@ inline bool mc_StreamItemIsSelfAttested(const std::string& declared_address,
  *                    { "json": { "node_address": "...", "weight": n, ... } }.
  * @param node_address  Out: the record's node_address (cleared on failure).
  * @param weight        Out: the record's weight (0 on failure).
+ * @param epoch         Out, optional: the epoch the value was computed FOR, or 0 when
+ *                      the record does not say. See the note below.
  * @return true only for a well-formed record with a non-empty address and a
  *         strictly positive integer weight; false otherwise.
+ *
+ * WHY THE EPOCH MATTERS, and why 0 is a legitimate answer. A weight is a claim about a
+ * SPECIFIC epoch: w_k^{(e)} is computed from epoch e's inputs, so checking a published
+ * value against a recomputation is only meaningful when both refer to the same epoch.
+ * Without the field, a value legitimately published for epoch e would be compared
+ * against epoch e+1's recomputation as soon as the epoch rolled over, and an honest
+ * node would be flagged as wrong — a false accusation, which the malus would then turn
+ * into a real weight penalty.
+ *
+ * The field is OPTIONAL, and its absence is meaningful rather than malformed:
+ *   * the weight engine stamps it, because it knows which epoch it computed for;
+ *   * the static -weight path does NOT, because a hand-set weight is not derived from
+ *     any epoch and there is nothing to recompute it against.
+ * A record with epoch 0 is therefore simply not subject to value verification, which is
+ * the correct outcome in both cases. Older records predating the field read as 0 too,
+ * so the change is backward-compatible.
  */
 inline bool mc_ParseWeightRecordJson(const json_spirit::Value& data_value,
-                                     std::string& node_address, uint32_t& weight)
+                                     std::string& node_address, uint32_t& weight,
+                                     uint32_t* epoch = NULL)
 {
     node_address = "";
     weight = 0;
+    if (epoch != NULL)
+    {
+        *epoch = 0;
+    }
 
     if (data_value.type() != json_spirit::obj_type)
     {
@@ -131,6 +154,7 @@ inline bool mc_ParseWeightRecordJson(const json_spirit::Value& data_value,
 
     std::string addr;
     int64_t w = -1;
+    int64_t e = 0;
     BOOST_FOREACH(const json_spirit::Pair& p, json_val.get_obj())
     {
         if (p.name_ == "node_address" && p.value_.type() == json_spirit::str_type)
@@ -148,6 +172,17 @@ inline bool mc_ParseWeightRecordJson(const json_spirit::Value& data_value,
                 w = (int64_t)p.value_.get_real();
             }
         }
+        else if (p.name_ == "epoch")
+        {
+            if (p.value_.type() == json_spirit::int_type)
+            {
+                e = p.value_.get_int64();
+            }
+            else if (p.value_.type() == json_spirit::real_type)
+            {
+                e = (int64_t)p.value_.get_real();
+            }
+        }
     }
 
     if (addr.empty() || w <= 0)
@@ -157,6 +192,12 @@ inline bool mc_ParseWeightRecordJson(const json_spirit::Value& data_value,
 
     node_address = addr;
     weight = (uint32_t)w;
+    if (epoch != NULL)
+    {
+        // Out-of-range or negative reads as "unstated" rather than wrapping: a bad epoch
+        // must not make a record look like it belongs to a different one.
+        *epoch = (e > 0 && e <= (int64_t)0xffffffff) ? (uint32_t)e : 0;
+    }
     return true;
 }
 

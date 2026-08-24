@@ -5,20 +5,21 @@
 // pipeline parameter defaults.
 // ------------------------------------------------------------------------------
 // The weight-calculation layer sits ABOVE the wPoA consensus (src/wpoa). Each
-// epoch it reads a set of public on-chain INPUT streams — membership (which
-// company belongs to which miner/cluster), ESG (the static certified scores),
-// activity (the per-epoch transaction counters tau) and reconciliation (the
-// per-epoch reconciled allocation R) — computes the per-cluster weight
-// w_k^{(e)} following the "Gestione del peso" thesis chapter, and publishes the
-// result to the SAME "wpoa-weights" stream the consensus already consumes
+// epoch it combines two PUBLISHED input streams — membership (which company
+// belongs to which miner/cluster, self-attested by each node) and ESG (the static
+// certified scores, written by a Certification Authority) — with two quantities
+// DERIVED from the epoch's confirmed blocks — the activity counters tau and the
+// reconciled amounts R — computes the per-cluster weight w_k^{(e)} following the
+// "Gestione del peso" thesis chapter, and publishes the result to the SAME
+// "wpoa-weights" stream the consensus already consumes
 // (wpoa/stream_weight_registry.h). The consensus never learns HOW w_k is
 // produced: the two layers are coupled only through the wpoa-weights stream.
 //
-// The four input streams are deliberately named "weight-engine-*", NOT "wpoa-*":
-// they are owned and fed by the weight layer and its external actors (the
-// certifier, the activity aggregator, the reconciliation process), not by the
-// consensus. Only the OUTPUT stream "wpoa-weights" belongs to wPoA. This mirrors
-// the folder split (src/weight_engine vs src/wpoa) at the on-chain contract level.
+// The input streams are deliberately named "weight-engine-*", NOT "wpoa-*": they
+// are owned and fed by the weight layer and its actors (the certifier, the joining
+// nodes themselves), not by the consensus. Only the OUTPUT stream "wpoa-weights"
+// belongs to wPoA. This mirrors the folder split (src/weight_engine vs src/wpoa)
+// at the on-chain contract level.
 //
 // This header holds only names and #define defaults (no logic), so it can be
 // included by both the pure record helpers (weight_records.h) and the node glue
@@ -59,14 +60,25 @@
  *  node address (company or miner); payload {"json":{"node_address":..,"esg":..}}. */
 #define MC_WEIGHT_ESG_STREAM_NAME            "weight-engine-esg"
 
-/** Per-epoch activity counters tau_i^{(e)} (Def. attivita-partecipazione).
- *  Item key = node address;
- *  payload {"json":{"node_address":..,"tau":..,"epoch":..}}. */
-#define MC_WEIGHT_ACTIVITY_STREAM_NAME       "weight-engine-activity"
-
-/** Per-epoch reconciled allocation R_k^{(e)} (Def. riconciliazione). Item key =
- *  miner address; payload {"json":{"node_address":..,"reconciled":..,"epoch":..}}. */
-#define MC_WEIGHT_RECONCILIATION_STREAM_NAME "weight-engine-reconciliation"
+// ---------------------------------------------------------------------------
+// NOT streams: the two chain-derived quantities
+// ---------------------------------------------------------------------------
+// tau_i^{(e)} (Def. attivita-partecipazione) and R_k^{(e)} (Def. riconciliazione) are
+// both DERIVED from the confirmed blocks of a buried epoch, in a single shared pass
+// (WeightStreamReader::ComputeActivityAndReconciliationForEpoch). Neither has a stream,
+// a publisher or a write permission: there is nothing to authorize and nothing to
+// misstate.
+//
+// Both used to be listed here as stream names, and neither name was a mechanism:
+//   * weight-engine-activity       was DEFINED but never created, written or read;
+//   * weight-engine-reconciliation was a real stream carrying an ADMIN ATTESTATION of a
+//     value the chain already recorded. Removing it closed the asymmetry that treated
+//     one transaction fact (tau) as derived and the other (R) as declared.
+// See wpoa/docs/adr/reconciliation-onchain.md for the decision and its consequences.
+//
+// R needs one piece of configuration the derivation cannot invent: WHICH address counts
+// as the treasury. That is the hash-enforced chain parameter weight-treasury-address
+// (g_weight_treasury_address, weight_engine.h).
 
 // ---------------------------------------------------------------------------
 // Output stream (owned by src/wpoa; reused as the publication port)
@@ -85,9 +97,6 @@
 #define MC_WEIGHT_FIELD_MINER_ADDR  "miner_address"
 #define MC_WEIGHT_FIELD_TIMESTAMP   "timestamp"
 #define MC_WEIGHT_FIELD_ESG         "esg"
-#define MC_WEIGHT_FIELD_TAU         "tau"
-#define MC_WEIGHT_FIELD_EPOCH       "epoch"
-#define MC_WEIGHT_FIELD_RECONCILED  "reconciled"
 
 // ---------------------------------------------------------------------------
 // Weight-pipeline configuration parameters (DEFAULTS ONLY)

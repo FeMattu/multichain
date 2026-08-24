@@ -398,165 +398,199 @@ BOOST_AUTO_TEST_CASE(esg_duplicate_field_first_wins)
     BOOST_CHECK_CLOSE(esg, 10.0, 1e-9);
 }
 
-// ---- activity ------------------------------------------------------------
+// ---- activity and reconciliation are NOT records ------------------------
+//
+// tau_i^{(e)} and R_k^{(e)} have no wire format and therefore no parser to test: both
+// are DERIVED from the confirmed blocks of a buried epoch, in a single shared pass
+// (WeightStreamReader::ComputeActivityAndReconciliationForEpoch). The parsers and
+// accumulators that used to live here — mc_ParseActivityRecordJson,
+// mc_ParseReconciliationRecordJson and their aggregators — were removed with the
+// streams they served:
+//
+//   * weight-engine-activity was DEFINED but never created, written or read: a name,
+//     not a mechanism.
+//   * weight-engine-reconciliation carried an ADMIN ATTESTATION of a value the chain
+//     already recorded. R is now read off the blocks instead, which is what closed the
+//     asymmetry that treated one transaction fact as derived and the other as declared.
+//
+// What IS testable here is the RULE that decides a single transaction's contribution,
+// which is deliberately kept in the pure layer rather than buried in the scan loop.
+// Only the traversal itself — the buried-epoch guard and the undo-based signer
+// attribution, both shared with tau — needs the block layer and is covered by
+// functional_test_weight_engine.sh. Decision and rationale:
+// wpoa/docs/adr/reconciliation-onchain.md.
 
-BOOST_AUTO_TEST_CASE(activity_valid_including_zero_tau)
+// ---- reconciliation: which outputs count -------------------------------
+
+static std::vector<std::string> addrs(const char* a = NULL, const char* b = NULL,
+                                      const char* c = NULL)
 {
-    Object inner;
-    inner.push_back(Pair("node_address", std::string("AZ_1")));
-    inner.push_back(Pair("tau", (int64_t)0)); // inactive node: tau == 0 is valid
-    inner.push_back(Pair("epoch", (int64_t)3));
-
-    std::string addr;
-    uint32_t tau = 99, epoch = 0;
-    BOOST_CHECK(mc_ParseActivityRecordJson(wrap_json(inner), addr, tau, epoch));
-    BOOST_CHECK_EQUAL(addr, "AZ_1");
-    BOOST_CHECK_EQUAL(tau, 0u);
-    BOOST_CHECK_EQUAL(epoch, 3u);
+    std::vector<std::string> v;
+    if (a) v.push_back(a);
+    if (b) v.push_back(b);
+    if (c) v.push_back(c);
+    return v;
+}
+static std::vector<int64_t> vals(int64_t a = -1, int64_t b = -1, int64_t c = -1)
+{
+    std::vector<int64_t> v;
+    if (a >= 0) v.push_back(a);
+    if (b >= 0) v.push_back(b);
+    if (c >= 0) v.push_back(c);
+    return v;
+}
+static std::set<std::string> signers(const char* a, const char* b = NULL)
+{
+    std::set<std::string> s;
+    if (a) s.insert(a);
+    if (b) s.insert(b);
+    return s;
 }
 
-BOOST_AUTO_TEST_CASE(activity_wrapped_formatdata_shape)
+// A payment to the treasury counts; a miner's own change output alongside it does not.
+BOOST_AUTO_TEST_CASE(reconciliation_counts_only_outputs_paying_the_treasury)
 {
-    Object inner;
-    inner.push_back(Pair("node_address", std::string("AZ_5")));
-    inner.push_back(Pair("tau", (int64_t)7));
-    inner.push_back(Pair("epoch", (int64_t)2));
-    std::string addr;
-    uint32_t tau = 0, epoch = 0;
-    BOOST_CHECK(mc_ParseActivityRecordJson(wrap_formatdata(inner), addr, tau, epoch));
-    BOOST_CHECK_EQUAL(tau, 7u);
-    BOOST_CHECK_EQUAL(epoch, 2u);
+    BOOST_CHECK_EQUAL(mc_ValuePaidToTreasury(addrs("TREASURY"), vals(500), "TREASURY"), 500);
+
+    // treasury 500 + change back to the miner 300 -> only the 500 counts
+    BOOST_CHECK_EQUAL(
+        mc_ValuePaidToTreasury(addrs("TREASURY", "MINER_A"), vals(500, 300), "TREASURY"), 500);
 }
 
-BOOST_AUTO_TEST_CASE(activity_accepts_integral_real_epoch)
+// A transfer to a third party is not a reconciliation, however large.
+BOOST_AUTO_TEST_CASE(reconciliation_excludes_transfers_to_third_parties)
 {
-    // epoch published as a real that happens to be integral (3.0) is accepted.
-    Object inner;
-    inner.push_back(Pair("node_address", std::string("AZ_1")));
-    inner.push_back(Pair("tau", 4.0));
-    inner.push_back(Pair("epoch", 3.0));
-    std::string addr;
-    uint32_t tau = 0, epoch = 0;
-    BOOST_CHECK(mc_ParseActivityRecordJson(wrap_json(inner), addr, tau, epoch));
-    BOOST_CHECK_EQUAL(tau, 4u);
-    BOOST_CHECK_EQUAL(epoch, 3u);
+    BOOST_CHECK_EQUAL(
+        mc_ValuePaidToTreasury(addrs("SOMEONE_ELSE"), vals(9999), "TREASURY"), 0);
 }
 
-BOOST_AUTO_TEST_CASE(activity_reject_bad_epoch_and_negative_tau)
+// Non-monetary outputs never count. An OP_RETURN / bare-multisig / non-standard script
+// has no single extractable destination, which the reader passes through as "", and a
+// zero-value output carries nothing even if it is addressed to the treasury — so a
+// stream item or a notarisation can never register as a reconciliation.
+BOOST_AUTO_TEST_CASE(reconciliation_excludes_non_monetary_outputs)
 {
-    Object epoch0;
-    epoch0.push_back(Pair("node_address", std::string("AZ_1")));
-    epoch0.push_back(Pair("tau", (int64_t)5));
-    epoch0.push_back(Pair("epoch", (int64_t)0)); // epoch must be >= 1
-    std::string addr;
-    uint32_t tau = 0, epoch = 0;
-    BOOST_CHECK(!mc_ParseActivityRecordJson(wrap_json(epoch0), addr, tau, epoch));
+    BOOST_CHECK_EQUAL(mc_ValuePaidToTreasury(addrs(""), vals(0), "TREASURY"), 0);
+    BOOST_CHECK_EQUAL(mc_ValuePaidToTreasury(addrs("TREASURY"), vals(0), "TREASURY"), 0);
 
-    Object negtau;
-    negtau.push_back(Pair("node_address", std::string("AZ_1")));
-    negtau.push_back(Pair("tau", -1.0));
-    negtau.push_back(Pair("epoch", (int64_t)2));
-    BOOST_CHECK(!mc_ParseActivityRecordJson(wrap_json(negtau), addr, tau, epoch));
+    // a data output next to a real payment leaves the real payment intact
+    BOOST_CHECK_EQUAL(
+        mc_ValuePaidToTreasury(addrs("", "TREASURY"), vals(0, 250), "TREASURY"), 250);
 }
 
-BOOST_AUTO_TEST_CASE(activity_reject_overflow_and_non_integral)
+// Several outputs to the treasury in one transaction are summed.
+BOOST_AUTO_TEST_CASE(reconciliation_sums_multiple_treasury_outputs)
 {
-    std::string addr;
-    uint32_t tau = 0, epoch = 0;
-
-    // tau far beyond UINT32_MAX -> reject (do not truncate: UB territory).
-    Object bigtau;
-    bigtau.push_back(Pair("node_address", std::string("AZ_1")));
-    bigtau.push_back(Pair("tau", 1e18));
-    bigtau.push_back(Pair("epoch", (int64_t)1));
-    BOOST_CHECK(!mc_ParseActivityRecordJson(wrap_json(bigtau), addr, tau, epoch));
-
-    // epoch far beyond UINT32_MAX -> reject.
-    Object bigepoch;
-    bigepoch.push_back(Pair("node_address", std::string("AZ_1")));
-    bigepoch.push_back(Pair("tau", (int64_t)1));
-    bigepoch.push_back(Pair("epoch", 1e10));
-    BOOST_CHECK(!mc_ParseActivityRecordJson(wrap_json(bigepoch), addr, tau, epoch));
-
-    // non-integral tau -> reject (a counter must be exact).
-    Object fractau;
-    fractau.push_back(Pair("node_address", std::string("AZ_1")));
-    fractau.push_back(Pair("tau", 3.5));
-    fractau.push_back(Pair("epoch", (int64_t)1));
-    BOOST_CHECK(!mc_ParseActivityRecordJson(wrap_json(fractau), addr, tau, epoch));
+    BOOST_CHECK_EQUAL(
+        mc_ValuePaidToTreasury(addrs("TREASURY", "TREASURY", "MINER_A"),
+                               vals(100, 250, 40), "TREASURY"), 350);
 }
 
-BOOST_AUTO_TEST_CASE(activity_aggregation_newest_wins)
+// Edge cases: no treasury configured, and a defensive length mismatch.
+BOOST_AUTO_TEST_CASE(reconciliation_value_edge_cases)
 {
-    std::map<std::string, uint32_t> latest;
-    mc_AccumulateLatestActivity(latest, "AZ_1", 5);
-    mc_AccumulateLatestActivity(latest, "AZ_1", 9); // corrected within epoch
-    mc_AccumulateLatestActivity(latest, "AZ_2", 2);
-    BOOST_CHECK_EQUAL(latest.size(), 2u);
-    BOOST_CHECK_EQUAL(latest["AZ_1"], 9u);
-    BOOST_CHECK_EQUAL(latest["AZ_2"], 2u);
+    BOOST_CHECK_EQUAL(mc_ValuePaidToTreasury(addrs("TREASURY"), vals(500), ""), 0);
+    std::vector<std::string> a = addrs("TREASURY", "TREASURY");
+    std::vector<int64_t> v = vals(500);                     // deliberately shorter
+    BOOST_CHECK_EQUAL(mc_ValuePaidToTreasury(a, v, "TREASURY"), 0);
 }
 
-// ---- reconciliation ------------------------------------------------------
+// ---- reconciliation: who gets credited ---------------------------------
 
-BOOST_AUTO_TEST_CASE(reconciliation_valid)
+// The signer is credited — which is what makes the DIRECTION unambiguous.
+BOOST_AUTO_TEST_CASE(reconciliation_credits_the_signing_miner)
 {
-    Object inner;
-    inner.push_back(Pair("node_address", std::string("MINER_A")));
-    inner.push_back(Pair("reconciled", 42.5));
-    inner.push_back(Pair("epoch", (int64_t)4));
-
-    std::string miner;
-    double r = 0.0;
-    uint32_t epoch = 0;
-    BOOST_CHECK(mc_ParseReconciliationRecordJson(wrap_json(inner), miner, r, epoch));
-    BOOST_CHECK_EQUAL(miner, "MINER_A");
-    BOOST_CHECK_CLOSE(r, 42.5, 1e-9);
-    BOOST_CHECK_EQUAL(epoch, 4u);
+    std::map<std::string, int64_t> r;
+    mc_AccumulateReconciliation(r, signers("MINER_A"), 500, "TREASURY");
+    BOOST_CHECK_EQUAL(r.size(), 1u);
+    BOOST_CHECK_EQUAL(r["MINER_A"], 500);
 }
 
-BOOST_AUTO_TEST_CASE(reconciliation_wrapped_formatdata_shape)
+// A transfer TO a miner is never mistaken for one FROM it: the treasury signed, so the
+// recipient earns nothing. This is the case an "any address in the transaction" rule
+// would have got wrong.
+BOOST_AUTO_TEST_CASE(reconciliation_treasury_paying_a_miner_credits_nobody)
 {
-    Object inner;
-    inner.push_back(Pair("node_address", std::string("MINER_B")));
-    inner.push_back(Pair("reconciled", (int64_t)10));
-    inner.push_back(Pair("epoch", (int64_t)1));
-    std::string miner;
-    double r = 0.0;
-    uint32_t epoch = 0;
-    BOOST_CHECK(mc_ParseReconciliationRecordJson(wrap_formatdata(inner), miner, r, epoch));
-    BOOST_CHECK_EQUAL(miner, "MINER_B");
-    BOOST_CHECK_CLOSE(r, 10.0, 1e-9);
-    BOOST_CHECK_EQUAL(epoch, 1u);
+    std::map<std::string, int64_t> r;
+    // The treasury pays MINER_A; the treasury is the signer, MINER_A is not.
+    mc_AccumulateReconciliation(r, signers("TREASURY"), 0, "TREASURY");
+    BOOST_CHECK(r.empty());
+
+    // Even a treasury-signed transaction that does pay the treasury (a self-transfer or
+    // a rebalancing) credits nobody, so it cannot inflate anyone's compliance.
+    mc_AccumulateReconciliation(r, signers("TREASURY"), 500, "TREASURY");
+    BOOST_CHECK(r.empty());
 }
 
-BOOST_AUTO_TEST_CASE(reconciliation_reject_negative_and_nan)
+// (b) Multi-transaction aggregation within one epoch for the same miner: each call folds
+// into the running total, which is how the scan loop accumulates across the epoch.
+BOOST_AUTO_TEST_CASE(reconciliation_aggregates_across_transactions_in_the_epoch)
 {
-    std::string miner;
-    double r = 1.0;
-    uint32_t epoch = 0;
-
-    Object neg;
-    neg.push_back(Pair("node_address", std::string("MINER_A")));
-    neg.push_back(Pair("reconciled", -0.01));
-    neg.push_back(Pair("epoch", (int64_t)1));
-    BOOST_CHECK(!mc_ParseReconciliationRecordJson(wrap_json(neg), miner, r, epoch));
-    BOOST_CHECK_EQUAL(miner, "");
-
-    Object nan_obj;
-    nan_obj.push_back(Pair("node_address", std::string("MINER_A")));
-    nan_obj.push_back(Pair("reconciled", std::numeric_limits<double>::quiet_NaN()));
-    nan_obj.push_back(Pair("epoch", (int64_t)1));
-    BOOST_CHECK(!mc_ParseReconciliationRecordJson(wrap_json(nan_obj), miner, r, epoch));
+    std::map<std::string, int64_t> r;
+    mc_AccumulateReconciliation(r, signers("MINER_A"), 100, "TREASURY");
+    mc_AccumulateReconciliation(r, signers("MINER_A"), 250, "TREASURY");
+    mc_AccumulateReconciliation(r, signers("MINER_A"),  50, "TREASURY");
+    BOOST_CHECK_EQUAL(r.size(), 1u);
+    BOOST_CHECK_EQUAL(r["MINER_A"], 400);
 }
 
-BOOST_AUTO_TEST_CASE(reconciliation_aggregation_newest_wins)
+BOOST_AUTO_TEST_CASE(reconciliation_keeps_miners_separate)
 {
-    std::map<std::string, double> latest;
-    mc_AccumulateLatestReconciliation(latest, "MINER_A", 10.0);
-    mc_AccumulateLatestReconciliation(latest, "MINER_A", 25.0); // corrected within epoch
-    BOOST_CHECK_EQUAL(latest.size(), 1u);
-    BOOST_CHECK_CLOSE(latest["MINER_A"], 25.0, 1e-9);
+    std::map<std::string, int64_t> r;
+    mc_AccumulateReconciliation(r, signers("MINER_A"), 100, "TREASURY");
+    mc_AccumulateReconciliation(r, signers("MINER_B"), 700, "TREASURY");
+    BOOST_CHECK_EQUAL(r.size(), 2u);
+    BOOST_CHECK_EQUAL(r["MINER_A"], 100);
+    BOOST_CHECK_EQUAL(r["MINER_B"], 700);
+}
+
+// A transaction funded from several addresses has several signers, each of which
+// authorized it, so each is credited — mirroring how tau counts such a transaction once
+// for every distinct signing address.
+BOOST_AUTO_TEST_CASE(reconciliation_credits_every_signer_of_a_multi_input_transaction)
+{
+    std::map<std::string, int64_t> r;
+    mc_AccumulateReconciliation(r, signers("MINER_A", "MINER_B"), 500, "TREASURY");
+    BOOST_CHECK_EQUAL(r["MINER_A"], 500);
+    BOOST_CHECK_EQUAL(r["MINER_B"], 500);
+}
+
+// Nothing accumulates without a treasury: R is uniformly empty, deterministically and
+// on every node — the same behaviour as the old model on a chain where nobody published
+// a reconciliation record.
+BOOST_AUTO_TEST_CASE(reconciliation_without_a_treasury_credits_nobody)
+{
+    std::map<std::string, int64_t> r;
+    mc_AccumulateReconciliation(r, signers("MINER_A"), 500, "");
+    BOOST_CHECK(r.empty());
+}
+
+BOOST_AUTO_TEST_CASE(reconciliation_ignores_non_positive_value_and_empty_signers)
+{
+    std::map<std::string, int64_t> r;
+    mc_AccumulateReconciliation(r, signers("MINER_A"),  0, "TREASURY");
+    mc_AccumulateReconciliation(r, signers("MINER_A"), -5, "TREASURY");
+    mc_AccumulateReconciliation(r, std::set<std::string>(), 500, "TREASURY");
+    BOOST_CHECK(r.empty());
+}
+
+// (e) DETERMINISM. Two nodes folding the same transactions of the same epoch reach the
+// same totals whatever order they visit them in — the accumulation is integer addition
+// into a sorted map, so there is no floating-point non-associativity to diverge on.
+BOOST_AUTO_TEST_CASE(reconciliation_is_order_independent_across_nodes)
+{
+    std::map<std::string, int64_t> node1;
+    mc_AccumulateReconciliation(node1, signers("MINER_A"), 100, "TREASURY");
+    mc_AccumulateReconciliation(node1, signers("MINER_B"), 700, "TREASURY");
+    mc_AccumulateReconciliation(node1, signers("MINER_A"), 250, "TREASURY");
+
+    std::map<std::string, int64_t> node2;                    // same set, visited in reverse
+    mc_AccumulateReconciliation(node2, signers("MINER_A"), 250, "TREASURY");
+    mc_AccumulateReconciliation(node2, signers("MINER_B"), 700, "TREASURY");
+    mc_AccumulateReconciliation(node2, signers("MINER_A"), 100, "TREASURY");
+
+    BOOST_CHECK(node1 == node2);
+    BOOST_CHECK_EQUAL(node1["MINER_A"], 350);
 }
 
 // ---- shared unwrap rejections -------------------------------------------

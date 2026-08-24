@@ -293,7 +293,12 @@ sampled epoch **buries** and its `w_k` gets published (§6.4).
 7. **Fold the state forward**: `ρ_k = R_k/(A_k + B_prev)`, `B_k = B_prev + A_k − R_k`,
    `Total GAIN_k += A_k`. The miner's raw on-chain balance is also recorded, as
    `saldo_onchain`, so the accounting balance can be reconciled against the ledger.
-8. **Publish** `weightsetreconciliation(miner, R_k_from_chain, e)`, so the engine's
+8. **Nothing is published** for reconciliation: the engine derives `R_k` from the very
+   transfer made above, by scanning the epoch's confirmed blocks for value paid to the
+   treasury address by transactions the miner signed. The harness's own reading of that
+   transfer is therefore an INDEPENDENT cross-check of the engine rather than a
+   tautology. (Historically this step published `weightsetreconciliation(miner,
+   R_k_from_chain, e)`, so the engine's
    `ρ_k` is driven by GAS that actually moved.
 9. **Check the five model invariants** on what was just produced
    (`verify_epoch_invariants`, §5) — a violation is recorded and surfaced immediately,
@@ -549,7 +554,8 @@ The published integers turned out to be **exactly** `round(W_k · κ · 0.5)` fo
 cluster in every affected epoch — that is, the engine had applied the bare `(1−λ)`
 bracket, meaning it read `ρ_k^(e-1) = 0`. It had not seen the reconciliation records at
 all: submissions were outpacing block production, a mempool backlog had built up, and
-`weightsetreconciliation` was confirming **20–24 blocks late**, well after the epoch it
+(HISTORICAL, and the reason `R_k` became derived.) `weightsetreconciliation` was
+confirming **20–24 blocks late**, well after the epoch it
 belonged to had buried. Two unrelated checks (`gas_supply_conserved`,
 `giacenza_matches_chain`) failed at the same time for the same underlying reason — a
 lagging miner whose transfers were in flight and therefore held by neither party.

@@ -62,38 +62,124 @@ fallback and for tests.
 
 ## 2. The input streams
 
-The four inputs are deliberately named `weight-engine-*`, **not** `wpoa-*`: they belong to
-the weight layer and its actors (the certifier, the joining nodes themselves, the
-reconciliation process), not to consensus. Only the **output** stream `wpoa-weights`
-belongs to wPoA. The naming split mirrors the directory split.
+The pipeline has **four inputs, but only two streams.** Two are *published* — and named
+`weight-engine-*`, **not** `wpoa-*`, because they belong to the weight layer and its
+actors (the certifier, the joining nodes themselves) rather than to consensus. The other
+two are *derived*: read off the confirmed blocks, with no stream, no publisher and no
+write permission at all. Only the **output** stream `wpoa-weights` belongs to wPoA. The
+naming split mirrors the directory split.
 
 > **Thesis alignment.** Figure 7.1 of the thesis describes a target permission model
 > captioned as **not yet reflected by the implementation**: writes reserved to
 > Certification Authorities on `weight-engine-esg`, own-record-only writes on
 > `weight-engine-membership`, admin-reserved writes on `weight-engine-reconciliation`.
-> The first two are now implemented — membership additionally strengthened with a
-> cryptographic self-attestation check ([§2.2](#22-membership-is-self-attested-and-the-key-is-the-declaring-node)),
-> ESG with an explicitly delegated, revocable CA role
-> ([§6.4](#64-esg--the-certification-authority-role)). The figure's caveat can therefore
-> be dropped for those two rows. See
-> [implementation-status.md §0.1](implementation-status.md#01-how-a-nodes-weight-is-assigned--the-authoritative-flow).
+>
+> The figure's caveat can now be **dropped entirely**, though the third row needs
+> rewriting rather than ticking off:
+>
+> - **membership** is implemented as illustrated, strengthened with a cryptographic
+>   self-attestation check ([§2.2](#22-membership-is-self-attested-and-the-key-is-the-declaring-node));
+> - **ESG** is implemented as illustrated, through an explicitly delegated and revocable
+>   CA role ([§6.4](#64-esg--the-certification-authority-role));
+> - **reconciliation** has no writer to reserve: the stream is **gone** and `R_k` is
+>   derived from the blocks ([§2.1](#21-activity-and-reconciliation-are-published-by-nobody)),
+>   so its box becomes a chain-derived arrow like activity's. Likewise the figure's
+>   `weight-engine-activity` box: that stream never existed as a mechanism.
+>
+> See [implementation-status.md §0.1](implementation-status.md#01-how-a-nodes-weight-is-assigned--the-authoritative-flow)
+> and [adr/reconciliation-onchain.md §7](adr/reconciliation-onchain.md#7-divergence-from-the-thesis-text).
 
 Definitions in [`weight_streams.h`](../../weight_engine/weight_streams.h).
+
+**Published — two streams:**
 
 | Stream | Item key | Payload | Origin | Who may write |
 |---|---|---|---|---|
 | `weight-engine-membership` | **node address** (declaring node) | `{"node_address":…, "miner_address":…, "timestamp":…}` | **The node itself**, via RPC | **Every node** (self-attested) |
 | `weight-engine-esg` | node address | `{"node_address":…, "esg":…}` | **Certification Authority**, via RPC | Delegated certifiers only |
-| `weight-engine-reconciliation` | miner address | `{"node_address":…, "reconciled":…, "epoch":…}` | Admin, via RPC | Admin only |
-| `weight-engine-activity` | node address | `{"node_address":…, "tau":…, "epoch":…}` | **Chain-derived** | Nobody |
 
-### 2.1 Activity is published by nobody
+**Derived — no stream at all:**
 
-`tau_i^{(e)}`, the per-epoch activity counter, is derived **directly from the confirmed
-blocks** of the epoch by `ComputeActivityForEpoch()`
-([`weight_reader.h`](../../weight_engine/weight_reader.h)). It is a deterministic function
-of the blocks, so every honest node recomputes the identical value: no publisher, no
-duplicate-write risk, no trust required.
+| Quantity | Thesis | Source | Who may write |
+|---|---|---|---|
+| `tau_i^{(e)}` — activity counter | Def. 6.3 | the epoch's confirmed blocks | **nobody** |
+| `R_k^{(e)}` — reconciled amount | Def. 6.7 | the epoch's confirmed blocks | **nobody** |
+
+### 2.1 Activity and reconciliation are published by nobody
+
+`tau_i^{(e)}` and `R_k^{(e)}` are both derived **directly from the confirmed blocks** of
+the epoch, by `ComputeActivityAndReconciliationForEpoch()`
+([`weight_reader.h`](../../weight_engine/weight_reader.h)). Both are deterministic
+functions of those blocks, so every honest node recomputes the identical value: no
+publisher, no duplicate-write risk, nothing to trust and nothing to misstate.
+
+They are computed in **one shared pass**, not two. Both need the same traversal and the
+same per-transaction fact — the set of addresses that signed the inputs, resolved from
+undo data — so the marginal cost of reconciliation is a few comparisons per output inside
+a scan that was happening anyway.
+
+> **This changed.** `R_k^{(e)}` used to be an **administrator attestation** on a dedicated
+> `weight-engine-reconciliation` stream: an admin stated how much a cluster had
+> reconciled, and the pipeline took the number verbatim. That was an asymmetry with no
+> justification — activity and reconciliation are *both* facts about confirmed
+> transactions, and treating one as derived and the other as declared meant the feedback
+> term depended on trusting one actor to state honestly a number the chain already
+> recorded. The stream is **removed**.
+>
+> `weight-engine-activity` is removed too, for a different reason: it was a **name, not a
+> mechanism** — defined in `weight_streams.h` but never created, never written and never
+> read. Documentation describing "four input streams" and a stream "nobody writes" was
+> describing that name.
+>
+> Full analysis, the option that was rejected and why:
+> **[adr/reconciliation-onchain.md](adr/reconciliation-onchain.md)**.
+
+#### What counts as a reconciliation transfer
+
+`R_k^{(e)}` is the native-currency value paid to the **treasury address** by transactions
+that miner `k` **signed**, among the confirmed transactions of epoch `e`.
+
+- **Crediting the signer** — not any address appearing in the transaction — is what makes
+  the direction unambiguous: a transfer *to* a miner is never mistaken for one *from* it,
+  and the treasury paying somebody creates no reconciliation for the recipient.
+- **Only outputs paying the treasury count.** A miner's own change output does not; nor
+  does a transfer to a third party.
+- **Non-monetary outputs never count.** An `OP_RETURN` carries no value and has no single
+  destination, so a stream item or a notarisation can never register as a reconciliation.
+- **The treasury paying itself is excluded**, so a refund or rebalancing cannot inflate
+  any cluster's compliance.
+- **Fees are excluded**: they go to the block's miner, not to the treasury.
+- **Integer accumulation.** Values are summed in base units as `int64` and converted once
+  at the end of the epoch, so the total carries no floating-point rounding of its own.
+
+The rules live in the pure layer (`mc_ValuePaidToTreasury`,
+`mc_AccumulateReconciliation` in [`weight_records.h`](../../weight_engine/weight_records.h))
+and are unit-tested there; only the traversal needs the block layer.
+
+#### The treasury address is a chain parameter
+
+`weight-treasury-address` (`-weighttreasuryaddress`), hash-enforced like every other
+weight-engine parameter — necessarily so, because the value of `R_k` depends on it and two
+nodes disagreeing about it would compute different weights and fork.
+
+Deriving it implicitly from *"who holds `admin`"* was rejected: the admin set is
+**mutable**, so a node re-syncing after a grant or revocation would attribute a historical
+epoch differently than the network did at the time. That is the same
+retroactive-mutability hazard that keeps the Certification Authority check out of the ESG
+reader ([§6.4](#64-esg--the-certification-authority-role)).
+
+**Unset is legal** and means `R_k = 0` for every cluster, on every node — exactly the old
+behaviour on a chain where nobody published reconciliation records. By Def. 6.8 a
+uniformly zero `R` gives `rho_k = 0`, and by Def. 6.9 `w_k = W_k * (1 - lambda)`: a
+uniform scaling that leaves the *relative* weights, and therefore the election, unchanged.
+
+#### The same stability margin, for the same reason
+
+Reconciliation obeys the identical buried-epoch guard as activity: the epoch's last block
+must sit at least `MC_WEIGHT_DEFAULT_STABILITY_MARGIN` below the tip
+([§3.2](#32-epochs-and-the-stability-margin)). Both are read from the same snapshotted
+block range in the same pass, so a shallow reorg near the tip cannot make two nodes read
+different blocks for either quantity.
 
 ### 2.2 Membership is self-attested, and the key is the declaring node
 
@@ -180,6 +266,14 @@ The final integer weight is `ToIntegerWeight(w_k)`, always `>= 1` — the weight
 requirement, and also the Efraimidis–Spirakis requirement
 ([`wpoa_selector.h`](../wpoa_selector.h)).
 
+> **`R_k^(e)` is chain-derived, not declared.** The formula is unchanged and `R_k` is
+> still clamped to `[0, A_k + B_{k-1}]`, but the value now comes from the epoch's
+> confirmed transfers to the treasury rather than from an administrator's statement
+> ([§2.1](#21-activity-and-reconciliation-are-published-by-nobody)). This is the one
+> point where the implementation's **source** for a Cap. 6 quantity differs from what the
+> thesis text describes; the proposed wording is in
+> [adr/reconciliation-onchain.md §7](adr/reconciliation-onchain.md#7-divergence-from-the-thesis-text).
+
 ### 3.1 Consensus-critical determinism
 
 `w_k` governs proposer election, so **every honest node must compute the same integer**.
@@ -210,8 +304,9 @@ same function is reused by the malus registry to align epochs
 
 An epoch is computed **only once it is buried**: its last block must sit at least
 `MC_WEIGHT_DEFAULT_STABILITY_MARGIN` (currently `6`) blocks below the chain tip. Because
-`tau` is derived from the epoch's confirmed blocks, this prevents a shallow reorg near the
-tip from making two nodes read different blocks.
+**both** `tau` and `R` are derived from the epoch's confirmed blocks — from the same
+snapshotted range, in the same pass — this prevents a shallow reorg near the tip from
+making two nodes read different blocks for either quantity.
 
 > The margin is a compile-time constant, not a chain parameter. The code itself recommends
 > promoting it to a hash-enforced parameter before production, alongside
@@ -253,7 +348,8 @@ The loop, on each iteration:
 
 1. waits for the wallet, permissions and connectivity to be ready, and for the initial
    block download to finish (the same gate as the wPoA thread);
-2. calls `reader.EnsureInputStreams()` — creates missing streams and subscribes;
+2. calls `reader.EnsureInputStreams()` — creates the two missing published streams and
+   subscribes;
 3. identifies the **latest buried epoch**;
 4. computes `w_k` **only for its own** miner address, and only if the local node is itself
    a cluster miner (`ComputeLocalWeightForEpoch`: if
@@ -346,6 +442,32 @@ The comparison is **exact integer equality**, which is safe precisely because of
 determinism disciplines of [§3.1](#31-consensus-critical-determinism). A tolerance band
 would only create a margin for a dishonest publisher to hide in.
 
+**A weight is compared only against its own epoch's recomputation.** Each record carries
+the epoch it was computed for, and one about a different epoch — or about none, as with
+the static `-weight` path — is reported as `other-epoch` and left untouched. This is not
+a nicety: without it, a value legitimately published for epoch `e` would be flagged as
+wrong the moment epoch `e+1` arrived, and the malus would turn that false accusation into
+a real weight penalty. (It was observed in a live run before the epoch field existed: an
+honest node's own weight was reported as failing verification on every epoch rollover.)
+
+Because publication necessarily **lags** the epoch it describes — a node can only compute
+`w_k^{(e)}` once epoch `e` is buried, so its record lands during `e+1` — verification
+targets the **previous** epoch: at epoch `e` it checks the records for `e-1`, by which
+time every honest node has had a full epoch to publish. That is the same inter-epoch
+alignment the rest of the system uses (`rho^{(e-1)}` drives `w^{(e)}`; a proved malus
+takes effect from the epoch after).
+
+Two consequences, both deliberate:
+
+- **A node whose weight did not change publishes nothing** (`RegisterLocalWeight` is
+  idempotent), so it is simply not compared that round. Correctly so: there is no new
+  claim to check, and its previous record was checked when it was made.
+- Verification therefore catches every **dishonest publication**, not every node every
+  epoch — which is the right target. To gain from a wrong weight a node must *publish*
+  it, and any publication it makes is epoch-stamped and gets compared. A node that stops
+  publishing keeps its last confirmed weight, which is pre-existing behaviour of the
+  newest-confirmed-wins stream rather than something this mechanism introduces.
+
 It **fails open**, deliberately and unlike Rule 1: verification needs readable inputs and
 a **buried** epoch, and their absence is entirely normal (a node still syncing, an epoch
 not yet buried). Treating *"cannot verify"* as *"invalid"* would zero every weight on such
@@ -403,8 +525,8 @@ things.
 
 ### 6.1 On-chain gate — consensus-enforced
 
-Every stream involved — the three input streams and `wpoa-weights` — is **CLOSED**. Only an
-address holding `MC_PTP_WRITE` on the stream can publish. This is what blocks arbitrary
+Every stream involved — the two published input streams and `wpoa-weights` — is
+**CLOSED**. Only an address holding `MC_PTP_WRITE` on the stream can publish. This is what blocks arbitrary
 writes, and it is enforced by MultiChain's granular permissions, not by convention.
 
 ```bash
@@ -425,8 +547,8 @@ authorization model:
 | Stream | `.write` granted to | Why |
 |---|---|---|
 | `weight-engine-membership` | **every node on the network** | Records are self-verifiable: a write permission lets a node speak about *itself* and nothing more. |
+| ~~`weight-engine-reconciliation`~~ | **removed** | `R_k` is derived from the blocks; there is no stream to grant. |
 | `weight-engine-esg` | **Certification Authorities only** | An unverifiable external attestation about a third party. See [§6.4](#64-esg--the-certification-authority-role). |
-| `weight-engine-reconciliation` | governance only | Likewise. |
 | `wpoa-weights` | **every node** | The record is self-published *and* the value is independently recomputable — the only input class that is verifiable on both counts. See [§5.1](#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others). |
 
 For membership, network admission is still gated — but **upstream**, by the KYC-backed
@@ -435,14 +557,18 @@ member of the consortium, letting it state which cluster it belongs to adds no p
 
 ### 6.2 Application gate — per stream, not uniform
 
-The three published inputs do **not** share one authorization model. The split follows a
+The two published inputs do **not** share one authorization model. The split follows a
 single criterion: **can a third party verify the claim?**
+
+The pipeline's other two inputs raise no authorization question at all, because nobody
+writes them: `tau` and `R` are derived from the blocks
+([§2.1](#21-activity-and-reconciliation-are-published-by-nobody)). Removing the
+reconciliation stream removed an authorization surface rather than reassigning it.
 
 | RPC (category `weight`) | Stream written | Caller | Payload |
 |---|---|---|---|
 | `weightsetesg` | `weight-engine-esg` | **Certification Authority only** | `{node_address, esg}`, `esg > 0` |
 | `weightregistermembership` | `weight-engine-membership` | **any node** | key `node_address`, payload `{node_address, miner_address, timestamp}` |
-| `weightsetreconciliation` | `weight-engine-reconciliation` | **admin only** | `{node_address, reconciled, epoch}`, `R >= 0`, `epoch >= 1` |
 
 Registered in [`rpclist.cpp`](../../rpc/rpclist.cpp). Each method, **before** publishing:
 
@@ -453,9 +579,10 @@ Registered in [`rpclist.cpp`](../../rpc/rpclist.cpp). Each method, **before** pu
    ([`weight_authorization.h`](../../weight_engine/weight_authorization.h) holds the
    decision tables as pure functions; the on-chain lookups live in
    [`weight_publisher.cpp`](../../weight_engine/weight_publisher.cpp)):
-   `IsCertificationAuthority` for ESG, `CanAdmin` for reconciliation, and **none at
-   all** for `weightregistermembership` — it takes no parameter naming *whose*
-   membership to declare, so it structurally cannot write about anyone but the caller;
+   `IsCertificationAuthority` for ESG, and **none at all** for
+   `weightregistermembership` — it takes no parameter naming *whose* membership to
+   declare, so it structurally cannot write about anyone but the caller. There is no
+   remaining write path in this module that requires global `admin`;
 3. verifies that the address has write permission on the stream;
 4. publishes **from** that address.
 
@@ -487,19 +614,21 @@ honest node, whether it came from `weightregistermembership`, from the generic
 `publishfrom`, or from a raw transaction. Opening the write is free in safety terms, exactly
 as opening the malus stream is.
 
-**The known limit survives, narrowed to the two attestation streams.** Write permission is
-an **independent** grant from the role check, and for ESG and reconciliation the reader
-still **trusts any schema-valid confirmed record, regardless of its publisher**.
+**The known limit survives, narrowed to a single stream.** Write permission is an
+**independent** grant from the role check, and for ESG the reader still **trusts any
+schema-valid confirmed record, regardless of its publisher**.
 
-> For `weight-engine-esg` and `weight-engine-reconciliation`, the role guarantee holds
-> **only if** operators grant `.write` on those streams **exclusively** to the intended
-> writers. An address that has been granted `.write` without holding the role could
-> publish a schema-valid but **forged** record using the generic `publishfrom` rather
-> than the `weightset*` RPCs, and the reader would accept it. Granting `.write` on those
-> two streams **is** the security control, and must be treated as such.
+> For `weight-engine-esg`, the role guarantee holds **only if** operators grant
+> `weight-engine-esg.write` **exclusively** to the intended certifiers. An address that
+> has been granted `.write` without holding the role could publish a schema-valid but
+> **forged** record using the generic `publishfrom` rather than `weightsetesg`, and the
+> reader would accept it. Granting that `.write` **is** the security control, and must be
+> treated as such.
 >
-> `weight-engine-membership` is **no longer exposed to this**: its validity rule is
-> cryptographic, not privilege-based.
+> It applies to **nothing else**. `weight-engine-membership` is not exposed to it (its
+> validity rule is cryptographic, not privilege-based), `wpoa-weights` is not
+> ([§5.1](#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others)), and
+> `tau` and `R` are not, because they have no writer to impersonate.
 
 ### 6.4 ESG — the Certification Authority role
 
@@ -595,8 +724,9 @@ inflating, with nothing to check it against. Self-write is safe **only** where t
 self-verifiable.
 
 This makes ESG the single remaining **trusted** input in the whole pipeline. Every other
-input is either chain-derived (`tau`) or self-verifiable (membership), so the integrity of
-the weights rests on the CA role and on the grant discipline of [§6.3](#63-why-opening-membership-is-safe--and-where-the-known-limit-still-bites).
+input is either chain-derived (`tau`, `R`) or self-verifiable (membership,
+`wpoa-weights`), so the integrity of the weights rests entirely on the CA role and on the
+grant discipline of [§6.3](#63-why-opening-membership-is-safe--and-where-the-known-limit-still-bites).
 
 ---
 
@@ -635,7 +765,7 @@ a minimal chain snapshot.
 | [`weight_authorization.h`](../../weight_engine/weight_authorization.h) | W1: the pure per-stream write policy — the Certification Authority decision table and the CA role's wire name. No node dependency. |
 | [`weight_engine.h`](../../weight_engine/weight_engine.h) | W2: the pure computation core. Standard library only. |
 | [`weight_engine.cpp`](../../weight_engine/weight_engine.cpp) | W3: `HeightToEpoch`, `ThreadWeightEngine`, node glue, configuration globals. |
-| [`weight_reader.h`](../../weight_engine/weight_reader.h) / [`.cpp`](../../weight_engine/weight_reader.cpp) | W3: `WeightStreamReader` — stream lifecycle, confirmed reads, `ComputeActivityForEpoch`. |
+| [`weight_reader.h`](../../weight_engine/weight_reader.h) / [`.cpp`](../../weight_engine/weight_reader.cpp) | W3: `WeightStreamReader` — lifecycle of the two published streams, confirmed reads with publisher extraction, and the single-pass `ComputeActivityAndReconciliationForEpoch`. |
 | [`weight_publisher.h`](../../weight_engine/weight_publisher.h) / [`.cpp`](../../weight_engine/weight_publisher.cpp) | W3: the single validated write path, the CA-gated ESG RPC, the admin reconciliation RPC and the public self-write membership RPC. |
 | [`weight_verifier.h`](../../weight_engine/weight_verifier.h) / [`.cpp`](../../weight_engine/weight_verifier.cpp) | Universal verification of the published weights: the pure compare/filter, the per-epoch verdict cache and the `weightverifyweights` RPC. |
 
@@ -650,7 +780,7 @@ The module has its **own** unit suites, with a runner separate from the wPoA one
 
 | Suite | File | Coverage |
 |---|---|---|
-| `records` | [`weight_records_tests.cpp`](../../weight_engine/test/weight_records_tests.cpp) | Record parsing; the **self-attestation rule** (own declaration accepted, foreign / admin-proxy declaration rejected, fail-closed on an unrecoverable signer); cluster inversion, including a node changing cluster twice so only the last declaration counts, and the no-self-membership rule. |
+| `records` | [`weight_records_tests.cpp`](../../weight_engine/test/weight_records_tests.cpp) | The chain-derived **reconciliation rules** (only treasury-paying outputs count; third parties, change and non-monetary outputs excluded; the signer is credited so a transfer *to* a miner never counts as one *from* it; treasury self-payment excluded; multi-transaction aggregation; order independence across nodes). Record parsing; the **self-attestation rule** (own declaration accepted, foreign / admin-proxy declaration rejected, fail-closed on an unrecoverable signer); cluster inversion, including a node changing cluster twice so only the last declaration counts, and the no-self-membership rule. |
 | `authorization` | [`weight_authorization_tests.cpp`](../../weight_engine/test/weight_authorization_tests.cpp) | The ESG write decision table: CA authorized; **global admin without the role refused**; generic address refused; revocation biting while `.write` remains; CA lacking `.write`; CA-first error ordering; fail-closed on a chain without custom permissions; and that the role sits in a `high*` slot. |
 | `verifier` | [`weight_verifier_tests.cpp`](../../weight_engine/test/weight_verifier_tests.cpp) | Matching values accepted; an inflated **and** an understated value rejected and dropped from the map; off-by-one rejected (no tolerance band); a weight published for a non-cluster rejected with its own reason; **fail-open** when the recomputation was unavailable, including a partial map; two honest nodes reaching identical verdicts and identical filtered maps. |
 | `engine` | [`weight_engine_tests.cpp`](../../weight_engine/test/weight_engine_tests.cpp) | Order independence, zero-total guard, `rho` bounds, balance recursion, weight positivity, `ToIntegerWeight` clamp, multi-cluster allocation identity. |
@@ -661,8 +791,10 @@ Both are node-free: they do not require building the node. See [testing.md](test
 
 ## 10. References
 
-- [protocol-parameters.md](protocol-parameters.md) — the engine's five parameters, with
-  ranges and validation.
+- [adr/reconciliation-onchain.md](adr/reconciliation-onchain.md) — why `R_k^(e)` became
+  chain-derived, the option that was rejected, and the thesis wording it supersedes.
+- [protocol-parameters.md](protocol-parameters.md) — the engine's parameters, with ranges
+  and validation.
 - [stream-weight-registry.md](stream-weight-registry.md) — the `wpoa-weights` stream and
   its read API.
 - [malus-registry.md](malus-registry.md) — the malus registry, which reuses

@@ -2,8 +2,14 @@
 // MultiChain code distributed under the GPLv3 license, see COPYING file.
 //
 // Weight-management layer — Stage W1: pure, dependency-light helpers that parse
-// the four WeightEngine input-stream item payloads and fold them into the
-// in-memory structures the pipeline consumes.
+// the WeightEngine input-stream item payloads and fold them into the in-memory
+// structures the pipeline consumes.
+//
+// There are TWO published input streams, membership and ESG, so there are two record
+// parsers here. The pipeline's other two inputs — the activity counters tau and the
+// reconciled amounts R — are DERIVED from the epoch's confirmed blocks rather than
+// published, so they have no wire format and nothing to parse (weight_reader.h
+// ComputeActivityAndReconciliationForEpoch; wpoa/docs/adr/reconciliation-onchain.md).
 //
 // Mirrors wpoa/weight_record.h: this header depends only on json_spirit (plus
 // the C++ standard library), so the parsing/aggregation logic can be unit-tested
@@ -321,86 +327,100 @@ inline bool mc_ParseEsgRecordJson(const json_spirit::Value& data_value,
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Chain-derived reconciliation — the pure decision, one transaction at a time
+// ---------------------------------------------------------------------------
+//
+// R_k^{(e)} (Def. riconciliazione) is no longer attested by anyone: it is derived from
+// the confirmed transactions of a buried epoch (weight_reader.h
+// ComputeActivityAndReconciliationForEpoch). The traversal needs the block/undo layer,
+// but the RULE that decides what a single transaction contributes does not — so it
+// lives here, pure and unit-tested, rather than buried inside the scan loop. See
+// wpoa/docs/adr/reconciliation-onchain.md.
+
 /**
- * Parse a wpoa-activity item: {"json":{"node_address":"..","tau":n,"epoch":e}}.
- * tau is a non-negative counter (an inactive node has tau == 0, Def.
- * contributo-pesato); epoch must be >= 1. Both are range/integrality checked.
- * @return true for a non-empty address, a representable tau >= 0 and epoch >= 1.
+ * Fold ONE transaction's reconciliation contribution into the running per-miner totals.
+ *
+ * @param r_raw            [in,out] miner -> reconciled value, in integer base units.
+ *                         Accumulated across every transaction of the epoch, so calling
+ *                         this repeatedly is how multi-transaction aggregation works.
+ * @param signers          The addresses that SIGNED the transaction, resolved from undo
+ *                         data — the same set that drives tau.
+ * @param value_to_treasury The total value the transaction pays to the treasury address.
+ * @param treasury         The treasury address ("" when none is configured).
+ *
+ * The rules, each with its reason:
+ *
+ *   * CREDITED TO THE SIGNERS, not to whoever appears in the transaction. This is what
+ *     makes the DIRECTION unambiguous: a transfer TO a miner is never mistaken for one
+ *     FROM it, and the treasury paying somebody creates no reconciliation for the
+ *     recipient, because the recipient did not sign.
+ *   * NOTHING WITHOUT A TREASURY. An unconfigured treasury yields no reconciliation at
+ *     all, uniformly on every node — deterministic, and the same behaviour as the old
+ *     model on a chain where nobody published reconciliation records.
+ *   * NON-POSITIVE VALUE IGNORED. Covers a transaction paying the treasury nothing, and
+ *     data-only outputs (OP_RETURN carries no value), so a stream item or a
+ *     notarisation never registers as a reconciliation.
+ *   * THE TREASURY PAYING ITSELF IS NOT A RECONCILIATION. Excluded explicitly, so a
+ *     treasury-signed transaction — a refund, a rebalancing — cannot inflate any
+ *     cluster's compliance, not even the treasury's own if it also happens to be a miner.
+ *   * INTEGER ACCUMULATION. Base units are summed as int64 and converted to a real value
+ *     once, after the whole epoch, so the total carries no floating-point rounding of
+ *     its own — the sum must be bit-identical on every node.
  */
-inline bool mc_ParseActivityRecordJson(const json_spirit::Value& data_value,
-                                       std::string& node_address, uint32_t& tau,
-                                       uint32_t& epoch)
+inline void mc_AccumulateReconciliation(std::map<std::string, int64_t>& r_raw,
+                                        const std::set<std::string>& signers,
+                                        int64_t value_to_treasury,
+                                        const std::string& treasury)
 {
-    node_address = "";
-    tau = 0;
-    epoch = 0;
-
-    json_spirit::Object inner;
-    if (!mc_WeightUnwrapItemJson(data_value, inner))
+    if (treasury.empty() || value_to_treasury <= 0 || signers.empty())
     {
-        return false;
+        return;
     }
-
-    std::string addr;
-    uint32_t tau_v = 0;
-    uint32_t epoch_v = 0;
-    if (!mc_WeightGetStr(inner, MC_WEIGHT_FIELD_NODE_ADDR, addr) ||
-        !mc_WeightGetBoundedU32(inner, MC_WEIGHT_FIELD_TAU, tau_v) ||
-        !mc_WeightGetBoundedU32(inner, MC_WEIGHT_FIELD_EPOCH, epoch_v))
+    for (std::set<std::string>::const_iterator it = signers.begin(); it != signers.end(); ++it)
     {
-        return false;
+        if (*it == treasury)
+        {
+            continue;   // the treasury paying itself reconciles nothing
+        }
+        r_raw[*it] += value_to_treasury;
     }
-    if (addr.empty() || epoch_v < 1)
-    {
-        return false;
-    }
-
-    node_address = addr;
-    tau = tau_v;
-    epoch = epoch_v;
-    return true;
 }
 
 /**
- * Parse a wpoa-reconciliation item:
- *   {"json":{"node_address":"..","reconciled":r,"epoch":e}}.
- * reconciled is the amount R_k^{(e)} reconciled in the epoch (>= 0, finite, Def.
- * riconciliazione); epoch must be >= 1. reconciled stays a real value (it is an
- * amount, not a counter) so it is not integrality-checked.
- * @return true for a non-empty miner address, reconciled >= 0 and epoch >= 1.
+ * The value one transaction pays to the treasury: the sum of its outputs whose
+ * destination IS the treasury address.
+ *
+ * Both sides of a transfer are resolved the same way — an output's destination through
+ * the same address extraction the input side uses for signers — so "paid to the
+ * treasury" means exactly what "signed by the miner" means, and the two halves of the
+ * rule cannot drift apart.
+ *
+ * @param out_addresses  Per output, its destination address, or "" when the output has
+ *                       no single extractable destination (OP_RETURN, bare multisig, a
+ *                       non-standard script). Those never match a treasury address.
+ * @param out_values     Per output, its value in integer base units. Must be the same
+ *                       length as `out_addresses`; a mismatch yields 0 rather than
+ *                       reading past either vector.
+ * @param treasury       The treasury address ("" -> 0).
  */
-inline bool mc_ParseReconciliationRecordJson(const json_spirit::Value& data_value,
-                                             std::string& miner, double& reconciled,
-                                             uint32_t& epoch)
+inline int64_t mc_ValuePaidToTreasury(const std::vector<std::string>& out_addresses,
+                                      const std::vector<int64_t>& out_values,
+                                      const std::string& treasury)
 {
-    miner = "";
-    reconciled = 0.0;
-    epoch = 0;
-
-    json_spirit::Object inner;
-    if (!mc_WeightUnwrapItemJson(data_value, inner))
+    if (treasury.empty() || out_addresses.size() != out_values.size())
     {
-        return false;
+        return 0;
     }
-
-    std::string addr;
-    double r = -1.0;
-    uint32_t epoch_v = 0;
-    if (!mc_WeightGetStr(inner, MC_WEIGHT_FIELD_NODE_ADDR, addr) ||
-        !mc_WeightGetNum(inner, MC_WEIGHT_FIELD_RECONCILED, r) ||
-        !mc_WeightGetBoundedU32(inner, MC_WEIGHT_FIELD_EPOCH, epoch_v))
+    int64_t total = 0;
+    for (size_t i = 0; i < out_addresses.size(); i++)
     {
-        return false;
+        if (out_values[i] > 0 && out_addresses[i] == treasury)
+        {
+            total += out_values[i];
+        }
     }
-    if (addr.empty() || r < 0.0 || epoch_v < 1)
-    {
-        return false;
-    }
-
-    miner = addr;
-    reconciled = r;
-    epoch = epoch_v;
-    return true;
+    return total;
 }
 
 // ---------------------------------------------------------------------------
@@ -410,13 +430,6 @@ inline bool mc_ParseReconciliationRecordJson(const json_spirit::Value& data_valu
 // newest record for a key wins, mirroring mc_AccumulateLatestWeight in
 // wpoa/weight_record.h. Membership included: since a node may change cluster at
 // will, its latest confirmed declaration is the only one that counts.
-//
-// PRECONDITION for the activity/reconciliation accumulators: they key on address
-// ONLY, so "newest wins" reconstructs a per-epoch value correctly only when the
-// reader feeds items for a SINGLE target epoch. The W3 reader folds the pipeline
-// forward one epoch at a time (it needs each epoch's A_k and R_k to derive
-// B_{k-1} and rho_{k-1}), so it filters to one epoch before accumulating. Keep
-// this contract if W3's fold strategy changes.
 // ---------------------------------------------------------------------------
 
 /**
@@ -479,20 +492,6 @@ inline void mc_AccumulateLatestEsg(std::map<std::string, double>& latest,
                                    const std::string& node_address, double esg)
 {
     latest[node_address] = esg;
-}
-
-/** address -> latest activity counter tau for the epoch being read. */
-inline void mc_AccumulateLatestActivity(std::map<std::string, uint32_t>& latest,
-                                        const std::string& node_address, uint32_t tau)
-{
-    latest[node_address] = tau;
-}
-
-/** miner -> latest reconciled amount R for the epoch being read. */
-inline void mc_AccumulateLatestReconciliation(std::map<std::string, double>& latest,
-                                              const std::string& miner, double reconciled)
-{
-    latest[miner] = reconciled;
 }
 
 #endif // MC_WEIGHT_RECORDS_H

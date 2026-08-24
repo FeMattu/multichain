@@ -33,6 +33,21 @@
 typedef std::map<std::string, uint32_t> WMap;
 typedef std::map<std::string, WeightVerificationEntry> VMap;
 
+// The epoch under verification in most cases below.
+static const uint32_t E = 7;
+
+// Stamp every published record with epoch `e` — the normal case, where each node has
+// published for the epoch being verified.
+static WMap all_at(const WMap& published, uint32_t e)
+{
+    WMap m;
+    for (WMap::const_iterator it = published.begin(); it != published.end(); ++it)
+    {
+        m[it->first] = e;
+    }
+    return m;
+}
+
 // ---- the honest case ----------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(matching_values_verify_ok_and_survive_the_filter)
@@ -42,7 +57,7 @@ BOOST_AUTO_TEST_CASE(matching_values_verify_ok_and_survive_the_filter)
     published["MINER_B"] = 700;  recomputed["MINER_B"] = 700;
 
     VMap v;
-    mc_VerifyPublishedWeights(published, recomputed, true, v);
+    mc_VerifyPublishedWeights(published, all_at(published, E), E, recomputed, true, v);
 
     BOOST_CHECK_EQUAL(v.size(), 2u);
     BOOST_CHECK_EQUAL(v["MINER_A"].verdict, MC_WEIGHT_VERDICT_OK);
@@ -68,7 +83,7 @@ BOOST_AUTO_TEST_CASE(mismatching_value_is_rejected_and_dropped)
     published["CHEATER"] = 99999; recomputed["CHEATER"] = 300;   // inflated its own weight
 
     VMap v;
-    mc_VerifyPublishedWeights(published, recomputed, true, v);
+    mc_VerifyPublishedWeights(published, all_at(published, E), E, recomputed, true, v);
 
     BOOST_CHECK_EQUAL(v["CHEATER"].verdict, MC_WEIGHT_VERDICT_MISMATCH);
     BOOST_CHECK_EQUAL(v["CHEATER"].published, 99999u);
@@ -91,7 +106,7 @@ BOOST_AUTO_TEST_CASE(understated_value_is_also_a_mismatch)
     published["MINER_A"] = 10;  recomputed["MINER_A"] = 300;
 
     VMap v;
-    mc_VerifyPublishedWeights(published, recomputed, true, v);
+    mc_VerifyPublishedWeights(published, all_at(published, E), E, recomputed, true, v);
     BOOST_CHECK_EQUAL(v["MINER_A"].verdict, MC_WEIGHT_VERDICT_MISMATCH);
 }
 
@@ -104,7 +119,7 @@ BOOST_AUTO_TEST_CASE(off_by_one_is_a_mismatch_no_tolerance_band)
     published["MINER_A"] = 251;  recomputed["MINER_A"] = 250;
 
     VMap v;
-    mc_VerifyPublishedWeights(published, recomputed, true, v);
+    mc_VerifyPublishedWeights(published, all_at(published, E), E, recomputed, true, v);
     BOOST_CHECK_EQUAL(v["MINER_A"].verdict, MC_WEIGHT_VERDICT_MISMATCH);
 }
 
@@ -117,7 +132,7 @@ BOOST_AUTO_TEST_CASE(weight_for_a_non_cluster_is_rejected_with_its_own_reason)
     published["NOT_A_MINER"] = 5000;                 // heads no cluster at all
 
     VMap v;
-    mc_VerifyPublishedWeights(published, recomputed, true, v);
+    mc_VerifyPublishedWeights(published, all_at(published, E), E, recomputed, true, v);
 
     // Distinguished from MISMATCH: the fault differs, and an accurate reason makes the
     // log and any accusation auditable.
@@ -145,7 +160,7 @@ BOOST_AUTO_TEST_CASE(failed_recomputation_leaves_every_record_untouched)
 
     WMap empty_recomputed;                              // nothing recomputed
     VMap v;
-    mc_VerifyPublishedWeights(published, empty_recomputed, false, v);
+    mc_VerifyPublishedWeights(published, all_at(published, E), E, empty_recomputed, false, v);
 
     BOOST_CHECK_EQUAL(v.size(), 2u);
     BOOST_CHECK_EQUAL(v["MINER_A"].verdict, MC_WEIGHT_VERDICT_UNVERIFIED);
@@ -168,7 +183,7 @@ BOOST_AUTO_TEST_CASE(recompute_not_ok_dominates_a_populated_map)
     partial["MINER_A"]   = 1;        // would be a mismatch if trusted
 
     VMap v;
-    mc_VerifyPublishedWeights(published, partial, false, v);
+    mc_VerifyPublishedWeights(published, all_at(published, E), E, partial, false, v);
     BOOST_CHECK_EQUAL(v["MINER_A"].verdict, MC_WEIGHT_VERDICT_UNVERIFIED);
     BOOST_CHECK_EQUAL(mc_CountInvalidVerdicts(v), 0u);
 }
@@ -206,8 +221,8 @@ BOOST_AUTO_TEST_CASE(two_honest_nodes_reach_identical_verdicts)
     node1["CHEATER"] = 300;  node2["CHEATER"] = 300;
 
     VMap v1, v2;
-    mc_VerifyPublishedWeights(published, node1, true, v1);
-    mc_VerifyPublishedWeights(published, node2, true, v2);
+    mc_VerifyPublishedWeights(published, all_at(published, E), E, node1, true, v1);
+    mc_VerifyPublishedWeights(published, all_at(published, E), E, node2, true, v2);
 
     BOOST_CHECK_EQUAL(v1.size(), v2.size());
     for (VMap::const_iterator it = v1.begin(); it != v1.end(); ++it)
@@ -226,6 +241,109 @@ BOOST_AUTO_TEST_CASE(two_honest_nodes_reach_identical_verdicts)
     BOOST_CHECK(f1.find("CHEATER") == f1.end());
 }
 
+// ---- a record about ANOTHER epoch is not a finding ----------------------
+//
+// THE FALSE-ACCUSATION GUARD, and the reason the record carries an epoch at all.
+// A weight is a claim about a specific epoch: w_k^(e) is computed from epoch e's
+// inputs. Publication necessarily LAGS the epoch it describes, so a value legitimately
+// published for epoch e is still the standing record when epoch e+1 comes round. Naively
+// comparing it against e+1's recomputation flags an honest node as wrong — and the malus
+// would turn that into a real weight penalty. This was observed in a live run before the
+// epoch field was added: an honest node's own weight was reported as failing
+// verification on every epoch rollover.
+
+BOOST_AUTO_TEST_CASE(record_published_for_an_earlier_epoch_is_not_a_finding)
+{
+    WMap published, recomputed, epochs;
+    published["MINER_A"] = 250;      // honestly published for epoch 6...
+    epochs["MINER_A"]    = E - 1;
+    recomputed["MINER_A"] = 900;     // ...while epoch 7 legitimately recomputes to 900
+
+    VMap v;
+    mc_VerifyPublishedWeights(published, epochs, E, recomputed, true, v);
+
+    BOOST_CHECK_EQUAL(v["MINER_A"].verdict, MC_WEIGHT_VERDICT_OTHER_EPOCH);
+    BOOST_CHECK(!mc_WeightVerdictIsInvalid(v["MINER_A"].verdict));
+    BOOST_CHECK_EQUAL(mc_CountInvalidVerdicts(v), 0u);
+    BOOST_CHECK_EQUAL(v["MINER_A"].published_epoch, E - 1);
+
+    WMap filtered;                                    // and its weight is left alone
+    mc_FilterVerifiedWeights(published, v, filtered);
+    BOOST_CHECK_EQUAL(filtered["MINER_A"], 250u);
+}
+
+// A record with NO epoch — the static -weight path, or a record predating the field —
+// is likewise not verifiable and not a finding: a hand-set weight is not derived from
+// any epoch, so there is no recomputation it could be expected to match.
+BOOST_AUTO_TEST_CASE(record_without_an_epoch_is_not_a_finding)
+{
+    WMap published, recomputed, epochs;
+    published["STATIC_NODE"] = 100;
+    epochs["STATIC_NODE"]    = 0;          // no epoch stated
+    recomputed["STATIC_NODE"] = 640;
+
+    VMap v;
+    mc_VerifyPublishedWeights(published, epochs, E, recomputed, true, v);
+
+    BOOST_CHECK_EQUAL(v["STATIC_NODE"].verdict, MC_WEIGHT_VERDICT_OTHER_EPOCH);
+    BOOST_CHECK_EQUAL(v["STATIC_NODE"].published_epoch, 0u);
+    BOOST_CHECK_EQUAL(mc_CountInvalidVerdicts(v), 0u);
+
+    WMap filtered;
+    mc_FilterVerifiedWeights(published, v, filtered);
+    BOOST_CHECK_EQUAL(filtered["STATIC_NODE"], 100u);   // keeps its weight
+}
+
+// An address missing from the epoch map is treated as unstated, not as "epoch 0 matches".
+BOOST_AUTO_TEST_CASE(missing_epoch_entry_is_treated_as_unstated)
+{
+    WMap published, recomputed;
+    published["MINER_A"] = 250;
+    recomputed["MINER_A"] = 250;
+
+    WMap no_epochs;                        // deliberately empty
+    VMap v;
+    mc_VerifyPublishedWeights(published, no_epochs, E, recomputed, true, v);
+    BOOST_CHECK_EQUAL(v["MINER_A"].verdict, MC_WEIGHT_VERDICT_OTHER_EPOCH);
+}
+
+// The guard must not become a loophole: scoping by epoch narrows WHICH records are
+// checked, it does not soften the check on the ones that are. A cheater publishing for
+// the very epoch under verification is still caught.
+BOOST_AUTO_TEST_CASE(epoch_scoping_still_catches_a_cheat_for_the_verified_epoch)
+{
+    WMap published, recomputed, epochs;
+    published["CHEATER"] = 99999;  epochs["CHEATER"] = E;      // claims THIS epoch
+    recomputed["CHEATER"] = 300;
+    published["LAGGARD"] = 250;    epochs["LAGGARD"] = E - 2;  // claims an older one
+    recomputed["LAGGARD"] = 400;
+
+    VMap v;
+    mc_VerifyPublishedWeights(published, epochs, E, recomputed, true, v);
+
+    BOOST_CHECK_EQUAL(v["CHEATER"].verdict, MC_WEIGHT_VERDICT_MISMATCH);
+    BOOST_CHECK_EQUAL(v["LAGGARD"].verdict, MC_WEIGHT_VERDICT_OTHER_EPOCH);
+    BOOST_CHECK_EQUAL(mc_CountInvalidVerdicts(v), 1u);
+
+    WMap filtered;
+    mc_FilterVerifiedWeights(published, v, filtered);
+    BOOST_CHECK(filtered.find("CHEATER") == filtered.end());
+    BOOST_CHECK_EQUAL(filtered["LAGGARD"], 250u);
+}
+
+// A record claiming a FUTURE epoch is equally not compared against the current one:
+// the rule is equality of epoch, not "at most the current".
+BOOST_AUTO_TEST_CASE(record_claiming_a_future_epoch_is_not_compared)
+{
+    WMap published, recomputed, epochs;
+    published["MINER_A"] = 250;  epochs["MINER_A"] = E + 5;
+    recomputed["MINER_A"] = 250;
+
+    VMap v;
+    mc_VerifyPublishedWeights(published, epochs, E, recomputed, true, v);
+    BOOST_CHECK_EQUAL(v["MINER_A"].verdict, MC_WEIGHT_VERDICT_OTHER_EPOCH);
+}
+
 // ---- edge cases --------------------------------------------------------
 
 // A cluster that exists but has published nothing gets no entry: there is no record to
@@ -238,7 +356,7 @@ BOOST_AUTO_TEST_CASE(recomputed_but_unpublished_cluster_has_no_entry)
     recomputed["MINER_SILENT"] = 400;      // a real cluster that published nothing
 
     VMap v;
-    mc_VerifyPublishedWeights(published, recomputed, true, v);
+    mc_VerifyPublishedWeights(published, all_at(published, E), E, recomputed, true, v);
     BOOST_CHECK_EQUAL(v.size(), 1u);
     BOOST_CHECK(v.find("MINER_SILENT") == v.end());
 }
@@ -249,7 +367,7 @@ BOOST_AUTO_TEST_CASE(empty_published_map_yields_no_verdicts)
     recomputed["MINER_A"] = 250;
 
     VMap v;
-    mc_VerifyPublishedWeights(published, recomputed, true, v);
+    mc_VerifyPublishedWeights(published, all_at(published, E), E, recomputed, true, v);
     BOOST_CHECK(v.empty());
     BOOST_CHECK_EQUAL(mc_CountInvalidVerdicts(v), 0u);
 }
@@ -257,10 +375,10 @@ BOOST_AUTO_TEST_CASE(empty_published_map_yields_no_verdicts)
 BOOST_AUTO_TEST_CASE(verify_clears_stale_output)
 {
     VMap v;
-    v["STALE"] = WeightVerificationEntry(1, 1, MC_WEIGHT_VERDICT_OK);
+    v["STALE"] = WeightVerificationEntry(1, E, 1, MC_WEIGHT_VERDICT_OK);
 
     WMap published, recomputed;
-    mc_VerifyPublishedWeights(published, recomputed, true, v);
+    mc_VerifyPublishedWeights(published, all_at(published, E), E, recomputed, true, v);
     BOOST_CHECK(v.empty());
 }
 
@@ -285,11 +403,14 @@ BOOST_AUTO_TEST_CASE(verdict_names_and_invalid_classification_are_stable)
                       "mismatch");
     BOOST_CHECK_EQUAL(std::string(mc_WeightVerdictToString(MC_WEIGHT_VERDICT_NOT_A_CLUSTER)),
                       "not-a-cluster");
+    BOOST_CHECK_EQUAL(std::string(mc_WeightVerdictToString(MC_WEIGHT_VERDICT_OTHER_EPOCH)),
+                      "other-epoch");
     BOOST_CHECK_EQUAL(std::string(mc_WeightVerdictToString(MC_WEIGHT_VERDICT_UNVERIFIED)),
                       "unverified");
 
     BOOST_CHECK(!mc_WeightVerdictIsInvalid(MC_WEIGHT_VERDICT_OK));
     BOOST_CHECK(!mc_WeightVerdictIsInvalid(MC_WEIGHT_VERDICT_UNVERIFIED));
+    BOOST_CHECK(!mc_WeightVerdictIsInvalid(MC_WEIGHT_VERDICT_OTHER_EPOCH));
     BOOST_CHECK(mc_WeightVerdictIsInvalid(MC_WEIGHT_VERDICT_MISMATCH));
     BOOST_CHECK(mc_WeightVerdictIsInvalid(MC_WEIGHT_VERDICT_NOT_A_CLUSTER));
 }

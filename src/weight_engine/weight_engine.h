@@ -439,6 +439,26 @@ extern double g_weight_alpha;
 /** -weightlambda: feedback damping lambda in [0,1) (Def. peso-finale). */
 extern double g_weight_lambda;
 
+/** -weighttreasuryaddress: the recipient that defines a reconciliation transfer.
+ *
+ *  R_k^{(e)} (Def. riconciliazione) is the native-currency value paid to THIS address by
+ *  transactions the miner signed, among the confirmed transactions of epoch e — derived
+ *  from the blocks by WeightStreamReader::ComputeActivityAndReconciliationForEpoch, never
+ *  declared by anyone. It replaced an administrator attestation on a dedicated stream;
+ *  see wpoa/docs/adr/reconciliation-onchain.md.
+ *
+ *  CONSENSUS-CRITICAL, and necessarily a chain parameter rather than a derived value: the
+ *  value of R_k depends on it, so two nodes disagreeing about the treasury address compute
+ *  different w_k and fork. Deriving it implicitly from "who holds admin" was rejected
+ *  because the admin set is MUTABLE, which would make a re-syncing node attribute a
+ *  historical epoch differently than the network did at the time.
+ *
+ *  EMPTY IS LEGAL and means R_k = 0 for every cluster, uniformly and on every node — the
+ *  same behaviour as the old model on a chain where nobody published reconciliation
+ *  records. A uniform R = 0 gives rho_k = 0 and hence w_k = W_k * (1 - lambda), a uniform
+ *  scaling that leaves the relative weights, and so the election, unchanged. */
+extern std::string g_weight_treasury_address;
+
 // --- epoch mapping / activation / background thread (defined in weight_engine.cpp) ---
 
 /** epoch(height) = height / g_weight_epoch_length + 1 (1-based). Every node derives

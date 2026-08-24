@@ -4,8 +4,8 @@
 // Weight-management layer — Stage W1: the pure authorization policy for the
 // weight-engine input streams.
 // ------------------------------------------------------------------------------
-// The three published input streams do NOT share one authorization model. The split
-// follows a single criterion — can a third party VERIFY the claim? — and this header
+// The published input streams do NOT share one authorization model. The split follows
+// a single criterion — can a third party VERIFY the claim? — and this header
 // holds the resulting decision tables as pure functions, so they are unit-testable
 // without a running node (test/weight_authorization_tests.cpp) and stated in exactly
 // one place instead of being scattered through RPC bodies.
@@ -15,8 +15,12 @@
 //                                payload (weight_records.h
 //                                mc_MembershipRecordIsSelfAttested). No privilege is
 //                                involved at all, so no policy is needed here.
-//   weight-engine-esg            CERTIFICATION AUTHORITY only. See below.
-//   weight-engine-reconciliation ADMIN only (unchanged).
+//   weight-engine-esg            CERTIFICATION AUTHORITY only. See below — and note that
+//                                it is now the ONLY input with a privilege gate: the
+//                                reconciliation stream that used to require global admin
+//                                was removed when R became chain-derived
+//                                (wpoa/docs/adr/reconciliation-onchain.md), and tau and R
+//                                have no writer to authorize at all.
 //
 // WHY ESG NEEDS A ROLE OF ITS OWN. An ESG score is an attestation of TRUST: it is
 // produced by an external certification process — documentary review, compliance

@@ -91,7 +91,9 @@ anyone, because the report proves itself).
 
 **One datum resisted this and still does: the ESG score.** It is an attestation with
 nothing inside it to check, so it is defended the only way such a claim can be — by
-restricting who may assert it, through the Certification Authority role. Detail:
+restricting who may assert it, through the Certification Authority role. Everything else
+in the weight pipeline is now either chain-derived (the activity counters and the
+reconciled amounts, both read off the blocks) or self-verifiable. Detail:
 [weight-engine.md §5.1](weight-engine.md#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others)
 and [§6.4](weight-engine.md#64-esg--the-certification-authority-role).
 

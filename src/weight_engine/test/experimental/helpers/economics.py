@@ -104,7 +104,9 @@ class EconomicsEngine(object):
         self.settlement_tx = []             # allocation + reconciliation tx records
         self.epoch_checks = []              # per-epoch invariant results
         self.tau_gaps = []                  # (epoch, unattributed_tx_count)
-        self.recon_publish_late = []        # (epoch, [clusters]) -- see close_epoch
+        # Kept, always empty, for report-schema stability: R_k is derived rather than
+        # published, so no reconciliation record exists that could confirm late.
+        self.recon_publish_late = []
         self.max_backlog = 0                # largest mempool depth observed
 
         # deterministic Resi draw
@@ -557,9 +559,18 @@ class EconomicsEngine(object):
             node = self.reg.node_for(mlabel)
             saldo = node.gas_balance(self.reg.address_of(mlabel), 1)
 
-            # publish the CHAIN-VERIFIED amount, so the engine's rho_k is driven by GAS
-            # that actually moved.
-            recon_pub_txid = self.sw.publish_reconciliation_amount(mlabel, resi, epoch)
+            # NOTHING IS PUBLISHED for reconciliation any more. The engine derives R_k
+            # itself, from the very transfer whose txid is in p["recon_txid"] -- it scans
+            # the epoch's confirmed blocks for value paid to the treasury address by
+            # transactions the miner signed. `resi` above is the harness's INDEPENDENT
+            # reading of that same transfer, so comparing the two is now a real
+            # cross-check of the engine rather than a tautology: the harness and the
+            # engine derive the same number from the same blocks by different code paths.
+            #
+            # This also removed the harness's worst timing bug: the attestation used to
+            # confirm 20-24 blocks after the epoch it described had buried, so the engine
+            # read a stale R_k. A derived value cannot be late.
+            recon_pub_txid = None
 
             cluster_rows.append({
                 "epoch": epoch, "cluster": mlabel, "letter": config.cluster_letter(k),
@@ -598,7 +609,7 @@ class EconomicsEngine(object):
                 # provenance
                 "alloc_txid": p["alloc_txid"] or "",
                 "recon_txid": p["recon_txid"] or "",
-                "recon_stream_txid": recon_pub_txid or "",
+                "recon_stream_txid": recon_pub_txid or "",   # always "" now: nothing is published
             })
 
         # 8. WAIT FOR THE RECONCILIATION RECORDS TO CONFIRM before leaving the epoch.
@@ -613,24 +624,19 @@ class EconomicsEngine(object):
         # engine-vs-replay comparison fails for a reason that has nothing to do with the
         # engine. Blocking here also throttles the epoch loop to what the chain can
         # actually absorb, which stops the backlog from growing without bound.
-        stream_pending = []
+        # There is no reconciliation RECORD to wait for any more: the engine derives R_k
+        # from the epoch's confirmed transfers to the treasury address, so the value it
+        # reads is the transfer itself. What still matters is that the TRANSFER confirmed
+        # inside its epoch, which the settlement check above already covers -- and which
+        # is now the only timing requirement, instead of transfer-then-attestation.
+        #
+        # The old check waited on an attestation that habitually confirmed 20-24 blocks
+        # after its epoch had buried, making the engine read rho = 0 and every replay
+        # comparison fail for a reason that was not the engine's. Deriving the value
+        # removed the race rather than tuning around it. See
+        # src/wpoa/docs/adr/reconciliation-onchain.md.
         for r in cluster_rows:
-            txid = r.get("recon_stream_txid")
-            if not txid:
-                continue
-            if self.net.wait_confirmed(self.net.admin, txid):
-                r["recon_stream_confirmed"] = "yes"
-            else:
-                r["recon_stream_confirmed"] = "no"
-                stream_pending.append(r["cluster"])
-        if stream_pending:
-            self.recon_publish_late.append((epoch, stream_pending))
-            self.log.error(
-                "epoch %d: reconciliation record(s) for %s did not confirm in time. "
-                "The engine will read rho=0 for them and apply the bare (1-lambda) "
-                "bracket, so the published w_k will NOT match the replay. Check the "
-                "mempool backlog (lower WE_TX_MIN/MAX or raise WE_EPOCH_LENGTH)."
-                % (epoch, ", ".join(stream_pending)))
+            r["recon_stream_confirmed"] = "n/a (derived)"
         self._log_backlog(epoch)
 
         self.cluster_rows += cluster_rows

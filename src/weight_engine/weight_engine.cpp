@@ -5,7 +5,8 @@
 // ------------------------------------------------------------------------------
 // Holds the runtime configuration globals (bound to the WeightEngine chain
 // parameters / CLI flags in AppInit2, src/core/init.cpp) and the background
-// orchestration that, each epoch, reads the four public input streams, folds them
+// orchestration that, each epoch, reads the two published input streams, derives the
+// two chain-derived quantities (tau and R) from the epoch's blocks, folds everything
 // forward through the pure core (weight_engine.h) and publishes THIS node's own
 // cluster weight w_k to the wpoa-weights stream — reusing StreamWeightRegistry as
 // the publication port, exactly as the static -weight path did.
@@ -48,6 +49,10 @@ double g_weight_alpha = MC_WEIGHT_DEFAULT_ALPHA;
 
 /** -weightlambda: feedback damping lambda in [0,1). */
 double g_weight_lambda = MC_WEIGHT_DEFAULT_LAMBDA;
+
+/** -weighttreasuryaddress: recipient defining a reconciliation transfer. Empty by
+ *  default, which means R_k = 0 for every cluster (see the header). */
+std::string g_weight_treasury_address = "";
 
 // Retry pacing for the background thread (mirrors the wpoa registry thread).
 static const int MC_WEIGHT_RETRY_INTERVAL_MS = 3000;
@@ -135,33 +140,25 @@ bool WeightEngineComputeAllWeightsForEpoch(WeightStreamReader& reader,
         return false;
     }
 
-    // Reconciliation R (admin-attested stream), bucketed by epoch in one pass.
-    // Activity tau is NOT a stream: it is derived per-epoch from the blocks below.
-    std::map<uint32_t, std::map<std::string, double> > r_by_epoch;
-    if (!reader.ReadReconciliationByEpoch(r_by_epoch))
-    {
-        return false;
-    }
-
-    const std::map<std::string, double> empty_r;
-
+    // Neither tau nor R comes from a stream: both are derived per-epoch from the
+    // epoch's confirmed blocks, in a single shared pass (see the loop below).
     WeightEngine::Params params(g_weight_kappa, g_weight_alpha, g_weight_lambda);
     std::map<std::string, WeightEngine::ClusterState> state;   // empty -> B_0 = 0 at epoch 1
     std::map<std::string, WeightEngine::ClusterResult> results;
 
     for (uint32_t e = 1; e <= target_epoch; e++)
     {
-        // tau_e is DERIVED deterministically from epoch e's confirmed blocks (no
-        // stream). If e is not yet buried or its block/undo data is unavailable we
-        // cannot compute identically across nodes -> abort; the caller retries once
-        // the epoch buries. (target_epoch is buried, so every e <= it is too.)
+        // tau_e AND R_e are both DERIVED deterministically from epoch e's confirmed
+        // blocks, in one pass over them (no stream, no publisher for either). If e is
+        // not yet buried or its block/undo data is unavailable we cannot compute
+        // identically across nodes -> abort; the caller retries once the epoch buries.
+        // (target_epoch is buried, so every e <= it is too.)
         std::map<std::string, uint32_t> tau_e;
-        if (!reader.ComputeActivityForEpoch(e, tau_e))
+        std::map<std::string, double> r_e;
+        if (!reader.ComputeActivityAndReconciliationForEpoch(e, tau_e, r_e))
         {
             return false;
         }
-        std::map<uint32_t, std::map<std::string, double> >::const_iterator re = r_by_epoch.find(e);
-        const std::map<std::string, double>& r_e = (re != r_by_epoch.end()) ? re->second : empty_r;
 
         // Build one ClusterInput per cluster (deterministic: clusters/companies are
         // sorted std::map / std::set, and ComputeEpoch re-sorts internally anyway).
@@ -221,15 +218,18 @@ static bool ComputeLocalWeightForEpoch(WeightStreamReader& reader, const std::st
     return true;
 }
 
-// Background thread: ensures the three admin input streams exist and are subscribed
+// Background thread: ensures the two published input streams exist and are subscribed
 // (automatic, first-startup-on-the-genesis-node creation), then republishes this
 // node's own w_k for the newest BURIED epoch. Launched from AppInit2 (in place of
 // ThreadRegisterNodeWeight) when -enableweightengine is set.
 void ThreadWeightEngine()
 {
     RenameThread("mc-weight-engine");
-    LogPrintf("[WeightEngine] background thread started (epochlen=%d, kappa=%g, alpha=%g, lambda=%g)\n",
-              g_weight_epoch_length, g_weight_kappa, g_weight_alpha, g_weight_lambda);
+    LogPrintf("[WeightEngine] background thread started (epochlen=%d, kappa=%g, alpha=%g, "
+              "lambda=%g, treasury=%s)\n",
+              g_weight_epoch_length, g_weight_kappa, g_weight_alpha, g_weight_lambda,
+              g_weight_treasury_address.empty() ? "<unset: R_k = 0>"
+                                                : g_weight_treasury_address.c_str());
 
     if (pwalletTxsMain == NULL || pwalletMain == NULL)
     {
@@ -257,7 +257,7 @@ void ThreadWeightEngine()
             continue;
         }
 
-        // Auto-create (closed) + subscribe the three admin input streams. The first
+        // Auto-create (closed) + subscribe the two published input streams. The first
         // node with create permission (the genesis / admin node) creates them;
         // everyone else finds them and subscribes. Not usable until confirmed.
         if (!reader.EnsureInputStreams())
@@ -298,26 +298,42 @@ void ThreadWeightEngine()
         }
 
         // -----------------------------------------------------------------
-        // Verify EVERY other node's published weight, once per buried epoch.
+        // Verify EVERY other node's published weight, once per epoch.
         // -----------------------------------------------------------------
-        // Runs before the publish and independently of it, for three reasons: a node
-        // that is not itself a cluster miner (and so has nothing to publish) must
-        // still verify; verification must not be skipped just because this epoch's
-        // own weight was already published; and the whole-map recomputation it needs
-        // is the same fold ComputeLocalWeightForEpoch performs, so doing it here
-        // keeps one fold per epoch rather than two.
+        // THE EPOCH VERIFIED IS THE PREVIOUS ONE, and that is not a detail. A weight is
+        // a claim about a specific epoch, and publication necessarily LAGS the epoch it
+        // describes: a node can only compute w_k^(e) once epoch e is buried, so its
+        // record for e lands during e+1. Verifying epoch e while records for e do not
+        // exist yet would compare nothing at all — every record would be about an
+        // earlier epoch — and the mechanism would sit inert.
         //
-        // This is deliberately NOT in the consensus read path: GetAllNodesWeights()
-        // is called by the miner and every validator on every round, while the
-        // recomputation folds forward from epoch 1 and scans each epoch's blocks —
-        // O(chain) work. Verifying per epoch and caching the verdicts keeps the
-        // consensus path O(1). See weight_verifier.h.
-        if (epoch != last_verified_epoch)
+        // Verifying e-1 while at e gives every honest node a full epoch to have
+        // published, so the comparison is meaningful rather than racing. It is also the
+        // same inter-epoch alignment the rest of the system already uses: rho^(e-1)
+        // drives w^(e) (Def. 6.9), and a proved malus takes effect from the epoch after.
+        //
+        // Runs independently of this node's own publish, for two reasons: a node that is
+        // not itself a cluster miner (and so has nothing to publish) must still verify,
+        // and verification must not be skipped because our own weight is already out.
+        //
+        // Deliberately NOT in the consensus read path: GetAllNodesWeights() is called by
+        // the miner and every validator on every round, while the recomputation folds
+        // forward from epoch 1 and scans each epoch's blocks — O(chain) work. Verifying
+        // once per epoch and caching the verdicts keeps the consensus path O(1). See
+        // weight_verifier.h.
+        if (epoch >= 2 && (epoch - 1) != last_verified_epoch)
         {
-            std::map<std::string, uint32_t> published = registry.GetAllNodesWeights();
-            if (WeightEngineVerifyAndCacheEpoch(reader, epoch, published))
+            // Read the epoch each record was published FOR alongside its value, so a
+            // value can be checked against THAT epoch's recomputation. Comparing a value
+            // legitimately published for epoch e against another epoch's inputs would
+            // flag an honest node as wrong.
+            std::map<std::string, uint32_t> published;
+            std::map<std::string, uint32_t> published_epochs;
+            registry.GetAllNodesWeightsWithEpoch(published, published_epochs);
+            if (WeightEngineVerifyAndCacheEpoch(reader, epoch - 1, published,
+                                                published_epochs))
             {
-                last_verified_epoch = epoch;   // only advance on a real recomputation
+                last_verified_epoch = epoch - 1;   // only advance on a real recomputation
             }
         }
 
@@ -339,7 +355,7 @@ void ThreadWeightEngine()
         // SELF-PUBLISHED: it names this node and is signed by it, so every peer's
         // reader accepts it on the self-publication rule and can then check the value
         // itself by the same recomputation performed just above.
-        if (registry.RegisterLocalWeight(w))
+        if (registry.RegisterLocalWeight(w, epoch))
         {
             LogPrintf("[WeightEngine] epoch %u (height %d): w_k = %u for %s\n",
                       epoch, height, w, local.c_str());
