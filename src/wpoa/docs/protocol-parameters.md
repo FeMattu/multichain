@@ -111,6 +111,7 @@ inert.
 | `enablewpoasortition` requires `wpoarandaolookback >= 1` | `init.cpp:3342` |
 | `enablewpoamalus` requires `enablewpoasortition` | `init.cpp:3426` |
 | `wpoamalusequivpoints` must be `>` `wpoamalusdelaypoints` | `init.cpp:3419` |
+| `wpoamalusbadweightpoints` must be `>` `wpoamalusselfwritepoints` | `init.cpp:3437` |
 | `enableweightengine` requires `enablewpoaweights` | `init.cpp:3498` |
 
 The `k >= 1` constraint is not arbitrary: the reveal that sortition produces feeds
@@ -171,8 +172,10 @@ Full detail: [phase4-implementation-guide.md](phase4-implementation-guide.md) an
 
 ## 3. Catalogue — behavioural malus registry
 
-Requires `-enablewpoasortition`: both evidence kinds are proved against the block's VRF
-reveal over the beacon seed.
+Requires `-enablewpoasortition`: the **consensus-behavioural** evidence kinds are proved
+against the block's VRF reveal over the beacon seed. The **published-data integrity**
+kinds additionally need `-enableweightengine` to be decidable — not a startup failure, but
+without it such reports are refused network-wide and the node logs a note.
 
 | CLI flag | `params.dat` | Type | Default | Valid range | Defined | Effect on consensus |
 |---|---|---|---|---|---|---|
@@ -181,12 +184,25 @@ reveal over the beacon seed.
 | `-wpoamalusmax` | `wpoa-malus-max` | `STRING(32)` | `4` | `> 0` | `paramlist.h:212` | Threshold `M_max` at which `Psi` reaches `0` and the validator becomes ineligible. |
 | `-wpoamalusequivpoints` | `wpoa-malus-equiv-points` | `STRING(32)` | `4` | `> 0`, and **`>` delay points** | `paramlist.h:216` | Score of one proved equivocation (two distinct blocks at one height) — a *safety* fault. |
 | `-wpoamalusdelaypoints` | `wpoa-malus-delay-points` | `STRING(32)` | `0.25` | `> 0` | `paramlist.h:220` | Score of one proved delay violation (a block mined earlier than its own score entitled it to) — a *scheduling* fault. |
+| `-wpoamalusselfwritepoints` | `wpoa-malus-selfwrite-points` | `STRING(32)` | `1` | `> 0` | `paramlist.h:224` | Score for publishing a record on a **self-attested** stream naming another address. Readers always discard it, so the score prices the *attempt* — the same reasoning as the delay score. |
+| `-wpoamalusbadweightpoints` | `wpoa-malus-badweight-points` | `STRING(32)` | `2` | `> 0`, and **`>` selfwrite points** | `paramlist.h:228` | Score for a `wpoa-weights` value that fails independent recomputation. Unlike a forgery it *succeeds* unless somebody recomputes it, then distorts every round of the epoch. |
+
+**Intended ordering: `p(Equiv) > p(BadWeight) > p(SelfWrite) > p(Delay)`** — safety first,
+then a fault that takes effect, then two attempts that are rejected anyway. Two of the
+three inequalities are enforced at startup (`equiv > delay`, `badweight > selfwrite`); the
+defaults satisfy all three.
 
 The correction is `Psi = max(0, 1 - M/M_max)`, with `M` an exponential moving average.
 Because `mu < 1`, an exclusion always clears after a finite number of clean epochs:
-**there is no permanent ban.** The stream is deliberately **open** — anyone may report,
-nobody is believed: every node re-derives the evidence from public chain data, so a false
-report is discarded identically everywhere and moves no weight.
+**there is no permanent ban** — for either family, since the decay is a property of `M`
+rather than of the offence that raised it. The stream is deliberately **open** — anyone may
+report, nobody is believed: every node re-derives the evidence from public chain data, so a
+false report is discarded identically everywhere and moves no weight.
+
+**One accumulator, two families.** Adding the data-integrity kinds required only their two
+scores: `Psi`, `w_eff` and the whole consensus path operate on the accumulated severity
+`M`, not on what produced it, so they needed no change. A node therefore cannot spread
+misbehaviour across kinds to stay under the threshold.
 
 Detail: [malus-registry.md](malus-registry.md).
 
@@ -331,6 +347,8 @@ NaN/Inf-safe checks: a non-finite value is rejected, not propagated.
 | `-wpoamalusmax` | number `> 0` | `init.cpp:3400` |
 | `-wpoamalusequivpoints` | number `> 0` | `init.cpp:3406` |
 | `-wpoamalusdelaypoints` | number `> 0` | `init.cpp:3412` |
+| `-wpoamalusselfwritepoints` | number `> 0` | `init.cpp:3419` |
+| `-wpoamalusbadweightpoints` | number `> 0`, and `>` selfwrite points | `init.cpp:3425` |
 | `-weightepochlength` | integer in `[1, 1000000]` | `init.cpp:3468` |
 | `-weightkappa` | number `> 0` (and `< 1e18`) | `init.cpp:3479` |
 | `-weightalpha` | number in `[0, 1]` | `init.cpp:3485` |
@@ -358,8 +376,10 @@ start.
 ./src/multichain-util create mychain -enablewpoa=1 \
     -wpoasortitiondelta=0.3 -wpoasortitionlambda=0.5
 
-# Full stack with the behavioural malus registry:
-./src/multichain-util create mychain -enablewpoa=1 -enablewpoamalus=1
+# Full stack with the malus registry. With the weight engine on, the published-data
+# integrity kinds (selfwrite, badweight) are decidable too:
+./src/multichain-util create mychain -enablewpoa=1 -enablewpoamalus=1 \
+    -enableweightengine=1
 
 # Dynamic weights derived from the on-chain inputs, 200-block epochs, with the
 # treasury address that defines a reconciliation transfer:

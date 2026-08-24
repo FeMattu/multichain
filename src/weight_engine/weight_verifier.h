@@ -342,6 +342,29 @@ bool WeightEngineVerifyAndCacheEpoch(WeightStreamReader& reader, uint32_t epoch,
                                      const std::map<std::string, uint32_t>& published,
                                      const std::map<std::string, uint32_t>& published_epochs);
 
+/**
+ * Recompute ONE address's weight for `epoch` from the public inputs, for a third party
+ * that needs to check a specific claim rather than survey the whole map.
+ *
+ * This is the narrow hook the malus registry uses to validate a `badweight` accusation:
+ * re-running the identical pipeline is the entire proof, so the verifier must be able to
+ * run it without depending on whether this node happened to cache that epoch.
+ *
+ * @param epoch       The epoch to recompute (1-based).
+ * @param address     The cluster whose weight is wanted.
+ * @param is_cluster  [out] false when `address` heads no cluster in that epoch, in which
+ *                    case there is no weight the pipeline could have produced for it and
+ *                    `out_weight` is 0. Reported separately from failure, because "not a
+ *                    cluster" is an ANSWER while "cannot recompute" is not.
+ * @param out_weight  [out] the recomputed integer weight.
+ * @return false when the recomputation could not be performed at all — inputs not
+ *         readable, epoch not buried, pruned node, engine disabled. The caller must then
+ *         treat the question as undecided rather than answered: for an accusation that
+ *         means it does not count.
+ */
+bool WeightEngineRecomputeWeightForEpoch(uint32_t epoch, const std::string& address,
+                                         bool& is_cluster, uint32_t& out_weight);
+
 /** The cached verdicts for `epoch`, or an empty map if that epoch was never verified. */
 std::map<std::string, WeightVerificationEntry> WeightEngineGetVerdicts(uint32_t epoch);
 

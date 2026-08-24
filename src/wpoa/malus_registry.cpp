@@ -17,7 +17,10 @@
 #include "wpoa/randao_accumulator.h"      // WPoARandaoSelectionSeed
 #include "wpoa/vrf_wrapper.h"             // WPoAVRF::Verify
 #include "wpoa/stream_weight_registry.h"  // StreamWeightRegistry (raw weights)
-#include "weight_engine/weight_engine.h"  // HeightToEpoch — the shared height->epoch map
+#include "weight_engine/weight_engine.h"  // HeightToEpoch (shared map), g_weight_engine_enabled
+#include "weight_engine/weight_verifier.h" // WeightEngineRecomputeWeightForEpoch
+#include "weight_engine/weight_streams.h"  // MC_WEIGHT_MEMBERSHIP_STREAM_NAME
+#include "weight_engine/weight_records.h"  // mc_ParseMembershipRecordJson
 
 #include "rpc/rpcwallet.h"      // pulls rpcserver.h (create/publish/subscribe), wallet, multichain
 #include "rpc/rpcutils.h"       // OpReturnFormatEntry
@@ -41,6 +44,16 @@ double g_wpoa_malus_mu       = MC_WPOA_DEFAULT_MALUS_MU;
 double g_wpoa_malus_max      = MC_WPOA_DEFAULT_MALUS_MAX;
 double g_wpoa_malus_p_equiv  = MC_WPOA_DEFAULT_MALUS_P_EQUIV;
 double g_wpoa_malus_p_delay  = MC_WPOA_DEFAULT_MALUS_P_DELAY;
+double g_wpoa_malus_p_selfwrite = MC_WPOA_DEFAULT_MALUS_P_SELFWRITE;
+double g_wpoa_malus_p_badweight = MC_WPOA_DEFAULT_MALUS_P_BADWEIGHT;
+
+// The four scores as one value, resolved from the runtime globals in exactly one place
+// so no call site can pick up three of them and forget the fourth.
+MalusScores WPoAMalusScores()
+{
+    return MalusScores(g_wpoa_malus_p_equiv, g_wpoa_malus_p_delay,
+                       g_wpoa_malus_p_selfwrite, g_wpoa_malus_p_badweight);
+}
 
 // Retry pacing for the background stream-provisioning thread (mirrors the weight
 // registry thread).
@@ -192,7 +205,7 @@ bool MalusRegistry::EnsureStream()
 // overload, which returns the raw {"json":{...}} value the parser expects.
 static bool DecodeMalusRecord(const CWalletTx& wtx, const unsigned char* stream_short_txid,
                               MalusKind& kind, string& addr, int& height,
-                              vector<string>& blocks)
+                              vector<string>& blocks, MalusDataDetail& detail)
 {
     mc_Script script; // local instance -> thread-safe (no shared temp buffers)
 
@@ -244,7 +257,7 @@ static bool DecodeMalusRecord(const CWalletTx& wtx, const unsigned char* stream_
 
         string format_text;
         Value v = OpReturnFormatEntry(data, data_size, wtx.GetHash(), j, format, &format_text);
-        if (mc_ParseMalusRecordJson(v, kind, addr, height, blocks))
+        if (mc_ParseMalusRecordJson(v, kind, addr, height, blocks, &detail))
         {
             return true;
         }
@@ -323,7 +336,8 @@ bool MalusRegistry::ReadAllReports(std::vector<Report>& out)
         }
 
         Report r;
-        if (DecodeMalusRecord(wtx, stream_short_txid, r.kind, r.address, r.height, r.blocks))
+        if (DecodeMalusRecord(wtx, stream_short_txid, r.kind, r.address, r.height, r.blocks,
+                              r.detail))
         {
             out.push_back(r);
         }
@@ -477,13 +491,388 @@ static bool VerifyAccusedVRF(const AccusedBlock& b, int height, std::string* rea
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Valid(e) for the PUBLISHED-DATA INTEGRITY kinds
+// ---------------------------------------------------------------------------
+// The evidence is a publishing TRANSACTION, not a block, so this branch reads that
+// transaction, decodes its signer and its payload, and confirms the discrepancy the
+// report alleges. Nothing here is a judgement: every step is a comparison between two
+// pieces of public data, which is what lets two honest nodes reach the same verdict and
+// makes a false accusation inert (Prop. 5.15).
+
+// One decoded weight-pipeline stream item, as read back from its publishing tx.
+struct AccusedItem
+{
+    std::string              stream;       //!< the stream the item belongs to
+    std::string              declared;     //!< the node_address its payload declares
+    std::vector<std::string> publishers;   //!< the addresses that SIGNED the tx
+    uint32_t                 weight;       //!< wpoa-weights only: the published value
+    uint32_t                 epoch;        //!< wpoa-weights only: the epoch it claims
+    int                      height;       //!< confirming height, -1 when unknown
+
+    AccusedItem() : weight(0), epoch(0), height(-1) {}
+};
+
+// Load the item published by `txid` on `stream_name`, if that transaction is one.
+//
+// Reads through the wallet-tx store, exactly as every other confirmed-item read in this
+// codebase does, so it observes only CONFIRMED state and requires this node to be
+// subscribed to the stream. Not being subscribed is reported as such rather than as a
+// false accusation: it means this node cannot decide the report, not that the report is
+// wrong.
+static bool LoadAccusedItem(mc_WalletTxs* pwallet, const std::string& txid_hex,
+                            const char* stream_name, AccusedItem& out,
+                            std::string* reason_out)
+{
+    if (pwallet == NULL || mc_gState == NULL || mc_gState->m_Assets == NULL)
+    {
+        if (reason_out) *reason_out = "wallet / entity store unavailable";
+        return false;
+    }
+
+    uint256 hash;
+    hash.SetHex(txid_hex);
+    if (hash == uint256(0))
+    {
+        if (reason_out) *reason_out = "malformed evidence txid";
+        return false;
+    }
+
+    mc_EntityDetails entity;
+    if (mc_gState->m_Assets->FindEntityByName(&entity, stream_name) == 0 ||
+        entity.GetEntityType() != MC_ENT_TYPE_STREAM)
+    {
+        if (reason_out) *reason_out = std::string("stream '") + stream_name + "' does not exist";
+        return false;
+    }
+
+    int err = MC_ERR_NOERROR;
+    mc_TxDefRow txdef;
+    CWalletTx wtx = pwallet->GetWalletTx(hash, &txdef, &err);
+    if (err != MC_ERR_NOERROR)
+    {
+        if (reason_out)
+        {
+            *reason_out = "evidence transaction not found in this node's view "
+                          "(unconfirmed, or the stream is not subscribed here)";
+        }
+        return false;
+    }
+    if (txdef.m_Block < 0)
+    {
+        if (reason_out) *reason_out = "evidence transaction is not confirmed";
+        return false;
+    }
+    out.height = txdef.m_Block;
+
+    const unsigned char* stream_short_txid = entity.GetTxID() + MC_AST_SHORT_TXID_OFFSET;
+    out.stream = stream_name;
+
+    mc_Script script;   // local instance -> thread-safe
+    for (int j = 0; j < (int)wtx.vout.size(); j++)
+    {
+        const CScript& spk = wtx.vout[j].scriptPubKey;
+        if (spk.size() == 0) continue;
+        CScript::const_iterator pc = spk.begin();
+
+        script.Clear();
+        script.SetScript((unsigned char*)(&pc[0]), (size_t)(spk.end() - pc),
+                         MC_SCR_TYPE_SCRIPTPUBKEY);
+        if (!script.IsOpReturnScript()) continue;
+        if (script.GetNumElements() == 0) continue;
+
+        uint32_t format;
+        unsigned char* chunk_hashes = NULL;
+        int chunk_count = 0;
+        int64_t total_chunk_size = 0;
+        script.ExtractAndDeleteDataFormat(&format, &chunk_hashes, &chunk_count,
+                                          &total_chunk_size);
+
+        unsigned char short_txid[MC_AST_SHORT_TXID_SIZE];
+        script.SetElement(0);
+        if (script.GetEntity(short_txid) != 0) continue;
+        if (memcmp(short_txid, stream_short_txid, MC_AST_SHORT_TXID_SIZE) != 0) continue;
+
+        int n = script.GetNumElements();
+        if (n < 1) continue;
+        size_t data_size = 0;
+        const unsigned char* data = script.GetData(n - 1, &data_size);
+        if (data == NULL || data_size == 0) continue;
+
+        std::string format_text;
+        Value v = OpReturnFormatEntry(data, data_size, wtx.GetHash(), j, format, &format_text);
+
+        // Which payload shape to expect depends on the stream, and both are the SAME
+        // parsers the readers use — so the verifier cannot disagree with the reader about
+        // what a record says.
+        if (strcmp(stream_name, MC_WPOA_WEIGHTS_STREAM_NAME) == 0)
+        {
+            uint32_t w = 0, e = 0;
+            std::string addr;
+            if (!mc_ParseWeightRecordJson(v, addr, w, &e)) continue;
+            out.declared = addr;
+            out.weight = w;
+            out.epoch = e;
+        }
+        else
+        {
+            std::string node, miner;
+            uint32_t ts = 0;
+            if (!mc_ParseMembershipRecordJson(v, node, miner, ts)) continue;
+            out.declared = node;
+        }
+
+        // The signers, recovered from the transaction's inputs the same way the readers
+        // recover them (StreamItemEntry / rpcwalletutils.cpp).
+        std::set<uint160> seen;
+        for (int i = 0; i < (int)wtx.vin.size(); i++)
+        {
+            const CScript& sig = wtx.vin[i].scriptSig;
+            if (sig.size() == 0) continue;
+            CScript::const_iterator sc = sig.begin();
+
+            int op_addr_offset = 0, op_addr_size = 0, is_redeem_script = 0;
+            int sighash_type = SIGHASH_NONE;
+            const unsigned char* ptr = mc_ExtractAddressFromInputScript(
+                (unsigned char*)(&sc[0]), (int)(sig.end() - sc),
+                &op_addr_offset, &op_addr_size, &is_redeem_script, &sighash_type, 0);
+            if (ptr == NULL) continue;
+            if (sighash_type != SIGHASH_ALL &&
+                !(sighash_type == SIGHASH_SINGLE && i == j)) continue;
+
+            uint160 h160 = Hash160(ptr + op_addr_offset, ptr + op_addr_offset + op_addr_size);
+            if (seen.count(h160) != 0) continue;
+            seen.insert(h160);
+            out.publishers.push_back(is_redeem_script
+                                         ? CBitcoinAddress((CScriptID)h160).ToString()
+                                         : CBitcoinAddress((CKeyID)h160).ToString());
+        }
+        return true;
+    }
+
+    if (reason_out)
+    {
+        *reason_out = std::string("transaction carries no decodable '") + stream_name +
+                      "' item";
+    }
+    return false;
+}
+
+bool MalusRegistry::ValidDataIntegrityReport(MalusKind kind, const std::string& node_address,
+                                             int height,
+                                             const std::vector<std::string>& blocks,
+                                             const MalusDataDetail& detail,
+                                             std::string* reason_out)
+{
+    if (blocks.size() != 1)
+    {
+        if (reason_out) *reason_out = "a data-integrity report names exactly one transaction";
+        return false;
+    }
+
+    if (kind == MALUS_SELF_WRITE)
+    {
+        // Only the SELF-ATTESTED streams have a rule to break. Naming any other stream is
+        // malformed, not merely false: there is no self-attestation to violate on a
+        // stream that does not have one.
+        const bool is_weights    = (detail.stream == MC_WPOA_WEIGHTS_STREAM_NAME);
+        const bool is_membership = (detail.stream == MC_WEIGHT_MEMBERSHIP_STREAM_NAME);
+        if (!is_weights && !is_membership)
+        {
+            if (reason_out)
+            {
+                *reason_out = "stream is not self-attested (only wpoa-weights and "
+                              "weight-engine-membership are)";
+            }
+            return false;
+        }
+        // A membership item is only readable where the weight engine runs, since that is
+        // what subscribes to the stream. The engine flag is a hash-enforced chain
+        // parameter, so every node agrees on whether this kind is decidable at all —
+        // which is what keeps the verdict uniform.
+        if (is_membership && !g_weight_engine_enabled)
+        {
+            if (reason_out)
+            {
+                *reason_out = "membership reports need the weight engine (it is what "
+                              "subscribes to that stream)";
+            }
+            return false;
+        }
+
+        AccusedItem item;
+        if (!LoadAccusedItem(pwalletTxsMain, blocks[0], detail.stream.c_str(), item,
+                             reason_out))
+        {
+            return false;
+        }
+
+        // The report's own claims must match the transaction. Checking them makes the
+        // accusation auditable; it is the transaction, never the claim, that decides.
+        if (item.declared != detail.declared_address)
+        {
+            if (reason_out)
+            {
+                *reason_out = "the record's node_address is not the declared_address the "
+                              "report alleges";
+            }
+            return false;
+        }
+        if (item.height != height)
+        {
+            if (reason_out) *reason_out = "the record did not confirm at the reported height";
+            return false;
+        }
+
+        // THE OFFENCE ITSELF: the accused must be a signer of the transaction, and the
+        // record must declare somebody else. Both halves matter — the first establishes
+        // that the accused is the one who wrote it, the second that what it wrote was a
+        // forgery. Note this is the exact NEGATION of the rule the readers apply
+        // (mc_StreamItemIsSelfAttested), from the same shared predicate: a report is
+        // valid precisely when the readers discarded the record.
+        if (!mc_StreamItemIsSelfAttested(node_address, item.publishers))
+        {
+            if (reason_out) *reason_out = "the accused did not sign the evidence transaction";
+            return false;
+        }
+        if (mc_StreamItemIsSelfAttested(item.declared, item.publishers))
+        {
+            if (reason_out)
+            {
+                *reason_out = "the declared address DID sign, so the record is honest and "
+                              "was not discarded";
+            }
+            return false;
+        }
+        return true;
+    }
+
+    if (kind == MALUS_INVALID_WEIGHT)
+    {
+        // Recomputing needs the weight engine. Its flag is a hash-enforced chain
+        // parameter, so this precondition holds or fails identically on every node.
+        if (!g_weight_engine_enabled)
+        {
+            if (reason_out)
+            {
+                *reason_out = "weight reports need the weight engine (there is no pipeline "
+                              "to recompute without it)";
+            }
+            return false;
+        }
+
+        AccusedItem item;
+        if (!LoadAccusedItem(pwalletTxsMain, blocks[0], MC_WPOA_WEIGHTS_STREAM_NAME, item,
+                             reason_out))
+        {
+            return false;
+        }
+
+        if (item.declared != node_address)
+        {
+            if (reason_out) *reason_out = "the record is not about the accused address";
+            return false;
+        }
+        if (!mc_StreamItemIsSelfAttested(node_address, item.publishers))
+        {
+            // A record the accused did not sign was already discarded on the
+            // self-publication rule, so it never entered the weight map and there is
+            // nothing to accuse it of HERE — that is a selfwrite report instead. Keeping
+            // the two offences disjoint stops one act being scored twice.
+            if (reason_out)
+            {
+                *reason_out = "the accused did not sign the record (that is a selfwrite "
+                              "report, not a weight one)";
+            }
+            return false;
+        }
+        if (item.height != height)
+        {
+            if (reason_out) *reason_out = "the record did not confirm at the reported height";
+            return false;
+        }
+        if (item.weight != detail.declared)
+        {
+            if (reason_out) *reason_out = "the record's weight is not the declared value alleged";
+            return false;
+        }
+        // A record with no epoch is not value-verifiable at all (the static -weight path),
+        // so it cannot be the subject of this accusation.
+        if (item.epoch == 0 || item.epoch != detail.epoch)
+        {
+            if (reason_out)
+            {
+                *reason_out = "the record does not state the epoch the report alleges "
+                              "(a weight with no epoch is not value-verifiable)";
+            }
+            return false;
+        }
+
+        // RE-RUN THE PIPELINE. This is the whole proof: the same computation over the
+        // same public inputs that the accuser ran, and that any other node can run.
+        uint32_t recomputed = 0;
+        bool is_cluster = false;
+        if (!WeightEngineRecomputeWeightForEpoch(item.epoch, node_address, is_cluster,
+                                                 recomputed))
+        {
+            // Cannot recompute here — inputs not readable, epoch not buried, pruned
+            // node. FAIL CLOSED FOR THE ACCUSATION: an unprovable accusation must not
+            // count. Note the direction is the same as verification's fail-open, seen
+            // from the accused's side: in both cases "cannot tell" means "no penalty".
+            if (reason_out)
+            {
+                *reason_out = "this node cannot recompute that epoch (inputs unreadable, "
+                              "epoch not buried, or pruned)";
+            }
+            return false;
+        }
+
+        const uint32_t expected = is_cluster ? recomputed : 0;
+        if (expected != detail.recomputed)
+        {
+            if (reason_out)
+            {
+                *reason_out = strprintf("recomputation disagrees with the report "
+                                        "(this node derives %u, the report alleges %u)",
+                                        expected, detail.recomputed);
+            }
+            return false;
+        }
+        if (item.weight == expected)
+        {
+            if (reason_out)
+            {
+                *reason_out = strprintf("the published weight is CORRECT (%u): nothing to "
+                                        "accuse", item.weight);
+            }
+            return false;
+        }
+        return true;
+    }
+
+    if (reason_out) *reason_out = "unknown data-integrity kind";
+    return false;
+}
+
 bool MalusRegistry::ValidReport(MalusKind kind, const std::string& node_address, int height,
-                                const std::vector<std::string>& blocks, double psi_prev,
+                                const std::vector<std::string>& blocks,
+                                const MalusDataDetail& detail, double psi_prev,
                                 std::string* reason_out)
 {
-    // The two kinds are only decidable where the private sortition governs the
-    // height: both proofs rest on the block-carried VRF reveal over the beacon
-    // seed, which only exists there.
+    // The CONSENSUS-BEHAVIOURAL kinds are only decidable where private sortition governs
+    // the height: both proofs rest on the block-carried VRF reveal over the beacon seed,
+    // which exists nowhere else.
+    //
+    // The DATA-INTEGRITY kinds have no such precondition — their evidence is a publishing
+    // transaction, whose signature and payload are decodable at any height — so they are
+    // routed before this gate. They carry their own preconditions instead
+    // (ValidDataIntegrityReport).
+    if (mc_MalusKindIsDataIntegrity(kind))
+    {
+        return ValidDataIntegrityReport(kind, node_address, height, blocks, detail,
+                                        reason_out);
+    }
+
     if (!WPoASortitionActiveAtHeight(height))
     {
         if (reason_out) *reason_out = "height is not governed by private sortition";
@@ -673,12 +1062,20 @@ bool MalusRegistry::GetAccumulators(uint32_t epoch, std::map<std::string, double
                                       ? 1.0
                                       : MalusAccumulator::CorrectionFactor(mi->second, g_wpoa_malus_max);
 
-                if (!ValidReport(r.kind, r.address, r.height, r.blocks, psi_prev, NULL))
+                // Pass r.detail, not a default: the data-integrity kinds carry their
+                // claim in it, and validating them with an empty detail would silently
+                // reject every such report here even though it was accepted at publish
+                // time — the accumulator would stay at 0 and the malus would never bite.
+                if (!ValidReport(r.kind, r.address, r.height, r.blocks, r.detail,
+                                 psi_prev, NULL))
                 {
                     continue;   // false, malformed or unverifiable here: discarded
                 }
-                points[r.address] += MalusAccumulator::Points(r.kind, g_wpoa_malus_p_equiv,
-                                                              g_wpoa_malus_p_delay);
+                // WPoAMalusScores(), not the two-score form: that one scores the
+                // data-integrity kinds 0, so using it here would validate such a report
+                // and then add nothing — the malus would never bite. All four scores come
+                // from one place for exactly this reason.
+                points[r.address] += MalusAccumulator::Points(r.kind, WPoAMalusScores());
             }
         }
 
@@ -719,7 +1116,8 @@ double MalusRegistry::GetAccumulator(const std::string& address, uint32_t epoch)
 // ---------------------------------------------------------------------------
 
 std::string MalusRegistry::PublishReport(MalusKind kind, const std::string& node_address,
-                                         int height, const std::vector<std::string>& blocks)
+                                         int height, const std::vector<std::string>& blocks,
+                                         const MalusDataDetail& detail)
 {
     if (!EnsureStream())
     {
@@ -740,7 +1138,7 @@ std::string MalusRegistry::PublishReport(MalusKind kind, const std::string& node
     }
 
     std::string reason;
-    if (!ValidReport(kind, node_address, height, blocks, psi_prev, &reason))
+    if (!ValidReport(kind, node_address, height, blocks, detail, psi_prev, &reason))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER,
                            string("Evidence rejected by the local Valid() check: ") + reason);
@@ -756,6 +1154,21 @@ std::string MalusRegistry::PublishReport(MalusKind kind, const std::string& node
         block_arr.push_back(blocks[i]);
     }
     record.push_back(Pair(MC_WPOA_MALUS_FIELD_BLOCKS, block_arr));
+
+    // The data-integrity kinds carry the fields that make the accusation self-describing:
+    // a third party can see what was alleged, and re-derive it, by reading the one
+    // referenced transaction rather than searching for it.
+    if (kind == MALUS_SELF_WRITE)
+    {
+        record.push_back(Pair(MC_WPOA_MALUS_FIELD_STREAM, detail.stream));
+        record.push_back(Pair(MC_WPOA_MALUS_FIELD_DECLARED_ADDR, detail.declared_address));
+    }
+    else if (kind == MALUS_INVALID_WEIGHT)
+    {
+        record.push_back(Pair(MC_WPOA_MALUS_FIELD_EPOCH, (int64_t)detail.epoch));
+        record.push_back(Pair(MC_WPOA_MALUS_FIELD_DECLARED, (int64_t)detail.declared));
+        record.push_back(Pair(MC_WPOA_MALUS_FIELD_RECOMPUTED, (int64_t)detail.recomputed));
+    }
 
     Object data_obj;
     data_obj.push_back(Pair("json", record));
@@ -1019,18 +1432,35 @@ Value reportmalus(const Array& params, bool fHelp)
     if (fHelp || params.size() < 4 || params.size() > 5)
     {
         throw runtime_error(
-            "reportmalus \"kind\" \"address\" height \"blockhash\" [\"blockhash2\"]\n"
+            "reportmalus \"kind\" \"address\" height \"evidence\" [\"blockhash2\"]\n"
             "\nPublishes a misbehaviour report to the open wpoa-weights-malus stream.\n"
             "Any node may report: the evidence is re-verified independently by every\n"
             "peer, so a false report is discarded and changes nothing. This node runs\n"
             "the same check BEFORE broadcasting and refuses to publish evidence that\n"
             "does not hold locally.\n"
+            "\nFOUR KINDS, in two families. Both are proved from public chain data; they\n"
+            "differ in what the evidence is and what the offence damages.\n"
+            "\n  Consensus-behavioural — evidence is a BLOCK:\n"
+            "    equiv      two distinct blocks at one height from one key (safety)\n"
+            "    delay      a block timestamped earlier than its own score allowed\n"
+            "\n  Published-data integrity — evidence is the publishing TRANSACTION:\n"
+            "    selfwrite  a record on a self-attested stream (wpoa-weights or\n"
+            "               weight-engine-membership) naming a node_address other than\n"
+            "               the signer. Readers discard it, so the attempt is the offence\n"
+            "    badweight  a wpoa-weights value that fails independent recomputation\n"
+            "               from the public pipeline inputs\n"
             "\nArguments:\n"
-            "1. \"kind\"        (string, required) \"equiv\" or \"delay\"\n"
-            "2. \"address\"     (string, required) the accused validator\n"
-            "3. height          (numeric, required) the height the accusation refers to\n"
-            "4. \"blockhash\"   (string, required) the offending block\n"
-            "5. \"blockhash2\"  (string, optional) the competing block, for \"equiv\"\n"
+            "1. \"kind\"       (string, required) equiv | delay | selfwrite | badweight\n"
+            "2. \"address\"    (string, required) the accused node (for the data-integrity\n"
+            "                   kinds: the SIGNER of the offending transaction)\n"
+            "3. height         (numeric, required) the height the accusation refers to;\n"
+            "                   for the data-integrity kinds, the height that CONFIRMED\n"
+            "                   the offending transaction\n"
+            "4. \"evidence\"   (string, required) the offending block hash, or — for the\n"
+            "                   data-integrity kinds — the offending transaction id\n"
+            "5. \"blockhash2\" (string, optional) the competing block, for \"equiv\" only\n"
+            "\nThe data-integrity kinds take no further arguments: what they allege is\n"
+            "derived from the referenced transaction, so a caller cannot mis-state it.\n"
             "\nResult:\n"
             "\"txid\"  (string) the publish transaction id\n");
     }
@@ -1042,7 +1472,9 @@ Value reportmalus(const Array& params, bool fHelp)
     MalusKind kind = mc_MalusKindFromString(params[0].get_str());
     if (kind == MALUS_NONE)
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "kind must be \"equiv\" or \"delay\"");
+        throw JSONRPCError(RPC_INVALID_PARAMETER,
+                           "kind must be \"equiv\", \"delay\", \"selfwrite\" or "
+                           "\"badweight\"");
     }
 
     const std::string address = params[1].get_str();
@@ -1080,5 +1512,74 @@ Value reportmalus(const Array& params, bool fHelp)
     }
 
     MalusRegistry registry(pwalletTxsMain);
-    return registry.PublishReport(kind, address, (int)height, blocks);
+
+    // The DATA-INTEGRITY kinds need no extra arguments from the caller: everything they
+    // allege is derivable from the referenced transaction, so the RPC derives it here
+    // rather than asking. That is deliberate — a caller cannot mis-state the accusation,
+    // and the published record still carries the derived fields so a third party can
+    // audit it without re-searching. Argument 4 is the offending TRANSACTION id for
+    // these kinds, not a block hash.
+    MalusDataDetail detail;
+    if (mc_MalusKindIsDataIntegrity(kind))
+    {
+        if (params.size() != 4)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER,
+                               "a data-integrity report takes exactly one evidence txid");
+        }
+
+        if (kind == MALUS_SELF_WRITE)
+        {
+            // Try both self-attested streams: the caller supplies a txid, and which
+            // stream it belongs to is a fact about the transaction, not a choice.
+            const char* candidates[2] = { MC_WPOA_WEIGHTS_STREAM_NAME,
+                                          MC_WEIGHT_MEMBERSHIP_STREAM_NAME };
+            bool found = false;
+            std::string last_reason = "evidence transaction carries no self-attested item";
+            for (int ci = 0; ci < 2 && !found; ci++)
+            {
+                AccusedItem probe;
+                std::string why;
+                if (LoadAccusedItem(pwalletTxsMain, blocks[0], candidates[ci], probe, &why))
+                {
+                    detail.stream = candidates[ci];
+                    detail.declared_address = probe.declared;
+                    found = true;
+                }
+                else
+                {
+                    last_reason = why;
+                }
+            }
+            if (!found)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, last_reason);
+            }
+        }
+        else   // MALUS_INVALID_WEIGHT
+        {
+            AccusedItem probe;
+            std::string why;
+            if (!LoadAccusedItem(pwalletTxsMain, blocks[0], MC_WPOA_WEIGHTS_STREAM_NAME,
+                                 probe, &why))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, why);
+            }
+            uint32_t recomputed = 0;
+            bool is_cluster = false;
+            if (!WeightEngineRecomputeWeightForEpoch(probe.epoch, address, is_cluster,
+                                                     recomputed))
+            {
+                throw JSONRPCError(RPC_MISC_ERROR,
+                                   "this node cannot recompute that epoch (inputs "
+                                   "unreadable, epoch not buried, or the weight engine is "
+                                   "off), so it cannot substantiate the report");
+            }
+            detail.epoch      = probe.epoch;
+            detail.declared   = probe.weight;
+            detail.recomputed = is_cluster ? recomputed : 0;
+        }
+    }
+
+    return registry.PublishReport(kind, address, (int)height, blocks, detail);
 }

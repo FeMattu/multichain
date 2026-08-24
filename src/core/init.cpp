@@ -582,6 +582,8 @@ std::string HelpMessage(HelpMessageMode mode)                                   
     strUsage += "  -wpoamalusmax=<x>                        " + strprintf(_("wPoA malus threshold M_max > 0: the accumulator value at which Psi reaches 0 and the validator becomes ineligible (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_MALUS_MAX) + "\n";
     strUsage += "  -wpoamalusequivpoints=<x>                " + strprintf(_("wPoA malus score added by one proved equivocation, a safety fault (default: %g). Must exceed the delay score. Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_MALUS_P_EQUIV) + "\n";
     strUsage += "  -wpoamalusdelaypoints=<x>                " + strprintf(_("wPoA malus score added by one proved scheduling-delay violation (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_MALUS_P_DELAY) + "\n";
+    strUsage += "  -wpoamalusselfwritepoints=<x>            " + strprintf(_("wPoA malus score for publishing a self-attested record on another address's behalf; the record is always discarded, so this prices the attempt (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_MALUS_P_SELFWRITE) + "\n";
+    strUsage += "  -wpoamalusbadweightpoints=<x>            " + strprintf(_("wPoA malus score for a wpoa-weights value that fails independent recomputation; must exceed the selfwrite score (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_MALUS_P_BADWEIGHT) + "\n";
     strUsage += "  -enableweightengine                      " + _("Weight engine: derive each cluster's wpoa-weights entry from public on-chain inputs (membership/ESG/activity/reconciliation) every epoch, instead of a static per-node -weight. Requires -enablewpoaweights. Inherited from params.dat; default 0. Must be identical on all nodes.") + "\n";
     strUsage += "  -weightepochlength=<n>                   " + strprintf(_("Weight engine epoch length in blocks: epoch(height) = height / n (default: %u). Inherited from params.dat. Must be identical on all nodes."), (unsigned)MC_WEIGHT_DEFAULT_EPOCH_LENGTH) + "\n";
     strUsage += "  -weightkappa=<x>                         " + strprintf(_("Weight engine normalization constant kappa > 0 in c_i = ESG_i * tau_i / kappa (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WEIGHT_DEFAULT_KAPPA) + "\n";
@@ -3413,11 +3415,37 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
                 return InitError(strprintf(_("Invalid -wpoamalusdelaypoints value '%s': must be a number > 0."), s));
             }
 
+            // The two PUBLISHED-DATA INTEGRITY scores: forging a self-attested record,
+            // and publishing a weight that fails independent recomputation. Same
+            // validation discipline as the behavioural pair.
+            double p_selfwrite = 0.0, p_badweight = 0.0;
+
+            s = ResolveWeightRealStr(np, "wpoamalusselfwritepoints", "-wpoamalusselfwritepoints", (double)MC_WPOA_DEFAULT_MALUS_P_SELFWRITE);
+            if (!ParseWeightDouble(s, p_selfwrite) || !(p_selfwrite > 0.0 && p_selfwrite < 1e18))
+            {
+                return InitError(strprintf(_("Invalid -wpoamalusselfwritepoints value '%s': must be a number > 0."), s));
+            }
+
+            s = ResolveWeightRealStr(np, "wpoamalusbadweightpoints", "-wpoamalusbadweightpoints", (double)MC_WPOA_DEFAULT_MALUS_P_BADWEIGHT);
+            if (!ParseWeightDouble(s, p_badweight) || !(p_badweight > 0.0 && p_badweight < 1e18))
+            {
+                return InitError(strprintf(_("Invalid -wpoamalusbadweightpoints value '%s': must be a number > 0."), s));
+            }
+
             // Equivocation threatens the chain's safety, a delay violation only the
             // correctness of the scheduling: the protocol requires p(Equiv) >> p(Delay).
             if (p_equiv <= p_delay)
             {
                 return InitError(_("wPoA malus: -wpoamalusequivpoints must be strictly greater than -wpoamalusdelaypoints (equivocation is a safety fault, a delay violation only a scheduling one)."));
+            }
+
+            // The same ordering argument inside the data-integrity pair: a forged record
+            // is ALWAYS discarded, so it damages nothing directly and its score prices
+            // the attempt; a false weight SUCCEEDS unless somebody recomputes it, and
+            // then distorts proposer probability for every round of the epoch.
+            if (p_badweight <= p_selfwrite)
+            {
+                return InitError(_("wPoA malus: -wpoamalusbadweightpoints must be strictly greater than -wpoamalusselfwritepoints (a false weight takes effect unless recomputed, while a forged self-attested record is always discarded)."));
             }
 
             // Both proofs rest on the block-carried VRF reveal over the beacon seed,
@@ -3427,11 +3455,13 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
                 return InitError(_("wPoA malus: -enablewpoamalus requires private sortition (-enablewpoasortition): both evidence kinds are proved against the block's VRF reveal over the beacon seed."));
             }
 
-            g_wpoa_malus_enabled = malus_enabled;
-            g_wpoa_malus_mu      = mu;
-            g_wpoa_malus_max     = mmax;
-            g_wpoa_malus_p_equiv = p_equiv;
-            g_wpoa_malus_p_delay = p_delay;
+            g_wpoa_malus_enabled    = malus_enabled;
+            g_wpoa_malus_mu         = mu;
+            g_wpoa_malus_max        = mmax;
+            g_wpoa_malus_p_equiv    = p_equiv;
+            g_wpoa_malus_p_delay    = p_delay;
+            g_wpoa_malus_p_selfwrite = p_selfwrite;
+            g_wpoa_malus_p_badweight = p_badweight;
 
             if (np != NULL && malus_enabled != p_malus)
             {
@@ -3441,9 +3471,37 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
                           "this node will fork.\n", (int)p_malus, (int)malus_enabled);
             }
 
-            LogPrintf("[wPoA-malus] %s; mu=%g; Mmax=%g; p(equiv)=%g; p(delay)=%g\n",
+            LogPrintf("[wPoA-malus] %s; mu=%g; Mmax=%g; p(equiv)=%g; p(delay)=%g; "
+                      "p(selfwrite)=%g; p(badweight)=%g\n",
                       malus_enabled ? "ON" : "off", g_wpoa_malus_mu, g_wpoa_malus_max,
-                      g_wpoa_malus_p_equiv, g_wpoa_malus_p_delay);
+                      g_wpoa_malus_p_equiv, g_wpoa_malus_p_delay,
+                      g_wpoa_malus_p_selfwrite, g_wpoa_malus_p_badweight);
+
+            // The data-integrity kinds are only DECIDABLE where the weight engine runs:
+            // `badweight` needs the pipeline to recompute, and a membership `selfwrite`
+            // needs the subscription the engine establishes. Both are reported as
+            // undecidable rather than false when the engine is off, and since
+            // enable-weight-engine is itself a hash-enforced chain parameter every node
+            // agrees on whether they can be decided at all — which is what keeps the
+            // verdict, and therefore Psi, uniform across the network. Worth saying out
+            // loud rather than leaving to be discovered from a rejected report.
+            //
+            // Resolved from the parameter and flag directly rather than from
+            // g_weight_engine_enabled: the weight-engine block runs LATER in AppInit2, so
+            // the global is still at its default here. Reading it would have made this
+            // note fire even on a chain that does enable the engine.
+            const bool we_for_note =
+                mapArgs.count("-enableweightengine")
+                    ? GetBoolArg("-enableweightengine", false)
+                    : ((np != NULL) && (np->GetInt64Param("enableweightengine") != 0));
+            if (malus_enabled && !we_for_note)
+            {
+                LogPrintf("[wPoA-malus] NOTE: the weight engine is off, so the "
+                          "published-data integrity kinds (selfwrite on "
+                          "weight-engine-membership, badweight) cannot be decided on this "
+                          "chain and such reports will be refused network-wide. The "
+                          "behavioural kinds (equiv, delay) are unaffected.\n");
+            }
         }
 
         // Register this node's weight lazily on a background thread — only when the

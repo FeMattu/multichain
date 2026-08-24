@@ -25,7 +25,7 @@ to remove the residual last-revealer bias) is planned and not implemented.
 - [3. Phase 3a — VRF randomness beacon](#3-phase-3a--vrf-randomness-beacon)
 - [4. Phase 3b — RANDAO beacon seed](#4-phase-3b--randao-beacon-seed)
 - [5. Phase 4 — Efraimidis private sortition](#5-phase-4--efraimidis-private-sortition)
-- [6. Behavioural malus registry](#6-behavioural-malus-registry)
+- [6. Malus registry](#6-malus-registry)
 - [7. Weight engine](#7-weight-engine)
 - [8. End-to-end validation](#8-end-to-end-validation)
 - [9. Not implemented](#9-not-implemented)
@@ -372,16 +372,18 @@ supersedes: [native-poa-block-delay.md](native-poa-block-delay.md).
 
 ---
 
-## 6. Behavioural malus registry
+## 6. Malus registry
 
 | Area | Status | Notes |
 |---|---|---|
 | Malus core (`MalusAccumulator`) | Done | EMA fold, `Psi`, `w_eff`, `EpochsToClear`; node-free. |
-| **Open** `wpoa-weights-malus` stream + `Valid(e)` | Done | Anyone may report, nobody is believed: every node re-derives the evidence (VRF over the beacon seed, plus the time bar for a delay violation), so a false report is discarded identically everywhere. |
-| `w_eff = w * Psi` in the election | Done | Applied in one place (`WPoAApplyMalus`), consumed by the public selector and by both sides of the private sortition. Inert when disabled or when nobody carries a violation. |
-| `-enablewpoamalus` + `mu` / `M_max` / point weights | Done | Inheritable chain parameters; requires sortition, and `p(Equiv) > p(Delay)` is enforced at startup. |
-| Reversibility of an exclusion | Done | `M` is an exponential moving average with `mu < 1`, so an exclusion clears after a finite number of clean epochs: no permanent ban. Clearing bound corrected at the threshold. |
-| Unit tests | Done | [`wpoa_malus_tests.cpp`](../test/wpoa_malus_tests.cpp); parsing, EMA fold, `Psi`, `w_eff`, reversibility. |
+| **Open** `wpoa-weights-malus` stream + `Valid(e)` | Done | Anyone may report, nobody is believed: every node re-derives the evidence, so a false report is discarded identically everywhere. |
+| Consensus-behavioural kinds (`equiv`, `delay`) | Done | Evidence is the **block**: the VRF reveal over the beacon seed, plus the time bar for a delay violation. Restricted to sortition-governed heights, where that reveal exists. |
+| Published-data integrity kinds (`selfwrite`, `badweight`) | Done | Evidence is the publishing **transaction**. `selfwrite`: a record on a self-attested stream naming another address — validated as the exact **negation** of the readers' rule, through the same shared predicate, so a node can never accuse a record it would have accepted. `badweight`: a `wpoa-weights` value that fails re-running the pipeline over the epoch's public inputs. The two are disjoint (an unsigned record is a `selfwrite`, never a `badweight`), so one act is never scored twice. Both need the weight engine to be decidable, and its flag is hash-enforced, so every node agrees on whether they are decidable at all. |
+| `w_eff = w * Psi` in the election | Done | Applied in one place (`WPoAApplyMalus`), consumed by the public selector and by both sides of the private sortition. Inert when disabled or when nobody carries a violation. **Generic over the kind**: adding the two data-integrity kinds touched only the per-kind score dispatch — `Psi`, `w_eff` and the consensus path operate on the accumulated severity `M`, not on what produced it. |
+| `-enablewpoamalus` + `mu` / `M_max` / four point weights | Done | Inheritable chain parameters; requires sortition, and both `p(Equiv) > p(Delay)` and `p(BadWeight) > p(SelfWrite)` are enforced at startup. Intended ordering `p(Equiv) > p(BadWeight) > p(SelfWrite) > p(Delay)`. |
+| Reversibility of an exclusion | Done | `M` is an exponential moving average with `mu < 1`, so an exclusion clears after a finite number of clean epochs: no permanent ban — for **either** family, since the decay is a property of `M` rather than of the offence. Clearing bound corrected at the threshold. |
+| Unit tests | Done | [`wpoa_malus_tests.cpp`](../test/wpoa_malus_tests.cpp) (23 cases); parsing for both families, every data-integrity rejection (including a report accusing an *honest* record), the four-score dispatch and its ordering, EMA fold, `Psi`, `w_eff` end to end for a proved `badweight`, and reversibility. |
 
 Detail: [malus-registry.md](malus-registry.md).
 
@@ -403,7 +405,10 @@ Detail: [malus-registry.md](malus-registry.md).
 | `-enableweightengine` + `epochlength` / `kappa` / `alpha` / `lambda` / `treasuryaddress` | Done | Hash-enforced chain parameters; requires Phase 1; validated at startup. `weight-treasury-address` may be empty, which makes `R_k = 0` uniformly — a uniform scaling that leaves the election unchanged. |
 | Unit tests | Done | Its own runner: `src/weight_engine/test/run_unit_tests.sh`, suites `records`, `authorization` and `engine`. |
 
-Detail: [weight-engine.md](weight-engine.md).
+Detail: [weight-engine.md](weight-engine.md) ·
+[CHANGELOG-weight-engine-refactor.md](CHANGELOG-weight-engine-refactor.md) (permission
+model before/after, per stream) ·
+[adr/reconciliation-onchain.md](adr/reconciliation-onchain.md).
 
 ---
 
@@ -419,7 +424,7 @@ network, warms it up once, then runs every check on the shared run.
 | `check_weight` | The weight is registered and readable. |
 | `check_stream_permissions` | The two registries' opposite write policies are effective: `wpoa-weights` closed, `wpoa-weights-malus` open. |
 | `check_multinode_consistency` | The weight map converges identically on every node. Bootstraps `connect`/`send`/`receive`/`mine`/`wpoa-weights.write` from node 0. |
-| `check_malus` | Reporting, `Valid(e)`, accumulation and the `Psi` correction. |
+| `check_malus` | Reporting, `Valid(e)`, accumulation and the `Psi` correction, for **both** malus families — including that an honestly self-published weight is neither a `selfwrite` nor a `badweight`, swept over several heights. |
 | `check_vrf` | Reveals are produced and verified network-wide, 0 rejections, chain live and fork-free. |
 | `check_randao` | Accumulator and seed bit-identical network-wide (0 fallback folds), liveness under the beacon seed. |
 | `check_sortition` | Liveness, no persistent fork, and **zero public-argmin acceptances**: direct evidence that selection is private. This is the default full-stack run. |

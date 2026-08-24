@@ -17,16 +17,35 @@
 // stream therefore costs nothing in safety while removing the need for a
 // privileged accuser — the control stays decentralized.
 //
-// Two report kinds are recognised, and only two, because they are exactly the
-// misbehaviours a node can already prove while validating a block:
+// FOUR report kinds, in TWO families. Both families satisfy the same requirement — the
+// proof must be re-derivable from public chain data — and differ only in what the
+// evidence is and what the offence damages.
 //
-//   equiv  the accused signed two DISTINCT blocks at one height over the same
-//          beacon seed. VRF uniqueness makes that impossible by accident, so the
-//          mere coexistence of the two blocks is proof (Def. 5.18).
-//   delay  the accused published a block whose VRF proof is valid but whose
-//          timestamp precedes the delay its own sortition score entitled it to
-//          (Def. 5.19). The attempt is the violation, whether or not it was
-//          accepted anywhere.
+// CONSENSUS-BEHAVIOURAL: how a validator behaved while PRODUCING a block. Evidence: the
+// block, and the VRF reveal it carries.
+//   equiv      the accused signed two DISTINCT blocks at one height over the same
+//              beacon seed. VRF uniqueness makes that impossible by accident, so the
+//              mere coexistence of the two blocks is proof (Def. 5.18).
+//   delay      the accused published a block whose VRF proof is valid but whose
+//              timestamp precedes the delay its own sortition score entitled it to
+//              (Def. 5.19). The attempt is the violation, whether or not it was
+//              accepted anywhere.
+//
+// PUBLISHED-DATA INTEGRITY: what a node WROTE to a stream the weight pipeline reads.
+// Evidence: the publishing transaction, its signature and its payload. These attack the
+// INPUTS of the election rather than its execution.
+//   selfwrite  the accused published a record on a SELF-ATTESTED stream naming a
+//              node_address other than its own signing address. Readers already discard
+//              such a record, so it gains nothing — which is precisely why the attempt
+//              needs a price, as with `delay`.
+//   badweight  the accused published on wpoa-weights a value that does not survive
+//              independent recomputation from the public pipeline inputs. Unlike
+//              selfwrite this one SUCCEEDS unless somebody recomputes it, so it is the
+//              offence with the most direct effect on proposer probability.
+//
+// The second family exists because the weight inputs became self-verifiable: a forged
+// membership record or a false weight is now PROVABLY wrong, and anything provable can
+// carry a malus on exactly the same terms as an equivocation.
 //
 // The accumulated, decayed severity M_i is turned into the correction factor
 // Psi_i and applied DOWNSTREAM of the raw weight, w_eff = w * Psi (Def. 5.22).
@@ -76,6 +95,20 @@ struct mc_EntityDetails;
  *  Kept far below p(Equiv) by the protocol constraint p(Equiv) >> p(Delay). */
 #define MC_WPOA_DEFAULT_MALUS_P_DELAY    0.25
 
+/** p(SelfWrite): score of one proved attempt to publish a self-attested record on
+ *  another address's behalf. The record is always discarded, so the offence damages
+ *  nothing directly — the score prices the ATTEMPT, exactly as p(Delay) prices an
+ *  attempt block validation already rejects. Set above p(Delay) because a forged
+ *  signature claim is unambiguous intent, where an early timestamp can be a clock. */
+#define MC_WPOA_DEFAULT_MALUS_P_SELFWRITE 1.0
+
+/** p(BadWeight): score of one weight published on wpoa-weights that fails independent
+ *  recomputation. The heaviest of the data-integrity pair, and the constraint
+ *  p(BadWeight) > p(SelfWrite) is enforced at startup: unlike a forgery, a false weight
+ *  SUCCEEDS unless somebody recomputes it, and then distorts proposer probability for
+ *  every round of the epoch. Still below p(Equiv), which threatens safety itself. */
+#define MC_WPOA_DEFAULT_MALUS_P_BADWEIGHT 2.0
+
 /**
  * MalusRegistry
  *
@@ -123,7 +156,8 @@ public:
      * @return the publish txid; throws a JSONRPCError on a failed local check.
      */
     std::string PublishReport(MalusKind kind, const std::string& node_address,
-                              int height, const std::vector<std::string>& blocks);
+                              int height, const std::vector<std::string>& blocks,
+                              const MalusDataDetail& detail = MalusDataDetail());
 
     /**
      * The Valid(e) predicate of Def. 5.20, exposed for the report RPC and the
@@ -137,6 +171,23 @@ public:
      */
     bool ValidReport(MalusKind kind, const std::string& node_address, int height,
                      const std::vector<std::string>& blocks, double psi_prev,
+                     std::string* reason_out)
+    {
+        return ValidReport(kind, node_address, height, blocks, MalusDataDetail(),
+                           psi_prev, reason_out);
+    }
+
+    /**
+     * Full form, carrying the extra payload the data-integrity kinds need.
+     *
+     * `detail` is treated as a CLAIM, never as evidence: every field is re-checked
+     * against the referenced transaction, and a mismatch invalidates the report. It
+     * exists so a third party can audit an accusation by reading one transaction rather
+     * than searching for it.
+     */
+    bool ValidReport(MalusKind kind, const std::string& node_address, int height,
+                     const std::vector<std::string>& blocks,
+                     const MalusDataDetail& detail, double psi_prev,
                      std::string* reason_out);
 
 private:
@@ -157,10 +208,26 @@ private:
         std::string              address;
         int                      height;
         std::vector<std::string> blocks;
+        MalusDataDetail          detail;   //!< data-integrity kinds only
     };
 
     /** Every confirmed, well-formed report, oldest first. */
     bool ReadAllReports(std::vector<Report>& out);
+
+    /**
+     * Valid(e) for the PUBLISHED-DATA INTEGRITY kinds, whose evidence is a publishing
+     * transaction rather than a block.
+     *
+     * Verification is deliberately mechanical, with no judgement anywhere in it: read
+     * the referenced transaction, decode its signer and its payload, and confirm the
+     * discrepancy the report alleges. For `badweight` it additionally re-runs the weight
+     * pipeline over the epoch's public inputs — the same computation the accuser ran, and
+     * the same one every other node can run.
+     */
+    bool ValidDataIntegrityReport(MalusKind kind, const std::string& node_address,
+                                  int height, const std::vector<std::string>& blocks,
+                                  const MalusDataDetail& detail,
+                                  std::string* reason_out);
 };
 
 // ---------------------------------------------------------------------------
@@ -185,6 +252,15 @@ extern double g_wpoa_malus_p_equiv;
 
 /** -wpoamalusdelaypoints: p(Delay) > 0, with p(Equiv) >> p(Delay). */
 extern double g_wpoa_malus_p_delay;
+
+/** -wpoamalusselfwritepoints: p(SelfWrite) > 0 — a discarded forgery attempt. */
+extern double g_wpoa_malus_p_selfwrite;
+
+/** -wpoamalusbadweightpoints: p(BadWeight) > 0, with p(BadWeight) > p(SelfWrite). */
+extern double g_wpoa_malus_p_badweight;
+
+/** The four scores as one struct, for MalusAccumulator::Points. */
+MalusScores WPoAMalusScores();
 
 /**
  * True when the malus correction governs the weights at `height`: the mechanism

@@ -506,15 +506,28 @@ work. So verification runs **once per buried epoch**, inside `ThreadWeightEngine
 the fold already happens, and caches its verdicts; the consensus path consults the cache
 in O(1).
 
-> **Where the consequence of a mismatch reaches consensus.** Rule 1's discard is enforced
-> directly in the reader, because it is decidable from a single transaction. Rule 2's
-> verdicts are produced and cached here, and the effective-weight consequence is applied
-> through the malus registry — the mechanism that already sits in the consensus path as
-> `w_eff = w * Psi` ([§3.3](#33-relation-to-the-selector--three-distinct-levels)) and
-> whose whole purpose is to carry *provable* findings into the election. Wiring that
-> accusation is the malus phase's job and is deliberately not anticipated here; until it
-> lands, a mismatch is detected, logged unconditionally and exposed by
-> `weightverifyweights`, but does not yet move any weight.
+#### Where the consequence of a violation reaches consensus
+
+The two rules take effect by different routes, matching what each is decidable from.
+
+**Rule 1's discard is immediate**, enforced in the reader, because it is decidable from a
+single transaction: a record whose signer is not its subject never enters the weight map on
+any node.
+
+**Rule 2's consequence travels through the malus registry** — the mechanism already in the
+consensus path as `w_eff = w * Psi`
+([§3.3](#33-relation-to-the-selector--three-distinct-levels)), whose whole purpose is to
+carry *provable* findings into the election. A mismatch is not silently absorbed: it is
+detected, logged unconditionally, exposed by `weightverifyweights`, and reportable as a
+**`badweight`** malus that every node re-derives by re-running the same pipeline. A forged
+record — Rule 1's discard — is likewise reportable, as **`selfwrite`**, so the attempt has
+a price even though it changed nothing.
+
+Both malus kinds are verified as *proofs*, never judgements, exactly like an equivocation:
+[malus-registry.md §3](malus-registry.md#3-what-can-be-reported-and-why-only-these). The
+routing is deliberate rather than incidental — a per-round recomputation in the consensus
+read path would be O(chain) per call, whereas the malus is already consulted there and
+already carries per-epoch findings.
 
 ---
 
@@ -791,6 +804,9 @@ Both are node-free: they do not require building the node. See [testing.md](test
 
 ## 10. References
 
+- [CHANGELOG-weight-engine-refactor.md](CHANGELOG-weight-engine-refactor.md) — the
+  permission model of every stream before and after, and the thesis passages needing an
+  update.
 - [adr/reconciliation-onchain.md](adr/reconciliation-onchain.md) — why `R_k^(e)` became
   chain-derived, the option that was rejected, and the thesis wording it supersedes.
 - [protocol-parameters.md](protocol-parameters.md) — the engine's parameters, with ranges

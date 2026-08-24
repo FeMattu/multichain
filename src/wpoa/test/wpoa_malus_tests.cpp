@@ -42,6 +42,35 @@ static Object make_inner(const std::string& kind, const std::string& addr,
     return inner;
 }
 
+// A selfwrite report: evidence is the offending TRANSACTION, plus the stream it was
+// written to and the node_address its payload claimed.
+static Object make_selfwrite(const std::string& accused, int64_t height,
+                             const std::string& txid, const std::string& stream,
+                             const std::string& declared)
+{
+    std::vector<std::string> refs;
+    refs.push_back(txid);
+    Object inner = make_inner(MC_WPOA_MALUS_KIND_SELFWRITE, accused, height, refs);
+    inner.push_back(Pair(MC_WPOA_MALUS_FIELD_STREAM, stream));
+    inner.push_back(Pair(MC_WPOA_MALUS_FIELD_DECLARED_ADDR, declared));
+    return inner;
+}
+
+// A badweight report: evidence is the offending TRANSACTION, plus the epoch it claimed
+// and the two values that disagree.
+static Object make_badweight(const std::string& accused, int64_t height,
+                             const std::string& txid, int64_t epoch,
+                             int64_t declared, int64_t recomputed)
+{
+    std::vector<std::string> refs;
+    refs.push_back(txid);
+    Object inner = make_inner(MC_WPOA_MALUS_KIND_BADWEIGHT, accused, height, refs);
+    inner.push_back(Pair(MC_WPOA_MALUS_FIELD_EPOCH, epoch));
+    inner.push_back(Pair(MC_WPOA_MALUS_FIELD_DECLARED, declared));
+    inner.push_back(Pair(MC_WPOA_MALUS_FIELD_RECOMPUTED, recomputed));
+    return inner;
+}
+
 // Wrap as the value returned by OpReturnFormatEntry's 6-argument overload.
 static Value wrap_json(const Value& inner)
 {
@@ -177,6 +206,136 @@ BOOST_AUTO_TEST_CASE(parse_rejects_non_object_and_missing_json)
     BOOST_CHECK(!mc_ParseMalusRecordJson(Value(bare), kind, addr, height, blocks));
 }
 
+// ---- the published-data integrity kinds ----------------------------------
+//
+// The second family of violations: what a node WROTE to a stream the weight pipeline
+// reads, rather than how it behaved while producing a block. The evidence is the
+// publishing transaction; these cases cover the SHAPE of such a report, which is what
+// the pure layer can decide. Whether the accusation is TRUE is re-derived from the
+// referenced transaction by MalusRegistry::ValidDataIntegrityReport, which needs the
+// chain and is exercised by the functional suite.
+
+BOOST_AUTO_TEST_CASE(parse_selfwrite_record)
+{
+    MalusKind kind; std::string addr; int height; std::vector<std::string> refs;
+    MalusDataDetail d;
+    BOOST_REQUIRE(mc_ParseMalusRecordJson(
+        wrap_json(make_selfwrite("SIGNER_A", 120, "tx1", "weight-engine-membership",
+                                 "VICTIM_B")),
+        kind, addr, height, refs, &d));
+    BOOST_CHECK_EQUAL(kind, MALUS_SELF_WRITE);
+    BOOST_CHECK_EQUAL(addr, "SIGNER_A");          // the accused is the SIGNER
+    BOOST_CHECK_EQUAL(height, 120);
+    BOOST_CHECK_EQUAL(refs.size(), 1u);           // one TRANSACTION, not two blocks
+    BOOST_CHECK_EQUAL(refs[0], "tx1");
+    BOOST_CHECK_EQUAL(d.stream, "weight-engine-membership");
+    BOOST_CHECK_EQUAL(d.declared_address, "VICTIM_B");
+}
+
+BOOST_AUTO_TEST_CASE(parse_badweight_record)
+{
+    MalusKind kind; std::string addr; int height; std::vector<std::string> refs;
+    MalusDataDetail d;
+    BOOST_REQUIRE(mc_ParseMalusRecordJson(
+        wrap_json(make_badweight("MINER_A", 200, "tx2", 5, 99999, 300)),
+        kind, addr, height, refs, &d));
+    BOOST_CHECK_EQUAL(kind, MALUS_INVALID_WEIGHT);
+    BOOST_CHECK_EQUAL(addr, "MINER_A");
+    BOOST_CHECK_EQUAL(d.epoch, 5u);
+    BOOST_CHECK_EQUAL(d.declared, 99999u);
+    BOOST_CHECK_EQUAL(d.recomputed, 300u);
+}
+
+// A selfwrite report must name the stream and the impersonated address: without them the
+// accusation is not self-describing, so a third party could not audit it without
+// searching. Incompleteness is a SHAPE failure, decided here.
+BOOST_AUTO_TEST_CASE(parse_rejects_selfwrite_without_its_fields)
+{
+    MalusKind kind; std::string addr; int height; std::vector<std::string> refs;
+
+    std::vector<std::string> one; one.push_back("tx1");
+    BOOST_CHECK(!mc_ParseMalusRecordJson(
+        wrap_json(make_inner(MC_WPOA_MALUS_KIND_SELFWRITE, "SIGNER_A", 120, one)),
+        kind, addr, height, refs));                       // no stream, no declared_address
+
+    Object no_declared = make_inner(MC_WPOA_MALUS_KIND_SELFWRITE, "SIGNER_A", 120, one);
+    no_declared.push_back(Pair(MC_WPOA_MALUS_FIELD_STREAM, std::string("wpoa-weights")));
+    BOOST_CHECK(!mc_ParseMalusRecordJson(wrap_json(no_declared), kind, addr, height, refs));
+}
+
+// A record declaring the accused's OWN address is the HONEST case — the reader accepts
+// it — so accusing it is malformed rather than merely false. Rejecting it in the parser
+// stops such a report from ever reaching the accumulator.
+BOOST_AUTO_TEST_CASE(parse_rejects_selfwrite_accusing_an_honest_record)
+{
+    MalusKind kind; std::string addr; int height; std::vector<std::string> refs;
+    BOOST_CHECK(!mc_ParseMalusRecordJson(
+        wrap_json(make_selfwrite("SIGNER_A", 120, "tx1", "wpoa-weights", "SIGNER_A")),
+        kind, addr, height, refs));
+}
+
+// A badweight report needs a real epoch (epochs are 1-based) and a positive declared
+// value, since the weight stream only carries strictly positive weights.
+BOOST_AUTO_TEST_CASE(parse_rejects_badweight_without_epoch_or_value)
+{
+    MalusKind kind; std::string addr; int height; std::vector<std::string> refs;
+    BOOST_CHECK(!mc_ParseMalusRecordJson(
+        wrap_json(make_badweight("MINER_A", 200, "tx2", 0, 99999, 300)),
+        kind, addr, height, refs));                       // epoch 0
+    BOOST_CHECK(!mc_ParseMalusRecordJson(
+        wrap_json(make_badweight("MINER_A", 200, "tx2", 5, 0, 300)),
+        kind, addr, height, refs));                       // declared 0
+}
+
+// NO FALSE POSITIVE ON A CORRECT WEIGHT. Equal values are an accusation that nothing is
+// wrong, and it is rejected before it can score anything.
+BOOST_AUTO_TEST_CASE(parse_rejects_badweight_where_the_values_agree)
+{
+    MalusKind kind; std::string addr; int height; std::vector<std::string> refs;
+    BOOST_CHECK(!mc_ParseMalusRecordJson(
+        wrap_json(make_badweight("MINER_A", 200, "tx2", 5, 750, 750)),
+        kind, addr, height, refs));
+}
+
+// recomputed == 0 IS legitimate: that is what an address heading no cluster recomputes
+// to, so "published 5000, recomputes to nothing" must be reportable.
+BOOST_AUTO_TEST_CASE(parse_accepts_badweight_against_a_non_cluster)
+{
+    MalusKind kind; std::string addr; int height; std::vector<std::string> refs;
+    MalusDataDetail d;
+    BOOST_REQUIRE(mc_ParseMalusRecordJson(
+        wrap_json(make_badweight("NOT_A_MINER", 200, "tx2", 5, 5000, 0)),
+        kind, addr, height, refs, &d));
+    BOOST_CHECK_EQUAL(d.recomputed, 0u);
+}
+
+// One transaction, never two: the reference count is per kind and single-sourced.
+BOOST_AUTO_TEST_CASE(parse_rejects_data_integrity_with_two_references)
+{
+    MalusKind kind; std::string addr; int height; std::vector<std::string> refs;
+    std::vector<std::string> two;
+    two.push_back("tx1");
+    two.push_back("tx2");
+    Object o = make_inner(MC_WPOA_MALUS_KIND_SELFWRITE, "SIGNER_A", 120, two);
+    o.push_back(Pair(MC_WPOA_MALUS_FIELD_STREAM, std::string("wpoa-weights")));
+    o.push_back(Pair(MC_WPOA_MALUS_FIELD_DECLARED_ADDR, std::string("VICTIM_B")));
+    BOOST_CHECK(!mc_ParseMalusRecordJson(wrap_json(o), kind, addr, height, refs));
+
+    BOOST_CHECK_EQUAL(mc_MalusKindRefCount(MALUS_EQUIV), 2u);
+    BOOST_CHECK_EQUAL(mc_MalusKindRefCount(MALUS_DELAY), 1u);
+    BOOST_CHECK_EQUAL(mc_MalusKindRefCount(MALUS_SELF_WRITE), 1u);
+    BOOST_CHECK_EQUAL(mc_MalusKindRefCount(MALUS_INVALID_WEIGHT), 1u);
+}
+
+BOOST_AUTO_TEST_CASE(kind_families_are_classified)
+{
+    BOOST_CHECK(!mc_MalusKindIsDataIntegrity(MALUS_EQUIV));
+    BOOST_CHECK(!mc_MalusKindIsDataIntegrity(MALUS_DELAY));
+    BOOST_CHECK(!mc_MalusKindIsDataIntegrity(MALUS_NONE));
+    BOOST_CHECK(mc_MalusKindIsDataIntegrity(MALUS_SELF_WRITE));
+    BOOST_CHECK(mc_MalusKindIsDataIntegrity(MALUS_INVALID_WEIGHT));
+}
+
 // ---- Points --------------------------------------------------------------
 
 BOOST_AUTO_TEST_CASE(points_per_kind)
@@ -184,6 +343,96 @@ BOOST_AUTO_TEST_CASE(points_per_kind)
     BOOST_CHECK_CLOSE(MalusAccumulator::Points(MALUS_EQUIV, 4.0, 0.25), 4.0, 1e-9);
     BOOST_CHECK_CLOSE(MalusAccumulator::Points(MALUS_DELAY, 4.0, 0.25), 0.25, 1e-9);
     BOOST_CHECK_SMALL(MalusAccumulator::Points(MALUS_NONE, 4.0, 0.25), EPS);
+}
+
+// The four-score dispatch. Adding a kind touches ONLY this function: Fold, Psi, w_eff,
+// EpochsToClear and ApplyToWeights all operate on the accumulated severity M rather than
+// on what produced it, so they were already generic. This case pins that the new kinds
+// are scored and that the ordering argument holds.
+BOOST_AUTO_TEST_CASE(points_covers_the_data_integrity_kinds)
+{
+    const MalusScores s(4.0, 0.25, 1.0, 2.0);
+    BOOST_CHECK_CLOSE(MalusAccumulator::Points(MALUS_EQUIV, s), 4.0, 1e-9);
+    BOOST_CHECK_CLOSE(MalusAccumulator::Points(MALUS_DELAY, s), 0.25, 1e-9);
+    BOOST_CHECK_CLOSE(MalusAccumulator::Points(MALUS_SELF_WRITE, s), 1.0, 1e-9);
+    BOOST_CHECK_CLOSE(MalusAccumulator::Points(MALUS_INVALID_WEIGHT, s), 2.0, 1e-9);
+    BOOST_CHECK_SMALL(MalusAccumulator::Points(MALUS_NONE, s), EPS);
+
+    // The severity ordering the protocol enforces at startup: equivocation threatens
+    // safety; a false weight succeeds unless recomputed; a forged record is always
+    // discarded, so its score prices the attempt; a delay violation is the lightest.
+    BOOST_CHECK(MalusAccumulator::Points(MALUS_EQUIV, s) >
+                MalusAccumulator::Points(MALUS_INVALID_WEIGHT, s));
+    BOOST_CHECK(MalusAccumulator::Points(MALUS_INVALID_WEIGHT, s) >
+                MalusAccumulator::Points(MALUS_SELF_WRITE, s));
+    BOOST_CHECK(MalusAccumulator::Points(MALUS_SELF_WRITE, s) >
+                MalusAccumulator::Points(MALUS_DELAY, s));
+}
+
+// The two-score form must keep working for callers that only handle the behavioural
+// kinds — it scores the data-integrity kinds 0, which is the correct reading of "no
+// score configured for them" rather than a silent misattribution.
+BOOST_AUTO_TEST_CASE(points_two_score_form_stays_backward_compatible)
+{
+    BOOST_CHECK_CLOSE(MalusAccumulator::Points(MALUS_EQUIV, 4.0, 0.25), 4.0, 1e-9);
+    BOOST_CHECK_SMALL(MalusAccumulator::Points(MALUS_SELF_WRITE, 4.0, 0.25), EPS);
+    BOOST_CHECK_SMALL(MalusAccumulator::Points(MALUS_INVALID_WEIGHT, 4.0, 0.25), EPS);
+}
+
+// END TO END THROUGH THE CORRECTION, for a data-integrity violation: one proved
+// badweight report reduces Psi, hence w_eff, from the NEXT epoch — and the reduction
+// then decays away over clean epochs exactly as it does for a behavioural violation.
+// This is what "the same severity scale carries both families" means concretely.
+BOOST_AUTO_TEST_CASE(a_proved_badweight_reduces_effective_weight_then_decays)
+{
+    const MalusScores sc(4.0, 0.25, 1.0, 2.0);
+    const double Mmax = 4.0, mu = 0.5;
+    const uint32_t raw = 1000;
+
+    // Epoch e: clean. Psi = 1, so the mechanism is inert.
+    double M0 = 0.0;
+    BOOST_CHECK_CLOSE(MalusAccumulator::CorrectionFactor(M0, Mmax), 1.0, 1e-9);
+    BOOST_CHECK_EQUAL(MalusAccumulator::EffectiveWeight(raw, 1.0), raw);
+
+    // Epoch e+1: one proved badweight. M = 2, Psi = 1 - 2/4 = 0.5, w_eff halves.
+    double M1 = MalusAccumulator::Fold(M0, MalusAccumulator::Points(MALUS_INVALID_WEIGHT, sc), mu);
+    BOOST_CHECK_CLOSE(M1, 2.0, 1e-9);
+    double psi1 = MalusAccumulator::CorrectionFactor(M1, Mmax);
+    BOOST_CHECK_CLOSE(psi1, 0.5, 1e-9);
+    BOOST_CHECK_EQUAL(MalusAccumulator::EffectiveWeight(raw, psi1), 500u);
+
+    // A second one in the following epoch reaches the threshold: M = 0.5*2 + 2 = 3.
+    double M2 = MalusAccumulator::Fold(M1, MalusAccumulator::Points(MALUS_INVALID_WEIGHT, sc), mu);
+    BOOST_CHECK_CLOSE(M2, 3.0, 1e-9);
+    BOOST_CHECK_CLOSE(MalusAccumulator::CorrectionFactor(M2, Mmax), 0.25, 1e-9);
+
+    // Clean epochs afterwards: the memory decays and the weight comes back. No
+    // permanent ban for a data-integrity violation either.
+    double M3 = MalusAccumulator::Fold(M2, 0.0, mu);
+    BOOST_CHECK_CLOSE(M3, 1.5, 1e-9);
+    BOOST_CHECK(MalusAccumulator::CorrectionFactor(M3, Mmax) >
+                MalusAccumulator::CorrectionFactor(M2, Mmax));
+}
+
+// A selfwrite and a badweight in the same epoch accumulate together: one accumulator
+// carries both families, so a node cannot spread misbehaviour across kinds to stay under
+// the threshold.
+BOOST_AUTO_TEST_CASE(the_two_families_accumulate_into_one_severity)
+{
+    const MalusScores sc(4.0, 0.25, 1.0, 2.0);
+    double epoch_points = MalusAccumulator::Points(MALUS_SELF_WRITE, sc)
+                        + MalusAccumulator::Points(MALUS_INVALID_WEIGHT, sc)
+                        + MalusAccumulator::Points(MALUS_DELAY, sc);
+    double M = MalusAccumulator::Fold(0.0, epoch_points, 0.5);
+    BOOST_CHECK_CLOSE(M, 3.25, 1e-9);
+
+    // And a node with only data-integrity violations is excluded exactly as one with
+    // only behavioural violations would be, once M reaches M_max.
+    double heavy = MalusAccumulator::Fold(0.0, 2.0 * MalusAccumulator::Points(MALUS_INVALID_WEIGHT, sc), 0.5);
+    BOOST_CHECK_CLOSE(heavy, 4.0, 1e-9);
+    BOOST_CHECK_SMALL(MalusAccumulator::CorrectionFactor(heavy, 4.0), EPS);
+    BOOST_CHECK_EQUAL(MalusAccumulator::EffectiveWeight(1000, 0.0), 0u);
+    BOOST_CHECK(MalusAccumulator::EpochsToClear(heavy, 4.0, 0.5) >= 1);
 }
 
 // ---- Fold: the exponential moving average --------------------------------

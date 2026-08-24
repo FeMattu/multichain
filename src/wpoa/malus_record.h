@@ -50,33 +50,87 @@
 #include <boost/foreach.hpp>
 
 /**
- * The two classes of misbehaviour that a node can prove locally while validating a
- * block, and no others (Def. 5.17): a report whose proof would require another
- * validator's private state or secret key could not be decided locally, which
- * would break the local-decidability property the open stream relies on.
+ * The classes of misbehaviour a node can prove locally, and no others (Def. 5.17): a
+ * report whose proof would require another validator's private state or secret key
+ * could not be decided locally, which would break the local-decidability property the
+ * open stream relies on.
+ *
+ * They fall into TWO FAMILIES, which share that principle but differ in what the
+ * evidence is and what the offence damages:
+ *
+ *   CONSENSUS-BEHAVIOURAL (equiv, delay) — how a validator behaved while PRODUCING a
+ *     block. The evidence is the block itself, and the proof rests on the VRF reveal it
+ *     carries. equiv threatens safety (competing blocks at one height); delay threatens
+ *     only the correctness of temporal scheduling.
+ *
+ *   PUBLISHED-DATA INTEGRITY (selfwrite, badweight) — what a node WROTE to a stream the
+ *     weight pipeline reads. The evidence is the publishing transaction, and the proof
+ *     rests on its signature and payload. These offences do not touch block production
+ *     at all; they attack the INPUTS of the election instead of its execution.
+ *
+ * Both families are verified the same way — re-derived from public chain data, never
+ * judged — which is why they can share one open stream and one accumulator.
  */
 enum MalusKind
 {
     MALUS_NONE  = 0,   //!< unparsable / unknown kind — never scored
     MALUS_EQUIV = 1,   //!< equivocation: two distinct blocks at one height (Def. 5.18)
-    MALUS_DELAY = 2    //!< scheduling-delay violation: block mined too early (Def. 5.19)
+    MALUS_DELAY = 2,   //!< scheduling-delay violation: block mined too early (Def. 5.19)
+
+    /**
+     * Publishing a record on a SELF-ATTESTED stream on another address's behalf: the
+     * transaction's signer is not the node_address the payload declares.
+     *
+     * The reader already discards such a record, so the attempt gains nothing — and
+     * that is exactly why it needs a price. Without one, a node could forge records
+     * indefinitely at the cost of transaction fees alone, and every peer would have to
+     * keep decoding and discarding them. Same reasoning as `delay`: the ATTEMPT is the
+     * offence, whether or not it succeeded.
+     */
+    MALUS_SELF_WRITE = 3,
+
+    /**
+     * Publishing on wpoa-weights a value that does not survive independent
+     * recomputation from the public pipeline inputs.
+     *
+     * Unlike selfwrite, this one CAN succeed: a record from the right signer is
+     * accepted on the self-publication rule, so a false value would flow into the
+     * election unless somebody recomputes it. It is the offence with the most direct
+     * effect on proposer probability, since a single inflated weight distorts every
+     * round of the epoch.
+     */
+    MALUS_INVALID_WEIGHT = 4
 };
 
 /** Stream field names — single source of truth for the writer and the reader. */
 #define MC_WPOA_MALUS_FIELD_KIND     "kind"
 #define MC_WPOA_MALUS_FIELD_ADDR     "node_address"
 #define MC_WPOA_MALUS_FIELD_HEIGHT   "height"
+/** Evidence references. Block hashes for the consensus-behavioural kinds; the single
+ *  publishing TRANSACTION id for the data-integrity kinds. One list, because in both
+ *  families it answers the same question: which on-chain object proves this? */
 #define MC_WPOA_MALUS_FIELD_BLOCKS   "blocks"
+/** Data-integrity kinds only — the fields that let a third party re-derive the finding
+ *  without re-running any search of its own. */
+#define MC_WPOA_MALUS_FIELD_STREAM   "stream"
+#define MC_WPOA_MALUS_FIELD_DECLARED_ADDR "declared_address"
+#define MC_WPOA_MALUS_FIELD_EPOCH    "epoch"
+#define MC_WPOA_MALUS_FIELD_DECLARED "declared"
+#define MC_WPOA_MALUS_FIELD_RECOMPUTED "recomputed"
 
 /** Wire spellings of MalusKind (what actually goes on-chain). */
 #define MC_WPOA_MALUS_KIND_EQUIV     "equiv"
 #define MC_WPOA_MALUS_KIND_DELAY     "delay"
+#define MC_WPOA_MALUS_KIND_SELFWRITE "selfwrite"
+#define MC_WPOA_MALUS_KIND_BADWEIGHT "badweight"
 
 /** Map a wire spelling to its enum; MALUS_NONE for anything unrecognised. */
 inline MalusKind mc_MalusKindFromString(const std::string& s)
 {
-    if (s == MC_WPOA_MALUS_KIND_EQUIV) return MALUS_EQUIV;
-    if (s == MC_WPOA_MALUS_KIND_DELAY) return MALUS_DELAY;
+    if (s == MC_WPOA_MALUS_KIND_EQUIV)     return MALUS_EQUIV;
+    if (s == MC_WPOA_MALUS_KIND_DELAY)     return MALUS_DELAY;
+    if (s == MC_WPOA_MALUS_KIND_SELFWRITE) return MALUS_SELF_WRITE;
+    if (s == MC_WPOA_MALUS_KIND_BADWEIGHT) return MALUS_INVALID_WEIGHT;
     return MALUS_NONE;
 }
 
@@ -85,15 +139,78 @@ inline const char* mc_MalusKindToString(MalusKind k)
 {
     switch (k)
     {
-        case MALUS_EQUIV: return MC_WPOA_MALUS_KIND_EQUIV;
-        case MALUS_DELAY: return MC_WPOA_MALUS_KIND_DELAY;
+        case MALUS_EQUIV:         return MC_WPOA_MALUS_KIND_EQUIV;
+        case MALUS_DELAY:         return MC_WPOA_MALUS_KIND_DELAY;
+        case MALUS_SELF_WRITE:    return MC_WPOA_MALUS_KIND_SELFWRITE;
+        case MALUS_INVALID_WEIGHT: return MC_WPOA_MALUS_KIND_BADWEIGHT;
         case MALUS_NONE:
-        default:          return "";
+        default:                  return "";
     }
 }
 
+/** True for the kinds whose evidence is a PUBLISHING TRANSACTION rather than a block.
+ *  Used to pick the right validation branch and the right expected reference count. */
+inline bool mc_MalusKindIsDataIntegrity(MalusKind k)
+{
+    return k == MALUS_SELF_WRITE || k == MALUS_INVALID_WEIGHT;
+}
+
+/** How many evidence references a kind must name. Two competing blocks for an
+ *  equivocation; one block for a delay violation; one transaction for either
+ *  data-integrity kind. Single-sourced so the parser, the writer and the RPC help
+ *  cannot disagree. */
+inline size_t mc_MalusKindRefCount(MalusKind k)
+{
+    return (k == MALUS_EQUIV) ? 2 : 1;
+}
+
 /**
- * Parse a wpoa-weights-malus item payload into its four fields.
+ * The extra payload fields the data-integrity kinds carry, so a third party can
+ * re-derive the finding by reading ONE transaction rather than searching for it.
+ *
+ * They are claims, not evidence: every one is re-checked against the referenced
+ * transaction, and a mismatch invalidates the report. Their purpose is to make the
+ * accusation self-describing and auditable — a reader can see what was alleged without
+ * running the pipeline — not to be believed.
+ */
+struct MalusDataDetail
+{
+    std::string stream;            //!< selfwrite: the stream written
+    std::string declared_address;  //!< selfwrite: the node_address the payload claimed
+    uint32_t    epoch;             //!< badweight: the epoch the record was published for
+    uint32_t    declared;          //!< badweight: the value found on chain
+    uint32_t    recomputed;        //!< badweight: the accuser's recomputation
+
+    MalusDataDetail() : epoch(0), declared(0), recomputed(0) {}
+};
+
+/** Read a JSON number as a bounded uint32_t; 0 for anything absent, non-numeric,
+ *  negative or out of range. A malformed number reads as "unstated" rather than
+ *  wrapping, so it can never make a report look like it is about something else. */
+inline uint32_t mc_MalusU32(const json_spirit::Value& v)
+{
+    int64_t n = -1;
+    if (v.type() == json_spirit::int_type)
+    {
+        n = v.get_int64();
+    }
+    else if (v.type() == json_spirit::real_type)
+    {
+        double d = v.get_real();
+        if (d >= 0.0 && d <= 4294967295.0)
+        {
+            n = (int64_t)d;
+        }
+    }
+    if (n < 0 || n > (int64_t)0xffffffff)
+    {
+        return 0;
+    }
+    return (uint32_t)n;
+}
+
+/**
+ * Parse a wpoa-weights-malus item payload into its fields.
  *
  * Wire shape (mirroring the weight record, weight_record.h):
  *
@@ -118,12 +235,17 @@ inline const char* mc_MalusKindToString(MalusKind k)
  */
 inline bool mc_ParseMalusRecordJson(const json_spirit::Value& data_value,
                                     MalusKind& kind, std::string& node_address,
-                                    int& height, std::vector<std::string>& blocks)
+                                    int& height, std::vector<std::string>& blocks,
+                                    MalusDataDetail* detail = NULL)
 {
     kind = MALUS_NONE;
     node_address = "";
     height = 0;
     blocks.clear();
+    if (detail != NULL)
+    {
+        *detail = MalusDataDetail();
+    }
 
     if (data_value.type() != json_spirit::obj_type)
     {
@@ -171,6 +293,7 @@ inline bool mc_ParseMalusRecordJson(const json_spirit::Value& data_value,
     std::string addr;
     int64_t h = 0;
     std::vector<std::string> refs;
+    MalusDataDetail d;
 
     BOOST_FOREACH(const json_spirit::Pair& p, json_val.get_obj())
     {
@@ -204,26 +327,102 @@ inline bool mc_ParseMalusRecordJson(const json_spirit::Value& data_value,
                 }
             }
         }
+        else if (p.name_ == MC_WPOA_MALUS_FIELD_STREAM && p.value_.type() == json_spirit::str_type)
+        {
+            d.stream = p.value_.get_str();
+        }
+        else if (p.name_ == MC_WPOA_MALUS_FIELD_DECLARED_ADDR &&
+                 p.value_.type() == json_spirit::str_type)
+        {
+            d.declared_address = p.value_.get_str();
+        }
+        else if (p.name_ == MC_WPOA_MALUS_FIELD_EPOCH)
+        {
+            d.epoch = mc_MalusU32(p.value_);
+        }
+        else if (p.name_ == MC_WPOA_MALUS_FIELD_DECLARED)
+        {
+            d.declared = mc_MalusU32(p.value_);
+        }
+        else if (p.name_ == MC_WPOA_MALUS_FIELD_RECOMPUTED)
+        {
+            d.recomputed = mc_MalusU32(p.value_);
+        }
     }
 
     if (k == MALUS_NONE || addr.empty() || h <= 0 || h > (int64_t)0x7fffffff)
     {
         return false;
     }
-    // An equivocation names the two competing blocks; a delay violation names the
-    // single block that was mined too early.
-    const size_t expected = (k == MALUS_EQUIV) ? 2 : 1;
-    if (refs.size() != expected)
+    // An equivocation names the two competing blocks; a delay violation names the single
+    // block that was mined too early; a data-integrity report names the single publishing
+    // TRANSACTION that carries the offending record.
+    if (refs.size() != mc_MalusKindRefCount(k))
     {
         return false;
+    }
+
+    // The data-integrity kinds must carry the fields that make them self-describing.
+    // Rejecting an incomplete one here rather than mid-validation keeps "well-formed"
+    // and "true" cleanly separated: this checks the SHAPE, the registry re-derives the
+    // CLAIM from the referenced transaction.
+    if (k == MALUS_SELF_WRITE)
+    {
+        if (d.stream.empty() || d.declared_address.empty())
+        {
+            return false;
+        }
+        // A record declaring the accused's OWN address is not a forgery at all — it is
+        // the honest case — so such a report is malformed rather than merely false.
+        if (d.declared_address == addr)
+        {
+            return false;
+        }
+    }
+    if (k == MALUS_INVALID_WEIGHT)
+    {
+        // epoch >= 1 (epochs are 1-based) and a positive declared value, since the
+        // weight stream only carries strictly positive weights. `recomputed` may
+        // legitimately be 0: that is what an address heading no cluster recomputes to.
+        if (d.epoch < 1 || d.declared == 0)
+        {
+            return false;
+        }
+        // Equal values would be an accusation that nothing is wrong.
+        if (d.declared == d.recomputed)
+        {
+            return false;
+        }
     }
 
     kind = k;
     node_address = addr;
     height = (int)h;
     blocks = refs;
+    if (detail != NULL)
+    {
+        *detail = d;
+    }
     return true;
 }
+
+/**
+ * The per-kind severity scores, all consensus-critical and all resolved from chain
+ * parameters in exactly one place (AppInit2). Grouped in a struct rather than passed as
+ * a growing argument list so adding a kind cannot silently shift an existing caller's
+ * arguments.
+ */
+struct MalusScores
+{
+    double equiv;       //!< p(Equiv) — a safety fault
+    double delay;       //!< p(Delay) — a scheduling fault
+    double self_write;  //!< p(SelfWrite) — a discarded forgery attempt
+    double bad_weight;  //!< p(BadWeight) — a false weight that would have taken effect
+
+    MalusScores() : equiv(0.0), delay(0.0), self_write(0.0), bad_weight(0.0) {}
+    MalusScores(double e, double d, double sw, double bw)
+        : equiv(e), delay(d), self_write(sw), bad_weight(bw) {}
+};
 
 /**
  * MalusAccumulator — pure, deterministic, node-free malus math.
@@ -240,23 +439,50 @@ public:
      * The per-kind score p(kind) added to the accumulator by one valid record
      * (Def. 5.21).
      *
-     * p(Equiv) >> p(Delay) by protocol constraint: equivocation threatens the
-     * chain's safety (competing blocks at one height), a delay violation only the
-     * correctness of the temporal scheduling.
+     * WHAT NEEDED EXTENDING, AND WHAT DID NOT. Adding a violation kind touches exactly
+     * this dispatch. Everything downstream is already generic over the kind, because it
+     * operates on the ACCUMULATED SEVERITY rather than on what produced it:
+     *   Fold        works on a double;
+     *   Psi         = max(0, 1 - M/M_max), a function of M alone;
+     *   w_eff       = w * Psi;
+     *   EpochsToClear, ApplyToWeights — likewise.
+     * So the two data-integrity kinds needed a score each and nothing else: no new
+     * correction law, no second accumulator, no change to the consensus path. That is
+     * the property that makes one severity scale able to carry two different families
+     * of offence.
      *
-     * @param kind     The violation kind; MALUS_NONE scores 0.
-     * @param p_equiv  Score for an equivocation.
-     * @param p_delay  Score for a delay violation.
+     * THE SEVERITY ORDERING, and the reasoning behind it:
+     *
+     *   equiv      threatens SAFETY — two competing blocks at one height. The heaviest
+     *              by a wide margin, and the protocol enforces p(equiv) > p(delay).
+     *   badweight  a false weight that SUCCEEDS unless somebody recomputes it, and then
+     *              distorts proposer probability for every round of the epoch. The
+     *              heaviest of the data-integrity pair.
+     *   selfwrite  a forgery that is ALWAYS discarded, so it damages nothing directly;
+     *              it is scored to price the attempt, exactly as `delay` prices an
+     *              attempt that block validation already rejects. Hence
+     *              p(badweight) > p(selfwrite), enforced at startup.
+     *   delay      threatens only the correctness of temporal scheduling: the lightest.
      */
-    static double Points(MalusKind kind, double p_equiv, double p_delay)
+    static double Points(MalusKind kind, const MalusScores& s)
     {
         switch (kind)
         {
-            case MALUS_EQUIV: return p_equiv;
-            case MALUS_DELAY: return p_delay;
+            case MALUS_EQUIV:          return s.equiv;
+            case MALUS_DELAY:          return s.delay;
+            case MALUS_SELF_WRITE:     return s.self_write;
+            case MALUS_INVALID_WEIGHT: return s.bad_weight;
             case MALUS_NONE:
-            default:          return 0.0;
+            default:                   return 0.0;
         }
+    }
+
+    /** Two-score form, for callers that only deal with the consensus-behavioural kinds.
+     *  The data-integrity kinds score 0 through it, which is the correct reading of "no
+     *  score configured for them". */
+    static double Points(MalusKind kind, double p_equiv, double p_delay)
+    {
+        return Points(kind, MalusScores(p_equiv, p_delay, 0.0, 0.0));
     }
 
     /**

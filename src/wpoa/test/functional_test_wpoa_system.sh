@@ -16,6 +16,7 @@
 #                      check_weight                 aggregate weight registry
 #                      check_stream_permissions     weights closed / malus open
 #                      check_malus                  Psi inert, false evidence refused
+#                                                    (both malus families)
 #                      check_multinode_consistency  no persistent fork
 #                      check_vrf                    reveals carried & verified, 0 rejects
 #                      check_randao                 beacon seed derived, 0 fallback folds
@@ -196,6 +197,50 @@ check_malus() {
             "00000000000000000000000000000000000000000000000000000000deadbeef" >/dev/null 2>&1 && bad=$((bad+1))
     done
     fl_assert_zero "$bad" "false or malformed malus reports accepted (must be 0)"
+
+    # ---- published-data integrity kinds ----------------------------------
+    # The second family of violations: what a node WROTE to a stream the weight
+    # pipeline reads, rather than how it behaved producing a block. Evidence is the
+    # publishing TRANSACTION. Under honest operation there is nothing to find, so what
+    # is asserted here is the same property as above — no false positive — against the
+    # records the run legitimately produced.
+    local wtx bad2=0
+    wtx="$(fl_cli 0 liststreamitems wpoa-weights 2>/dev/null \
+           | sed -nE 's/.*"txid"[[:space:]]*:[[:space:]]*"([0-9a-f]{64})".*/\1/p' | tail -n1)"
+    if [ -n "$wtx" ]; then
+        for ((i = 0; i < NODES; i++)); do
+            # An honestly self-published weight is not a selfwrite: the declared address
+            # DID sign it. Swept over a range of heights so the refusal cannot be an
+            # accident of naming the wrong one.
+            for h in $((SAMPLE_END - 2)) $((SAMPLE_END - 1)) "$SAMPLE_END"; do
+                fl_cli "$i" reportmalus selfwrite "$addr" "$h" "$wtx" >/dev/null 2>&1 \
+                    && bad2=$((bad2+1))
+                # And a correctly computed weight is not a badweight: every node's
+                # recomputation agrees with it.
+                fl_cli "$i" reportmalus badweight "$addr" "$h" "$wtx" >/dev/null 2>&1 \
+                    && bad2=$((bad2+1))
+            done
+            # A transaction nobody has ever seen proves nothing, for either kind.
+            fl_cli "$i" reportmalus selfwrite "$addr" "$SAMPLE_END" \
+                "00000000000000000000000000000000000000000000000000000000deadbeef" \
+                >/dev/null 2>&1 && bad2=$((bad2+1))
+            fl_cli "$i" reportmalus badweight "$addr" "$SAMPLE_END" \
+                "00000000000000000000000000000000000000000000000000000000deadbeef" \
+                >/dev/null 2>&1 && bad2=$((bad2+1))
+        done
+        fl_assert_zero "$bad2" \
+            "false data-integrity reports accepted against honest records (must be 0)"
+    else
+        fl_log "no wpoa-weights item to test the data-integrity kinds against; skipped"
+    fi
+
+    # The kinds must at least be RECOGNISED, so a typo in the wire spelling cannot make
+    # the whole family silently unreportable.
+    if fl_cli 0 help reportmalus 2>/dev/null | grep -q "selfwrite"; then
+        fl_ok "reportmalus advertises the data-integrity kinds"
+    else
+        fl_bad "reportmalus does not advertise selfwrite/badweight"
+    fi
 }
 
 # All nodes agree on the block hash at SAMPLE_END (buried under CONFIRM_BUFFER).

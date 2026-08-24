@@ -124,6 +124,39 @@ bool WeightEngineVerifyAndCacheEpoch(WeightStreamReader& reader, uint32_t epoch,
     return true;
 }
 
+bool WeightEngineRecomputeWeightForEpoch(uint32_t epoch, const std::string& address,
+                                         bool& is_cluster, uint32_t& out_weight)
+{
+    is_cluster = false;
+    out_weight = 0;
+
+    if (!g_weight_engine_enabled || epoch < 1 || pwalletTxsMain == NULL)
+    {
+        return false;
+    }
+
+    // A reader of its own, rather than one shared with the engine thread: this is called
+    // from the malus verification path, which may run on an RPC thread while the engine
+    // thread is mid-fold. WeightStreamReader keeps only per-stream create/subscribe
+    // guards, so a short-lived instance is cheap and avoids any cross-thread sharing.
+    WeightStreamReader reader(pwalletTxsMain);
+
+    std::map<std::string, uint32_t> all;
+    if (!WeightEngineComputeAllWeightsForEpoch(reader, epoch, all))
+    {
+        return false;   // undecided: inputs unreadable, epoch not buried, pruned
+    }
+
+    std::map<std::string, uint32_t>::const_iterator it = all.find(address);
+    if (it == all.end())
+    {
+        return true;    // decided: the address heads no cluster in that epoch
+    }
+    is_cluster = true;
+    out_weight = it->second;
+    return true;
+}
+
 std::map<std::string, WeightVerificationEntry> WeightEngineGetVerdicts(uint32_t epoch)
 {
     LOCK(cs_weightVerdicts);
