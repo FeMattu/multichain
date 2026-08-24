@@ -57,11 +57,9 @@ static double RecordDouble(const Value& v, const char* field)
 }
 
 // Resolve this node's own address (mine -> connect -> default key, as the wPoA
-// registry does) and require it to be a GLOBAL administrator. Returns the address
-// string; throws RPC_INSUFFICIENT_PERMISSIONS if not an admin. This is the policy
-// gate for the governance streams (the on-chain gate is the closed stream's write
-// permission, checked in WeightPublishTo).
-static std::string ResolveLocalAdminAddress()
+// registry does). No permission requirement: this is the node's cryptographic
+// identity, and it is the address the publishing transaction will be signed with.
+static CKeyID ResolveLocalNodeKeyID()
 {
     if (pwalletMain == NULL)
     {
@@ -83,13 +81,31 @@ static std::string ResolveLocalAdminAddress()
     {
         throw JSONRPCError(RPC_WALLET_ERROR, "No valid local node address");
     }
+    return pkey.GetID();
+}
 
-    CKeyID keyID = pkey.GetID();
+// This node's own address, with no permission requirement. Used by the SELF-WRITE
+// path: the caller can only ever publish a record about itself, so no privilege is
+// needed beyond `<stream>.write` (checked on-chain in WeightPublishTo).
+static std::string ResolveLocalNodeAddress()
+{
+    return CBitcoinAddress(ResolveLocalNodeKeyID()).ToString();
+}
+
+// This node's own address, additionally required to be a GLOBAL administrator.
+// Throws RPC_INSUFFICIENT_PERMISSIONS if not. This is the policy gate for the
+// streams that carry an EXTERNAL attestation — a claim about somebody else that no
+// third party can verify — where restricting who may assert it is the only defence.
+// (The on-chain gate is the closed stream's write permission, checked in
+// WeightPublishTo.)
+static std::string ResolveLocalAdminAddress()
+{
+    CKeyID keyID = ResolveLocalNodeKeyID();
     if (mc_gState->m_Permissions->CanAdmin(NULL, (unsigned char*)&keyID) == 0)
     {
         throw JSONRPCError(RPC_INSUFFICIENT_PERMISSIONS,
                            "This node's address is not an administrator; "
-                           "ESG / membership / reconciliation are admin-only");
+                           "ESG / reconciliation are admin-only");
     }
     return CBitcoinAddress(keyID).ToString();
 }
@@ -165,28 +181,48 @@ std::string WeightPublisher::PublishEsg(const std::string& from_address,
     return WeightPublishTo(from_address, MC_WEIGHT_ESG_STREAM_NAME, node_address, data_obj);
 }
 
+// SELF-WRITE. `node_address` is not a free parameter: it MUST be the publishing
+// address, because the reader discards any record whose signer differs from its
+// declared node_address (weight_reader.h ReadMembership). Enforcing the equality
+// here too means a caller gets a clear RPC error instead of silently paying for a
+// transaction its own peers will throw away.
 std::string WeightPublisher::PublishMembership(const std::string& from_address,
-                                               const std::string& miner, const std::string& azienda)
+                                              const std::string& node_address,
+                                              const std::string& miner_address)
 {
-    if (miner.empty() || azienda.empty())
+    if (node_address.empty() || miner_address.empty())
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "miner and company addresses must not be empty");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "node and miner addresses must not be empty");
+    }
+    if (node_address != from_address)
+    {
+        throw JSONRPCError(RPC_INSUFFICIENT_PERMISSIONS,
+                           "membership is SELF-ATTESTED: a node may only declare its own "
+                           "cluster. The record must be published by " + node_address +
+                           " itself, not by " + from_address + " on its behalf "
+                           "(the reader would discard it).");
     }
 
-    // One field per company (field name = company address, value = timestamp); the
-    // merge over all items under the miner key rebuilds C_k.
     Object record;
-    record.push_back(Pair(azienda, (int64_t)GetTime()));
+    record.push_back(Pair(MC_WEIGHT_FIELD_NODE_ADDR, node_address));
+    record.push_back(Pair(MC_WEIGHT_FIELD_MINER_ADDR, miner_address));
+    record.push_back(Pair(MC_WEIGHT_FIELD_TIMESTAMP, (int64_t)GetTime()));
     Object data_obj;
     data_obj.push_back(Pair("json", record));
 
-    std::set<std::string> aziende;
-    if (!mc_ParseMembershipClusterJson(Value(data_obj), aziende) || aziende.count(azienda) == 0)
+    // Round-trip through the reader's own parser: reject anything it would not read.
+    std::string n;
+    std::string m;
+    uint32_t ts = 0;
+    if (!mc_ParseMembershipRecordJson(Value(data_obj), n, m, ts) ||
+        n != node_address || m != miner_address)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "membership record rejected by schema");
     }
 
-    return WeightPublishTo(from_address, MC_WEIGHT_MEMBERSHIP_STREAM_NAME, miner, data_obj);
+    // Item key = node_address (the declaring node), so all of a node's successive
+    // declarations share one key and last-confirmed-wins picks its current cluster.
+    return WeightPublishTo(from_address, MC_WEIGHT_MEMBERSHIP_STREAM_NAME, node_address, data_obj);
 }
 
 std::string WeightPublisher::PublishReconciliation(const std::string& from_address,
@@ -242,25 +278,36 @@ Value weightsetesg(const Array& params, bool fHelp)
     return WeightPublisher::PublishEsg(from, node_address, esg);
 }
 
-Value weightsetmembership(const Array& params, bool fHelp)
+// PUBLIC (not admin). Any node may call it, and it can only ever publish a record
+// about the CALLING node itself — there is deliberately no parameter for "whose"
+// membership to declare. This replaces the former admin-proxy `weightsetmembership`,
+// which is gone rather than deprecated: under the self-attestation rule a record
+// published by an admin on a third party's behalf is discarded by every reader, so
+// keeping that RPC would only offer a way to pay for a transaction with no effect.
+Value weightregistermembership(const Array& params, bool fHelp)
 {
-    if (fHelp || params.size() != 2)
+    if (fHelp || params.size() != 1)
     {
         throw runtime_error(
-            "weightsetmembership \"miner_address\" \"company_address\"\n"
-            "\nAdmin-only. Associates a company (azienda) with a miner/cluster on the\n"
-            "weight-engine-membership stream. Additive: call once per company.\n"
+            "weightregistermembership \"miner_address\"\n"
+            "\nDeclares THIS node's membership of a miner's cluster on the\n"
+            "weight-engine-membership stream, signed by this node's own address.\n"
+            "\nOpen to every node: joining a cluster is a voluntary, autonomous choice,\n"
+            "and the record is self-attested — the reader accepts it only because the\n"
+            "signer matches the declared node_address, so nobody can declare membership\n"
+            "on another node's behalf. Call it again with a different miner to change\n"
+            "cluster: the latest confirmed declaration wins. A miner calls it with its\n"
+            "OWN address to register itself as a cluster head.\n"
+            "\nRequires: weight-engine-membership.write on this node's address.\n"
             "\nArguments:\n"
-            "1. \"miner_address\"    (string, required) the cluster's miner address\n"
-            "2. \"company_address\"  (string, required) the company to add to the cluster\n"
+            "1. \"miner_address\"  (string, required) the cluster to join\n"
             "\nResult:\n"
             "\"txid\"  (string) the publish transaction id\n");
     }
 
-    std::string from = ResolveLocalAdminAddress();
+    std::string own = ResolveLocalNodeAddress();
     std::string miner = params[0].get_str();
-    std::string azienda = params[1].get_str();
-    return WeightPublisher::PublishMembership(from, miner, azienda);
+    return WeightPublisher::PublishMembership(own, own, miner);
 }
 
 Value weightsetreconciliation(const Array& params, bool fHelp)

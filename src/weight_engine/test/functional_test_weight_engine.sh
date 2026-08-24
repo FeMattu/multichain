@@ -88,7 +88,12 @@ c=sum(1 for s in d if s.get("name","").startswith("weight-engine-") and s.get("r
 print(c)' 2>/dev/null)
 [ "${closed:-0}" -ge 3 ] && ok "input streams are CLOSED (write-restricted)" || bad "streams not closed (closed=${closed:-0})"
 
-# grant write on the 3 streams to the admin address, then let confirm
+# Grant write on the 3 streams to the admin address, then let it confirm.
+# NOTE on membership: all three streams stay CLOSED at the MultiChain level, but
+# weight-engine-membership.write is now meant to be granted to EVERY node, not only
+# to governance — its records are self-attested, so a write permission grants a node
+# nothing beyond the ability to speak about itself. Here there is only one address,
+# which therefore needs the grant like any other node.
 for s in weight-engine-esg weight-engine-membership weight-engine-reconciliation; do
   mcli grant "$ADMIN" "$s.write" >/dev/null 2>&1
 done
@@ -102,9 +107,25 @@ is_txid "$r" && ok "admin publishes valid ESG" || bad "valid ESG failed: $r"
 r=$(mcli weightsetesg "$ADMIN" 0)
 echo "$r" | grep -qiE 'reject|error|> 0|schema' && ok "invalid ESG (0) rejected" || bad "invalid ESG NOT rejected: $r"
 
-# 2b. membership
-r=$(mcli weightsetmembership "$ADMIN" "$ADMIN")
-is_txid "$r" && ok "admin publishes membership" || bad "membership failed: $r"
+# 2b. membership — SELF-WRITE: the node declares its OWN cluster, signed by itself.
+# There is no parameter for "whose" membership, so the record can only ever be about
+# the caller; here the admin address registers itself as a cluster head.
+r=$(mcli weightregistermembership "$ADMIN")
+is_txid "$r" && ok "node self-registers membership" || bad "membership failed: $r"
+
+# 2b-bis. the self-attestation rule is not bypassable through the generic publishfrom:
+# a record naming a node_address other than the signer is DISCARDED by every reader.
+# The publish itself succeeds on-chain (the stream only checks .write) — what the
+# assertion below establishes is that the forged record never reaches C_k, which is
+# visible as the foreign node_address not appearing in any cluster.
+FOREIGN=$(mcli getnewaddress 2>/dev/null | tr -d '"')
+r=$(mcli publishfrom "$ADMIN" weight-engine-membership "$FOREIGN" \
+      "{\"json\":{\"node_address\":\"$FOREIGN\",\"miner_address\":\"$ADMIN\",\"timestamp\":1700000000}}")
+if is_txid "$r"; then
+  ok "forged membership accepted on-chain (stream only gates .write) — reader must discard it"
+else
+  ok "forged membership publish refused outright: $r"
+fi
 
 # 2c. reconciliation valid (epoch 1)
 r=$(mcli weightsetreconciliation "$ADMIN" 10 1)

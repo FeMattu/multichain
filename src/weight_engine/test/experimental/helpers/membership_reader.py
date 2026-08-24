@@ -1,22 +1,30 @@
 # Copyright (c) 2014-2019 Coin Sciences Ltd
 # MultiChain code distributed under the GPLv3 license, see COPYING file.
 #
-# membership_reader.py -- reads the company -> cluster-miner association FROM THE
-# CHAIN, through the same native protocol facility the C++ engine uses.
+# membership_reader.py -- reads the node -> cluster-miner association FROM THE CHAIN,
+# applying the same fold the C++ engine applies.
 #
 # WHY THIS EXISTS. The association is not harness knowledge: it is public on-chain
-# state, published by the ADMIN to "weight-engine-membership" (one item per company,
-# item key = miner address, payload {"json": {"<company_addr>": <timestamp>}}). The
-# engine rebuilds each cluster set C_k by MERGING every item under a miner key --
-# WeightStreamReader::ReadMembership -> mc_ParseMembershipClusterJson, which is
-# MultiChain's own mc_MergeValues. The RPC surface of that exact merge is
+# state, SELF-DECLARED by each node on "weight-engine-membership" (one item per
+# declaration, item key = the DECLARING node's address, payload
+# {"json": {"node_address": .., "miner_address": .., "timestamp": ..}}).
 #
-#     getstreamkeysummary "weight-engine-membership" <miner_address> "jsonobjectmerge"
+# THE FOLD. Because a node may change cluster at any time, the engine takes each
+# declaring address's LATEST confirmed record and inverts the relation into C_k
+# (WeightStreamReader::ReadMembership -> mc_AccumulateLatestMembership +
+# mc_BuildClustersFromMembership). This reader reproduces that: it lists the stream in
+# chain order and keeps the last declaration per key.
 #
-# so this reader asks the node to do the merge rather than re-implementing it in
-# Python. What the harness reads is therefore byte-for-byte what the engine reads, and
-# a divergence between the two becomes impossible by construction instead of being
-# something we hope holds.
+# WHY NOT getstreamkeysummary jsonobjectmerge ANY MORE. That was the right read while
+# membership was keyed by miner and accumulated additively, and it is exactly why the
+# scheme had to change: an additive merge cannot express a node LEAVING a cluster, so a
+# node that moved from miner A to miner B stayed in both for ever. There is no
+# summary-mode equivalent of last-confirmed-wins, so the fold is done here explicitly.
+#
+# SELF-ATTESTATION. The engine additionally DISCARDS any record whose transaction
+# signer differs from its declared node_address. The harness applies the same test,
+# using the item's "publishers" field, so a forged record is invisible to the harness
+# exactly as it is to the engine.
 #
 # CACHING. Membership is static for a run (published once, before epoch 1), so the
 # merged map is fetched ONCE and served from a local dict thereafter -- the same
@@ -39,6 +47,7 @@ class MembershipReader(object):
         self.log = log
         self._company_of = {}      # miner_label -> [company_label, ...]  (from chain)
         self._miner_of = {}        # company_label -> miner_label        (from chain)
+        self._discarded = 0        # records dropped for failing self-attestation
         self._loaded = False
         self._issues = []          # human-readable consistency findings
 
@@ -51,30 +60,40 @@ class MembershipReader(object):
         if self._loaded and not force:
             return self
         self._company_of, self._miner_of, self._issues = {}, {}, []
+        self._discarded = 0
+
+        # node_address -> miner_address, latest confirmed declaration winning.
+        node_to_miner = self._read_declarations()
+
+        # Invert into C_k, applying the engine's two inversion rules: a miner's
+        # self-declaration registers the cluster head, and a miner is never listed
+        # among its own companies (its activity enters W_k through tau_Mk instead).
+        for k in range(config.NUM_MINERS):
+            self._company_of[config.miner_id(k)] = []
+
+        for naddr in sorted(node_to_miner):
+            maddr = node_to_miner[naddr]
+            mlabel = self.reg.label_of(maddr)
+            nlabel = self.reg.label_of(naddr)
+            if mlabel not in self._company_of:
+                self._issues.append("%s declares unknown cluster %s" % (nlabel, mlabel))
+                continue
+            if naddr == maddr:
+                continue                     # cluster head registering itself
+            if nlabel in self._miner_of:
+                # A node in two clusters cannot happen under last-confirmed-wins, so if
+                # it shows up the fold itself is wrong -- worth reporting loudly.
+                self._issues.append("%s claimed by both %s and %s"
+                                    % (nlabel, self._miner_of[nlabel], mlabel))
+            self._miner_of[nlabel] = mlabel
+            self._company_of[mlabel].append(nlabel)
 
         for k in range(config.NUM_MINERS):
             mlabel = config.miner_id(k)
-            maddr = self.reg.address_of(mlabel)
-            if not maddr:
-                self._issues.append("%s has no address" % mlabel)
-                self._company_of[mlabel] = []
-                continue
-            members = self._read_cluster(maddr)
-            labels = []
-            for caddr in sorted(members):
-                clabel = self.reg.label_of(caddr)
-                labels.append(clabel)
-                if clabel in self._miner_of:
-                    # A company in two clusters would be double-counted in W: the
-                    # engine's std::set-per-miner cannot detect this either, so the
-                    # harness has to.
-                    self._issues.append("%s claimed by both %s and %s"
-                                        % (clabel, self._miner_of[clabel], mlabel))
-                self._miner_of[clabel] = mlabel
-            self._company_of[mlabel] = labels
-            if len(labels) != config.COMPANIES_PER_MINER:
+            n = len(self._company_of[mlabel])
+            if n != config.COMPANIES_PER_MINER:
                 self._issues.append("%s has %d companies on chain (configured %d)"
-                                    % (mlabel, len(labels), config.COMPANIES_PER_MINER))
+                                    % (mlabel, n, config.COMPANIES_PER_MINER))
 
         missing = [c for c in self.reg.company_labels() if c not in self._miner_of]
         if missing:
@@ -86,27 +105,39 @@ class MembershipReader(object):
         if self._issues:
             for msg in self._issues:
                 self.log.warn("membership: %s" % msg)
-        self.log.info("membership read from chain: %d clusters, %d companies "
-                      "(via getstreamkeysummary jsonobjectmerge)"
-                      % (len(self._company_of), total))
+        self.log.info("membership read from chain: %d clusters, %d companies, "
+                      "%d record(s) discarded for failing self-attestation"
+                      % (len(self._company_of), total, self._discarded))
         return self
 
-    def _read_cluster(self, miner_addr):
-        """The set of company ADDRESSES associated with `miner_addr`, as the node's own
-        jsonobjectmerge folds them. Returns a set (possibly empty)."""
-        ok, res = self.net.admin.cli_ok(
-            "getstreamkeysummary", config.MEMBERSHIP_STREAM, miner_addr,
-            "jsonobjectmerge")
-        if not ok:
-            self.log.warn("getstreamkeysummary(%s) failed: %s" % (miner_addr, res))
-            return set()
-        merged = _unwrap_json(res)
-        if not isinstance(merged, dict):
-            self.log.warn("membership summary for %s is not an object: %r"
-                          % (miner_addr, res))
-            return set()
-        # Field NAMES are the company addresses (the values are publish timestamps).
-        return set(str(k) for k in merged.keys() if k)
+    def _read_declarations(self):
+        """{node_address: miner_address} from the membership stream, chain order, latest
+        confirmed declaration winning -- the engine's own fold. Records whose signer is
+        not the declared node_address are DISCARDED, as the engine discards them."""
+        ok, items = self.net.admin.cli_ok(
+            "liststreamitems", config.MEMBERSHIP_STREAM, "false", "100000")
+        if not ok or not isinstance(items, list):
+            self.log.warn("liststreamitems(%s) failed: %r"
+                          % (config.MEMBERSHIP_STREAM, items))
+            return {}
+
+        latest = {}
+        for it in items:
+            if not isinstance(it, dict) or not it.get("confirmations", 0):
+                continue                     # confirmed items only, as the engine reads
+            rec = _unwrap_json(it.get("data"))
+            if not isinstance(rec, dict):
+                continue
+            node = rec.get("node_address")
+            miner = rec.get("miner_address")
+            if not node or not miner:
+                continue
+            # Self-attestation: the tx signer must BE the declared node.
+            if node not in (it.get("publishers") or []):
+                self._discarded += 1
+                continue
+            latest[str(node)] = str(miner)   # chain order -> last one wins
+        return latest
 
     # ------------------------------------------------------------------
     # Lookups (cache-only; call load() first)
@@ -140,8 +171,8 @@ class MembershipReader(object):
 
 
 def _unwrap_json(value):
-    """getstreamkeysummary may hand back the merged object directly or still wrapped
-    in {"json": ...} depending on how the items were published -- the same ambiguity
+    """An item's payload may arrive as the record object directly or still wrapped in
+    {"json": ...} depending on how it was published -- the same ambiguity
     mc_WeightUnwrapItemJson absorbs on the C++ side. Accept both."""
     if isinstance(value, dict) and "json" in value and isinstance(value["json"], dict):
         return value["json"]

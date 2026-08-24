@@ -231,9 +231,10 @@ class Experiment(object):
         last_mtx = [x[2] for x in membership if x[2]]
         if last_mtx:
             self.net.wait_confirmed(self.net.admin, last_mtx[-1])
-        # Read the cluster sets BACK OFF CHAIN, through the same native jsonobjectmerge
-        # the engine uses. From here on the harness works from the published state, not
-        # from its own idea of the topology -- so a membership bug is detectable.
+        # Read the cluster sets BACK OFF CHAIN, applying the engine's own fold: latest
+        # confirmed declaration per node, self-attestation enforced. From here on the
+        # harness works from the published state, not from its own idea of the topology
+        # -- so a membership bug is detectable.
         self.mem = MembershipReader(self.net, self.reg, self.log).load()
         # issue GAS and fund participants so they can transact (produce activity tau).
         self.tx_records += self.txsim.setup()

@@ -151,6 +151,65 @@ bool WeightStreamReader::EnsureInputStreams()
 // Item decoding (local mc_Script -> keys + data; thread-safe)
 // ---------------------------------------------------------------------------
 
+// Decode the addresses that SIGNED `wtx` from its input scripts — the item's
+// publishers. Mirrors MultiChain's own extraction in StreamItemEntry1
+// (rpc/rpcwalletutils.cpp) and rpcutils.cpp: for each input, recover the address
+// embedded in the scriptSig and keep it only when the signature commits to the whole
+// transaction (SIGHASH_ALL) or to this very output (SIGHASH_SINGLE at the same
+// index) — a signature that commits to neither does not authenticate this item.
+// Deduplicated, and emitted in canonical CBitcoinAddress string form so it can be
+// compared to a payload address directly.
+static void ExtractItemPublishers(const CWalletTx& wtx, int stream_output,
+                                  std::vector<std::string>& out)
+{
+    out.clear();
+
+    std::set<uint160> seen;
+    for (int i = 0; i < (int)wtx.vin.size(); i++)
+    {
+        const CScript& sig = wtx.vin[i].scriptSig;
+        if (sig.size() == 0)
+        {
+            continue;
+        }
+        CScript::const_iterator pc = sig.begin();
+
+        int op_addr_offset = 0;
+        int op_addr_size = 0;
+        int is_redeem_script = 0;
+        int sighash_type = SIGHASH_NONE;
+
+        const unsigned char* ptr = mc_ExtractAddressFromInputScript(
+            (unsigned char*)(&pc[0]), (int)(sig.end() - pc),
+            &op_addr_offset, &op_addr_size, &is_redeem_script, &sighash_type, 0);
+        if (ptr == NULL)
+        {
+            continue;
+        }
+        if (sighash_type != SIGHASH_ALL &&
+            !(sighash_type == SIGHASH_SINGLE && i == stream_output))
+        {
+            continue;
+        }
+
+        uint160 hash = Hash160(ptr + op_addr_offset, ptr + op_addr_offset + op_addr_size);
+        if (seen.count(hash) != 0)
+        {
+            continue;
+        }
+        seen.insert(hash);
+
+        if (is_redeem_script)
+        {
+            out.push_back(CBitcoinAddress((CScriptID)hash).ToString());
+        }
+        else
+        {
+            out.push_back(CBitcoinAddress((CKeyID)hash).ToString());
+        }
+    }
+}
+
 static bool DecodeStreamItem(const CWalletTx& wtx, const unsigned char* stream_short_txid,
                              WeightStreamItem& out)
 {
@@ -222,6 +281,7 @@ static bool DecodeStreamItem(const CWalletTx& wtx, const unsigned char* stream_s
 
         string format_text;
         out.value = OpReturnFormatEntry(data, data_size, wtx.GetHash(), j, format, &format_text);
+        ExtractItemPublishers(wtx, j, out.publishers);
         return true;
     }
     return false;
@@ -315,27 +375,50 @@ bool WeightStreamReader::ReadStreamItems(const std::string& name, std::vector<We
 // Typed readers (parse with the W1 pure helpers; ascending order -> newest wins)
 // ---------------------------------------------------------------------------
 
+// Self-attested membership. See the validity rule in the header: a record counts
+// only if the transaction's SIGNER is the node_address the payload declares.
 bool WeightStreamReader::ReadMembership(std::map<std::string, std::set<std::string> >& clusters)
 {
+    static const bool dbg = GetBoolArg("-wpoadebug", false);
+
     clusters.clear();
     std::vector<WeightStreamItem> items;
     if (!ReadStreamItems(MC_WEIGHT_MEMBERSHIP_STREAM_NAME, items))
     {
         return false;
     }
+
+    // Ascending chain order -> the last surviving declaration per node wins.
+    std::map<std::string, std::string> node_to_miner;
     BOOST_FOREACH(const WeightStreamItem& item, items)
     {
-        if (item.keys.empty())
+        std::string node;
+        std::string miner;
+        uint32_t ts = 0;
+        if (!mc_ParseMembershipRecordJson(item.value, node, miner, ts))
         {
+            continue;   // malformed shape
+        }
+
+        // CONSENSUS-CRITICAL self-attestation, via the shared pure predicate so the
+        // reader and any future verifier cannot drift. Discard, do not merely flag: a
+        // record published on another address's behalf must have no effect whatsoever
+        // on C_k. (A discarded record is also grounds for a malus accusation, raised
+        // separately by whoever observes it — not here.)
+        if (!mc_MembershipRecordIsSelfAttested(node, item.publishers))
+        {
+            if (dbg)
+            {
+                LogPrintf("[weight-dbg] membership record for '%s' DISCARDED: "
+                          "not signed by the declared node_address\n", node.c_str());
+            }
             continue;
         }
-        const std::string& miner = item.keys[0];
-        std::set<std::string> aziende;
-        if (mc_ParseMembershipClusterJson(item.value, aziende))
-        {
-            mc_AccumulateMembership(clusters, miner, aziende);
-        }
+
+        mc_AccumulateLatestMembership(node_to_miner, node, miner);
     }
+
+    mc_BuildClustersFromMembership(node_to_miner, clusters);
     return true;
 }
 

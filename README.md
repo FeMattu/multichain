@@ -184,9 +184,14 @@ only a local fallback:
 - the `wpoa-weights` stream is created **closed**, so publishing requires the
   `wpoa-weights.write` permission. A node without it carries **no weight in the
   election** and cannot set its own weight by any means;
-- the three attestation streams behind the engine are written only through the
-  admin-gated RPCs `weightsetesg`, `weightsetmembership` and
-  `weightsetreconciliation`.
+- the two **attestation** streams behind the engine — records that make an unverifiable
+  claim about a third party — are written only through the admin-gated RPCs
+  `weightsetesg` and `weightsetreconciliation`;
+- `weight-engine-membership` is instead **self-attested**: any node declares its own
+  cluster through the public `weightregistermembership`, and the reader discards any
+  record whose transaction signer differs from the `node_address` it declares. Joining a
+  cluster is a voluntary choice, so the write is open to every node — nobody can declare
+  membership on another node's behalf.
 
 > The authoritative diagram of this flow, with both authorization gates, is in
 > **[src/wpoa/docs/implementation-status.md](src/wpoa/docs/implementation-status.md)**.

@@ -94,13 +94,21 @@ See [`docs/experiment.md` §1.2](docs/experiment.md).
 * The **ADMIN** publishes the public inputs through the sanctioned admin RPCs:
   * `weightsetesg` — a certified, static **integer** ESG score in `[10, 20]` for every
     cluster miner and every azienda, seeded (`WE_SEED`, default 42);
-  * `weightsetmembership` — the azienda → cluster mapping;
+  and the aziende / miners declare their OWN cluster membership, self-attested:
+  * membership — each azienda signs its own `{node_address, miner_address, timestamp}`
+    record (`publishfrom` from the azienda's own address), and each miner registers
+    itself as a cluster head with the public `weightregistermembership`. There is no
+    admin path: a record signed by anyone other than the node it names is discarded
+    by every reader;
   * `weightsetreconciliation` — per miner per epoch, **the GAS actually returned**.
-* The cluster sets are then **read back off chain** with
-  `getstreamkeysummary … jsonobjectmerge` — the RPC surface of the very merge the engine
-  uses internally (`mc_ParseMembershipClusterJson`). From that point the harness works
-  from published state, not from its own idea of the topology, so a membership bug is
-  detectable rather than shared.
+* The cluster sets are then **read back off chain** by listing the membership stream and
+  taking, per declaring address, its latest confirmed `miner_address` — the same
+  last-confirmed-wins fold the engine applies internally
+  (`mc_AccumulateLatestMembership` + `mc_BuildClustersFromMembership`). The old
+  `getstreamkeysummary … jsonobjectmerge` read no longer applies: the merge was additive,
+  which is exactly why it could not express a node leaving a cluster. From that point the
+  harness works from published state, not from its own idea of the topology, so a
+  membership bug is detectable rather than shared.
 * Each epoch every azienda **and every cluster miner** sends 10–20 GAS transfers
   (`Θ ≈ 750`). Every transfer's signed input is what the engine counts as that address's
   `τ` for the epoch.

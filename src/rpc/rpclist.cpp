@@ -143,9 +143,12 @@ static const CRPCCommand vRPCCommands[] =
     { "wpoa",               "getallmalus",            &getallmalus,            true,      true,       true },
     { "wpoa",               "getnodemalus",           &getnodemalus,           true,      true,       true },
     { "wpoa",               "reportmalus",            &reportmalus,            false,     false,      true },
-    /* WeightEngine admin attestations (Phase W3) — write, wallet-backed */
+    /* WeightEngine inputs (Phase W3) — write, wallet-backed.
+       Admin-only where the record is an external attestation about a third party;
+       PUBLIC for membership, which is self-attested and can only ever describe the
+       calling node itself. */
     { "weight",             "weightsetesg",           &weightsetesg,           false,     false,      true },
-    { "weight",             "weightsetmembership",    &weightsetmembership,    false,     false,      true },
+    { "weight",             "weightregistermembership",&weightregistermembership,false,   false,      true },
     { "weight",             "weightsetreconciliation",&weightsetreconciliation,false,     false,      true },
 #endif
 

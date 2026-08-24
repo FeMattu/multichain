@@ -27,6 +27,9 @@ Configuration parameters: [protocol-parameters.md §4](protocol-parameters.md#4-
 - [4. The engine thread](#4-the-engine-thread)
 - [5. Precedence: which publisher writes](#5-precedence-which-publisher-writes)
 - [6. Security model — two independent gates](#6-security-model--two-independent-gates)
+  - [6.1 On-chain gate](#61-on-chain-gate--consensus-enforced)
+  - [6.2 Application gate — per stream, not uniform](#62-application-gate--per-stream-not-uniform)
+  - [6.3 Why opening membership is safe](#63-why-opening-membership-is-safe--and-where-the-known-limit-still-bites)
 - [7. The complete flow](#7-the-complete-flow)
 - [8. Threading](#8-threading)
 - [9. Module files](#9-module-files)
@@ -58,18 +61,26 @@ fallback and for tests.
 ## 2. The input streams
 
 The four inputs are deliberately named `weight-engine-*`, **not** `wpoa-*`: they belong to
-the weight layer and its external actors (the certifier, the activity aggregator, the
+the weight layer and its actors (the certifier, the joining nodes themselves, the
 reconciliation process), not to consensus. Only the **output** stream `wpoa-weights`
 belongs to wPoA. The naming split mirrors the directory split.
 
+> **Thesis alignment.** Figure 7.1 of the thesis already describes membership as
+> *"scrittura del solo proprio record"* — the target model, captioned there as **not yet
+> reflected by the implementation**. It is now implemented, and extended with the
+> cryptographic self-attestation check described in [§2.2](#22-membership-is-self-attested-and-the-key-is-the-declaring-node).
+> The figure's caveat about membership can therefore be dropped from the thesis text; the
+> caveats about the other two streams still stand. See
+> [implementation-status.md §0.1](implementation-status.md#01-how-a-nodes-weight-is-assigned--the-authoritative-flow).
+
 Definitions in [`weight_streams.h`](../../weight_engine/weight_streams.h).
 
-| Stream | Item key | Payload | Origin |
-|---|---|---|---|
-| `weight-engine-membership` | miner address | `{"<company_addr>": <ts>, ...}` | Admin, via RPC |
-| `weight-engine-esg` | node address | `{"node_address":…, "esg":…}` | Admin, via RPC |
-| `weight-engine-reconciliation` | miner address | `{"node_address":…, "reconciled":…, "epoch":…}` | Admin, via RPC |
-| `weight-engine-activity` | node address | `{"node_address":…, "tau":…, "epoch":…}` | **Chain-derived** |
+| Stream | Item key | Payload | Origin | Who may write |
+|---|---|---|---|---|
+| `weight-engine-membership` | **node address** (declaring node) | `{"node_address":…, "miner_address":…, "timestamp":…}` | **The node itself**, via RPC | **Every node** (self-attested) |
+| `weight-engine-esg` | node address | `{"node_address":…, "esg":…}` | Admin, via RPC | Governance only |
+| `weight-engine-reconciliation` | miner address | `{"node_address":…, "reconciled":…, "epoch":…}` | Admin, via RPC | Governance only |
+| `weight-engine-activity` | node address | `{"node_address":…, "tau":…, "epoch":…}` | **Chain-derived** | Nobody |
 
 ### 2.1 Activity is published by nobody
 
@@ -79,14 +90,58 @@ blocks** of the epoch by `ComputeActivityForEpoch()`
 of the blocks, so every honest node recomputes the identical value: no publisher, no
 duplicate-write risk, no trust required.
 
-### 2.2 Reconstructing the cluster `C_k`
+### 2.2 Membership is self-attested, and the key is the declaring node
 
-Membership exploits MultiChain's native `jsonobjectmerge`
-(`getstreamkeysummary` / `mc_MergeValues`): every item published under a miner's key is
-folded into a single object whose **field names** are the associated company addresses. The
-set `C_k` is therefore reconstructed with no auxiliary structure. Parser:
-`mc_ParseMembershipClusterJson` in
-[`weight_records.h`](../../weight_engine/weight_records.h).
+Joining a miner's cluster is a **voluntary and autonomous** decision of the joining node —
+it is not something governance assigns. The stream reflects that directly.
+
+**The validity rule (consensus-critical).** A membership record is valid **if and only if
+the address that signed the publishing transaction equals the `node_address` declared in
+the payload.** The publisher is the transaction's *signature*, not a payload field, so the
+claim is self-verifiable: nobody can declare membership on another node's behalf. A record
+that fails the test is **discarded** by the reader — it does not enter `C_k` and produces
+no side effect of any kind. Not flagged, not down-weighted: discarded.
+
+The rule lives in one place, `mc_MembershipRecordIsSelfAttested`
+([`weight_records.h`](../../weight_engine/weight_records.h)), so the reader that discards
+and any verifier that accuses apply an identical predicate. The signing addresses are
+recovered from the transaction's input scripts exactly as MultiChain's own
+`StreamItemEntry` does (`WeightStreamItem::publishers`).
+
+**Indexing: the key is `node_address`, no longer the miner.** This changed, and the reason
+is that a node must be able to **change cluster at any time**. The relation
+`node_address -> miner_address` is therefore mutable and single-valued per declaring node,
+and needs *last-confirmed-wins* semantics per node — exactly like `wpoa-weights`. Keying on
+`node_address` puts all of a node's successive declarations under one key, so a
+chronological scan of the confirmed items yields its current cluster and the superseded
+ones simply drop out.
+
+> **Why the old scheme could not express a cluster change.** Membership used to be keyed by
+> *miner* and reconstructed through MultiChain's native `jsonobjectmerge`
+> (`getstreamkeysummary` / `mc_MergeValues`), whose merge is **additive**: a company
+> appeared as a field name under its miner's key and stayed there for ever. A node that
+> moved from miner A to miner B would show up in **both** clusters, with no way for the
+> merge to retract the first membership. The additive merge was fundamentally incompatible
+> with a mutable relation, which is why the indexing had to change rather than be patched.
+
+`C_k` is now rebuilt in two pure steps
+([`weight_records.h`](../../weight_engine/weight_records.h)):
+
+1. `mc_AccumulateLatestMembership` folds the chain-ordered items into
+   `node_address -> miner_address`, newest confirmed winning;
+2. `mc_BuildClustersFromMembership` inverts that into `miner -> C_k`, filtering by
+   `miner_address == k`.
+
+Two rules in the inversion, both deliberate:
+
+- **A miner's self-declaration registers it as a cluster head.** A miner calls the RPC with
+  its *own* address; that is what puts its key in the map, and what
+  `ComputeLocalWeightForEpoch` tests before publishing a weight. A registered head with no
+  members yet has a legitimately empty `C_k`.
+- **A miner is never listed among its own companies.** Its activity already enters the raw
+  weight through the separate `tau_Mk` term of
+  `W_k = ESG_Mk * ( tau_Mk + sum_{i in C_k} c_i )`; also counting it as a company `i` would
+  double-count it.
 
 ### 2.3 Stream lifecycle
 
@@ -94,7 +149,9 @@ set `C_k` is therefore reconstructed with no auxiliary structure. Parser:
 to them: the first node with create permission (the genesis / admin node) brings them into
 existence, everyone else finds them present and subscribes.
 
-The streams are created **CLOSED**: `MC_PTP_WRITE` is required to publish.
+The streams are created **CLOSED**: `MC_PTP_WRITE` is required to publish. Closed does not
+mean *governance-only* — see [§6.2](#62-application-gate--per-stream-not-uniform) for which
+streams grant write narrowly and which grant it to the whole network.
 
 ---
 
@@ -236,10 +293,9 @@ things.
 
 ### 6.1 On-chain gate — consensus-enforced
 
-Every stream involved — the three attestation streams and `wpoa-weights` — is **CLOSED**.
-Only an address holding `MC_PTP_WRITE` on the stream can publish. This is what blocks
-arbitrary writes, and it is enforced by MultiChain's granular permissions, not by
-convention.
+Every stream involved — the three input streams and `wpoa-weights` — is **CLOSED**. Only an
+address holding `MC_PTP_WRITE` on the stream can publish. This is what blocks arbitrary
+writes, and it is enforced by MultiChain's granular permissions, not by convention.
 
 ```bash
 multichain-cli <chain> grant <address> wpoa-weights.write
@@ -252,43 +308,85 @@ map: it carries no weight in the election.**
 > **An unauthorized node cannot impose its own weight by any means** — not through
 > `-weight`, not through RPC, not by publishing directly.
 
-### 6.2 Application gate — these RPCs only
+**Closed is not the same as governance-only.** All streams stay closed, but *who* the
+`.write` permission is granted to now differs per stream, and that is the substance of the
+authorization model:
 
-Three inputs are **external attestations** that cannot be derived on-chain, so they are
-published by governance through admin RPCs, each routed through `WeightPublisher` — the
-**single** write path for these streams.
-
-| RPC (category `weight`) | Stream written | Payload |
+| Stream | `.write` granted to | Why |
 |---|---|---|
-| `weightsetesg` | `weight-engine-esg` | `{node_address, esg}`, `esg > 0` |
-| `weightsetmembership` | `weight-engine-membership` | key `miner`, payload `{<company>: ts}` |
-| `weightsetreconciliation` | `weight-engine-reconciliation` | `{node_address, reconciled, epoch}`, `R >= 0`, `epoch >= 1` |
+| `weight-engine-membership` | **every node on the network** | Records are self-verifiable: a write permission lets a node speak about *itself* and nothing more. |
+| `weight-engine-esg` | governance / certifiers only | An unverifiable external attestation about a third party. |
+| `weight-engine-reconciliation` | governance only | Likewise. |
+| `wpoa-weights` | authorized publishers only | A claim nobody can check. |
+
+For membership, network admission is still gated — but **upstream**, by the KYC-backed
+`connect` permission that governs joining the network at all. Once a node is a legitimate
+member of the consortium, letting it state which cluster it belongs to adds no privilege.
+
+### 6.2 Application gate — per stream, not uniform
+
+The three published inputs do **not** share one authorization model. The split follows a
+single criterion: **can a third party verify the claim?**
+
+| RPC (category `weight`) | Stream written | Caller | Payload |
+|---|---|---|---|
+| `weightsetesg` | `weight-engine-esg` | **admin only** | `{node_address, esg}`, `esg > 0` |
+| `weightregistermembership` | `weight-engine-membership` | **any node** | key `node_address`, payload `{node_address, miner_address, timestamp}` |
+| `weightsetreconciliation` | `weight-engine-reconciliation` | **admin only** | `{node_address, reconciled, epoch}`, `R >= 0`, `epoch >= 1` |
 
 Registered in [`rpclist.cpp`](../../rpc/rpclist.cpp). Each method, **before** publishing:
 
 1. validates the record in **round-trip** with the *same* W1 parser the reader uses
    (`mc_Parse*RecordJson`) — so it cannot emit a malformed record the reader would
    reject;
-2. verifies that the acting address is a **global administrator** (`CanAdmin`,
-   [`weight_publisher.cpp`](../../weight_engine/weight_publisher.cpp));
+2. applies its authorization rule: `CanAdmin` for the two attestation RPCs;
+   for `weightregistermembership`, **none is needed** — it takes no parameter naming
+   *whose* membership to declare, so it structurally cannot write about anyone but the
+   caller ([`weight_publisher.cpp`](../../weight_engine/weight_publisher.cpp));
 3. verifies that the address has write permission on the stream;
 4. publishes **from** that address.
 
 Any failure raises `JSONRPCError`, so the calling RPC returns a precise error.
 
-### 6.3 Known limit — accepted risk
+> **`weightsetmembership` is gone, not deprecated.** The old admin-proxy RPC published a
+> membership record *on a third party's behalf*. Under the self-attestation rule such a
+> record is discarded by every reader — the signer would be the admin, the declared
+> `node_address` the company. Keeping the RPC would only have offered a way to pay for a
+> transaction with no effect, so it was removed and replaced by
+> `weightregistermembership`.
 
-Write permission is an **independent** grant from admin status, and the reader **trusts any
-schema-valid confirmed record, regardless of its publisher**.
+### 6.3 Why opening membership is safe — and where the known limit still bites
 
-> The "admin-only" guarantee holds **only if** operators grant `.write` on these streams
-> **exclusively** to admin / governance addresses. A non-admin who has been granted
-> `.write` could publish a schema-valid but **forged** record using the generic
-> `publishfrom` rather than the `weightset*` RPCs, and the reader would accept it.
+The two write policies rest on opposite foundations, and the reason is the same asymmetry
+the malus registry is built on ([malus-registry.md §2](malus-registry.md)):
 
-Hardening recommended by the code itself: have the reader additionally require
-`CanAdmin(publisher)` before folding a record into the weight math. Not yet implemented.
-Until then, granting `.write` **is** the security control, and must be treated as such.
+| | ESG / reconciliation | membership |
+|---|---|---|
+| The record is | a **claim** about a third party | a **self-declaration** |
+| Verifiable by a third party? | **No** — an ESG score is an attestation of trust | **Yes** — compare the signer to the declared address |
+| Therefore the defence is | restrict **who** may assert it | check **the assertion itself** |
+| Write policy | narrow grant | grant to everyone |
+
+Because the membership rule is enforced against the transaction's **signature** rather than
+against the writer's **privileges**, it cannot be bypassed by any route. A forged record —
+one naming a `node_address` other than its signer — is discarded identically on every
+honest node, whether it came from `weightregistermembership`, from the generic
+`publishfrom`, or from a raw transaction. Opening the write is free in safety terms, exactly
+as opening the malus stream is.
+
+**The known limit survives, narrowed to the two attestation streams.** Write permission is
+an **independent** grant from admin status, and for ESG and reconciliation the reader still
+**trusts any schema-valid confirmed record, regardless of its publisher**.
+
+> For `weight-engine-esg` and `weight-engine-reconciliation`, the "admin-only" guarantee
+> holds **only if** operators grant `.write` on those streams **exclusively** to
+> governance addresses. A non-admin who has been granted `.write` could publish a
+> schema-valid but **forged** record using the generic `publishfrom` rather than the
+> `weightset*` RPCs, and the reader would accept it. Granting `.write` on those two
+> streams **is** the security control, and must be treated as such.
+>
+> `weight-engine-membership` is **no longer exposed to this**: its validity rule is
+> cryptographic, not privilege-based.
 
 ---
 
@@ -323,11 +421,11 @@ a minimal chain snapshot.
 | File | Role |
 |---|---|
 | [`weight_streams.h`](../../weight_engine/weight_streams.h) | W1: stream names, JSON field names, parameter defaults. No logic. |
-| [`weight_records.h`](../../weight_engine/weight_records.h) | W1: pure record parsers (`mc_Parse*RecordJson`), testable in isolation. |
+| [`weight_records.h`](../../weight_engine/weight_records.h) | W1: pure record parsers (`mc_Parse*RecordJson`), the self-attestation predicate and the cluster inversion. Testable in isolation. |
 | [`weight_engine.h`](../../weight_engine/weight_engine.h) | W2: the pure computation core. Standard library only. |
 | [`weight_engine.cpp`](../../weight_engine/weight_engine.cpp) | W3: `HeightToEpoch`, `ThreadWeightEngine`, node glue, configuration globals. |
 | [`weight_reader.h`](../../weight_engine/weight_reader.h) / [`.cpp`](../../weight_engine/weight_reader.cpp) | W3: `WeightStreamReader` — stream lifecycle, confirmed reads, `ComputeActivityForEpoch`. |
-| [`weight_publisher.h`](../../weight_engine/weight_publisher.h) / [`.cpp`](../../weight_engine/weight_publisher.cpp) | W3: the single validated write path, and the three admin RPCs. |
+| [`weight_publisher.h`](../../weight_engine/weight_publisher.h) / [`.cpp`](../../weight_engine/weight_publisher.cpp) | W3: the single validated write path, the two admin attestation RPCs and the public self-write membership RPC. |
 
 ### 9.1 Tests
 
@@ -340,7 +438,7 @@ The module has its **own** unit suites, with a runner separate from the wPoA one
 
 | Suite | File | Coverage |
 |---|---|---|
-| `records` | [`weight_records_tests.cpp`](../../weight_engine/test/weight_records_tests.cpp) | Record parsing, cluster reconstruction from the JSON merge. |
+| `records` | [`weight_records_tests.cpp`](../../weight_engine/test/weight_records_tests.cpp) | Record parsing; the **self-attestation rule** (own declaration accepted, foreign / admin-proxy declaration rejected, fail-closed on an unrecoverable signer); cluster inversion, including a node changing cluster twice so only the last declaration counts, and the no-self-membership rule. |
 | `engine` | [`weight_engine_tests.cpp`](../../weight_engine/test/weight_engine_tests.cpp) | Order independence, zero-total guard, `rho` bounds, balance recursion, weight positivity, `ToIntegerWeight` clamp, multi-cluster allocation identity. |
 
 Both are node-free: they do not require building the node. See [testing.md](testing.md).

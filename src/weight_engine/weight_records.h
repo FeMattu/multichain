@@ -14,7 +14,15 @@
 // CONSENSUS-CRITICAL. These parsers are the gate that decides which on-chain
 // items are allowed to enter the weight math. Every honest node must accept or
 // reject the same item bit-identically, or nodes derive different w_k and fork.
-// Two disciplines follow from that and are enforced here:
+//
+// THE MEMBERSHIP GATE IS SPLIT IN TWO. A membership record must additionally be
+// SELF-ATTESTED: the transaction's signing address must equal the node_address in
+// the payload (weight_streams.h). That half cannot be decided from the payload, so
+// mc_ParseMembershipRecordJson only validates the shape and the W3 reader enforces
+// the signer match. Both halves are consensus-critical; passing this parser is
+// necessary but not sufficient for a record to enter C_k.
+//
+// Two further disciplines follow from determinism and are enforced here:
 //   * numeric fields destined for a fixed-width integer (tau, epoch) are range-
 //     and integrality-checked BEFORE the cast — an out-of-range double->uint32_t
 //     conversion is undefined behavior in C++ and could differ across builds;
@@ -32,6 +40,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <vector>
 #include <stdint.h>
 
 #include "weight_engine/weight_streams.h"
@@ -191,42 +200,101 @@ inline bool mc_WeightGetBoundedU32(const json_spirit::Object& inner, const char*
 // ---------------------------------------------------------------------------
 
 /**
- * Parse a merged wpoa membership item into the set of company addresses of one
- * cluster. Item key = miner address (supplied separately by the reader, W3);
- * value = the miner's merged membership object, whose FIELD NAMES are the
- * associated company addresses:
- *   {"json":{"<azienda_addr_1>": <ts>, "<azienda_addr_2>": <ts>, ...}}.
+ * Parse a self-attested membership item:
+ *   {"json":{"node_address":"..","miner_address":"..","timestamp":n}}.
  *
- * jsonobjectmerge (getstreamkeysummary / mc_MergeValues) accumulates one field
- * per company under the miner key, so iterating the merged object's field names
- * reconstructs the cluster set C_k (Def. peso-grezzo). Field VALUES (timestamps)
- * are irrelevant to membership and ignored.
+ * `node_address` is the node DECLARING the membership (a company, or a miner
+ * declaring itself the head of its own cluster); `miner_address` is the cluster it
+ * joins. Both must be non-empty. `timestamp` is informational only — the ordering
+ * that decides which declaration wins is the CHAIN order of the confirmed items,
+ * never this field, which the publisher controls and could set arbitrarily. It is
+ * still range-checked so a malformed record is rejected rather than silently
+ * ignored.
  *
- * @param merged_value  The merged value for one miner key.
- * @param aziende       Out: the company addresses in the cluster (cleared first).
- * @return true iff the object unwraps and contains at least one non-empty field
- *         name; false for a missing wrapper or an empty cluster.
+ * WHAT THIS PARSER DOES NOT CHECK. Self-attestation — that the transaction was
+ * signed by `node_address` — is not verifiable from the payload alone: it needs the
+ * publishing transaction's inputs. That check lives in the W3 reader
+ * (WeightStreamReader::ReadMembership) and is the second half of the validity rule;
+ * a record accepted here can still be discarded there.
+ *
+ * @param data_value     The value produced by OpReturnFormatEntry.
+ * @param node_address   Out: the declaring node (cleared on failure).
+ * @param miner_address  Out: the cluster joined (cleared on failure).
+ * @param timestamp      Out: the declared timestamp (0 on failure).
+ * @return true iff both addresses are present, non-empty, and the timestamp is a
+ *         representable non-negative integer.
  */
-inline bool mc_ParseMembershipClusterJson(const json_spirit::Value& merged_value,
-                                          std::set<std::string>& aziende)
+inline bool mc_ParseMembershipRecordJson(const json_spirit::Value& data_value,
+                                         std::string& node_address,
+                                         std::string& miner_address,
+                                         uint32_t& timestamp)
 {
-    aziende.clear();
+    node_address = "";
+    miner_address = "";
+    timestamp = 0;
 
     json_spirit::Object inner;
-    if (!mc_WeightUnwrapItemJson(merged_value, inner))
+    if (!mc_WeightUnwrapItemJson(data_value, inner))
     {
         return false;
     }
 
-    BOOST_FOREACH(const json_spirit::Pair& p, inner)
+    std::string node;
+    std::string miner;
+    uint32_t ts = 0;
+    if (!mc_WeightGetStr(inner, MC_WEIGHT_FIELD_NODE_ADDR, node) ||
+        !mc_WeightGetStr(inner, MC_WEIGHT_FIELD_MINER_ADDR, miner) ||
+        !mc_WeightGetBoundedU32(inner, MC_WEIGHT_FIELD_TIMESTAMP, ts))
     {
-        if (!p.name_.empty())
-        {
-            aziende.insert(p.name_);
-        }
+        return false;
+    }
+    if (node.empty() || miner.empty())
+    {
+        return false;
     }
 
-    return !aziende.empty();
+    node_address = node;
+    miner_address = miner;
+    timestamp = ts;
+    return true;
+}
+
+/**
+ * The SELF-ATTESTATION rule for a membership record (consensus-critical).
+ *
+ * A record is valid iff the address that SIGNED the publishing transaction is the
+ * `node_address` the payload declares. Kept here, in the pure layer, rather than
+ * inline in the reader, for two reasons: the rule is consensus-critical and so
+ * deserves node-free unit tests, and both the reader (which discards) and the malus
+ * verifier (which accuses) must apply the identical predicate — two copies could
+ * drift into a node discarding a record it does not accuse, or vice versa.
+ *
+ * `publishers` are the addresses recovered from the transaction's input scripts
+ * (WeightStreamItem::publishers). A transaction funded from several addresses has
+ * several publishers; the record is accepted if the declared node is ANY of them,
+ * since each of them did in fact authorize the transaction. An empty publisher list
+ * — an item whose signer could not be recovered — is never accepted: failing closed
+ * keeps the rule decidable rather than letting an undecodable item slip through.
+ *
+ * @param node_address  The `node_address` from the parsed payload.
+ * @param publishers    The signing addresses of the publishing transaction.
+ * @return true iff the declaration is self-attested.
+ */
+inline bool mc_MembershipRecordIsSelfAttested(const std::string& node_address,
+                                             const std::vector<std::string>& publishers)
+{
+    if (node_address.empty())
+    {
+        return false;
+    }
+    for (size_t i = 0; i < publishers.size(); i++)
+    {
+        if (publishers[i] == node_address)
+        {
+            return true;
+        }
+    }
+    return false;   // includes the empty-publisher case: fail closed
 }
 
 /**
@@ -349,9 +417,10 @@ inline bool mc_ParseReconciliationRecordJson(const json_spirit::Value& data_valu
 // ---------------------------------------------------------------------------
 // Aggregation — fold parsed records into the pipeline's in-memory structures.
 //
-// The ESG/activity/reconciliation accumulators fold a chain-ordered
-// (oldest -> newest) item list; the newest record for a key wins, mirroring
-// mc_AccumulateLatestWeight in wpoa/weight_record.h.
+// Every accumulator here folds a chain-ordered (oldest -> newest) item list; the
+// newest record for a key wins, mirroring mc_AccumulateLatestWeight in
+// wpoa/weight_record.h. Membership included: since a node may change cluster at
+// will, its latest confirmed declaration is the only one that counts.
 //
 // PRECONDITION for the activity/reconciliation accumulators: they key on address
 // ONLY, so "newest wins" reconstructs a per-epoch value correctly only when the
@@ -361,14 +430,59 @@ inline bool mc_ParseReconciliationRecordJson(const json_spirit::Value& data_valu
 // this contract if W3's fold strategy changes.
 // ---------------------------------------------------------------------------
 
-/** Add a cluster's companies to their miner's set C_k (membership is additive
- *  and idempotent — re-adding a company is a no-op). */
-inline void mc_AccumulateMembership(std::map<std::string, std::set<std::string> >& clusters,
-                                    const std::string& miner,
-                                    const std::set<std::string>& aziende)
+/**
+ * declaring node -> the cluster it currently belongs to. LAST CONFIRMED WINS: the
+ * caller folds the chain-ordered item list (oldest -> newest), so a node that
+ * republishes with a different miner_address simply overwrites its own entry and
+ * its earlier cluster is forgotten.
+ *
+ * This replaces the old additive mc_AccumulateMembership: membership is no longer
+ * a monotonically growing set per miner but a MUTABLE single-valued relation per
+ * declaring node, which is what makes an autonomous cluster change expressible.
+ */
+inline void mc_AccumulateLatestMembership(std::map<std::string, std::string>& node_to_miner,
+                                          const std::string& node_address,
+                                          const std::string& miner_address)
 {
-    std::set<std::string>& target = clusters[miner];
-    target.insert(aziende.begin(), aziende.end());
+    node_to_miner[node_address] = miner_address;
+}
+
+/**
+ * Invert the node -> miner relation into the cluster sets C_k the pipeline consumes:
+ * miner address -> the set of its member COMPANY addresses.
+ *
+ * Two rules, both deliberate:
+ *
+ *   1. A miner key exists in the output as soon as ANY node declares that miner,
+ *      including the miner declaring itself. A miner's own self-declaration is
+ *      therefore what registers it as a cluster head (which is what
+ *      ComputeLocalWeightForEpoch tests before publishing a weight), even when no
+ *      company has joined yet — in which case C_k is legitimately empty.
+ *
+ *   2. A miner is NEVER listed among its own companies. Its activity already enters
+ *      the raw weight through the separate tau_Mk term of
+ *      W_k = ESG_Mk * ( tau_Mk + sum_{i in C_k} c_i ), so also counting it as a
+ *      company i would double-count it.
+ *
+ * @param node_to_miner  The folded latest declaration per node.
+ * @param clusters       Out: miner -> C_k (cleared first).
+ */
+inline void mc_BuildClustersFromMembership(const std::map<std::string, std::string>& node_to_miner,
+                                           std::map<std::string, std::set<std::string> >& clusters)
+{
+    clusters.clear();
+    for (std::map<std::string, std::string>::const_iterator it = node_to_miner.begin();
+         it != node_to_miner.end(); ++it)
+    {
+        const std::string& node  = it->first;
+        const std::string& miner = it->second;
+
+        std::set<std::string>& members = clusters[miner];   // registers the cluster head
+        if (node != miner)                                  // rule 2: no self-membership
+        {
+            members.insert(node);
+        }
+    }
 }
 
 /** address -> latest certified ESG score. */

@@ -203,6 +203,24 @@ weights stream. Module detail: [weight-engine.md](weight-engine.md).
 | `-weightalpha` | `weight-alpha` | `STRING(32)` | `0.2` | `[0, 1]` | `paramlist.h:237` | Allocation constant `alpha` in `A_k = alpha * Theta * W_k / W_tot`. |
 | `-weightlambda` | `weight-lambda` | `STRING(32)` | `0.5` | `[0, 1)` — `1` excluded | `paramlist.h:241` | Behavioural-feedback damping in `w_k = W_k * [rho_{k,e-1} * lambda + (1 - lambda)]`. **`lambda < 1` is a correctness requirement**, not a preference: it guarantees weight positivity. |
 
+### 4.1 No parameter governs who may write the input streams
+
+The write policy of the four input streams is **not** configurable: it is a property of what
+each record *is*, and it is enforced in code rather than by a switch.
+
+| Stream | Write policy | Enforced by |
+|---|---|---|
+| `weight-engine-membership` | CLOSED, but `.write` is meant to be granted to **every node** | The reader's self-attestation rule: tx signer must equal the payload's `node_address`, else the record is discarded |
+| `weight-engine-esg` | CLOSED, `.write` to governance only | `CanAdmin` in the `weightsetesg` RPC, plus the operator's grant discipline |
+| `weight-engine-reconciliation` | CLOSED, `.write` to governance only | `CanAdmin` in the `weightsetreconciliation` RPC, plus the operator's grant discipline |
+| `weight-engine-activity` | Nobody writes it | Chain-derived; there is no publisher |
+
+Grants are therefore an **operational** step, documented in
+[weight-engine.md §6](weight-engine.md#6-security-model--two-independent-gates), not a
+`params.dat` value. Adding a parameter here would be actively wrong for membership: making
+the self-attestation rule switchable would make it non-consensus-critical, and a node that
+turned it off would fold records its peers discard — a fork.
+
 Two related constants are **not** chain parameters yet, and are fixed at compile time in
 [`weight_streams.h`](../../weight_engine/weight_streams.h):
 

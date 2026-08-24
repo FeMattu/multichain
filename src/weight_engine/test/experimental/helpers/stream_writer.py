@@ -1,16 +1,23 @@
 # Copyright (c) 2014-2019 Coin Sciences Ltd
 # MultiChain code distributed under the GPLv3 license, see COPYING file.
 #
-# stream_writer.py -- the ADMIN's write path onto the three WeightEngine input
-# streams. It NEVER writes raw items: it drives the sanctioned admin RPCs
-# (weightsetesg / weightsetmembership / weightsetreconciliation) exactly as an
-# operator would, so every record is schema-validated by the node before it lands
-# (weight_publisher.cpp). All calls run on the ADMIN (genesis / global-admin) node,
-# the Apuana SB stand-in.
+# stream_writer.py -- the write path onto the three WeightEngine input streams,
+# driven the way an operator would drive it rather than by writing raw items.
 #
 #   esg            : one certified score per address (miners + companies), static.
-#   membership     : company -> miner cluster mapping (one call per company).
-#   reconciliation : one R_k per miner per epoch.
+#                    ADMIN-attested, via weightsetesg.
+#   membership     : each node declares its OWN cluster, SELF-ATTESTED. There is no
+#                    admin path: a record signed by anyone other than the node it
+#                    names is discarded by every reader, so the harness signs each
+#                    declaration with the declaring address itself (publishfrom for
+#                    the wallet-held aziende, weightregistermembership on each miner
+#                    node). See publish_membership.
+#   reconciliation : one R_k per miner per epoch. ADMIN-attested, via
+#                    weightsetreconciliation.
+#
+# The two ADMIN-attested streams are schema-validated by the node before the record
+# lands (weight_publisher.cpp) and run on the ADMIN (genesis / global-admin) node,
+# the Apuana SB stand-in.
 #
 # CHANGED FROM THE ORIGINAL (Apuana SB) SETUP. R_k used to be a random draw over
 # [0, 5] with no on-chain counterpart -- the stream asserted a reconciliation that
@@ -23,6 +30,7 @@
 # recorded and the run continues, per the experiment's error-handling rule.
 
 import random
+import time
 
 import config
 from helpers.chain_setup import looks_txid as _looks_txid
@@ -40,11 +48,18 @@ class StreamWriter(object):
         # tau_coverage invariant -- instead of writing the difference off as noise.
         self.published = []          # tx records, same shape as tx_simulator's
 
-    def _record(self, txid, kind, subject, epoch=0):
-        """Note an ADMIN-signed publish in the ledger record (see self.published)."""
+    def _record(self, txid, kind, subject, epoch=0, sender=None):
+        """Note a publish in the ledger record (see self.published).
+
+        `sender` is the label that actually SIGNED the transaction, which is what the
+        engine counts towards that address's tau. It defaults to the ADMIN for the
+        admin-attested streams, but a self-attested membership declaration is signed by
+        the declaring node itself and must be recorded as such — attributing it to the
+        ADMIN would silently break the harness's tau_coverage invariant."""
         if txid:
             self.published.append({"epoch": epoch, "txid": txid,
-                                   "sender": config.ADMIN_LABEL, "receiver": subject,
+                                   "sender": sender or config.ADMIN_LABEL,
+                                   "receiver": subject,
                                    "type": kind, "amount": 0.0})
         return txid
 
@@ -86,27 +101,74 @@ class StreamWriter(object):
                 out[label] = (addr, score, None)
         return out
 
-    # -- membership (static, published once) -------------------------------
+    # -- membership (SELF-ATTESTED, published once) -------------------------
     def publish_membership(self):
-        """Associate every azienda with its cluster miner. Returns a list of
-        (miner_label, company_label, txid_or_None)."""
+        """Every azienda declares ITS OWN cluster, and every miner registers itself as
+        a cluster head. Returns a list of (miner_label, declaring_label, txid_or_None).
+
+        Membership is no longer an admin attestation: the reader accepts a record only
+        if the address that SIGNED the publishing transaction equals the node_address
+        the payload declares (weight_reader.cpp ReadMembership). An admin publishing on
+        a company's behalf would therefore be discarded, so there is no admin path left
+        to drive here.
+
+        Two write paths, both genuinely self-attested — what matters is the SIGNER, not
+        which RPC produced the transaction:
+          * the aziende are addresses in the ADMIN's own wallet, so the harness signs
+            each declaration with `publishfrom <company> ...`, i.e. from the company's
+            own address;
+          * the cluster miners are separate nodes, so each one calls the public
+            `weightregistermembership` with its own address, exactly as an operator
+            would.
+        """
         out = []
+
+        # Every declaring address needs .write on the (still CLOSED) stream. Under the
+        # new model this permission is meant to be network-wide: it lets an address
+        # speak about itself and nothing more.
+        stream = "weight-engine-membership"
+        for label in self.reg.cluster_labels():
+            addr = self.reg.address_of(label)
+            if addr:
+                self.net.admin.cli_ok("grant", addr, "%s.write" % stream)  # best-effort
+
         for m in range(config.NUM_MINERS):
-            miner_addr = self.reg.address_of(config.miner_id(m))
+            mlabel = config.miner_id(m)
+            miner_addr = self.reg.address_of(mlabel)
+            if not miner_addr:
+                out.append((mlabel, mlabel, None))
+                continue
+
+            # The miner registers ITSELF as a cluster head, from its own node.
+            mnode = self.reg.node_for(mlabel)
+            if mnode is not None:
+                ok, res = mnode.cli_ok("weightregistermembership", miner_addr)
+                txid = res if (ok and _looks_txid(res)) else None
+                if not txid:
+                    self.log.error("miner self-registration failed %s: %s" % (mlabel, res))
+                out.append((mlabel, mlabel,
+                            self._record(txid, "publish_membership", mlabel,
+                                         sender=mlabel)))
+
+            # Each azienda declares its own membership, signed by its own address.
             for c in range(config.COMPANIES_PER_MINER):
                 clabel = config.company_id(m, c)
                 caddr = self.reg.address_of(clabel)
-                if not (miner_addr and caddr):
-                    out.append((config.miner_id(m), clabel, None))
+                if not caddr:
+                    out.append((mlabel, clabel, None))
                     continue
-                ok, res = self.net.admin.cli_ok("weightsetmembership", miner_addr, caddr)
+                record = ('{"json":{"node_address":"%s","miner_address":"%s",'
+                          '"timestamp":%d}}' % (caddr, miner_addr, int(time.time())))
+                ok, res = self.net.admin.cli_ok("publishfrom", caddr, stream, caddr, record)
                 txid = res if (ok and _looks_txid(res)) else None
                 if not txid:
-                    self.log.error("membership publish failed %s<-%s: %s" %
-                                   (config.miner_id(m), clabel, res))
-                out.append((config.miner_id(m), clabel,
-                            self._record(txid, "publish_membership", clabel)))
-        self.log.info("published membership: %d azienda->cluster links" % len(out))
+                    self.log.error("membership self-declaration failed %s->%s: %s" %
+                                   (clabel, mlabel, res))
+                out.append((mlabel, clabel,
+                            self._record(txid, "publish_membership", clabel,
+                                         sender=clabel)))
+
+        self.log.info("published membership: %d self-attested declarations" % len(out))
         return out
 
     # -- reconciliation (per epoch) ----------------------------------------

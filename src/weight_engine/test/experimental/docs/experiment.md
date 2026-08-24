@@ -37,7 +37,7 @@ against (§4.7).
 | `Tx Miner` | the miner's own signed transactions | `τ_Mk`, the miner's own signed transactions — **10–20 per epoch**, the same band as the aziende |
 | `Delay` | modelled as `share × 1000` | the **per-mille normalized weight** (Vers_2's own meaning), total exactly 1000. The measured inter-block interval is a separate `block_interval_ms` column |
 | Volume | a handful of transfers network-wide per epoch | **10–20 per azienda AND per miner per epoch** → `Θ ≈ 750` |
-| Membership | assumed from the local topology | **read back off the membership stream** with the engine's own `jsonobjectmerge` |
+| Membership | assumed from the local topology | **read back off the membership stream**, self-attested, with the engine's own last-confirmed-wins fold |
 | `τ` | approximated from harness records | **reconstructed exactly**, harness records + the `wpoa-weights` publisher index, with coverage asserted |
 | Engine check | ranking only (`τ_Mk` was known to be short) | **by value**: the replayed `w_k` vs the published integer, per cell |
 | Transport | one `multichain-cli` process per RPC | **JSON-RPC over a persistent HTTP connection**, CLI as automatic fallback |
@@ -218,7 +218,10 @@ All via the ADMIN, through the schema-validating RPCs (never raw `publishfrom`):
    [`esg_generator.py`](../helpers/esg_generator.py) from `WE_SEED`. ADMIN and FEEPOOL
    are deliberately **unscored**: they are not cluster members and must never enter a
    weight.
-3. `weightsetmembership` — one call per azienda, mapping it to its cluster.
+3. membership — **self-attested, not admin-attested**: one call per azienda signed by
+   the azienda's own address, plus one `weightregistermembership` per miner so it
+   registers itself as a cluster head. The reader discards any record whose signer
+   differs from its declared `node_address`, so there is no admin proxy path.
 4. Fund participants — [`tx_simulator.py`](../helpers/tx_simulator.py) issues GAS to
    the ADMIN and sends each participant a starting balance; the FEEPOOL gets enough to
    settle every epoch's fees (`config.feepool_fund()`).
@@ -611,9 +614,10 @@ experimental/
 │   ├── chain_setup.py        Network/Node: JSON-RPC transport, bootstrap, grants, waits, teardown
 │   ├── participants.py       label ⇄ address ⇄ owning-node registry (+ ADMIN, FEEPOOL)
 │   ├── esg_generator.py      seeded static integer ESG + the configuration-sheet view
-│   ├── stream_writer.py      ADMIN → esg / membership / reconciliation (validating RPCs)
-│   ├── membership_reader.py  cluster sets read BACK off chain (getstreamkeysummary
-│   │                         jsonobjectmerge — the engine's own merge), cached
+│   ├── stream_writer.py      ADMIN → esg / reconciliation (validating RPCs);
+│   │                         membership self-declared by each node, self-attested
+│   ├── membership_reader.py  cluster sets read BACK off chain (latest confirmed
+│   │                         declaration per node — the engine's own fold), cached
 │   ├── tx_simulator.py       GAS issue/fund + per-epoch transfers (activity τ)
 │   ├── economics.py          the whole Vers_2 pipeline: exact τ, W_k/w_k/Delay/p_k/A_k,
 │   │                         automated on-chain settlement + reconciliation, and the

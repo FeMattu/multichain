@@ -45,13 +45,34 @@
 struct mc_WalletTxs;
 struct mc_EntityDetails;
 
-/** One decoded confirmed stream item: its key(s) and its JSON payload value.
- *  The WeightEngine streams use a single key per item (the miner/node address),
- *  so keys[0] is the item key. */
+/** One decoded confirmed stream item: its key(s), its publisher(s) and its JSON
+ *  payload value. The WeightEngine streams use a single key per item (the
+ *  miner/node address), so keys[0] is the item key.
+ *
+ *  `publishers` are the addresses that SIGNED the publishing transaction, decoded
+ *  from its input scripts exactly as MultiChain's own StreamItemEntry does (see
+ *  rpc/rpcwalletutils.cpp). They are the cryptographic identity of the writer — a
+ *  payload field can claim anything, an input signature cannot — and are what the
+ *  self-attestation rule of the membership stream is checked against. Normally a
+ *  single address; a tx funded from several addresses yields several. */
 struct WeightStreamItem
 {
     std::vector<std::string> keys;
+    std::vector<std::string> publishers;
     json_spirit::Value       value;   // the {"json":{...}} payload (as OpReturnFormatEntry returns)
+
+    /** True iff `address` signed this item's transaction. */
+    bool IsPublishedBy(const std::string& address) const
+    {
+        for (size_t i = 0; i < publishers.size(); i++)
+        {
+            if (publishers[i] == address)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 };
 
 /**
@@ -73,7 +94,22 @@ public:
      */
     bool EnsureInputStreams();
 
-    /** membership -> C_k : miner address -> set of its company addresses. */
+    /**
+     * membership -> C_k : miner address -> set of its member company addresses.
+     *
+     * SELF-ATTESTATION IS ENFORCED HERE (consensus-critical). For every confirmed
+     * item, the payload's `node_address` is compared against the addresses that
+     * actually SIGNED the publishing transaction. A mismatch means one node tried to
+     * declare membership on another's behalf: the record is DISCARDED outright — it
+     * does not enter C_k and produces no side effect of any kind. Only the signer's
+     * own declaration counts, which is what makes it safe to grant
+     * `weight-engine-membership.write` to every node on the network.
+     *
+     * Surviving records fold last-confirmed-wins per declaring node, then invert
+     * into the cluster sets (mc_BuildClustersFromMembership): a node that
+     * republishes with a different miner_address changes cluster autonomously, and
+     * its previous membership disappears.
+     */
     bool ReadMembership(std::map<std::string, std::set<std::string> >& clusters);
 
     /** esg -> node address -> latest certified ESG score (newest confirmed wins). */

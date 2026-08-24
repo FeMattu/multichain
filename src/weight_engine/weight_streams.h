@@ -31,12 +31,28 @@
 // Input streams read by the WeightEngine each epoch
 // ---------------------------------------------------------------------------
 
-/** company -> miner association (static, updated only on cluster change).
- *  Item key = miner address; payload {"json":{"<azienda_addr>": <ts>, ...}}.
- *  Native jsonobjectmerge (getstreamkeysummary / mc_MergeValues) folds every
- *  item published under a miner key into a single object whose FIELD NAMES are
- *  the associated company addresses — reconstructing the cluster set C_k
- *  (Def. peso-grezzo). See mc_ParseMembershipClusterJson in weight_records.h. */
+/** node -> miner (cluster) association, SELF-ATTESTED by the joining node.
+ *
+ *  Item key = node_address (the DECLARING node), payload
+ *  {"json":{"node_address":..,"miner_address":..,"timestamp":..}}.
+ *
+ *  INDEXING RATIONALE (changed: the key used to be the miner address). A node
+ *  joins a cluster of its own free will and may leave it at any time, so the
+ *  relation "node_address -> miner_address" is MUTABLE and needs last-confirmed-
+ *  wins semantics per DECLARING node — exactly like wpoa-weights. Keying on
+ *  node_address puts every one of a node's successive declarations under a single
+ *  key, so a chronological scan yields its current cluster and the superseded
+ *  ones drop out. The old miner-keyed + jsonobjectmerge scheme could not express a
+ *  cluster change at all: the merge is additive, so a node that moved from miner A
+ *  to miner B stayed in A's merged object for ever. C_k is therefore rebuilt by
+ *  scanning every key for the latest record and filtering miner_address == k
+ *  (mc_BuildClustersFromMembership in weight_records.h).
+ *
+ *  SELF-ATTESTATION (consensus-critical). A record is valid IFF the address that
+ *  signed the publishing transaction equals the node_address in the payload. The
+ *  reader DISCARDS any record failing that test — it never enters C_k. This is what
+ *  makes it safe to grant `weight-engine-membership.write` to every node on the
+ *  network: nobody can declare membership on somebody else's behalf. */
 #define MC_WEIGHT_MEMBERSHIP_STREAM_NAME     "weight-engine-membership"
 
 /** Certified ESG scores (static between epochs, Def. esg-static). Item key =
@@ -66,6 +82,8 @@
 // never drift on a field name. The parsers in weight_records.h use these.
 
 #define MC_WEIGHT_FIELD_NODE_ADDR   "node_address"
+#define MC_WEIGHT_FIELD_MINER_ADDR  "miner_address"
+#define MC_WEIGHT_FIELD_TIMESTAMP   "timestamp"
 #define MC_WEIGHT_FIELD_ESG         "esg"
 #define MC_WEIGHT_FIELD_TAU         "tau"
 #define MC_WEIGHT_FIELD_EPOCH       "epoch"

@@ -4,13 +4,21 @@
 // Weight-management layer — Stage W3: the single validated write path for the
 // admin-attested WeightEngine streams.
 // ------------------------------------------------------------------------------
-// Three inputs of the weight pipeline are external ATTESTATIONS that cannot be
-// derived on-chain, so they are published by governance through admin-only RPCs,
-// each routed through WeightPublisher — the ONE choke point for these writes:
+// Three inputs of the weight pipeline are published rather than derived, and they
+// do NOT share one authorization model — the split follows what a third party can
+// verify:
 //
-//   weight-engine-esg            <- weightsetesg            (certified ESG score)
-//   weight-engine-membership     <- weightsetmembership     (azienda -> miner map)
-//   weight-engine-reconciliation <- weightsetreconciliation (Apuana SB R_k per epoch)
+//   weight-engine-esg            <- weightsetesg              ADMIN-ONLY
+//         An external attestation about a third party. Nobody can check an ESG
+//         score cryptographically, so restricting WHO may assert it is the only
+//         available defence.
+//   weight-engine-membership     <- weightregistermembership  PUBLIC (self-write)
+//         A node declaring its OWN cluster. The claim is self-verifiable: the
+//         reader compares the payload's node_address against the transaction's
+//         signer and discards any mismatch, so opening the write to every node
+//         costs nothing — nobody can declare membership for somebody else.
+//   weight-engine-reconciliation <- weightsetreconciliation   ADMIN-ONLY
+//         An external attestation about a third party, like ESG.
 //
 // (activity is chain-derived, not published — weight_reader.h; wpoa-weights keeps
 // its own port, StreamWeightRegistry.)
@@ -26,16 +34,23 @@
 // SECURITY MODEL (read carefully). There are TWO gates and they are distinct:
 //   * on-chain (consensus-enforced): the streams are CLOSED, so only an address
 //     holding MC_PTP_WRITE on the stream can publish at all — this is what stops
-//     arbitrary/raw writes;
-//   * application policy (this RPC only): weightset* additionally requires the
-//     acting address to be a GLOBAL admin (CanAdmin) and validates the schema.
-// Because write permission is an INDEPENDENT grant from admin, the "admin-only"
-// guarantee holds ONLY if operators grant `<stream>.write` exclusively to admin /
-// governance addresses. A non-admin that has been granted write could still publish
-// a schema-VALID (but forged) record directly via the generic `publishfrom`, and
-// the reader currently trusts any schema-valid confirmed record regardless of its
-// publisher. Recommended hardening (future): have the reader additionally require
-// CanAdmin(publisher) before folding a record into the weight math.
+//     arbitrary/raw writes. For membership, `.write` is now meant to be granted to
+//     EVERY node on the network (network admission itself stays gated upstream by
+//     the KYC-backed `connect` permission);
+//   * application policy (these RPCs only): the admin-only RPCs additionally
+//     require the acting address to be a GLOBAL admin (CanAdmin);
+//     weightregistermembership requires nothing, because it structurally cannot
+//     write about anyone but the caller.
+//
+// KNOWN LIMIT, and where it no longer applies. Write permission is an INDEPENDENT
+// grant from admin status, so for the ADMIN-ONLY streams the "admin-only" guarantee
+// holds only if operators grant `<stream>.write` exclusively to governance
+// addresses: a non-admin holding `.write` could publish a schema-VALID but forged
+// record through the generic `publishfrom`, and the reader accepts any schema-valid
+// confirmed record. MEMBERSHIP IS NO LONGER EXPOSED TO THIS. Its validity rule is
+// enforced by the reader against the transaction's signature rather than against the
+// writer's privileges, so a forged record — one naming a node_address other than the
+// signer — is discarded by every honest node no matter which RPC produced it.
 
 #ifndef MC_WEIGHT_PUBLISHER_H
 #define MC_WEIGHT_PUBLISHER_H
@@ -58,9 +73,13 @@ public:
     static std::string PublishEsg(const std::string& from_address,
                                   const std::string& node_address, double esg);
 
-    /** membership: item key = miner, payload {<azienda>: ts}; merge rebuilds C_k. */
+    /** membership: SELF-WRITE. Item key = node_address, payload
+     *  {node_address, miner_address, timestamp}. `node_address` must equal
+     *  `from_address` — a node may only declare its own cluster — otherwise this
+     *  throws, mirroring the reader's discard rule. */
     static std::string PublishMembership(const std::string& from_address,
-                                         const std::string& miner, const std::string& azienda);
+                                        const std::string& node_address,
+                                        const std::string& miner_address);
 
     /** reconciliation: {node_address=miner, reconciled, epoch}; R>=0, epoch>=1
      *  (the RPC additionally bounds epoch <= current epoch). Key = miner. */
@@ -69,9 +88,14 @@ public:
                                              uint32_t epoch);
 };
 
-// Admin RPCs (registered in src/rpc/rpclist.cpp, category "weight").
+// RPCs (registered in src/rpc/rpclist.cpp, category "weight").
+//
+// weightsetesg / weightsetreconciliation are ADMIN-ONLY: they carry an external
+// attestation about a third party, so restricting the writer is the only defence.
+// weightregistermembership is PUBLIC: it can only ever write a record about the
+// calling node itself, which the reader verifies cryptographically.
 json_spirit::Value weightsetesg(const json_spirit::Array& params, bool fHelp);
-json_spirit::Value weightsetmembership(const json_spirit::Array& params, bool fHelp);
+json_spirit::Value weightregistermembership(const json_spirit::Array& params, bool fHelp);
 json_spirit::Value weightsetreconciliation(const json_spirit::Array& params, bool fHelp);
 
 #endif // MC_WEIGHT_PUBLISHER_H
