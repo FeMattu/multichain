@@ -18,10 +18,11 @@
 #   ./run_unit_tests.sh --list            # list the available suites and exit
 #   DRY_RUN=1 ./run_unit_tests.sh         # print what would run, build nothing
 #
-# Suites:  records  engine
-#   records  — input-stream record parsers/aggregators (weight_records.h)     [W1]
-#   engine   — weight-pipeline math core (weight_engine.h)                    [W2]
-#              (skipped gracefully until the W2 source exists)
+# Suites:  records  authorization  engine
+#   records       — input-stream record parsers/aggregators (weight_records.h)  [W1]
+#   authorization — per-stream write policy (weight_authorization.h)            [W1]
+#   engine        — weight-pipeline math core (weight_engine.h)                 [W2]
+#                   (skipped gracefully until the W2 source exists)
 #
 # Environment:
 #   CXX        C++ compiler            (default: g++)
@@ -38,9 +39,9 @@ CXXFLAGS="${CXXFLAGS:--std=c++11 -O2 -g}"
 OUTDIR="${TMPDIR:-/tmp}"
 DRY_RUN="${DRY_RUN:-0}"
 
-ALL_SUITES="records engine"
+ALL_SUITES="records authorization engine"
 
-usage() { sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^#\{0,1\} \{0,1\}//'; }
+usage() { sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^#\{0,1\} \{0,1\}//'; }
 
 # Build and run a single suite. Echoes progress; returns 0 on pass.
 build_and_run() {
@@ -52,6 +53,9 @@ build_and_run() {
         records)
             desc="input-stream record parsers (membership/esg/activity/reconciliation)"
             src="$SCRIPT_DIR/weight_records_tests.cpp" ;;
+        authorization)
+            desc="per-stream write policy (self-attestation, Certification Authority, admin)"
+            src="$SCRIPT_DIR/weight_authorization_tests.cpp" ;;
         engine)
             desc="weight-pipeline math core (contribution -> raw weight -> feedback -> w_k)"
             src="$SCRIPT_DIR/weight_engine_tests.cpp" ;;

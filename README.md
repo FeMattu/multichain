@@ -184,9 +184,13 @@ only a local fallback:
 - the `wpoa-weights` stream is created **closed**, so publishing requires the
   `wpoa-weights.write` permission. A node without it carries **no weight in the
   election** and cannot set its own weight by any means;
-- the two **attestation** streams behind the engine — records that make an unverifiable
-  claim about a third party — are written only through the admin-gated RPCs
-  `weightsetesg` and `weightsetreconciliation`;
+- the two **attestation** streams behind the engine carry records that make an
+  unverifiable claim about a third party, so the defence is to restrict who may assert
+  them. `weightsetreconciliation` is admin-gated; `weightsetesg` requires the
+  **Certification Authority** role — MultiChain's `high1` custom permission, which the
+  administrator delegates per address and can revoke. Being an administrator is
+  deliberately *not* sufficient to certify: the admin confers the role rather than
+  holding it, so who certifies stays distinguishable on chain from who administers;
 - `weight-engine-membership` is instead **self-attested**: any node declares its own
   cluster through the public `weightregistermembership`, and the reader discards any
   record whose transaction signer differs from the `node_address` it declares. Joining a

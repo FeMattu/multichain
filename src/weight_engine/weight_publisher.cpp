@@ -9,9 +9,10 @@
 
 #include "weight_engine/weight_publisher.h"
 
-#include "weight_engine/weight_streams.h"   // stream + field names
-#include "weight_engine/weight_records.h"   // W1 round-trip parsers
-#include "weight_engine/weight_engine.h"    // HeightToEpoch
+#include "weight_engine/weight_streams.h"       // stream + field names
+#include "weight_engine/weight_records.h"       // W1 round-trip parsers
+#include "weight_engine/weight_authorization.h" // W1 pure authorization policy
+#include "weight_engine/weight_engine.h"        // HeightToEpoch
 
 #include "rpc/rpcwallet.h"      // publishfrom (via rpcserver.h), wallet, multichain, mc_gState
 #include "structs/base58.h"     // CBitcoinAddress
@@ -93,10 +94,10 @@ static std::string ResolveLocalNodeAddress()
 }
 
 // This node's own address, additionally required to be a GLOBAL administrator.
-// Throws RPC_INSUFFICIENT_PERMISSIONS if not. This is the policy gate for the
-// streams that carry an EXTERNAL attestation — a claim about somebody else that no
-// third party can verify — where restricting who may assert it is the only defence.
-// (The on-chain gate is the closed stream's write permission, checked in
+// Throws RPC_INSUFFICIENT_PERMISSIONS if not. This is the policy gate for
+// reconciliation, which carries an EXTERNAL attestation — a claim about somebody else
+// that no third party can verify — where restricting who may assert it is the only
+// defence. (The on-chain gate is the closed stream's write permission, checked in
 // WeightPublishTo.)
 static std::string ResolveLocalAdminAddress()
 {
@@ -105,7 +106,84 @@ static std::string ResolveLocalAdminAddress()
     {
         throw JSONRPCError(RPC_INSUFFICIENT_PERMISSIONS,
                            "This node's address is not an administrator; "
-                           "ESG / reconciliation are admin-only");
+                           "reconciliation is admin-only");
+    }
+    return CBitcoinAddress(keyID).ToString();
+}
+
+// The permission BIT behind the CA role's wire name, resolved through MultiChain's
+// OWN name->bit parser. Deriving it rather than restating it keeps
+// MC_WEIGHT_CA_PERMISSION_NAME the single source of truth: the name printed in an
+// operator-facing error and the bit actually queried can never drift apart, and moving
+// the role to another slot stays a one-line change. Returns 0 for an unrecognised name
+// (or before the permission DB exists), which the caller treats as "not a CA" — fail
+// closed.
+static uint32_t WeightCaPermissionBit()
+{
+    if (mc_gState == NULL || mc_gState->m_Permissions == NULL)
+    {
+        return 0;
+    }
+    return mc_gState->m_Permissions->GetPermissionType(MC_WEIGHT_CA_PERMISSION_NAME,
+                                                       MC_PTP_ALL);
+}
+
+// Whether `keyID` holds the Certification Authority role on chain.
+//
+// The role is carried by one of MultiChain's six FIXED custom permission slots —
+// there is no arbitrary `custom.<name>` — and it must be a HIGH slot, because
+// mc_Permissions::IsActivateEnough returns 0 for the high slots: granting one
+// requires `admin`, not merely `activate`, which is exactly the requirement that only
+// the administrator may confer CA status. See weight_authorization.h.
+//
+// CanCustom is a plain permission lookup with no spacing/diversity logic, the same
+// call the miner-permission check on wPoA heights uses.
+static bool IsCertificationAuthority(const CKeyID& keyID)
+{
+    uint32_t bit = WeightCaPermissionBit();
+    if (bit == 0)
+    {
+        return false;   // unknown permission name / no permission DB -> fail closed
+    }
+    return mc_gState->m_Permissions->CanCustom(NULL, (unsigned char*)&keyID, bit) != 0;
+}
+
+// Whether this chain's protocol version provides custom permissions at all. When it
+// does not, the CA role cannot be expressed on chain and ESG publication FAILS CLOSED
+// (weight_authorization.h) rather than silently reverting to an admin check.
+static bool ChainSupportsCustomPermissions()
+{
+    if (mc_gState == NULL || mc_gState->m_Features == NULL)
+    {
+        return false;
+    }
+    return mc_gState->m_Features->CustomPermissions() != 0;
+}
+
+// This node's own address, required to hold the Certification Authority role.
+//
+// Deliberately NOT ResolveLocalAdminAddress: administering the chain and certifying
+// ESG scores are separate competences. An administrator that also wants to certify
+// grants itself the CA permission explicitly, which keeps the two roles
+// distinguishable on chain.
+//
+// The write-permission half of the decision is left to WeightPublishTo, which owns
+// the per-stream CanWrite check for every stream; passing `true` here reflects that
+// division of labour rather than skipping the check.
+static std::string ResolveLocalCertificationAuthorityAddress()
+{
+    CKeyID keyID = ResolveLocalNodeKeyID();
+
+    WeightEsgWriteDecision d = mc_WeightEsgWriteDecision(
+        IsCertificationAuthority(keyID),
+        true,                                  // stream write: checked in WeightPublishTo
+        ChainSupportsCustomPermissions());
+
+    if (d != MC_WEIGHT_ESG_WRITE_OK)
+    {
+        throw JSONRPCError(RPC_INSUFFICIENT_PERMISSIONS,
+                           std::string("ESG publication refused: ") +
+                           mc_WeightEsgWriteDecisionText(d));
     }
     return CBitcoinAddress(keyID).ToString();
 }
@@ -263,8 +341,20 @@ Value weightsetesg(const Array& params, bool fHelp)
     {
         throw runtime_error(
             "weightsetesg \"node_address\" score\n"
-            "\nAdmin-only. Publishes a certified ESG score for a node to the\n"
-            "weight-engine-esg stream (round-trip validated before publishing).\n"
+            "\nCertification-Authority only. Publishes a certified ESG score for a node\n"
+            "to the weight-engine-esg stream (round-trip validated before publishing).\n"
+            "\nAn ESG score is an attestation of TRUST: no peer can verify it\n"
+            "cryptographically, so the only defence is to restrict who may assert it.\n"
+            "The writer must therefore hold the Certification Authority role, which the\n"
+            "global administrator delegates per address and may revoke:\n"
+            "\n  grant  <address> " MC_WEIGHT_CA_PERMISSION_NAME
+            "     # confer CA status (requires admin)\n"
+            "  revoke <address> " MC_WEIGHT_CA_PERMISSION_NAME
+            "     # withdraw it\n"
+            "\nBeing a global administrator is NOT sufficient: the administrator confers\n"
+            "the role, it does not hold it automatically. This keeps 'who administers the\n"
+            "network' distinguishable on chain from 'who certifies ESG scores'.\n"
+            "\nAlso requires: weight-engine-esg.write on this node's address.\n"
             "\nArguments:\n"
             "1. \"node_address\"  (string, required) company or miner address\n"
             "2. score            (numeric, required) certified ESG score, strictly > 0\n"
@@ -272,7 +362,7 @@ Value weightsetesg(const Array& params, bool fHelp)
             "\"txid\"  (string) the publish transaction id\n");
     }
 
-    std::string from = ResolveLocalAdminAddress();
+    std::string from = ResolveLocalCertificationAuthorityAddress();
     std::string node_address = params[0].get_str();
     double esg = RecordDouble(params[1], "score");
     return WeightPublisher::PublishEsg(from, node_address, esg);

@@ -27,6 +27,8 @@ Every `file:line` reference points at the code as of this document's last revisi
   - [2.1 The Phase 4 mining delay](#21-the-phase-4-mining-delay)
 - [3. Catalogue — behavioural malus registry](#3-catalogue--behavioural-malus-registry)
 - [4. Catalogue — weight engine](#4-catalogue--weight-engine)
+  - [4.1 No parameter governs who may write the input streams](#41-no-parameter-governs-who-may-write-the-input-streams)
+  - [4.2 The Certification Authority role is not a chain parameter either](#42-the-certification-authority-role-is-not-a-chain-parameter-either)
 - [5. Per-node parameter — `-weight`](#5-per-node-parameter---weight)
 - [6. Value validation at startup](#6-value-validation-at-startup)
 - [7. Configuration recipes](#7-configuration-recipes)
@@ -211,7 +213,7 @@ each record *is*, and it is enforced in code rather than by a switch.
 | Stream | Write policy | Enforced by |
 |---|---|---|
 | `weight-engine-membership` | CLOSED, but `.write` is meant to be granted to **every node** | The reader's self-attestation rule: tx signer must equal the payload's `node_address`, else the record is discarded |
-| `weight-engine-esg` | CLOSED, `.write` to governance only | `CanAdmin` in the `weightsetesg` RPC, plus the operator's grant discipline |
+| `weight-engine-esg` | CLOSED, `.write` to **Certification Authorities** only | `IsCertificationAuthority` in the `weightsetesg` RPC — the `high1` custom permission, **not** `CanAdmin` — plus the operator's grant discipline |
 | `weight-engine-reconciliation` | CLOSED, `.write` to governance only | `CanAdmin` in the `weightsetreconciliation` RPC, plus the operator's grant discipline |
 | `weight-engine-activity` | Nobody writes it | Chain-derived; there is no publisher |
 
@@ -220,6 +222,28 @@ Grants are therefore an **operational** step, documented in
 `params.dat` value. Adding a parameter here would be actively wrong for membership: making
 the self-attestation rule switchable would make it non-consensus-critical, and a node that
 turned it off would fold records its peers discard — a fork.
+
+### 4.2 The Certification Authority role is not a chain parameter either
+
+The ESG writer must hold the **Certification Authority** role, carried on chain by
+MultiChain's `high1` custom permission
+([`weight_authorization.h`](../../weight_engine/weight_authorization.h)
+`MC_WEIGHT_CA_PERMISSION_NAME`). It is a **compile-time constant**, not an inheritable
+parameter, and that is a deliberate consequence of what the check does:
+
+- the CA check gates **local publication only** — the reader still accepts any
+  schema-valid confirmed ESG record regardless of publisher;
+- so two nodes disagreeing about who is a CA disagree only about whether their *own* RPC
+  will publish. They compute identical weights and **cannot fork**;
+- therefore the role is **not consensus-critical**, and putting it in `params.dat` — where
+  every entry is hash-enforced precisely because divergence forks the chain — would imply
+  a role it does not have.
+
+MultiChain has no arbitrary named custom permission (`grant <addr> custom.certauth` does
+not exist): there are exactly six fixed slots. The role occupies a **high** slot because
+only those require `admin` rather than `activate` to grant, which is what makes CA status
+conferrable by the administrator alone. Full rationale, including why the reader does not
+enforce the role: [weight-engine.md §6.4](weight-engine.md#64-esg--the-certification-authority-role).
 
 Two related constants are **not** chain parameters yet, and are fixed at compile time in
 [`weight_streams.h`](../../weight_engine/weight_streams.h):
@@ -328,6 +352,12 @@ start.
 # Dynamic weights derived from the on-chain inputs, 200-block epochs:
 ./src/multichain-util create mychain -enablewpoa=1 \
     -enableweightengine=1 -weightepochlength=200
+
+# ...then, at runtime, the per-stream authorizations (no params.dat involvement):
+multichain-cli mychain grant <certifier> high1                        # CA role
+multichain-cli mychain grant <certifier> weight-engine-esg.write
+multichain-cli mychain grant <admin>     weight-engine-reconciliation.write
+multichain-cli mychain grant <everynode> weight-engine-membership.write
 
 # Static per-node weight (only meaningful when the weight engine is off):
 ./src/multichaind mychain -weight=250

@@ -99,13 +99,42 @@ for s in weight-engine-esg weight-engine-membership weight-engine-reconciliation
 done
 sleep 4
 
-# 2a. valid ESG
+# 2a-pre. ESG is CERTIFICATION-AUTHORITY-only, and being a global admin is NOT
+# sufficient: the admin CONFERS the role, it does not hold it automatically. So the
+# very first assertion is that the admin — which has .write but not yet `high1` — is
+# refused. This is what distinguishes "who administers" from "who certifies".
 r=$(mcli weightsetesg "$ADMIN" 15)
-is_txid "$r" && ok "admin publishes valid ESG" || bad "valid ESG failed: $r"
+echo "$r" | grep -qiE 'certification authority|not a certification' \
+  && ok "global admin without the CA role is refused (roles are distinct)" \
+  || bad "admin without CA role was NOT refused: $r"
 
-# 3. invalid ESG (score 0) rejected
+# 2a. confer CA status, then publish. Only `admin` can grant a high1..high3 slot
+# (mc_Permissions::IsActivateEnough returns 0 for the high slots), which is what makes
+# CA status conferrable by the administrator alone.
+mcli grant "$ADMIN" high1 >/dev/null 2>&1
+sleep 4
+r=$(mcli weightsetesg "$ADMIN" 15)
+is_txid "$r" && ok "Certification Authority publishes valid ESG" || bad "valid ESG failed: $r"
+
+# 3. invalid ESG (score 0) rejected — schema validation still applies to a CA
 r=$(mcli weightsetesg "$ADMIN" 0)
 echo "$r" | grep -qiE 'reject|error|> 0|schema' && ok "invalid ESG (0) rejected" || bad "invalid ESG NOT rejected: $r"
+
+# 3a. a generic address (neither CA nor admin) cannot publish. Checked on its own node
+# only in the multi-node suite; here the single node's identity is the admin, so what
+# is asserted is the complementary case: revoking the CA role blocks further writes
+# even though weight-engine-esg.write is STILL granted. The two grants are
+# independent, and revocation does not wait for .write to be withdrawn as well.
+mcli revoke "$ADMIN" high1 >/dev/null 2>&1
+sleep 4
+r=$(mcli weightsetesg "$ADMIN" 16)
+echo "$r" | grep -qiE 'certification authority|not a certification' \
+  && ok "revoking CA status blocks ESG writes while .write remains" \
+  || bad "revoked CA could still publish ESG: $r"
+
+# restore CA status for the remainder of the run
+mcli grant "$ADMIN" high1 >/dev/null 2>&1
+sleep 4
 
 # 2b. membership — SELF-WRITE: the node declares its OWN cluster, signed by itself.
 # There is no parameter for "whose" membership, so the record can only ever be about

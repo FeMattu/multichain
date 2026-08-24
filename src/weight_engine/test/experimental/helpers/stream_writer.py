@@ -81,10 +81,34 @@ class StreamWriter(object):
         self.log.info("granted ADMIN write on the %d input streams (confirmed)"
                       % len(config.INPUT_STREAMS))
 
+    def ensure_certification_authority(self):
+        """Grant the ADMIN address the Certification Authority role and WAIT for the
+        grant to confirm -- weightsetesg refuses an address without it, and an
+        unconfirmed grant does not count.
+
+        The role is carried by MultiChain's `high1` custom permission slot: it must be
+        a HIGH slot because only those require `admin` (not merely `activate`) to
+        grant, which is what keeps CA status conferrable by the administrator alone.
+        Idempotent."""
+        admin = self.net.admin
+        ok, res = admin.cli_ok("grant", admin.address, "high1")
+        if ok and _looks_txid(res):
+            self._record(res, "grant_certauth", config.ADMIN_LABEL)
+            self.net.wait_confirmed(admin, res)
+        self.log.info("ADMIN holds the Certification Authority role (high1)")
+
     # -- ESG (static, published once) --------------------------------------
     def publish_esg(self, scores):
         """Publish every address's certified ESG score. Returns
-        {label: (address, score, txid_or_None)} for esg_scores.csv."""
+        {label: (address, score, txid_or_None)} for esg_scores.csv.
+
+        weightsetesg is CERTIFICATION-AUTHORITY-only, and being a global admin is not
+        sufficient: the admin confers the role, it does not hold it automatically. The
+        harness's ADMIN stands in for Apuana SB, which in the project both administers
+        the network and runs the certification process, so it grants ITSELF the role
+        once before publishing -- exactly the on-chain step a real deployment performs
+        for whichever address signs certifications."""
+        self.ensure_certification_authority()
         out = {}
         for label, score in sorted(scores.items()):
             addr = self.reg.address_of(label)

@@ -110,6 +110,7 @@ BITCOIN_CORE_H = \
   wpoa/private_sortition.h \
   weight_engine/weight_streams.h \
   weight_engine/weight_records.h \
+  weight_engine/weight_authorization.h \
   weight_engine/weight_engine.h \
   weight_engine/weight_reader.h \
   weight_engine/weight_publisher.h \

@@ -30,6 +30,7 @@ Configuration parameters: [protocol-parameters.md §4](protocol-parameters.md#4-
   - [6.1 On-chain gate](#61-on-chain-gate--consensus-enforced)
   - [6.2 Application gate — per stream, not uniform](#62-application-gate--per-stream-not-uniform)
   - [6.3 Why opening membership is safe](#63-why-opening-membership-is-safe--and-where-the-known-limit-still-bites)
+  - [6.4 ESG — the Certification Authority role](#64-esg--the-certification-authority-role)
 - [7. The complete flow](#7-the-complete-flow)
 - [8. Threading](#8-threading)
 - [9. Module files](#9-module-files)
@@ -65,12 +66,15 @@ the weight layer and its actors (the certifier, the joining nodes themselves, th
 reconciliation process), not to consensus. Only the **output** stream `wpoa-weights`
 belongs to wPoA. The naming split mirrors the directory split.
 
-> **Thesis alignment.** Figure 7.1 of the thesis already describes membership as
-> *"scrittura del solo proprio record"* — the target model, captioned there as **not yet
-> reflected by the implementation**. It is now implemented, and extended with the
-> cryptographic self-attestation check described in [§2.2](#22-membership-is-self-attested-and-the-key-is-the-declaring-node).
-> The figure's caveat about membership can therefore be dropped from the thesis text; the
-> caveats about the other two streams still stand. See
+> **Thesis alignment.** Figure 7.1 of the thesis describes a target permission model
+> captioned as **not yet reflected by the implementation**: writes reserved to
+> Certification Authorities on `weight-engine-esg`, own-record-only writes on
+> `weight-engine-membership`, admin-reserved writes on `weight-engine-reconciliation`.
+> The first two are now implemented — membership additionally strengthened with a
+> cryptographic self-attestation check ([§2.2](#22-membership-is-self-attested-and-the-key-is-the-declaring-node)),
+> ESG with an explicitly delegated, revocable CA role
+> ([§6.4](#64-esg--the-certification-authority-role)). The figure's caveat can therefore
+> be dropped for those two rows. See
 > [implementation-status.md §0.1](implementation-status.md#01-how-a-nodes-weight-is-assigned--the-authoritative-flow).
 
 Definitions in [`weight_streams.h`](../../weight_engine/weight_streams.h).
@@ -78,8 +82,8 @@ Definitions in [`weight_streams.h`](../../weight_engine/weight_streams.h).
 | Stream | Item key | Payload | Origin | Who may write |
 |---|---|---|---|---|
 | `weight-engine-membership` | **node address** (declaring node) | `{"node_address":…, "miner_address":…, "timestamp":…}` | **The node itself**, via RPC | **Every node** (self-attested) |
-| `weight-engine-esg` | node address | `{"node_address":…, "esg":…}` | Admin, via RPC | Governance only |
-| `weight-engine-reconciliation` | miner address | `{"node_address":…, "reconciled":…, "epoch":…}` | Admin, via RPC | Governance only |
+| `weight-engine-esg` | node address | `{"node_address":…, "esg":…}` | **Certification Authority**, via RPC | Delegated certifiers only |
+| `weight-engine-reconciliation` | miner address | `{"node_address":…, "reconciled":…, "epoch":…}` | Admin, via RPC | Admin only |
 | `weight-engine-activity` | node address | `{"node_address":…, "tau":…, "epoch":…}` | **Chain-derived** | Nobody |
 
 ### 2.1 Activity is published by nobody
@@ -315,7 +319,7 @@ authorization model:
 | Stream | `.write` granted to | Why |
 |---|---|---|
 | `weight-engine-membership` | **every node on the network** | Records are self-verifiable: a write permission lets a node speak about *itself* and nothing more. |
-| `weight-engine-esg` | governance / certifiers only | An unverifiable external attestation about a third party. |
+| `weight-engine-esg` | **Certification Authorities only** | An unverifiable external attestation about a third party. See [§6.4](#64-esg--the-certification-authority-role). |
 | `weight-engine-reconciliation` | governance only | Likewise. |
 | `wpoa-weights` | authorized publishers only | A claim nobody can check. |
 
@@ -330,7 +334,7 @@ single criterion: **can a third party verify the claim?**
 
 | RPC (category `weight`) | Stream written | Caller | Payload |
 |---|---|---|---|
-| `weightsetesg` | `weight-engine-esg` | **admin only** | `{node_address, esg}`, `esg > 0` |
+| `weightsetesg` | `weight-engine-esg` | **Certification Authority only** | `{node_address, esg}`, `esg > 0` |
 | `weightregistermembership` | `weight-engine-membership` | **any node** | key `node_address`, payload `{node_address, miner_address, timestamp}` |
 | `weightsetreconciliation` | `weight-engine-reconciliation` | **admin only** | `{node_address, reconciled, epoch}`, `R >= 0`, `epoch >= 1` |
 
@@ -339,10 +343,13 @@ Registered in [`rpclist.cpp`](../../rpc/rpclist.cpp). Each method, **before** pu
 1. validates the record in **round-trip** with the *same* W1 parser the reader uses
    (`mc_Parse*RecordJson`) — so it cannot emit a malformed record the reader would
    reject;
-2. applies its authorization rule: `CanAdmin` for the two attestation RPCs;
-   for `weightregistermembership`, **none is needed** — it takes no parameter naming
-   *whose* membership to declare, so it structurally cannot write about anyone but the
-   caller ([`weight_publisher.cpp`](../../weight_engine/weight_publisher.cpp));
+2. applies its authorization rule
+   ([`weight_authorization.h`](../../weight_engine/weight_authorization.h) holds the
+   decision tables as pure functions; the on-chain lookups live in
+   [`weight_publisher.cpp`](../../weight_engine/weight_publisher.cpp)):
+   `IsCertificationAuthority` for ESG, `CanAdmin` for reconciliation, and **none at
+   all** for `weightregistermembership` — it takes no parameter naming *whose*
+   membership to declare, so it structurally cannot write about anyone but the caller;
 3. verifies that the address has write permission on the stream;
 4. publishes **from** that address.
 
@@ -375,18 +382,115 @@ honest node, whether it came from `weightregistermembership`, from the generic
 as opening the malus stream is.
 
 **The known limit survives, narrowed to the two attestation streams.** Write permission is
-an **independent** grant from admin status, and for ESG and reconciliation the reader still
-**trusts any schema-valid confirmed record, regardless of its publisher**.
+an **independent** grant from the role check, and for ESG and reconciliation the reader
+still **trusts any schema-valid confirmed record, regardless of its publisher**.
 
-> For `weight-engine-esg` and `weight-engine-reconciliation`, the "admin-only" guarantee
-> holds **only if** operators grant `.write` on those streams **exclusively** to
-> governance addresses. A non-admin who has been granted `.write` could publish a
-> schema-valid but **forged** record using the generic `publishfrom` rather than the
-> `weightset*` RPCs, and the reader would accept it. Granting `.write` on those two
-> streams **is** the security control, and must be treated as such.
+> For `weight-engine-esg` and `weight-engine-reconciliation`, the role guarantee holds
+> **only if** operators grant `.write` on those streams **exclusively** to the intended
+> writers. An address that has been granted `.write` without holding the role could
+> publish a schema-valid but **forged** record using the generic `publishfrom` rather
+> than the `weightset*` RPCs, and the reader would accept it. Granting `.write` on those
+> two streams **is** the security control, and must be treated as such.
 >
 > `weight-engine-membership` is **no longer exposed to this**: its validity rule is
 > cryptographic, not privilege-based.
+
+### 6.4 ESG — the Certification Authority role
+
+An ESG score cannot be verified by a peer at all. It is produced by an external
+certification process — documentary review, compliance questionnaires, audit by a
+third-party body or by the network operator (thesis Def. 6.1) — and there is simply no
+assertion inside the record for a node to check. **The only available defence is to
+restrict rigidly who may assert it, not to validate what is asserted.**
+
+Restricting it to the *global administrator*, as the code originally did, conflates two
+different competences: running the network and signing a sustainability certification.
+Under that model every certifier must hold full chain-administration power, and nothing on
+chain distinguishes the two roles. So the writer is now a **Certification Authority** — a
+role the administrator delegates explicitly, per address, and can revoke.
+
+```bash
+multichain-cli <chain> grant  <address> high1     # confer CA status (requires admin)
+multichain-cli <chain> revoke <address> high1     # withdraw it
+multichain-cli <chain> grant  <address> weight-engine-esg.write
+```
+
+**Being a global administrator is not sufficient**, and that is the point. The
+administrator *confers* the role; it does not hold it automatically. An admin that also
+wants to certify grants itself `high1` explicitly, which keeps the two roles separately
+visible in `listpermissions`.
+
+#### Why a fixed custom permission slot
+
+MultiChain has **no arbitrary named custom permission**: there is no
+`grant <addr> custom.certauth`. It offers exactly six **fixed** slots
+([`permission.h`](../../permissions/permission.h)): `low1`–`low3` (`MC_PTP_CUSTOM1..3`) and
+`high1`–`high3` (`MC_PTP_CUSTOM4..6`). The role therefore occupies one of them, and it
+**must be a high slot**:
+
+> `mc_Permissions::IsActivateEnough` returns `0` for the high slots
+> ([`permission.cpp`](../../permissions/permission.cpp)), so granting one requires
+> `admin` and not merely `activate`. That is precisely the requirement that **only the
+> administrator may confer CA status**. The low slots are grantable by any `activate`
+> holder and would silently weaken it.
+
+The wire name is defined once, as `MC_WEIGHT_CA_PERMISSION_NAME` in
+[`weight_authorization.h`](../../weight_engine/weight_authorization.h), and the permission
+*bit* is derived from that name at runtime through MultiChain's own `GetPermissionType`
+parser — so the name shown in an error and the bit actually queried cannot drift, and
+moving the role to another slot is a one-line change.
+
+> **Operational note.** Because the slot is one of six fixed ones, a deployment already
+> using `high1` for an application-level RBAC role must move that role to a different
+> slot, or it would be indistinguishable from CA status.
+
+#### Revocation, and what it does not require
+
+Revocation takes effect immediately and **independently of `.write`**: an address whose
+`high1` was revoked is refused even while it still holds `weight-engine-esg.write`. The two
+grants are independent, and the CA check does not wait for `.write` to be withdrawn.
+
+Revoking `.write` as well is still **recommended**, for a different reason: it closes the
+raw `publishfrom` route of [§6.3](#63-why-opening-membership-is-safe--and-where-the-known-limit-still-bites).
+A revoked CA that keeps `.write` can no longer use `weightsetesg`, but could still land a
+schema-valid record directly. So a complete revocation is both:
+
+```bash
+multichain-cli <chain> revoke <address> high1
+multichain-cli <chain> revoke <address> weight-engine-esg.write
+```
+
+#### This gate is not consensus-critical — deliberately
+
+The CA check gates **local publication only**. The reader still accepts any schema-valid
+confirmed ESG record regardless of publisher, exactly as before. Two nodes that disagree
+about who is a CA therefore disagree only about whether their *own* RPC will publish: they
+compute the same weights and cannot fork.
+
+That is why the CA slot is a compile-time constant rather than a hash-enforced chain
+parameter — making it inheritable would imply a consensus role it does not have. See
+[protocol-parameters.md §4.1](protocol-parameters.md#41-no-parameter-governs-who-may-write-the-input-streams).
+
+**Why the reader does not also enforce the role.** It would close the `publishfrom`
+bypass, and it was considered and rejected: permissions are **mutable**, so a later
+revocation would retroactively invalidate historical records and change already-computed
+epoch weights. A node re-syncing after a revocation would fold a different history than
+the one the network folded at the time — a determinism hazard worse than the limit it
+removes. Membership does not have this problem precisely because its rule is a fact about
+a transaction (who signed it), which is immutable, rather than a fact about current
+permission state.
+
+#### Why ESG does not adopt the self-write of membership
+
+Membership is self-attested because a node declaring *its own* cluster makes a claim that
+is checkable — compare the signer to the declared address. ESG is the opposite: a node
+declaring its own ESG score would be asserting exactly the quantity it benefits from
+inflating, with nothing to check it against. Self-write is safe **only** where the claim is
+self-verifiable.
+
+This makes ESG the single remaining **trusted** input in the whole pipeline. Every other
+input is either chain-derived (`tau`) or self-verifiable (membership), so the integrity of
+the weights rests on the CA role and on the grant discipline of [§6.3](#63-why-opening-membership-is-safe--and-where-the-known-limit-still-bites).
 
 ---
 
@@ -422,6 +526,7 @@ a minimal chain snapshot.
 |---|---|
 | [`weight_streams.h`](../../weight_engine/weight_streams.h) | W1: stream names, JSON field names, parameter defaults. No logic. |
 | [`weight_records.h`](../../weight_engine/weight_records.h) | W1: pure record parsers (`mc_Parse*RecordJson`), the self-attestation predicate and the cluster inversion. Testable in isolation. |
+| [`weight_authorization.h`](../../weight_engine/weight_authorization.h) | W1: the pure per-stream write policy — the Certification Authority decision table and the CA role's wire name. No node dependency. |
 | [`weight_engine.h`](../../weight_engine/weight_engine.h) | W2: the pure computation core. Standard library only. |
 | [`weight_engine.cpp`](../../weight_engine/weight_engine.cpp) | W3: `HeightToEpoch`, `ThreadWeightEngine`, node glue, configuration globals. |
 | [`weight_reader.h`](../../weight_engine/weight_reader.h) / [`.cpp`](../../weight_engine/weight_reader.cpp) | W3: `WeightStreamReader` — stream lifecycle, confirmed reads, `ComputeActivityForEpoch`. |
@@ -432,13 +537,14 @@ a minimal chain snapshot.
 The module has its **own** unit suites, with a runner separate from the wPoA one:
 
 ```bash
-./src/weight_engine/test/run_unit_tests.sh              # both suites
-./src/weight_engine/test/run_unit_tests.sh engine       # one only
+./src/weight_engine/test/run_unit_tests.sh                    # every suite
+./src/weight_engine/test/run_unit_tests.sh authorization      # one only
 ```
 
 | Suite | File | Coverage |
 |---|---|---|
 | `records` | [`weight_records_tests.cpp`](../../weight_engine/test/weight_records_tests.cpp) | Record parsing; the **self-attestation rule** (own declaration accepted, foreign / admin-proxy declaration rejected, fail-closed on an unrecoverable signer); cluster inversion, including a node changing cluster twice so only the last declaration counts, and the no-self-membership rule. |
+| `authorization` | [`weight_authorization_tests.cpp`](../../weight_engine/test/weight_authorization_tests.cpp) | The ESG write decision table: CA authorized; **global admin without the role refused**; generic address refused; revocation biting while `.write` remains; CA lacking `.write`; CA-first error ordering; fail-closed on a chain without custom permissions; and that the role sits in a `high*` slot. |
 | `engine` | [`weight_engine_tests.cpp`](../../weight_engine/test/weight_engine_tests.cpp) | Order independence, zero-total guard, `rho` bounds, balance recursion, weight positivity, `ToIntegerWeight` clamp, multi-cluster allocation identity. |
 
 Both are node-free: they do not require building the node. See [testing.md](testing.md).
