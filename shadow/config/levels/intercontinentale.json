@@ -1,0 +1,136 @@
+{
+  "name": "intercontinentale",
+  "description": "Livello 4 - intercontinentale: Europa + Nord America, dorsale Milano / Frankfurt / New York",
+  "source": "stessi 10 ruoli dei livelli precedenti; il terzo hub e la sua unica azienda attraversano l'Atlantico",
+  "nodes": [
+    {
+      "id": 0,
+      "label": "HUB_IT_Milano",
+      "host": "m1",
+      "role": "miner",
+      "lat": 45.4642,
+      "lon": 9.19
+    },
+    {
+      "id": 1,
+      "label": "HUB_DE_Frankfurt",
+      "host": "m2",
+      "role": "miner",
+      "lat": 50.1109,
+      "lon": 8.6821
+    },
+    {
+      "id": 2,
+      "label": "HUB_US_New_York",
+      "host": "m3",
+      "role": "miner",
+      "lat": 40.7128,
+      "lon": -74.006
+    },
+    {
+      "id": 3,
+      "label": "Zurich",
+      "host": "c1",
+      "role": "company",
+      "lat": 47.3769,
+      "lon": 8.5417,
+      "cluster": "m1"
+    },
+    {
+      "id": 4,
+      "label": "Marseille",
+      "host": "c2",
+      "role": "company",
+      "lat": 43.2965,
+      "lon": 5.3698,
+      "cluster": "m1"
+    },
+    {
+      "id": 5,
+      "label": "Amsterdam",
+      "host": "c3",
+      "role": "company",
+      "lat": 52.3676,
+      "lon": 4.9041,
+      "cluster": "m2"
+    },
+    {
+      "id": 6,
+      "label": "Warszawa",
+      "host": "c4",
+      "role": "company",
+      "lat": 52.2297,
+      "lon": 21.0122,
+      "cluster": "m2"
+    },
+    {
+      "id": 7,
+      "label": "Paris",
+      "host": "admin",
+      "role": "admin",
+      "lat": 48.8566,
+      "lon": 2.3522
+    },
+    {
+      "id": 8,
+      "label": "London",
+      "host": "ca",
+      "role": "ca",
+      "lat": 51.5074,
+      "lon": -0.1278
+    },
+    {
+      "id": 9,
+      "label": "Toronto",
+      "host": "c5",
+      "role": "company",
+      "lat": 43.6532,
+      "lon": -79.3832,
+      "cluster": "m3"
+    }
+  ],
+  "backbone": [
+    [
+      0,
+      1
+    ],
+    [
+      0,
+      2
+    ],
+    [
+      1,
+      2
+    ]
+  ],
+  "access": [
+    [
+      3,
+      0
+    ],
+    [
+      4,
+      0
+    ],
+    [
+      5,
+      1
+    ],
+    [
+      6,
+      1
+    ],
+    [
+      7,
+      1
+    ],
+    [
+      8,
+      1
+    ],
+    [
+      9,
+      2
+    ]
+  ]
+}

@@ -1,0 +1,136 @@
+{
+  "name": "regionale",
+  "description": "Livello 1 - regionale: Toscana / Liguria / Emilia-Romagna",
+  "source": "derivato da topologia_myledger_regionale.gml.orig (nodi, ruoli e banda invariati; latenze ricalcolate col modello fisico comune ai quattro livelli)",
+  "nodes": [
+    {
+      "id": 0,
+      "label": "HUB_TOSCANA_Firenze",
+      "host": "m1",
+      "role": "miner",
+      "lat": 43.7696,
+      "lon": 11.2558
+    },
+    {
+      "id": 1,
+      "label": "HUB_LIGURIA_Genova",
+      "host": "m2",
+      "role": "miner",
+      "lat": 44.4056,
+      "lon": 8.9463
+    },
+    {
+      "id": 2,
+      "label": "HUB_EMILIAROMAGNA_Bologna",
+      "host": "m3",
+      "role": "miner",
+      "lat": 44.4949,
+      "lon": 11.3426
+    },
+    {
+      "id": 3,
+      "label": "Pisa",
+      "host": "c1",
+      "role": "company",
+      "lat": 43.7228,
+      "lon": 10.4017,
+      "cluster": "m1"
+    },
+    {
+      "id": 4,
+      "label": "Siena",
+      "host": "c2",
+      "role": "company",
+      "lat": 43.3188,
+      "lon": 11.3308,
+      "cluster": "m1"
+    },
+    {
+      "id": 5,
+      "label": "La_Spezia",
+      "host": "c3",
+      "role": "company",
+      "lat": 44.1025,
+      "lon": 9.8241,
+      "cluster": "m2"
+    },
+    {
+      "id": 6,
+      "label": "Savona",
+      "host": "c4",
+      "role": "company",
+      "lat": 44.309,
+      "lon": 8.4772,
+      "cluster": "m2"
+    },
+    {
+      "id": 7,
+      "label": "Modena",
+      "host": "admin",
+      "role": "admin",
+      "lat": 44.6471,
+      "lon": 10.9252
+    },
+    {
+      "id": 8,
+      "label": "Parma",
+      "host": "ca",
+      "role": "ca",
+      "lat": 44.8015,
+      "lon": 10.3279
+    },
+    {
+      "id": 9,
+      "label": "Ravenna",
+      "host": "c5",
+      "role": "company",
+      "lat": 44.4184,
+      "lon": 12.2035,
+      "cluster": "m3"
+    }
+  ],
+  "backbone": [
+    [
+      0,
+      1
+    ],
+    [
+      0,
+      2
+    ],
+    [
+      1,
+      2
+    ]
+  ],
+  "access": [
+    [
+      3,
+      0
+    ],
+    [
+      4,
+      0
+    ],
+    [
+      5,
+      1
+    ],
+    [
+      6,
+      1
+    ],
+    [
+      7,
+      2
+    ],
+    [
+      8,
+      2
+    ],
+    [
+      9,
+      2
+    ]
+  ]
+}

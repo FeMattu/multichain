@@ -1,0 +1,153 @@
+
+══════════════════════════════════════════════════════════════════
+  POESIA / wPoA — riepilogo run: livello regionale
+══════════════════════════════════════════════════════════════════
+
+── Blocchi ────────────────────────────────────────────────────
+  totale prodotti      : 325
+  fase di setup (PoA)  : 64 blocchi (height 1..64)
+  finestra wPoA misurata: 261 blocchi (height 65..325)
+
+  intervallo fra blocchi (finestra wPoA), target = 10 s:
+    media      10.78 s     scarto vs target +0.78 s (+7.8%)
+    mediana    11.00 s
+    dev.std     2.84 s
+    min/max     5.00 / 16.00 s
+
+── Traiettoria dei pesi (stream wpoa-weights) ─────────────────
+  epoca             m1        m2        m3
+  e1                 1         1         1
+  e3             21682      9050      5330
+  e4            104092     38404     13358
+  e5            105590     41030     11653
+  e6            123285     46111     15062
+  e7            105590     38404     13358
+  e8            115186     46111          
+  e9            105590     38404     10941
+  e10           123285     46111     15062
+  e11           105590     41030     13358
+  e12           121788     43484          
+  e13           115186     46111     12645
+  e14           105590     38404     11653
+  e15                      38576     13358
+  e16            97034     40858          
+  e17           115186     43656     10941
+  e18           113689     43484     13358
+  e19           107087     41030     15062
+  e20           113689     43484     13358
+  e21           105590     38404          
+  e22                      38576      9236
+  e23           113232     43484     15062
+  e24           123285     48565          
+  e25           107087     41030     10941
+  e26           113689               13358
+  record totali: 67
+
+── Distribuzione dei proposer vs peso pubblicato ──────────────
+  host   indirizzo                                blocchi     quota      peso    attesa
+  m1     1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv       195    74.7%    113689    67.6%
+  m2     1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq        60    23.0%     41030    24.4%
+  m3     1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM          6     2.3%     13358     7.9%
+
+  blocchi consecutivi dello stesso proposer: 175 osservati, 159.0 attesi
+
+  chi-quadro = 12.625  (df=2, critico 5% = 5.991)  -> NON compatibile con la selezione pesata
+  NB: il peso usato e' l'ULTIMO pubblicato; se e' cambiato fra
+      le epoche il test e' solo indicativo: va letto insieme alla
+      traiettoria per epoca riportata sopra.
+
+── Delay di sortition per miner ───────────────────────────────
+  banda: [5.00, 15.00] s   (T=10 s, delta=0.5, Dmax=5.00 s)
+  host   campioni     min s   media s     max s  pos. in banda
+  m1          273     4.565    10.805    15.009         58.0%
+  m2          273     4.841    12.660    15.083         76.6%
+  m3          273     5.185    14.271    15.183         92.7%
+  (pos. in banda: 0% = sempre il primo a proporre, 100% = sempre l'ultimo)
+
+  margine della timer race G = D(2) - D(1)   (Def. 5.15, su 273 round):
+    media      3.351 s
+    mediana    2.860 s
+    minimo     0.011 s
+    5o perc.   0.140 s
+    round con G < 100 ms: 12 su 273 (4.4%)
+
+── Consistenza fra nodi a fine run ────────────────────────────
+  host       height   peers          GAS  best hash          hash a -6
+  admin         325       9  999436.4469  006cf36804c6a402   004fe5103513d0b1
+  m1            325       9       7.3695  006cf36804c6a402   004fe5103513d0b1
+  m2            325       9       9.0827  006cf36804c6a402   004fe5103513d0b1
+  m3            325       9      60.7073  006cf36804c6a402   004fe5103513d0b1
+  c1            325       9       77.971  006cf36804c6a402   004fe5103513d0b1
+  c2            325       9       85.266  006cf36804c6a402   004fe5103513d0b1
+  c3            325       9        88.91  006cf36804c6a402   004fe5103513d0b1
+  c4            325       9      91.0446  006cf36804c6a402   004fe5103513d0b1
+  c5            325       9      92.8388  006cf36804c6a402   004fe5103513d0b1
+  ca            325       9      49.3572  006cf36804c6a402   004fe5103513d0b1
+  -> tutti i nodi sulla stessa testa: nessun fork.
+
+── ESG certificati dal CA (esg_scores.csv) ──
+  host,address,esg
+  m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,85.56
+  m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,26.46
+  m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,24.17
+  c1,1C53cY45GLP1jCtGZ3jjRxK41xDpogMscxLoET,17.50
+  c2,1KwDQh1YXp8Gjcm5PUTzw4oojyETr76SR6K5g4,77.16
+  c3,1akYxtSrcSsAR7FUMwZr2RAjBZeS9pefqhTGii,99.26
+  c4,1RNinnWHk18yFwNrDviXwK4oyJtZRTHU6YR4MW,92.76
+  c5,1HW1Y78Q8DyPU8YKdN6gzrGyAC2HS8qt346Gcd,70.53
+
+── Adesioni ai cluster (membership.csv) ──
+  m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv
+  m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq
+  c1,1C53cY45GLP1jCtGZ3jjRxK41xDpogMscxLoET,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv
+  c3,1akYxtSrcSsAR7FUMwZr2RAjBZeS9pefqhTGii,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq
+  c2,1KwDQh1YXp8Gjcm5PUTzw4oojyETr76SR6K5g4,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv
+  m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM
+  c5,1HW1Y78Q8DyPU8YKdN6gzrGyAC2HS8qt346Gcd,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM
+  c4,1RNinnWHk18yFwNrDviXwK4oyJtZRTHU6YR4MW,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq
+
+── Riconciliazione verso il treasury (reconciliation.csv) ──
+  height,epoch,miner,balance,sent
+  34,3,m1,49.7844,45.3952
+  34,3,m3,51.6272,9.9254
+  34,3,m2,49.784,28.6704
+  37,4,m2,21.0684,11.4410
+  37,4,m3,42.6582,8.1316
+  37,4,m1,104.344,97.2268
+  48,5,m3,34.5432,6.5086
+  48,5,m2,109.6994,64.6196
+  48,5,m1,108.1722,100.8636
+  60,6,m2,45.7362,26.2417
+  60,6,m3,27.9138,5.1828
+  ... (79 righe totali)
+
+── Movimenti GAS (init + rifornimenti) (gas_transfers.csv) ──
+  6,init,c1,100
+  6,init,c2,100
+  6,init,c3,100
+  6,init,c4,100
+  6,init,c5,100
+  6,init,m1,50
+  6,init,m2,50
+  6,init,m3,50
+  6,init,ca,50
+  34,refill,m1,100
+  37,refill,m1,100
+  37,refill,m2,100
+  ... (48 righe totali)
+
+── Contatori diagnostici (somma sui 10 debug.log) ─────────────
+  blocchi validati dalla sortition 2436
+  blocchi RIFIUTATI dalla sortition 0
+  seed RANDAO derivati             86960
+  fold di fallback RANDAO          0
+  score di sortition calcolati     822
+  attese per mappa pesi vuota      274
+  pesi registrati sullo stream     69
+  letture della mappa dei pesi     7186
+  epoche calcolate dal motore      260
+  report di malus valutati         31
+
+── weightverifyweights (ricomputazione indipendente) ──────────
+  {"epoch": 25, "verified": true, "records": 3, "invalid": 0, "entries": [{"address": "1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv", "published": 107087, "published_epoch": 25, "recomputed": 107087, "verdict": "ok"}, {"address": "1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq", "published": 41030, "published_epoch": 25, "recomputed": 41030, "verdict": "ok"}, {"address": "1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM", "published": 10941, "published_epoch": 25, "recomputed": 10941, "verdict": "ok"}]}
+

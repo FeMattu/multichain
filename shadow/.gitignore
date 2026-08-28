@@ -1,0 +1,6 @@
+# output delle run: rigenerabile, non va versionato
+*/run/
+shadow.data/
+shadow.log
+*.pyc
+__pycache__/
