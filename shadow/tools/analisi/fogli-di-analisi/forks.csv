@@ -1,0 +1,25 @@
+run_id,livello,tbt,nodi,teste_distinte,hash_sepolti_distinti,altezza_min,altezza_max,spread_altezze,host_divergenti,verdetto
+run1-tbt-15s/continentale,continentale,15,10,1,1,169,169,0,,nessun fork
+run1-tbt-15s/intercontinentale,intercontinentale,15,10,1,1,172,172,0,,nessun fork
+run1-tbt-15s/nazionale,nazionale,15,10,1,1,173,173,0,,nessun fork
+run1-tbt-15s/regionale,regionale,15,10,1,1,167,167,0,,nessun fork
+run2-tbt-10s/continentale,continentale,10,10,1,1,324,324,0,,nessun fork
+run2-tbt-10s/intercontinentale,intercontinentale,10,10,1,1,327,327,0,,nessun fork
+run2-tbt-10s/nazionale,nazionale,10,10,1,1,329,329,0,,nessun fork
+run2-tbt-10s/regionale,regionale,10,10,1,1,325,325,0,,nessun fork
+run3-tbt-5s/continentale,continentale,5,10,2,1,420,421,1,c5 ca,ritardo di propagazione
+run3-tbt-5s/intercontinentale,intercontinentale,5,10,1,1,421,421,0,,nessun fork
+run3-tbt-5s/nazionale,nazionale,5,10,1,1,415,415,0,,nessun fork
+run3-tbt-5s/regionale,regionale,5,10,1,1,416,416,0,,nessun fork
+run4-tbt-3s/continentale,continentale,3,10,2,1,537,538,1,c5 ca,ritardo di propagazione
+run4-tbt-3s/intercontinentale,intercontinentale,3,10,2,1,535,536,1,admin m1 m2 m3,ritardo di propagazione
+run4-tbt-3s/nazionale,nazionale,3,10,2,1,529,530,1,c3 c4 c5 ca,ritardo di propagazione
+run4-tbt-3s/regionale,regionale,3,10,1,1,531,531,0,,nessun fork
+run5-tbt-2s/continentale,continentale,2,10,2,1,651,652,1,admin m1 m2 m3,ritardo di propagazione
+run5-tbt-2s/intercontinentale,intercontinentale,2,10,3,1,655,657,2,c2 c3 c4 c5 ca,corsa al tip
+run5-tbt-2s/nazionale,nazionale,2,10,1,1,659,659,0,,nessun fork
+run5-tbt-2s/regionale,regionale,2,10,1,1,658,658,0,,nessun fork
+run6-tbt-10s/continentale,continentale,10,10,2,1,597,598,1,c3 c4 c5 ca,ritardo di propagazione
+run6-tbt-10s/intercontinentale,intercontinentale,10,10,2,1,602,603,1,admin m1 m2 m3,ritardo di propagazione
+run6-tbt-10s/nazionale,nazionale,10,10,1,1,598,598,0,,nessun fork
+run6-tbt-10s/regionale,regionale,10,10,1,1,590,590,0,,nessun fork

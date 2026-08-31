@@ -9,6 +9,23 @@
 #                   garantire che nessuna simulazione si fermi perche' un nodo
 #                   ha finito le unita' (cap. 4.2.1 della tesi: Apuana SB vende
 #                   GAS alle aziende clienti e fa da camera di compensazione).
+#   fase 'epoch_watch' : sorvegliante di epoca. A ogni epoca chiusa e sepolta
+#                   campiona cio' che a fine run NON sarebbe piu' ricostruibile,
+#                   e lo appende sotto metrics/epoche/. Tre cose, e solo quelle:
+#                     * weightverifyweights, che riporta la SOLA ultima epoca
+#                       verificata: lo snapshot finale ne conserverebbe una;
+#                     * altezza e best-hash di ogni nodo, per vedere un fork
+#                       riassorbito a metà run, che node_state.csv (istantanea
+#                       di fine run) non mostrerebbe;
+#                     * saldo del treasury, che a fine run e' un solo numero.
+#                   Il riepilogo per epoca (metrics/summary_epoche.txt) NON viene
+#                   costruito qui: lo fa tools/summary_per_epoca.py a fine
+#                   simulazione, fuori da Shadow. Il motivo e' lo stesso per cui
+#                   sim_common.sh usa curl e non multichain-cli — vedi il commento
+#                   in testa a quel file: ogni processo lanciato dentro Shadow
+#                   paga il vDSO, e un interprete Python avviato a ogni epoca
+#                   sposterebbe l'orologio simulato del nodo che deve intanto
+#                   rifornire il GAS. Qui dentro solo bash e curl.
 set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/sim_common.sh"
 
@@ -22,6 +39,7 @@ GAS_THRESHOLD="${POESIA_GAS_THRESHOLD:-20}"  # soglia sotto cui si rifornisce
 GAS_TOPUP="${POESIA_GAS_TOPUP:-100}"         # taglio del rifornimento
 REFILL_EVERY="${POESIA_REFILL_EVERY:-30}"    # secondi simulati fra due controlli
 STREAM="${POESIA_STREAM:-poesia-supplychain}"
+EPOCHLEN="${POESIA_EPOCHLEN:-12}"           # lunghezza epoca in blocchi
 
 grant_one() {   # grant_one <addr> <permessi>
     local addr=$1 perms=$2
@@ -154,6 +172,93 @@ do_refill() {
     done
 }
 
+# ---------------------------------------------------------------------------
+# Sorvegliante di epoca
+# ---------------------------------------------------------------------------
+#
+# STABILITA'. Un'epoca viene campionata solo quando e' chiusa E sepolta di
+# EPOCH_MARGIN blocchi: e' lo stesso margine che il weight engine si prende
+# prima di pubblicare il peso di un'epoca (Sez. 6.4). Campionare prima
+# fotograferebbe un verdetto che il motore non ha ancora emesso, e la riga
+# direbbe "non verificato" per un motivo di tempismo, non di protocollo.
+EPOCH_MARGIN="${POESIA_EPOCH_MARGIN:-8}"
+EPOCH_POLL="${POESIA_EPOCH_POLL:-10}"          # secondi simulati fra due controlli
+SETUPBLOCKS="${POESIA_SETUPBLOCKS:-60}"        # fine della fase PoA nativa
+
+do_epoch_watch() {
+    wait_rpc "$IP" 900 || exit 1
+    local dir="$METRICS/epoche"
+    mkdir -p "$dir"
+    : > "$dir/verify_epoche.jsonl"
+    echo "epoca,height_admin,host,height,besthash,peers" > "$dir/node_state_epoche.csv"
+    echo "epoca,height,saldo_treasury_gas"                > "$dir/treasury_epoche.csv"
+    log "sorvegliante di epoca attivo (epochlen=$EPOCHLEN, margine=$EPOCH_MARGIN blocchi)"
+
+    # Prima epoca che valga la pena campionare: quella in cui cade il primo
+    # blocco governato dalla wPoA. Le epoche interamente dentro la fase di setup
+    # non hanno blocchi da analizzare, e campionarle sarebbe solo un burst di
+    # RPC all'avvio.
+    local last=$(( SETUPBLOCKS / EPOCHLEN ))
+    log "sorvegliante: prima epoca campionata la $(( last + 1 )) "\
+        "(setup = $SETUPBLOCKS blocchi)"
+
+    while true; do
+        local h target
+        h="$(rpc_result "$IP" getblockcount)"
+        case "$h" in ''|*[!0-9]*) sleep "$EPOCH_POLL"; continue ;; esac
+
+        # L'epoca t e' pronta quando la catena e' arrivata EPOCH_MARGIN blocchi
+        # oltre il suo ultimo blocco, cioe' quando h >= t*EPOCHLEN + margine.
+        # Invertita: t <= (h - margine)/EPOCHLEN. Si campionano TUTTE le epoche
+        # pronte e non ancora fatte, non solo l'ultima: la finestra di sepoltura
+        # e' larga poche altezze e con target-block-time basso un solo controllo
+        # per ciclo salterebbe epoche intere.
+        if [ "$h" -gt "$EPOCH_MARGIN" ]; then
+            target=$(( (h - EPOCH_MARGIN) / EPOCHLEN ))
+            while [ "$last" -lt "$target" ]; do
+                last=$(( last + 1 ))
+                campiona_epoca "$last" "$h" "$dir"
+            done
+        fi
+        sleep "$EPOCH_POLL"
+    done
+}
+
+# campiona_epoca <epoca> <height_corrente> <dir>
+campiona_epoca() {
+    local target=$1 h=$2 dir=$3
+    log "epoca $target chiusa e sepolta (height $h): campionamento"
+
+    # 1. verifica indipendente: e' l'unico istante in cui la RPC parla di QUESTA
+    #    epoca, perche' riporta solo l'ultima che il nodo ha verificato.
+    local v; v="$(rpc "$IP" weightverifyweights)"
+    printf '{"epoca_richiesta":%s,"height":%s,"verify":%s}\n' \
+           "$target" "$h" "${v:-null}" >> "$dir/verify_epoche.jsonl"
+
+    # 2. stato per nodo: un fork riassorbito prima della fine run non
+    #    lascerebbe altra traccia in node_state.csv, che e' un'istantanea finale.
+    local hh
+    for hh in admin $MINERS $COMPANIES ca; do
+        local ip_var="POESIA_IP_${hh}" nip
+        nip="${!ip_var:-}"
+        [ -z "$nip" ] && continue
+        local nh bh pc
+        nh="$(rpc_result "$nip" getblockcount)"
+        bh="$(rpc_result "$nip" getbestblockhash | tr -d '\"')"
+        pc="$(rpc "$nip" getpeerinfo | grep -o '"addr"' | wc -l)"
+        echo "$target,$h,$hh,${nh:-n/d},${bh:-n/d},${pc:-0}" \
+             >> "$dir/node_state_epoche.csv"
+    done
+
+    # 3. saldo del treasury: a fine run e' un numero solo, qui e' una serie.
+    if [ -n "${POESIA_TREASURY:-}" ]; then
+        local tb
+        tb="$(rpc "$IP" getaddressbalances "[\"$POESIA_TREASURY\"]" \
+              | grep -oE '"qty":[0-9.]+' | head -n1 | cut -d: -f2)"
+        echo "$target,$h,${tb:-n/d}" >> "$dir/treasury_epoche.csv"
+    fi
+}
+
 # Dump finale dello stato della catena: e' la fonte primaria delle metriche.
 # Molto piu' affidabile del parsing dei debug.log, perche' listblocks riporta
 # direttamente il proposer di ogni altezza.
@@ -204,8 +309,9 @@ do_snapshot() {
 }
 
 case "$PHASE" in
-    grant)    do_grant ;;
-    refill)   do_refill ;;
-    snapshot) do_snapshot ;;
+    grant)       do_grant ;;
+    refill)      do_refill ;;
+    epoch_watch) do_epoch_watch ;;
+    snapshot)    do_snapshot ;;
     *)      log "fase sconosciuta: $PHASE"; exit 2 ;;
 esac

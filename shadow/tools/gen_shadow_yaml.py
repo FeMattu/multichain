@@ -14,6 +14,7 @@ per "block timestamp too far in the future"):
   t=T_JOIN       9 nodi: multichaind vero, join e sync
   t=T_REGISTER   CA: ESG certificati; miner e aziende: membership
   t=T_TRAFFIC    aziende: traffico; miner: riconciliazione; admin: refill GAS
+                 + sorvegliante di epoca (campiona a ogni epoca sepolta)
   height=setup   la wPoA subentra alla PoA nativa: inizio finestra di misura
 
 L'ordine non e' arbitrario: senza record di membership e ESG confermati il
@@ -108,6 +109,9 @@ def main():
         "POESIA_RPCPASS": args.rpcpass, "POESIA_MINERS": " ".join(miners),
         "POESIA_COMPANIES": " ".join(companies), "POESIA_TREASURY": treasury,
         "POESIA_EPOCHLEN": args.epoch_len, "POESIA_RNG_SEED": args.rng_seed,
+        # serve al sorvegliante di epoca per non campionare le epoche che
+        # cadono interamente dentro la fase di setup, dove la wPoA non governa
+        "POESIA_SETUPBLOCKS": args.setup_blocks,
         "POESIA_STREAM": args.stream,
     }
     for h, ip in IP_BASE.items():
@@ -160,6 +164,15 @@ def main():
                             t_grant, env))
             out.append(proc("/usr/bin/bash",
                             [os.path.join(args.tools, "role_admin.sh"), "refill"],
+                            t_traffic, env, final="running"))
+            # sorvegliante di epoca: a ogni epoca chiusa e sepolta campiona cio'
+            # che a fine run non sarebbe piu' ricostruibile (il verdetto della
+            # verifica indipendente, che la RPC riporta solo per l'ultima epoca;
+            # le altezze per nodo, per vedere un fork riassorbito; il saldo del
+            # treasury come serie invece che come numero finale). Solo bash e
+            # curl: nessun interprete lanciato dentro Shadow.
+            out.append(proc("/usr/bin/bash",
+                            [os.path.join(args.tools, "role_admin.sh"), "epoch_watch"],
                             t_traffic, env, final="running"))
             # snapshot finale: dump dello stato della catena poco prima dello stop
             out.append(proc("/usr/bin/bash",
