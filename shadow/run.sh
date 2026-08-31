@@ -153,5 +153,12 @@ python3 "$TOOLS/collect_metrics.py" --run "$RUN" --chain "$CHAIN" \
         --delta "$WPOA_SORTITION_DELTA" \
         --tbt "$TBT" || true
 
+# Riepilogo PER EPOCA: stesse analisi di summary.txt, ma epoca per epoca e
+# confrontate col peso VIGENTE in quell'epoca invece che con l'ultimo della run.
+# Gira fuori da Shadow, a simulazione conclusa: e' il posto giusto per un
+# interprete Python, che dentro la simulazione costerebbe tempo simulato.
+python3 "$TOOLS/summary_per_epoca.py" --run "$RUN" --level "$AREA" \
+        --tbt "$TBT" || true
+
 echo "[run] output: $RUN"
 exit "$RC"

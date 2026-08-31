@@ -1,0 +1,133 @@
+
+══════════════════════════════════════════════════════════════════
+  POESIA / wPoA — riepilogo run: livello regionale
+══════════════════════════════════════════════════════════════════
+
+── Blocchi ────────────────────────────────────────────────────
+  totale prodotti      : 590
+  fase di setup (PoA)  : 152 blocchi (height 1..152)
+  finestra wPoA misurata: 438 blocchi (height 153..590)
+
+  intervallo fra blocchi (finestra wPoA), target = 10 s:
+    media      10.96 s     scarto vs target +0.96 s (+9.6%)
+    mediana    11.00 s
+    dev.std     2.96 s
+    min/max     5.00 / 16.00 s
+
+── Traiettoria dei pesi (stream wpoa-weights) ─────────────────
+  epoca             m1        m2        m3
+  e1            502990    199052     50861
+  e2            804271    306266     76432
+  e3                      256000     78137
+  e4            812370    311175     76432
+  e5            866954    334297     83251
+  record totali: 14
+
+── Distribuzione dei proposer vs peso pubblicato ──────────────
+  host   indirizzo                                blocchi     quota      peso    attesa
+  m1     1FFo3ah8sAKS4svacrTuQgQBUPEKrjop9rucCp       331    75.6%    866954    67.5%
+  m2     1LC9SkHzxLmLLFfkwQEj9rh3sam26QwqQtCo9N        79    18.0%    334297    26.0%
+  m3     1TxbTqvswKsuDDV5Yn8biA1UVPNko7mhCHbU88        28     6.4%     83251     6.5%
+
+  blocchi consecutivi dello stesso proposer: 289 osservati, 265.6 attesi
+
+  chi-quadro = 14.980  (df=2, critico 5% = 5.991)  -> NON compatibile con la selezione pesata
+  NB: il peso usato e' l'ULTIMO pubblicato; se e' cambiato fra
+      le epoche il test e' solo indicativo: va letto insieme alla
+      traiettoria per epoca riportata sopra.
+
+── Delay di sortition per miner ───────────────────────────────
+  banda: [5.00, 15.00] s   (T=10 s, delta=0.5, Dmax=5.00 s)
+  host   campioni     min s   media s     max s  pos. in banda
+  m1          450     4.793    10.895    15.093         58.9%
+  m2          451     5.074    12.891    15.159         78.9%
+  m3          450     5.284    14.199    15.183         92.0%
+  (pos. in banda: 0% = sempre il primo a proporre, 100% = sempre l'ultimo)
+
+  margine della timer race G = D(2) - D(1)   (Def. 5.15, su 450 round):
+    media      3.172 s
+    mediana    2.530 s
+    minimo     0.003 s
+    5o perc.   0.125 s
+    round con G < 100 ms: 19 su 450 (4.2%)
+
+── Consistenza fra nodi a fine run ────────────────────────────
+  host       height   peers          GAS  best hash          hash a -6
+  admin         590       9  999275.7331  0026a6e2b03ab6ab   00dc0e85e582c855
+  m1            590       9     125.6721  0026a6e2b03ab6ab   00dc0e85e582c855
+  m2            590       9      51.5266  0026a6e2b03ab6ab   00dc0e85e582c855
+  m3            590       9     119.7946  0026a6e2b03ab6ab   00dc0e85e582c855
+  c1            590       9       57.757  0026a6e2b03ab6ab   00dc0e85e582c855
+  c2            590       9      71.7894  0026a6e2b03ab6ab   00dc0e85e582c855
+  c3            590       9      78.8066  0026a6e2b03ab6ab   00dc0e85e582c855
+  c4            590       9      83.0148  0026a6e2b03ab6ab   00dc0e85e582c855
+  c5            590       9      86.3804  0026a6e2b03ab6ab   00dc0e85e582c855
+  ca            590       9      49.3568  0026a6e2b03ab6ab   00dc0e85e582c855
+  -> tutti i nodi sulla stessa testa: nessun fork.
+
+── ESG certificati dal CA (esg_scores.csv) ──
+  host,address,esg
+  m1,1FFo3ah8sAKS4svacrTuQgQBUPEKrjop9rucCp,85.56
+  m2,1LC9SkHzxLmLLFfkwQEj9rh3sam26QwqQtCo9N,26.46
+  m3,1TxbTqvswKsuDDV5Yn8biA1UVPNko7mhCHbU88,24.17
+  c1,1FxDCdZVGpjWm6uLbNob2iCQ9yxw6DRxBSm9XK,17.50
+  c2,12tZ2Db4FqKa8tWj5kCSyLayPn2wZgFqbmAA15,77.16
+  c3,1T4QPhG3W19X6RG7JSCSWUBEWNcDbX5P7TSXm6,99.26
+  c4,1HSsgRzT3u8K12Vu3Exb4rfR3ftqbn2i14Qd81,92.76
+  c5,1WKAvTs1PuLWWhbs81FEoWMauujvaJsfcdCK19,70.53
+
+── Adesioni ai cluster (membership.csv) ──
+  m1,1FFo3ah8sAKS4svacrTuQgQBUPEKrjop9rucCp,1FFo3ah8sAKS4svacrTuQgQBUPEKrjop9rucCp
+  m3,1TxbTqvswKsuDDV5Yn8biA1UVPNko7mhCHbU88,1TxbTqvswKsuDDV5Yn8biA1UVPNko7mhCHbU88
+  m2,1LC9SkHzxLmLLFfkwQEj9rh3sam26QwqQtCo9N,1LC9SkHzxLmLLFfkwQEj9rh3sam26QwqQtCo9N
+  c1,1FxDCdZVGpjWm6uLbNob2iCQ9yxw6DRxBSm9XK,1FFo3ah8sAKS4svacrTuQgQBUPEKrjop9rucCp
+  c2,12tZ2Db4FqKa8tWj5kCSyLayPn2wZgFqbmAA15,1FFo3ah8sAKS4svacrTuQgQBUPEKrjop9rucCp
+  c3,1T4QPhG3W19X6RG7JSCSWUBEWNcDbX5P7TSXm6,1LC9SkHzxLmLLFfkwQEj9rh3sam26QwqQtCo9N
+  c4,1HSsgRzT3u8K12Vu3Exb4rfR3ftqbn2i14Qd81,1LC9SkHzxLmLLFfkwQEj9rh3sam26QwqQtCo9N
+  c5,1WKAvTs1PuLWWhbs81FEoWMauujvaJsfcdCK19,1TxbTqvswKsuDDV5Yn8biA1UVPNko7mhCHbU88
+
+── Riconciliazione verso il treasury (reconciliation.csv) ──
+  height,epoch,miner,balance,sent
+  34,1,m2,49.8892,28.7335
+  34,1,m1,51.4186,46.9477
+  34,1,m3,49.8892,9.5778
+  100,2,m3,44.0568,8.4114
+  100,2,m2,23.0599,12.6359
+  100,2,m1,108.3831,101.0639
+  200,3,m2,116.4166,68.6500
+  200,3,m3,39.7506,7.5501
+  200,3,m1,115.766,108.0777
+  300,4,m2,50.7964,29.2778
+  300,4,m3,32.6175,6.1235
+  ... (22 righe totali)
+
+── Movimenti GAS (init + rifornimenti) (gas_transfers.csv) ──
+  6,init,c1,100
+  6,init,c2,100
+  6,init,c3,100
+  6,init,c4,100
+  6,init,c5,100
+  6,init,m1,50
+  6,init,m2,50
+  6,init,m3,50
+  6,init,ca,50
+  34,refill,m1,100
+  103,refill,m1,100
+  103,refill,m2,100
+  ... (19 righe totali)
+
+── Contatori diagnostici (somma sui 10 debug.log) ─────────────
+  blocchi validati dalla sortition 3968
+  blocchi RIFIUTATI dalla sortition 0
+  seed RANDAO derivati             143963
+  fold di fallback RANDAO          0
+  score di sortition calcolati     1354
+  attese per mappa pesi vuota      451
+  pesi registrati sullo stream     14
+  letture della mappa dei pesi     11719
+  epoche calcolate dal motore      40
+  report di malus valutati         31
+
+── weightverifyweights (ricomputazione indipendente) ──────────
+  {"epoch": 4, "verified": true, "records": 3, "invalid": 0, "entries": [{"address": "1FFo3ah8sAKS4svacrTuQgQBUPEKrjop9rucCp", "published": 812370, "published_epoch": 4, "recomputed": 812370, "verdict": "ok"}, {"address": "1LC9SkHzxLmLLFfkwQEj9rh3sam26QwqQtCo9N", "published": 311175, "published_epoch": 4, "recomputed": 311175, "verdict": "ok"}, {"address": "1TxbTqvswKsuDDV5Yn8biA1UVPNko7mhCHbU88", "published": 76432, "published_epoch": 4, "recomputed": 76432, "verdict": "ok"}]}
+

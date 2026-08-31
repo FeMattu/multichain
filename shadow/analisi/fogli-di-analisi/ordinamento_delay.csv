@@ -1,0 +1,21 @@
+run_id,livello,tbt,host_confrontati,ordine_per_peso_decrescente,delay_nello_stesso_ordine,inversioni,dettaglio_inversioni,ordinamento_rispettato
+run1-tbt-15s/continentale,continentale,15,3,m1:84937 > m2:42596 > m3:12849,m1:16.87 > m2:18.997 > m3:21.22,0,,1
+run1-tbt-15s/intercontinentale,intercontinentale,15,3,m1:91646 > m2:47081 > m3:12849,m1:16.317 > m2:18.814 > m3:21.064,0,,1
+run1-tbt-15s/nazionale,nazionale,15,3,m1:91646 > m2:44838 > m3:12849,m1:15.777 > m2:18.758 > m3:21.12,0,,1
+run1-tbt-15s/regionale,regionale,15,3,m1:91646 > m2:44838 > m3:12849,m1:16.663 > m2:18.819 > m3:21.046,0,,1
+run2-tbt-10s/continentale,continentale,10,3,m1:123285 > m2:46111 > m3:13358,m1:10.885 > m2:12.751 > m3:13.891,0,,1
+run2-tbt-10s/intercontinentale,intercontinentale,10,3,m1:115186 > m2:46111 > m3:13358,m1:10.831 > m2:12.519 > m3:14.234,0,,1
+run2-tbt-10s/nazionale,nazionale,10,3,m1:115186 > m2:41030 > m3:13358,m1:10.708 > m2:12.905 > m3:14.157,0,,1
+run2-tbt-10s/regionale,regionale,10,3,m1:113689 > m2:41030 > m3:13358,m1:10.805 > m2:12.66 > m3:14.271,0,,1
+run3-tbt-5s/continentale,continentale,5,3,m1:70199 > m2:25787 > m3:9948,m1:5.266 > m2:6.316 > m3:6.912,0,,1
+run3-tbt-5s/intercontinentale,intercontinentale,5,3,m1:70199 > m2:25787 > m3:9948,m1:5.272 > m2:6.422 > m3:6.995,0,,1
+run3-tbt-5s/nazionale,nazionale,5,3,m1:62099 > m2:23161 > m3:9948,m1:5.406 > m2:6.322 > m3:6.946,0,,1
+run3-tbt-5s/regionale,regionale,5,3,m1:70199 > m2:28242 > m3:9948,m1:5.351 > m2:6.239 > m3:7.09,0,,1
+run4-tbt-3s/continentale,continentale,3,3,m1:45901 > m2:18080 > m3:6539,m1:3.204 > m2:3.819 > m3:4.147,0,,1
+run4-tbt-3s/intercontinentale,intercontinentale,3,3,m1:51006 > m2:20535 > m3:5826,m1:3.14 > m2:3.852 > m3:4.101,0,,1
+run4-tbt-3s/nazionale,nazionale,3,3,m1:44404 > m2:18080 > m3:8243,m1:3.207 > m2:3.768 > m3:4.131,0,,1
+run4-tbt-3s/regionale,regionale,3,3,m1:52503 > m2:18080 > m3:5826,m1:3.181 > m2:3.818 > m3:4.126,0,,1
+run5-tbt-2s/continentale,continentale,2,3,m1:34351 > m2:10353 > m3:6539,m1:2.092 > m2:2.453 > m3:2.673,0,,1
+run5-tbt-2s/intercontinentale,intercontinentale,2,3,m1:36305 > m2:10353 > m3:8243,m1:2.081 > m2:2.503 > m3:2.69,0,,1
+run5-tbt-2s/nazionale,nazionale,2,3,m1:36305 > m2:15454 > m3:4122,m1:2.073 > m2:2.452 > m3:2.715,0,,1
+run5-tbt-2s/regionale,regionale,2,3,m1:44404 > m2:18080 > m3:5826,m1:2.074 > m2:2.486 > m3:2.71,0,,1

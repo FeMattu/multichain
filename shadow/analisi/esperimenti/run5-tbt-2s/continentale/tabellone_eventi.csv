@@ -1,0 +1,731 @@
+run_id,livello,tbt,height,epoca,categoria_evento,nodo_mittente,nodo_destinatario,importo,unita,note
+run5-tbt-2s/continentale,continentale,2,28,3,gas/init,admin,c1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,28,3,gas/init,admin,c2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,28,3,gas/init,admin,c3,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,28,3,gas/init,admin,c4,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,28,3,gas/init,admin,c5,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,28,3,gas/init,admin,m1,50.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,28,3,gas/init,admin,m2,50.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,28,3,gas/init,admin,m3,50.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,28,3,gas/init,admin,ca,50.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,123,11,esg,ca,m1,85.56,punteggio ESG,"stream chiuso, scrive solo la CA delegata"
+run5-tbt-2s/continentale,continentale,2,123,11,esg,ca,m2,26.46,punteggio ESG,"stream chiuso, scrive solo la CA delegata"
+run5-tbt-2s/continentale,continentale,2,123,11,esg,ca,m3,24.17,punteggio ESG,"stream chiuso, scrive solo la CA delegata"
+run5-tbt-2s/continentale,continentale,2,123,11,esg,ca,c1,17.5,punteggio ESG,"stream chiuso, scrive solo la CA delegata"
+run5-tbt-2s/continentale,continentale,2,123,11,esg,ca,c2,77.16,punteggio ESG,"stream chiuso, scrive solo la CA delegata"
+run5-tbt-2s/continentale,continentale,2,123,11,esg,ca,c3,99.26,punteggio ESG,"stream chiuso, scrive solo la CA delegata"
+run5-tbt-2s/continentale,continentale,2,123,11,esg,ca,c4,92.76,punteggio ESG,"stream chiuso, scrive solo la CA delegata"
+run5-tbt-2s/continentale,continentale,2,123,11,esg,ca,c5,70.53,punteggio ESG,"stream chiuso, scrive solo la CA delegata"
+run5-tbt-2s/continentale,continentale,2,123,11,membership,c3,m2,,,adesione
+run5-tbt-2s/continentale,continentale,2,123,11,membership,m1,m1,,,auto-adesione del miner
+run5-tbt-2s/continentale,continentale,2,123,11,membership,c1,m1,,,adesione
+run5-tbt-2s/continentale,continentale,2,123,11,membership,c4,m2,,,adesione
+run5-tbt-2s/continentale,continentale,2,123,11,membership,m2,m2,,,auto-adesione del miner
+run5-tbt-2s/continentale,continentale,2,123,11,membership,c2,m1,,,adesione
+run5-tbt-2s/continentale,continentale,2,123,11,membership,c5,m3,,,adesione
+run5-tbt-2s/continentale,continentale,2,123,11,membership,m3,m3,,,auto-adesione del miner
+run5-tbt-2s/continentale,continentale,2,159,14,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,160,14,gas/reconcile,m3,treasury,9.5205,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,160,14,gas/reconcile,m2,treasury,28.5616,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,160,14,gas/reconcile,m1,treasury,45.523,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,161,14,traffico,c3,stream applicativo,1,seq,ok
+run5-tbt-2s/continentale,continentale,2,161,14,traffico,c4,stream applicativo,1,seq,ok
+run5-tbt-2s/continentale,continentale,2,161,14,traffico,c2,stream applicativo,1,seq,ok
+run5-tbt-2s/continentale,continentale,2,161,14,traffico,c1,stream applicativo,1,seq,ok
+run5-tbt-2s/continentale,continentale,2,161,14,traffico,c5,stream applicativo,1,seq,ok
+run5-tbt-2s/continentale,continentale,2,165,14,traffico,c1,stream applicativo,2,seq,ok
+run5-tbt-2s/continentale,continentale,2,167,14,traffico,c2,stream applicativo,2,seq,ok
+run5-tbt-2s/continentale,continentale,2,168,15,traffico,c3,stream applicativo,2,seq,ok
+run5-tbt-2s/continentale,continentale,2,168,15,traffico,c1,stream applicativo,3,seq,ok
+run5-tbt-2s/continentale,continentale,2,170,15,gas/reconcile,m2,treasury,11.3976,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,170,15,gas/reconcile,m3,treasury,7.6074,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,170,15,gas/reconcile,m1,treasury,97.4481,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,171,15,traffico,c4,stream applicativo,2,seq,ok
+run5-tbt-2s/continentale,continentale,2,172,15,traffico,c2,stream applicativo,3,seq,ok
+run5-tbt-2s/continentale,continentale,2,172,15,traffico,c1,stream applicativo,4,seq,ok
+run5-tbt-2s/continentale,continentale,2,173,15,traffico,c5,stream applicativo,2,seq,ok
+run5-tbt-2s/continentale,continentale,2,175,15,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,175,15,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,177,15,traffico,c3,stream applicativo,3,seq,ok
+run5-tbt-2s/continentale,continentale,2,177,15,traffico,c1,stream applicativo,5,seq,ok
+run5-tbt-2s/continentale,continentale,2,178,15,traffico,c2,stream applicativo,4,seq,ok
+run5-tbt-2s/continentale,continentale,2,180,16,traffico,c4,stream applicativo,3,seq,ok
+run5-tbt-2s/continentale,continentale,2,180,16,traffico,c1,stream applicativo,6,seq,ok
+run5-tbt-2s/continentale,continentale,2,184,16,gas/reconcile,m3,treasury,6.084,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,184,16,gas/reconcile,m2,treasury,64.4863,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,184,16,gas/reconcile,m1,treasury,99.9973,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,184,16,traffico,c3,stream applicativo,4,seq,ok
+run5-tbt-2s/continentale,continentale,2,184,16,traffico,c2,stream applicativo,5,seq,ok
+run5-tbt-2s/continentale,continentale,2,184,16,traffico,c1,stream applicativo,7,seq,ok
+run5-tbt-2s/continentale,continentale,2,185,16,traffico,c5,stream applicativo,3,seq,ok
+run5-tbt-2s/continentale,continentale,2,188,16,traffico,c1,stream applicativo,8,seq,ok
+run5-tbt-2s/continentale,continentale,2,189,16,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,190,16,traffico,c4,stream applicativo,4,seq,ok
+run5-tbt-2s/continentale,continentale,2,190,16,traffico,c2,stream applicativo,6,seq,ok
+run5-tbt-2s/continentale,continentale,2,191,16,traffico,c3,stream applicativo,5,seq,ok
+run5-tbt-2s/continentale,continentale,2,191,16,traffico,c1,stream applicativo,9,seq,ok
+run5-tbt-2s/continentale,continentale,2,194,17,gas/reconcile,m2,treasury,25.7218,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,194,17,gas/reconcile,m3,treasury,4.8965,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,194,17,gas/reconcile,m1,treasury,100.4948,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,196,17,traffico,c2,stream applicativo,7,seq,ok
+run5-tbt-2s/continentale,continentale,2,196,17,traffico,c1,stream applicativo,10,seq,ok
+run5-tbt-2s/continentale,continentale,2,197,17,traffico,c5,stream applicativo,4,seq,ok
+run5-tbt-2s/continentale,continentale,2,199,17,traffico,c4,stream applicativo,5,seq,ok
+run5-tbt-2s/continentale,continentale,2,199,17,traffico,c3,stream applicativo,6,seq,ok
+run5-tbt-2s/continentale,continentale,2,199,17,traffico,c1,stream applicativo,11,seq,ok
+run5-tbt-2s/continentale,continentale,2,201,17,traffico,c2,stream applicativo,8,seq,ok
+run5-tbt-2s/continentale,continentale,2,202,17,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,202,17,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,202,17,traffico,c1,stream applicativo,12,seq,ok
+run5-tbt-2s/continentale,continentale,2,205,18,gas/reconcile,m3,treasury,3.9306,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,205,18,traffico,c3,stream applicativo,7,seq,ok
+run5-tbt-2s/continentale,continentale,2,205,18,traffico,c2,stream applicativo,9,seq,ok
+run5-tbt-2s/continentale,continentale,2,205,18,traffico,c1,stream applicativo,13,seq,ok
+run5-tbt-2s/continentale,continentale,2,206,18,gas/reconcile,m2,treasury,70.3371,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,206,18,gas/reconcile,m1,treasury,100.2366,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,206,18,traffico,c5,stream applicativo,5,seq,ok
+run5-tbt-2s/continentale,continentale,2,206,18,traffico,c4,stream applicativo,6,seq,ok
+run5-tbt-2s/continentale,continentale,2,207,18,traffico,c1,stream applicativo,14,seq,ok
+run5-tbt-2s/continentale,continentale,2,209,18,traffico,c2,stream applicativo,10,seq,ok
+run5-tbt-2s/continentale,continentale,2,210,18,traffico,c3,stream applicativo,8,seq,ok
+run5-tbt-2s/continentale,continentale,2,210,18,traffico,c1,stream applicativo,15,seq,ok
+run5-tbt-2s/continentale,continentale,2,214,18,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,214,18,gas/refill,admin,m3,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,214,18,traffico,c4,stream applicativo,7,seq,ok
+run5-tbt-2s/continentale,continentale,2,214,18,traffico,c2,stream applicativo,11,seq,ok
+run5-tbt-2s/continentale,continentale,2,214,18,traffico,c1,stream applicativo,16,seq,ok
+run5-tbt-2s/continentale,continentale,2,216,19,traffico,c5,stream applicativo,6,seq,ok
+run5-tbt-2s/continentale,continentale,2,217,19,traffico,c3,stream applicativo,9,seq,ok
+run5-tbt-2s/continentale,continentale,2,217,19,traffico,c1,stream applicativo,17,seq,ok
+run5-tbt-2s/continentale,continentale,2,218,19,gas/reconcile,m2,treasury,28.2139,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,218,19,gas/reconcile,m3,treasury,23.1143,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,218,19,gas/reconcile,m1,treasury,100.6137,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,219,19,traffico,c2,stream applicativo,12,seq,ok
+run5-tbt-2s/continentale,continentale,2,221,19,traffico,c1,stream applicativo,18,seq,ok
+run5-tbt-2s/continentale,continentale,2,222,19,traffico,c4,stream applicativo,8,seq,ok
+run5-tbt-2s/continentale,continentale,2,223,19,traffico,c3,stream applicativo,10,seq,ok
+run5-tbt-2s/continentale,continentale,2,223,19,traffico,c2,stream applicativo,13,seq,ok
+run5-tbt-2s/continentale,continentale,2,223,19,traffico,c1,stream applicativo,19,seq,ok
+run5-tbt-2s/continentale,continentale,2,225,19,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,226,19,traffico,c5,stream applicativo,7,seq,ok
+run5-tbt-2s/continentale,continentale,2,226,19,traffico,c1,stream applicativo,20,seq,ok
+run5-tbt-2s/continentale,continentale,2,228,20,traffico,c2,stream applicativo,14,seq,ok
+run5-tbt-2s/continentale,continentale,2,229,20,gas/reconcile,m2,treasury,11.1951,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,229,20,gas/reconcile,m3,treasury,18.4613,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,229,20,gas/reconcile,m1,treasury,100.8907,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,229,20,traffico,c4,stream applicativo,9,seq,ok
+run5-tbt-2s/continentale,continentale,2,229,20,traffico,c3,stream applicativo,11,seq,ok
+run5-tbt-2s/continentale,continentale,2,229,20,traffico,c1,stream applicativo,21,seq,ok
+run5-tbt-2s/continentale,continentale,2,233,20,traffico,c2,stream applicativo,15,seq,ok
+run5-tbt-2s/continentale,continentale,2,233,20,traffico,c1,stream applicativo,22,seq,ok
+run5-tbt-2s/continentale,continentale,2,235,20,traffico,c5,stream applicativo,8,seq,ok
+run5-tbt-2s/continentale,continentale,2,235,20,traffico,c3,stream applicativo,12,seq,ok
+run5-tbt-2s/continentale,continentale,2,235,20,traffico,c1,stream applicativo,23,seq,ok
+run5-tbt-2s/continentale,continentale,2,236,20,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,236,20,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,237,20,traffico,c4,stream applicativo,10,seq,ok
+run5-tbt-2s/continentale,continentale,2,237,20,traffico,c2,stream applicativo,16,seq,ok
+run5-tbt-2s/continentale,continentale,2,238,20,traffico,c1,stream applicativo,24,seq,ok
+run5-tbt-2s/continentale,continentale,2,241,21,gas/reconcile,m2,treasury,64.37,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,241,21,traffico,c3,stream applicativo,13,seq,ok
+run5-tbt-2s/continentale,continentale,2,241,21,traffico,c2,stream applicativo,17,seq,ok
+run5-tbt-2s/continentale,continentale,2,241,21,traffico,c1,stream applicativo,25,seq,ok
+run5-tbt-2s/continentale,continentale,2,245,21,gas/reconcile,m3,treasury,14.739,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,245,21,gas/reconcile,m1,treasury,101.2841,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,245,21,traffico,c5,stream applicativo,9,seq,ok
+run5-tbt-2s/continentale,continentale,2,245,21,traffico,c4,stream applicativo,11,seq,ok
+run5-tbt-2s/continentale,continentale,2,245,21,traffico,c1,stream applicativo,26,seq,ok
+run5-tbt-2s/continentale,continentale,2,247,21,traffico,c2,stream applicativo,18,seq,ok
+run5-tbt-2s/continentale,continentale,2,248,21,traffico,c3,stream applicativo,14,seq,ok
+run5-tbt-2s/continentale,continentale,2,248,21,traffico,c1,stream applicativo,27,seq,ok
+run5-tbt-2s/continentale,continentale,2,249,21,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,251,21,traffico,c2,stream applicativo,19,seq,ok
+run5-tbt-2s/continentale,continentale,2,251,21,traffico,c1,stream applicativo,28,seq,ok
+run5-tbt-2s/continentale,continentale,2,252,22,traffico,c4,stream applicativo,12,seq,ok
+run5-tbt-2s/continentale,continentale,2,254,22,traffico,c3,stream applicativo,15,seq,ok
+run5-tbt-2s/continentale,continentale,2,254,22,traffico,c1,stream applicativo,29,seq,ok
+run5-tbt-2s/continentale,continentale,2,254,22,traffico,c5,stream applicativo,10,seq,ok
+run5-tbt-2s/continentale,continentale,2,255,22,gas/reconcile,m3,treasury,11.767,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,255,22,traffico,c2,stream applicativo,20,seq,ok
+run5-tbt-2s/continentale,continentale,2,256,22,gas/reconcile,m2,treasury,25.6576,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,256,22,gas/reconcile,m1,treasury,100.9602,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,257,22,traffico,c1,stream applicativo,30,seq,ok
+run5-tbt-2s/continentale,continentale,2,260,22,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,260,22,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,260,22,traffico,c4,stream applicativo,13,seq,ok
+run5-tbt-2s/continentale,continentale,2,260,22,traffico,c3,stream applicativo,16,seq,ok
+run5-tbt-2s/continentale,continentale,2,260,22,traffico,c2,stream applicativo,21,seq,ok
+run5-tbt-2s/continentale,continentale,2,260,22,traffico,c1,stream applicativo,31,seq,ok
+run5-tbt-2s/continentale,continentale,2,263,22,traffico,c1,stream applicativo,32,seq,ok
+run5-tbt-2s/continentale,continentale,2,264,23,traffico,c5,stream applicativo,11,seq,ok
+run5-tbt-2s/continentale,continentale,2,264,23,traffico,c2,stream applicativo,22,seq,ok
+run5-tbt-2s/continentale,continentale,2,266,23,traffico,c3,stream applicativo,17,seq,ok
+run5-tbt-2s/continentale,continentale,2,266,23,traffico,c1,stream applicativo,33,seq,ok
+run5-tbt-2s/continentale,continentale,2,267,23,gas/reconcile,m3,treasury,9.4045,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,267,23,gas/reconcile,m2,treasury,70.5736,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,267,23,gas/reconcile,m1,treasury,100.1635,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,267,23,traffico,c4,stream applicativo,14,seq,ok
+run5-tbt-2s/continentale,continentale,2,269,23,traffico,c2,stream applicativo,23,seq,ok
+run5-tbt-2s/continentale,continentale,2,269,23,traffico,c1,stream applicativo,34,seq,ok
+run5-tbt-2s/continentale,continentale,2,271,23,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,271,23,traffico,c3,stream applicativo,18,seq,ok
+run5-tbt-2s/continentale,continentale,2,272,23,traffico,c1,stream applicativo,35,seq,ok
+run5-tbt-2s/continentale,continentale,2,273,23,traffico,c5,stream applicativo,12,seq,ok
+run5-tbt-2s/continentale,continentale,2,273,23,traffico,c2,stream applicativo,24,seq,ok
+run5-tbt-2s/continentale,continentale,2,275,23,traffico,c4,stream applicativo,15,seq,ok
+run5-tbt-2s/continentale,continentale,2,275,23,traffico,c1,stream applicativo,36,seq,ok
+run5-tbt-2s/continentale,continentale,2,278,24,gas/reconcile,m2,treasury,28.3637,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,278,24,gas/reconcile,m3,treasury,7.4935,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,278,24,gas/reconcile,m1,treasury,100.5662,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,278,24,traffico,c3,stream applicativo,19,seq,ok
+run5-tbt-2s/continentale,continentale,2,278,24,traffico,c2,stream applicativo,25,seq,ok
+run5-tbt-2s/continentale,continentale,2,278,24,traffico,c1,stream applicativo,37,seq,ok
+run5-tbt-2s/continentale,continentale,2,281,24,traffico,c1,stream applicativo,38,seq,ok
+run5-tbt-2s/continentale,continentale,2,282,24,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,282,24,traffico,c5,stream applicativo,13,seq,ok
+run5-tbt-2s/continentale,continentale,2,282,24,traffico,c4,stream applicativo,16,seq,ok
+run5-tbt-2s/continentale,continentale,2,282,24,traffico,c2,stream applicativo,26,seq,ok
+run5-tbt-2s/continentale,continentale,2,284,24,traffico,c3,stream applicativo,20,seq,ok
+run5-tbt-2s/continentale,continentale,2,284,24,traffico,c1,stream applicativo,39,seq,ok
+run5-tbt-2s/continentale,continentale,2,287,24,traffico,c2,stream applicativo,27,seq,ok
+run5-tbt-2s/continentale,continentale,2,287,24,traffico,c1,stream applicativo,40,seq,ok
+run5-tbt-2s/continentale,continentale,2,290,25,gas/reconcile,m3,treasury,6.0346,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,290,25,gas/reconcile,m2,treasury,11.4124,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,290,25,gas/reconcile,m1,treasury,100.3605,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,290,25,traffico,c4,stream applicativo,17,seq,ok
+run5-tbt-2s/continentale,continentale,2,290,25,traffico,c3,stream applicativo,21,seq,ok
+run5-tbt-2s/continentale,continentale,2,290,25,traffico,c1,stream applicativo,41,seq,ok
+run5-tbt-2s/continentale,continentale,2,291,25,traffico,c2,stream applicativo,28,seq,ok
+run5-tbt-2s/continentale,continentale,2,292,25,traffico,c5,stream applicativo,14,seq,ok
+run5-tbt-2s/continentale,continentale,2,293,25,traffico,c1,stream applicativo,42,seq,ok
+run5-tbt-2s/continentale,continentale,2,294,25,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,294,25,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,295,25,traffico,c3,stream applicativo,22,seq,ok
+run5-tbt-2s/continentale,continentale,2,295,25,traffico,c2,stream applicativo,29,seq,ok
+run5-tbt-2s/continentale,continentale,2,295,25,traffico,c1,stream applicativo,43,seq,ok
+run5-tbt-2s/continentale,continentale,2,297,25,traffico,c4,stream applicativo,18,seq,ok
+run5-tbt-2s/continentale,continentale,2,298,25,traffico,c1,stream applicativo,44,seq,ok
+run5-tbt-2s/continentale,continentale,2,300,26,traffico,c2,stream applicativo,30,seq,ok
+run5-tbt-2s/continentale,continentale,2,301,26,gas/reconcile,m1,treasury,99.8628,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,301,26,traffico,c5,stream applicativo,15,seq,ok
+run5-tbt-2s/continentale,continentale,2,302,26,traffico,c3,stream applicativo,23,seq,ok
+run5-tbt-2s/continentale,continentale,2,302,26,traffico,c1,stream applicativo,45,seq,ok
+run5-tbt-2s/continentale,continentale,2,304,26,gas/reconcile,m3,treasury,4.8034,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,304,26,gas/reconcile,m2,treasury,65.2267,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,304,26,traffico,c4,stream applicativo,19,seq,ok
+run5-tbt-2s/continentale,continentale,2,304,26,traffico,c2,stream applicativo,31,seq,ok
+run5-tbt-2s/continentale,continentale,2,304,26,traffico,c1,stream applicativo,46,seq,ok
+run5-tbt-2s/continentale,continentale,2,305,26,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,307,26,traffico,c3,stream applicativo,24,seq,ok
+run5-tbt-2s/continentale,continentale,2,307,26,traffico,c1,stream applicativo,47,seq,ok
+run5-tbt-2s/continentale,continentale,2,308,26,traffico,c2,stream applicativo,32,seq,ok
+run5-tbt-2s/continentale,continentale,2,309,26,traffico,c5,stream applicativo,16,seq,ok
+run5-tbt-2s/continentale,continentale,2,310,26,traffico,c1,stream applicativo,48,seq,ok
+run5-tbt-2s/continentale,continentale,2,311,26,traffico,c4,stream applicativo,20,seq,ok
+run5-tbt-2s/continentale,continentale,2,312,27,traffico,c3,stream applicativo,25,seq,ok
+run5-tbt-2s/continentale,continentale,2,312,27,traffico,c2,stream applicativo,33,seq,ok
+run5-tbt-2s/continentale,continentale,2,312,27,traffico,c1,stream applicativo,49,seq,ok
+run5-tbt-2s/continentale,continentale,2,314,27,gas/reconcile,m3,treasury,3.8337,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,315,27,gas/reconcile,m2,treasury,26.1886,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,315,27,gas/reconcile,m1,treasury,100.6682,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,315,27,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,315,27,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,315,27,gas/refill,admin,m3,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,315,27,traffico,c1,stream applicativo,50,seq,ok
+run5-tbt-2s/continentale,continentale,2,317,27,traffico,c2,stream applicativo,34,seq,ok
+run5-tbt-2s/continentale,continentale,2,318,27,traffico,c5,stream applicativo,17,seq,ok
+run5-tbt-2s/continentale,continentale,2,318,27,traffico,c4,stream applicativo,21,seq,ok
+run5-tbt-2s/continentale,continentale,2,318,27,traffico,c3,stream applicativo,26,seq,ok
+run5-tbt-2s/continentale,continentale,2,318,27,traffico,c1,stream applicativo,51,seq,ok
+run5-tbt-2s/continentale,continentale,2,321,27,traffico,c2,stream applicativo,35,seq,ok
+run5-tbt-2s/continentale,continentale,2,321,27,traffico,c1,stream applicativo,52,seq,ok
+run5-tbt-2s/continentale,continentale,2,324,28,traffico,c3,stream applicativo,27,seq,ok
+run5-tbt-2s/continentale,continentale,2,324,28,traffico,c1,stream applicativo,53,seq,ok
+run5-tbt-2s/continentale,continentale,2,326,28,gas/reconcile,m3,treasury,23.0427,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,326,28,gas/reconcile,m2,treasury,70.5155,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,326,28,gas/reconcile,m1,treasury,100.7453,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,326,28,traffico,c4,stream applicativo,22,seq,ok
+run5-tbt-2s/continentale,continentale,2,326,28,traffico,c2,stream applicativo,36,seq,ok
+run5-tbt-2s/continentale,continentale,2,327,28,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,328,28,traffico,c1,stream applicativo,54,seq,ok
+run5-tbt-2s/continentale,continentale,2,328,28,traffico,c5,stream applicativo,18,seq,ok
+run5-tbt-2s/continentale,continentale,2,331,28,traffico,c3,stream applicativo,28,seq,ok
+run5-tbt-2s/continentale,continentale,2,331,28,traffico,c2,stream applicativo,37,seq,ok
+run5-tbt-2s/continentale,continentale,2,331,28,traffico,c1,stream applicativo,55,seq,ok
+run5-tbt-2s/continentale,continentale,2,334,28,traffico,c4,stream applicativo,23,seq,ok
+run5-tbt-2s/continentale,continentale,2,334,28,traffico,c1,stream applicativo,56,seq,ok
+run5-tbt-2s/continentale,continentale,2,337,29,traffico,c2,stream applicativo,38,seq,ok
+run5-tbt-2s/continentale,continentale,2,338,29,traffico,c3,stream applicativo,29,seq,ok
+run5-tbt-2s/continentale,continentale,2,338,29,traffico,c1,stream applicativo,57,seq,ok
+run5-tbt-2s/continentale,continentale,2,339,29,gas/reconcile,m3,treasury,18.4799,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,339,29,gas/reconcile,m2,treasury,28.1157,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,339,29,gas/reconcile,m1,treasury,100.5375,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,340,29,traffico,c5,stream applicativo,19,seq,ok
+run5-tbt-2s/continentale,continentale,2,341,29,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,342,29,traffico,c2,stream applicativo,39,seq,ok
+run5-tbt-2s/continentale,continentale,2,342,29,traffico,c1,stream applicativo,58,seq,ok
+run5-tbt-2s/continentale,continentale,2,344,29,traffico,c4,stream applicativo,24,seq,ok
+run5-tbt-2s/continentale,continentale,2,345,29,traffico,c3,stream applicativo,30,seq,ok
+run5-tbt-2s/continentale,continentale,2,345,29,traffico,c1,stream applicativo,59,seq,ok
+run5-tbt-2s/continentale,continentale,2,347,29,traffico,c2,stream applicativo,40,seq,ok
+run5-tbt-2s/continentale,continentale,2,348,30,traffico,c1,stream applicativo,60,seq,ok
+run5-tbt-2s/continentale,continentale,2,349,30,traffico,c5,stream applicativo,20,seq,ok
+run5-tbt-2s/continentale,continentale,2,351,30,gas/reconcile,m3,treasury,14.8511,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,351,30,gas/reconcile,m2,treasury,11.1539,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,351,30,gas/reconcile,m1,treasury,100.5352,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,351,30,traffico,c4,stream applicativo,25,seq,ok
+run5-tbt-2s/continentale,continentale,2,351,30,traffico,c3,stream applicativo,31,seq,ok
+run5-tbt-2s/continentale,continentale,2,351,30,traffico,c2,stream applicativo,41,seq,ok
+run5-tbt-2s/continentale,continentale,2,351,30,traffico,c1,stream applicativo,61,seq,ok
+run5-tbt-2s/continentale,continentale,2,352,30,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,352,30,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,354,30,traffico,c1,stream applicativo,62,seq,ok
+run5-tbt-2s/continentale,continentale,2,356,30,traffico,c2,stream applicativo,42,seq,ok
+run5-tbt-2s/continentale,continentale,2,357,30,traffico,c3,stream applicativo,32,seq,ok
+run5-tbt-2s/continentale,continentale,2,357,30,traffico,c1,stream applicativo,63,seq,ok
+run5-tbt-2s/continentale,continentale,2,359,30,traffico,c5,stream applicativo,21,seq,ok
+run5-tbt-2s/continentale,continentale,2,359,30,traffico,c4,stream applicativo,26,seq,ok
+run5-tbt-2s/continentale,continentale,2,360,31,traffico,c2,stream applicativo,43,seq,ok
+run5-tbt-2s/continentale,continentale,2,360,31,traffico,c1,stream applicativo,64,seq,ok
+run5-tbt-2s/continentale,continentale,2,362,31,gas/reconcile,m3,treasury,11.8218,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,362,31,gas/reconcile,m2,treasury,64.3814,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,362,31,gas/reconcile,m1,treasury,101.1052,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,363,31,traffico,c3,stream applicativo,33,seq,ok
+run5-tbt-2s/continentale,continentale,2,363,31,traffico,c1,stream applicativo,65,seq,ok
+run5-tbt-2s/continentale,continentale,2,364,31,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,364,31,traffico,c2,stream applicativo,44,seq,ok
+run5-tbt-2s/continentale,continentale,2,366,31,traffico,c4,stream applicativo,27,seq,ok
+run5-tbt-2s/continentale,continentale,2,366,31,traffico,c1,stream applicativo,66,seq,ok
+run5-tbt-2s/continentale,continentale,2,368,31,traffico,c5,stream applicativo,22,seq,ok
+run5-tbt-2s/continentale,continentale,2,369,31,traffico,c3,stream applicativo,34,seq,ok
+run5-tbt-2s/continentale,continentale,2,369,31,traffico,c2,stream applicativo,45,seq,ok
+run5-tbt-2s/continentale,continentale,2,369,31,traffico,c1,stream applicativo,67,seq,ok
+run5-tbt-2s/continentale,continentale,2,372,32,traffico,c1,stream applicativo,68,seq,ok
+run5-tbt-2s/continentale,continentale,2,373,32,gas/reconcile,m3,treasury,9.4496,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,373,32,gas/reconcile,m2,treasury,25.6537,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,373,32,gas/reconcile,m1,treasury,100.7704,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,373,32,traffico,c4,stream applicativo,28,seq,ok
+run5-tbt-2s/continentale,continentale,2,373,32,traffico,c2,stream applicativo,46,seq,ok
+run5-tbt-2s/continentale,continentale,2,375,32,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,375,32,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,375,32,traffico,c3,stream applicativo,35,seq,ok
+run5-tbt-2s/continentale,continentale,2,375,32,traffico,c1,stream applicativo,69,seq,ok
+run5-tbt-2s/continentale,continentale,2,377,32,traffico,c5,stream applicativo,23,seq,ok
+run5-tbt-2s/continentale,continentale,2,378,32,traffico,c2,stream applicativo,47,seq,ok
+run5-tbt-2s/continentale,continentale,2,378,32,traffico,c1,stream applicativo,70,seq,ok
+run5-tbt-2s/continentale,continentale,2,382,32,traffico,c4,stream applicativo,29,seq,ok
+run5-tbt-2s/continentale,continentale,2,382,32,traffico,c3,stream applicativo,36,seq,ok
+run5-tbt-2s/continentale,continentale,2,382,32,traffico,c1,stream applicativo,71,seq,ok
+run5-tbt-2s/continentale,continentale,2,384,33,traffico,c2,stream applicativo,48,seq,ok
+run5-tbt-2s/continentale,continentale,2,386,33,gas/reconcile,m3,treasury,7.5296,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,386,33,gas/reconcile,m2,treasury,70.407,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,386,33,gas/reconcile,m1,treasury,100.6748,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,386,33,traffico,c1,stream applicativo,72,seq,ok
+run5-tbt-2s/continentale,continentale,2,388,33,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,388,33,traffico,c5,stream applicativo,24,seq,ok
+run5-tbt-2s/continentale,continentale,2,389,33,traffico,c3,stream applicativo,37,seq,ok
+run5-tbt-2s/continentale,continentale,2,389,33,traffico,c2,stream applicativo,49,seq,ok
+run5-tbt-2s/continentale,continentale,2,389,33,traffico,c1,stream applicativo,73,seq,ok
+run5-tbt-2s/continentale,continentale,2,390,33,traffico,c4,stream applicativo,30,seq,ok
+run5-tbt-2s/continentale,continentale,2,392,33,traffico,c1,stream applicativo,74,seq,ok
+run5-tbt-2s/continentale,continentale,2,394,33,traffico,c2,stream applicativo,50,seq,ok
+run5-tbt-2s/continentale,continentale,2,395,33,traffico,c3,stream applicativo,38,seq,ok
+run5-tbt-2s/continentale,continentale,2,395,33,traffico,c1,stream applicativo,75,seq,ok
+run5-tbt-2s/continentale,continentale,2,398,34,gas/reconcile,m3,treasury,6.0146,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,398,34,gas/reconcile,m2,treasury,28.0723,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,398,34,gas/reconcile,m1,treasury,100.7947,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,398,34,traffico,c5,stream applicativo,25,seq,ok
+run5-tbt-2s/continentale,continentale,2,398,34,traffico,c4,stream applicativo,31,seq,ok
+run5-tbt-2s/continentale,continentale,2,398,34,traffico,c2,stream applicativo,51,seq,ok
+run5-tbt-2s/continentale,continentale,2,398,34,traffico,c1,stream applicativo,76,seq,ok
+run5-tbt-2s/continentale,continentale,2,399,34,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,401,34,traffico,c3,stream applicativo,39,seq,ok
+run5-tbt-2s/continentale,continentale,2,401,34,traffico,c1,stream applicativo,77,seq,ok
+run5-tbt-2s/continentale,continentale,2,403,34,traffico,c2,stream applicativo,52,seq,ok
+run5-tbt-2s/continentale,continentale,2,405,34,traffico,c1,stream applicativo,78,seq,ok
+run5-tbt-2s/continentale,continentale,2,406,34,traffico,c4,stream applicativo,32,seq,ok
+run5-tbt-2s/continentale,continentale,2,408,35,traffico,c3,stream applicativo,40,seq,ok
+run5-tbt-2s/continentale,continentale,2,408,35,traffico,c2,stream applicativo,53,seq,ok
+run5-tbt-2s/continentale,continentale,2,408,35,traffico,c1,stream applicativo,79,seq,ok
+run5-tbt-2s/continentale,continentale,2,408,35,traffico,c5,stream applicativo,26,seq,ok
+run5-tbt-2s/continentale,continentale,2,410,35,gas/reconcile,m3,treasury,4.7874,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,410,35,gas/reconcile,m2,treasury,11.4165,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,410,35,gas/reconcile,m1,treasury,100.5921,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,411,35,traffico,c1,stream applicativo,80,seq,ok
+run5-tbt-2s/continentale,continentale,2,412,35,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,412,35,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,412,35,traffico,c2,stream applicativo,54,seq,ok
+run5-tbt-2s/continentale,continentale,2,414,35,traffico,c4,stream applicativo,33,seq,ok
+run5-tbt-2s/continentale,continentale,2,414,35,traffico,c3,stream applicativo,41,seq,ok
+run5-tbt-2s/continentale,continentale,2,414,35,traffico,c1,stream applicativo,81,seq,ok
+run5-tbt-2s/continentale,continentale,2,417,35,traffico,c2,stream applicativo,55,seq,ok
+run5-tbt-2s/continentale,continentale,2,417,35,traffico,c1,stream applicativo,82,seq,ok
+run5-tbt-2s/continentale,continentale,2,418,35,traffico,c5,stream applicativo,27,seq,ok
+run5-tbt-2s/continentale,continentale,2,420,36,traffico,c3,stream applicativo,42,seq,ok
+run5-tbt-2s/continentale,continentale,2,420,36,traffico,c1,stream applicativo,83,seq,ok
+run5-tbt-2s/continentale,continentale,2,421,36,gas/reconcile,m3,treasury,3.8333,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,421,36,gas/reconcile,m2,treasury,64.3873,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,421,36,gas/reconcile,m1,treasury,100.8084,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,421,36,traffico,c4,stream applicativo,34,seq,ok
+run5-tbt-2s/continentale,continentale,2,421,36,traffico,c2,stream applicativo,56,seq,ok
+run5-tbt-2s/continentale,continentale,2,423,36,traffico,c1,stream applicativo,84,seq,ok
+run5-tbt-2s/continentale,continentale,2,424,36,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,424,36,gas/refill,admin,m3,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,426,36,traffico,c3,stream applicativo,43,seq,ok
+run5-tbt-2s/continentale,continentale,2,426,36,traffico,c2,stream applicativo,57,seq,ok
+run5-tbt-2s/continentale,continentale,2,426,36,traffico,c1,stream applicativo,85,seq,ok
+run5-tbt-2s/continentale,continentale,2,428,36,traffico,c5,stream applicativo,28,seq,ok
+run5-tbt-2s/continentale,continentale,2,429,36,traffico,c4,stream applicativo,35,seq,ok
+run5-tbt-2s/continentale,continentale,2,429,36,traffico,c1,stream applicativo,86,seq,ok
+run5-tbt-2s/continentale,continentale,2,431,36,traffico,c2,stream applicativo,58,seq,ok
+run5-tbt-2s/continentale,continentale,2,433,37,gas/reconcile,m3,treasury,23.1378,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,433,37,gas/reconcile,m2,treasury,26.0437,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,433,37,gas/reconcile,m1,treasury,99.9692,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,433,37,traffico,c3,stream applicativo,44,seq,ok
+run5-tbt-2s/continentale,continentale,2,433,37,traffico,c1,stream applicativo,87,seq,ok
+run5-tbt-2s/continentale,continentale,2,435,37,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,435,37,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,436,37,traffico,c2,stream applicativo,59,seq,ok
+run5-tbt-2s/continentale,continentale,2,436,37,traffico,c1,stream applicativo,88,seq,ok
+run5-tbt-2s/continentale,continentale,2,437,37,traffico,c5,stream applicativo,29,seq,ok
+run5-tbt-2s/continentale,continentale,2,437,37,traffico,c4,stream applicativo,36,seq,ok
+run5-tbt-2s/continentale,continentale,2,438,37,traffico,c3,stream applicativo,45,seq,ok
+run5-tbt-2s/continentale,continentale,2,438,37,traffico,c1,stream applicativo,89,seq,ok
+run5-tbt-2s/continentale,continentale,2,440,37,traffico,c2,stream applicativo,60,seq,ok
+run5-tbt-2s/continentale,continentale,2,441,37,traffico,c1,stream applicativo,90,seq,ok
+run5-tbt-2s/continentale,continentale,2,444,38,traffico,c4,stream applicativo,37,seq,ok
+run5-tbt-2s/continentale,continentale,2,444,38,traffico,c3,stream applicativo,46,seq,ok
+run5-tbt-2s/continentale,continentale,2,444,38,traffico,c2,stream applicativo,61,seq,ok
+run5-tbt-2s/continentale,continentale,2,444,38,traffico,c1,stream applicativo,91,seq,ok
+run5-tbt-2s/continentale,continentale,2,446,38,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,446,38,traffico,c5,stream applicativo,30,seq,ok
+run5-tbt-2s/continentale,continentale,2,447,38,gas/reconcile,m3,treasury,18.4801,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,447,38,gas/reconcile,m2,treasury,70.3268,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,447,38,gas/reconcile,m1,treasury,101.1151,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,447,38,traffico,c1,stream applicativo,92,seq,ok
+run5-tbt-2s/continentale,continentale,2,448,38,traffico,c2,stream applicativo,62,seq,ok
+run5-tbt-2s/continentale,continentale,2,450,38,traffico,c3,stream applicativo,47,seq,ok
+run5-tbt-2s/continentale,continentale,2,450,38,traffico,c1,stream applicativo,93,seq,ok
+run5-tbt-2s/continentale,continentale,2,451,38,traffico,c4,stream applicativo,38,seq,ok
+run5-tbt-2s/continentale,continentale,2,453,38,traffico,c2,stream applicativo,63,seq,ok
+run5-tbt-2s/continentale,continentale,2,453,38,traffico,c1,stream applicativo,94,seq,ok
+run5-tbt-2s/continentale,continentale,2,455,38,traffico,c5,stream applicativo,31,seq,ok
+run5-tbt-2s/continentale,continentale,2,456,39,traffico,c3,stream applicativo,48,seq,ok
+run5-tbt-2s/continentale,continentale,2,456,39,traffico,c1,stream applicativo,95,seq,ok
+run5-tbt-2s/continentale,continentale,2,457,39,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,457,39,traffico,c2,stream applicativo,64,seq,ok
+run5-tbt-2s/continentale,continentale,2,458,39,gas/reconcile,m3,treasury,14.7974,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,458,39,gas/reconcile,m2,treasury,28.0049,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,458,39,gas/reconcile,m1,treasury,100.9257,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,458,39,traffico,c4,stream applicativo,39,seq,ok
+run5-tbt-2s/continentale,continentale,2,458,39,traffico,c1,stream applicativo,96,seq,ok
+run5-tbt-2s/continentale,continentale,2,461,39,traffico,c3,stream applicativo,49,seq,ok
+run5-tbt-2s/continentale,continentale,2,461,39,traffico,c2,stream applicativo,65,seq,ok
+run5-tbt-2s/continentale,continentale,2,461,39,traffico,c1,stream applicativo,97,seq,ok
+run5-tbt-2s/continentale,continentale,2,463,39,traffico,c5,stream applicativo,32,seq,ok
+run5-tbt-2s/continentale,continentale,2,464,39,traffico,c1,stream applicativo,98,seq,ok
+run5-tbt-2s/continentale,continentale,2,466,39,traffico,c4,stream applicativo,40,seq,ok
+run5-tbt-2s/continentale,continentale,2,466,39,traffico,c2,stream applicativo,66,seq,ok
+run5-tbt-2s/continentale,continentale,2,467,39,traffico,c3,stream applicativo,50,seq,ok
+run5-tbt-2s/continentale,continentale,2,467,39,traffico,c1,stream applicativo,99,seq,ok
+run5-tbt-2s/continentale,continentale,2,468,40,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,468,40,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,469,40,gas/reconcile,m3,treasury,11.8071,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,469,40,gas/reconcile,m2,treasury,11.4641,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,469,40,gas/reconcile,m1,treasury,100.3516,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,470,40,traffico,c2,stream applicativo,67,seq,ok
+run5-tbt-2s/continentale,continentale,2,470,40,traffico,c1,stream applicativo,100,seq,ok
+run5-tbt-2s/continentale,continentale,2,474,40,traffico,c5,stream applicativo,33,seq,ok
+run5-tbt-2s/continentale,continentale,2,474,40,traffico,c4,stream applicativo,41,seq,ok
+run5-tbt-2s/continentale,continentale,2,474,40,traffico,c3,stream applicativo,51,seq,ok
+run5-tbt-2s/continentale,continentale,2,474,40,traffico,c1,stream applicativo,101,seq,ok
+run5-tbt-2s/continentale,continentale,2,475,40,traffico,c2,stream applicativo,68,seq,ok
+run5-tbt-2s/continentale,continentale,2,476,40,traffico,c1,stream applicativo,102,seq,ok
+run5-tbt-2s/continentale,continentale,2,480,41,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,480,41,traffico,c3,stream applicativo,52,seq,ok
+run5-tbt-2s/continentale,continentale,2,480,41,traffico,c2,stream applicativo,69,seq,ok
+run5-tbt-2s/continentale,continentale,2,480,41,traffico,c1,stream applicativo,103,seq,ok
+run5-tbt-2s/continentale,continentale,2,481,41,gas/reconcile,m3,treasury,9.4155,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,481,41,gas/reconcile,m2,treasury,64.442,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,481,41,gas/reconcile,m1,treasury,100.9,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,481,41,traffico,c4,stream applicativo,42,seq,ok
+run5-tbt-2s/continentale,continentale,2,482,41,traffico,c1,stream applicativo,104,seq,ok
+run5-tbt-2s/continentale,continentale,2,483,41,traffico,c5,stream applicativo,34,seq,ok
+run5-tbt-2s/continentale,continentale,2,484,41,traffico,c2,stream applicativo,70,seq,ok
+run5-tbt-2s/continentale,continentale,2,486,41,traffico,c3,stream applicativo,53,seq,ok
+run5-tbt-2s/continentale,continentale,2,486,41,traffico,c1,stream applicativo,105,seq,ok
+run5-tbt-2s/continentale,continentale,2,488,41,traffico,c4,stream applicativo,43,seq,ok
+run5-tbt-2s/continentale,continentale,2,488,41,traffico,c2,stream applicativo,71,seq,ok
+run5-tbt-2s/continentale,continentale,2,488,41,traffico,c1,stream applicativo,106,seq,ok
+run5-tbt-2s/continentale,continentale,2,491,41,traffico,c3,stream applicativo,54,seq,ok
+run5-tbt-2s/continentale,continentale,2,491,41,traffico,c1,stream applicativo,107,seq,ok
+run5-tbt-2s/continentale,continentale,2,491,41,traffico,c5,stream applicativo,35,seq,ok
+run5-tbt-2s/continentale,continentale,2,492,42,traffico,c2,stream applicativo,72,seq,ok
+run5-tbt-2s/continentale,continentale,2,493,42,traffico,c1,stream applicativo,108,seq,ok
+run5-tbt-2s/continentale,continentale,2,494,42,gas/reconcile,m3,treasury,7.5234,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,494,42,gas/reconcile,m2,treasury,25.8386,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,494,42,gas/reconcile,m1,treasury,101.0976,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,495,42,traffico,c4,stream applicativo,44,seq,ok
+run5-tbt-2s/continentale,continentale,2,496,42,traffico,c3,stream applicativo,55,seq,ok
+run5-tbt-2s/continentale,continentale,2,496,42,traffico,c2,stream applicativo,73,seq,ok
+run5-tbt-2s/continentale,continentale,2,496,42,traffico,c1,stream applicativo,109,seq,ok
+run5-tbt-2s/continentale,continentale,2,499,42,traffico,c1,stream applicativo,110,seq,ok
+run5-tbt-2s/continentale,continentale,2,501,42,traffico,c5,stream applicativo,36,seq,ok
+run5-tbt-2s/continentale,continentale,2,501,42,traffico,c2,stream applicativo,74,seq,ok
+run5-tbt-2s/continentale,continentale,2,502,42,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,502,42,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,503,42,traffico,c4,stream applicativo,45,seq,ok
+run5-tbt-2s/continentale,continentale,2,503,42,traffico,c3,stream applicativo,56,seq,ok
+run5-tbt-2s/continentale,continentale,2,503,42,traffico,c1,stream applicativo,111,seq,ok
+run5-tbt-2s/continentale,continentale,2,505,43,traffico,c2,stream applicativo,75,seq,ok
+run5-tbt-2s/continentale,continentale,2,505,43,traffico,c1,stream applicativo,112,seq,ok
+run5-tbt-2s/continentale,continentale,2,506,43,gas/reconcile,m3,treasury,5.9885,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,506,43,gas/reconcile,m2,treasury,70.7753,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,506,43,gas/reconcile,m1,treasury,100.2061,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,508,43,traffico,c3,stream applicativo,57,seq,ok
+run5-tbt-2s/continentale,continentale,2,508,43,traffico,c1,stream applicativo,113,seq,ok
+run5-tbt-2s/continentale,continentale,2,510,43,traffico,c5,stream applicativo,37,seq,ok
+run5-tbt-2s/continentale,continentale,2,510,43,traffico,c4,stream applicativo,46,seq,ok
+run5-tbt-2s/continentale,continentale,2,510,43,traffico,c2,stream applicativo,76,seq,ok
+run5-tbt-2s/continentale,continentale,2,511,43,traffico,c1,stream applicativo,114,seq,ok
+run5-tbt-2s/continentale,continentale,2,513,43,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,514,43,traffico,c3,stream applicativo,58,seq,ok
+run5-tbt-2s/continentale,continentale,2,514,43,traffico,c2,stream applicativo,77,seq,ok
+run5-tbt-2s/continentale,continentale,2,514,43,traffico,c1,stream applicativo,115,seq,ok
+run5-tbt-2s/continentale,continentale,2,517,44,gas/reconcile,m2,treasury,28.0645,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,517,44,traffico,c4,stream applicativo,47,seq,ok
+run5-tbt-2s/continentale,continentale,2,517,44,traffico,c1,stream applicativo,116,seq,ok
+run5-tbt-2s/continentale,continentale,2,518,44,traffico,c2,stream applicativo,78,seq,ok
+run5-tbt-2s/continentale,continentale,2,518,44,traffico,c5,stream applicativo,38,seq,ok
+run5-tbt-2s/continentale,continentale,2,519,44,traffico,c3,stream applicativo,59,seq,ok
+run5-tbt-2s/continentale,continentale,2,519,44,traffico,c1,stream applicativo,117,seq,ok
+run5-tbt-2s/continentale,continentale,2,520,44,gas/reconcile,m3,treasury,4.7665,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,520,44,gas/reconcile,m1,treasury,100.8976,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,522,44,traffico,c2,stream applicativo,79,seq,ok
+run5-tbt-2s/continentale,continentale,2,522,44,traffico,c1,stream applicativo,118,seq,ok
+run5-tbt-2s/continentale,continentale,2,523,44,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,523,44,traffico,c4,stream applicativo,48,seq,ok
+run5-tbt-2s/continentale,continentale,2,525,44,traffico,c3,stream applicativo,60,seq,ok
+run5-tbt-2s/continentale,continentale,2,525,44,traffico,c1,stream applicativo,119,seq,ok
+run5-tbt-2s/continentale,continentale,2,526,44,traffico,c2,stream applicativo,80,seq,ok
+run5-tbt-2s/continentale,continentale,2,527,44,traffico,c5,stream applicativo,39,seq,ok
+run5-tbt-2s/continentale,continentale,2,528,45,traffico,c1,stream applicativo,120,seq,ok
+run5-tbt-2s/continentale,continentale,2,530,45,gas/reconcile,m3,treasury,3.8155,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,530,45,gas/reconcile,m2,treasury,11.722,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,530,45,gas/reconcile,m1,treasury,100.0363,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,530,45,traffico,c4,stream applicativo,49,seq,ok
+run5-tbt-2s/continentale,continentale,2,531,45,traffico,c3,stream applicativo,61,seq,ok
+run5-tbt-2s/continentale,continentale,2,531,45,traffico,c2,stream applicativo,81,seq,ok
+run5-tbt-2s/continentale,continentale,2,531,45,traffico,c1,stream applicativo,121,seq,ok
+run5-tbt-2s/continentale,continentale,2,534,45,traffico,c1,stream applicativo,122,seq,ok
+run5-tbt-2s/continentale,continentale,2,535,45,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,535,45,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,535,45,gas/refill,admin,m3,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,536,45,traffico,c2,stream applicativo,82,seq,ok
+run5-tbt-2s/continentale,continentale,2,537,45,traffico,c5,stream applicativo,40,seq,ok
+run5-tbt-2s/continentale,continentale,2,537,45,traffico,c3,stream applicativo,62,seq,ok
+run5-tbt-2s/continentale,continentale,2,537,45,traffico,c1,stream applicativo,123,seq,ok
+run5-tbt-2s/continentale,continentale,2,539,45,traffico,c4,stream applicativo,50,seq,ok
+run5-tbt-2s/continentale,continentale,2,540,46,traffico,c2,stream applicativo,83,seq,ok
+run5-tbt-2s/continentale,continentale,2,541,46,traffico,c1,stream applicativo,124,seq,ok
+run5-tbt-2s/continentale,continentale,2,543,46,gas/reconcile,m3,treasury,23.0536,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,543,46,gas/reconcile,m2,treasury,64.6073,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,543,46,gas/reconcile,m1,treasury,100.8929,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,544,46,traffico,c3,stream applicativo,63,seq,ok
+run5-tbt-2s/continentale,continentale,2,544,46,traffico,c1,stream applicativo,125,seq,ok
+run5-tbt-2s/continentale,continentale,2,546,46,traffico,c2,stream applicativo,84,seq,ok
+run5-tbt-2s/continentale,continentale,2,547,46,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,547,46,traffico,c5,stream applicativo,41,seq,ok
+run5-tbt-2s/continentale,continentale,2,547,46,traffico,c4,stream applicativo,51,seq,ok
+run5-tbt-2s/continentale,continentale,2,547,46,traffico,c1,stream applicativo,126,seq,ok
+run5-tbt-2s/continentale,continentale,2,550,46,traffico,c3,stream applicativo,64,seq,ok
+run5-tbt-2s/continentale,continentale,2,550,46,traffico,c2,stream applicativo,85,seq,ok
+run5-tbt-2s/continentale,continentale,2,550,46,traffico,c1,stream applicativo,127,seq,ok
+run5-tbt-2s/continentale,continentale,2,553,47,traffico,c1,stream applicativo,128,seq,ok
+run5-tbt-2s/continentale,continentale,2,554,47,gas/reconcile,m3,treasury,18.4127,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,554,47,gas/reconcile,m2,treasury,25.9856,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,554,47,gas/reconcile,m1,treasury,100.4836,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,554,47,traffico,c4,stream applicativo,52,seq,ok
+run5-tbt-2s/continentale,continentale,2,554,47,traffico,c2,stream applicativo,86,seq,ok
+run5-tbt-2s/continentale,continentale,2,556,47,traffico,c3,stream applicativo,65,seq,ok
+run5-tbt-2s/continentale,continentale,2,556,47,traffico,c1,stream applicativo,129,seq,ok
+run5-tbt-2s/continentale,continentale,2,557,47,traffico,c5,stream applicativo,42,seq,ok
+run5-tbt-2s/continentale,continentale,2,559,47,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,559,47,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,559,47,traffico,c2,stream applicativo,87,seq,ok
+run5-tbt-2s/continentale,continentale,2,560,47,traffico,c1,stream applicativo,130,seq,ok
+run5-tbt-2s/continentale,continentale,2,563,47,traffico,c4,stream applicativo,53,seq,ok
+run5-tbt-2s/continentale,continentale,2,563,47,traffico,c3,stream applicativo,66,seq,ok
+run5-tbt-2s/continentale,continentale,2,563,47,traffico,c1,stream applicativo,131,seq,ok
+run5-tbt-2s/continentale,continentale,2,564,48,traffico,c2,stream applicativo,88,seq,ok
+run5-tbt-2s/continentale,continentale,2,565,48,traffico,c1,stream applicativo,132,seq,ok
+run5-tbt-2s/continentale,continentale,2,566,48,gas/reconcile,m3,treasury,14.7747,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,566,48,gas/reconcile,m2,treasury,70.3039,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,566,48,gas/reconcile,m1,treasury,100.6804,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,566,48,traffico,c5,stream applicativo,43,seq,ok
+run5-tbt-2s/continentale,continentale,2,569,48,traffico,c3,stream applicativo,67,seq,ok
+run5-tbt-2s/continentale,continentale,2,569,48,traffico,c2,stream applicativo,89,seq,ok
+run5-tbt-2s/continentale,continentale,2,569,48,traffico,c1,stream applicativo,133,seq,ok
+run5-tbt-2s/continentale,continentale,2,570,48,traffico,c4,stream applicativo,54,seq,ok
+run5-tbt-2s/continentale,continentale,2,571,48,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,572,48,traffico,c1,stream applicativo,134,seq,ok
+run5-tbt-2s/continentale,continentale,2,574,48,traffico,c2,stream applicativo,90,seq,ok
+run5-tbt-2s/continentale,continentale,2,576,49,traffico,c3,stream applicativo,68,seq,ok
+run5-tbt-2s/continentale,continentale,2,576,49,traffico,c1,stream applicativo,135,seq,ok
+run5-tbt-2s/continentale,continentale,2,577,49,traffico,c5,stream applicativo,44,seq,ok
+run5-tbt-2s/continentale,continentale,2,579,49,gas/reconcile,m3,treasury,11.7777,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,579,49,gas/reconcile,m2,treasury,28.0309,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,579,49,gas/reconcile,m1,treasury,101.0051,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,579,49,traffico,c4,stream applicativo,55,seq,ok
+run5-tbt-2s/continentale,continentale,2,579,49,traffico,c2,stream applicativo,91,seq,ok
+run5-tbt-2s/continentale,continentale,2,579,49,traffico,c1,stream applicativo,136,seq,ok
+run5-tbt-2s/continentale,continentale,2,582,49,traffico,c3,stream applicativo,69,seq,ok
+run5-tbt-2s/continentale,continentale,2,582,49,traffico,c1,stream applicativo,137,seq,ok
+run5-tbt-2s/continentale,continentale,2,583,49,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,583,49,traffico,c2,stream applicativo,92,seq,ok
+run5-tbt-2s/continentale,continentale,2,584,49,traffico,c1,stream applicativo,138,seq,ok
+run5-tbt-2s/continentale,continentale,2,586,49,traffico,c5,stream applicativo,45,seq,ok
+run5-tbt-2s/continentale,continentale,2,586,49,traffico,c4,stream applicativo,56,seq,ok
+run5-tbt-2s/continentale,continentale,2,587,49,traffico,c3,stream applicativo,70,seq,ok
+run5-tbt-2s/continentale,continentale,2,587,49,traffico,c2,stream applicativo,93,seq,ok
+run5-tbt-2s/continentale,continentale,2,587,49,traffico,c1,stream applicativo,139,seq,ok
+run5-tbt-2s/continentale,continentale,2,589,50,gas/reconcile,m1,treasury,100.0446,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,589,50,traffico,c1,stream applicativo,140,seq,ok
+run5-tbt-2s/continentale,continentale,2,591,50,traffico,c2,stream applicativo,94,seq,ok
+run5-tbt-2s/continentale,continentale,2,592,50,gas/reconcile,m3,treasury,9.392,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,592,50,gas/reconcile,m2,treasury,11.737,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,592,50,traffico,c4,stream applicativo,57,seq,ok
+run5-tbt-2s/continentale,continentale,2,592,50,traffico,c3,stream applicativo,71,seq,ok
+run5-tbt-2s/continentale,continentale,2,592,50,traffico,c1,stream applicativo,141,seq,ok
+run5-tbt-2s/continentale,continentale,2,594,50,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,594,50,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,595,50,traffico,c5,stream applicativo,46,seq,ok
+run5-tbt-2s/continentale,continentale,2,596,50,traffico,c2,stream applicativo,95,seq,ok
+run5-tbt-2s/continentale,continentale,2,596,50,traffico,c1,stream applicativo,142,seq,ok
+run5-tbt-2s/continentale,continentale,2,598,50,traffico,c3,stream applicativo,72,seq,ok
+run5-tbt-2s/continentale,continentale,2,598,50,traffico,c1,stream applicativo,143,seq,ok
+run5-tbt-2s/continentale,continentale,2,600,51,traffico,c4,stream applicativo,58,seq,ok
+run5-tbt-2s/continentale,continentale,2,600,51,traffico,c2,stream applicativo,96,seq,ok
+run5-tbt-2s/continentale,continentale,2,601,51,traffico,c1,stream applicativo,144,seq,ok
+run5-tbt-2s/continentale,continentale,2,603,51,gas/reconcile,m3,treasury,7.4835,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,603,51,gas/reconcile,m2,treasury,64.5475,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,603,51,gas/reconcile,m1,treasury,101.1569,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,603,51,traffico,c5,stream applicativo,47,seq,ok
+run5-tbt-2s/continentale,continentale,2,603,51,traffico,c3,stream applicativo,73,seq,ok
+run5-tbt-2s/continentale,continentale,2,603,51,traffico,c2,stream applicativo,97,seq,ok
+run5-tbt-2s/continentale,continentale,2,603,51,traffico,c1,stream applicativo,145,seq,ok
+run5-tbt-2s/continentale,continentale,2,604,51,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,607,51,traffico,c4,stream applicativo,59,seq,ok
+run5-tbt-2s/continentale,continentale,2,607,51,traffico,c1,stream applicativo,146,seq,ok
+run5-tbt-2s/continentale,continentale,2,608,51,traffico,c2,stream applicativo,98,seq,ok
+run5-tbt-2s/continentale,continentale,2,611,51,traffico,c3,stream applicativo,74,seq,ok
+run5-tbt-2s/continentale,continentale,2,611,51,traffico,c1,stream applicativo,147,seq,ok
+run5-tbt-2s/continentale,continentale,2,613,52,traffico,c5,stream applicativo,48,seq,ok
+run5-tbt-2s/continentale,continentale,2,613,52,traffico,c2,stream applicativo,99,seq,ok
+run5-tbt-2s/continentale,continentale,2,613,52,traffico,c1,stream applicativo,148,seq,ok
+run5-tbt-2s/continentale,continentale,2,614,52,gas/reconcile,m3,treasury,5.9625,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,614,52,gas/reconcile,m2,treasury,25.8962,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,614,52,gas/reconcile,m1,treasury,100.5723,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,614,52,traffico,c4,stream applicativo,60,seq,ok
+run5-tbt-2s/continentale,continentale,2,616,52,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,616,52,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,616,52,traffico,c3,stream applicativo,75,seq,ok
+run5-tbt-2s/continentale,continentale,2,616,52,traffico,c1,stream applicativo,149,seq,ok
+run5-tbt-2s/continentale,continentale,2,618,52,traffico,c2,stream applicativo,100,seq,ok
+run5-tbt-2s/continentale,continentale,2,619,52,traffico,c1,stream applicativo,150,seq,ok
+run5-tbt-2s/continentale,continentale,2,622,52,traffico,c5,stream applicativo,49,seq,ok
+run5-tbt-2s/continentale,continentale,2,622,52,traffico,c4,stream applicativo,61,seq,ok
+run5-tbt-2s/continentale,continentale,2,622,52,traffico,c3,stream applicativo,76,seq,ok
+run5-tbt-2s/continentale,continentale,2,622,52,traffico,c2,stream applicativo,101,seq,ok
+run5-tbt-2s/continentale,continentale,2,622,52,traffico,c1,stream applicativo,151,seq,ok
+run5-tbt-2s/continentale,continentale,2,625,53,gas/reconcile,m3,treasury,4.8623,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,625,53,gas/reconcile,m2,treasury,70.268,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,625,53,gas/reconcile,m1,treasury,100.5114,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,625,53,traffico,c1,stream applicativo,152,seq,ok
+run5-tbt-2s/continentale,continentale,2,626,53,traffico,c2,stream applicativo,102,seq,ok
+run5-tbt-2s/continentale,continentale,2,627,53,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,628,53,traffico,c3,stream applicativo,77,seq,ok
+run5-tbt-2s/continentale,continentale,2,628,53,traffico,c1,stream applicativo,153,seq,ok
+run5-tbt-2s/continentale,continentale,2,629,53,traffico,c4,stream applicativo,62,seq,ok
+run5-tbt-2s/continentale,continentale,2,630,53,traffico,c2,stream applicativo,103,seq,ok
+run5-tbt-2s/continentale,continentale,2,630,53,traffico,c1,stream applicativo,154,seq,ok
+run5-tbt-2s/continentale,continentale,2,630,53,traffico,c5,stream applicativo,50,seq,ok
+run5-tbt-2s/continentale,continentale,2,633,53,traffico,c3,stream applicativo,78,seq,ok
+run5-tbt-2s/continentale,continentale,2,633,53,traffico,c1,stream applicativo,155,seq,ok
+run5-tbt-2s/continentale,continentale,2,634,53,traffico,c2,stream applicativo,104,seq,ok
+run5-tbt-2s/continentale,continentale,2,636,54,traffico,c4,stream applicativo,63,seq,ok
+run5-tbt-2s/continentale,continentale,2,636,54,traffico,c1,stream applicativo,156,seq,ok
+run5-tbt-2s/continentale,continentale,2,639,54,gas/reconcile,m3,treasury,3.8656,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,639,54,gas/reconcile,m2,treasury,28.1474,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,639,54,traffico,c3,stream applicativo,79,seq,ok
+run5-tbt-2s/continentale,continentale,2,639,54,traffico,c2,stream applicativo,105,seq,ok
+run5-tbt-2s/continentale,continentale,2,639,54,traffico,c1,stream applicativo,157,seq,ok
+run5-tbt-2s/continentale,continentale,2,640,54,gas/reconcile,m1,treasury,100.8131,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,640,54,traffico,c5,stream applicativo,51,seq,ok
+run5-tbt-2s/continentale,continentale,2,642,54,traffico,c1,stream applicativo,158,seq,ok
+run5-tbt-2s/continentale,continentale,2,644,54,traffico,c4,stream applicativo,64,seq,ok
+run5-tbt-2s/continentale,continentale,2,644,54,traffico,c2,stream applicativo,106,seq,ok
+run5-tbt-2s/continentale,continentale,2,646,54,traffico,c3,stream applicativo,80,seq,ok
+run5-tbt-2s/continentale,continentale,2,647,54,traffico,c1,stream applicativo,159,seq,ok
+run5-tbt-2s/continentale,continentale,2,650,55,traffico,c2,stream applicativo,107,seq,ok
+run5-tbt-2s/continentale,continentale,2,650,55,traffico,c1,stream applicativo,160,seq,ok
+run5-tbt-2s/continentale,continentale,2,651,55,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,651,55,gas/refill,admin,m3,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,651,55,traffico,c5,stream applicativo,52,seq,ok
+run5-tbt-2s/continentale,continentale,2,652,55,gas/reconcile,m3,treasury,3.0682,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,652,55,gas/reconcile,m2,treasury,11.2358,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,652,55,gas/reconcile,m1,treasury,5.7789,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,653,55,traffico,c4,stream applicativo,65,seq,ok
+run5-tbt-2s/continentale,continentale,2,653,55,traffico,c3,stream applicativo,81,seq,ok
+run5-tbt-2s/continentale,continentale,2,653,55,traffico,c1,stream applicativo,161,seq,ok
+run5-tbt-2s/continentale,continentale,2,654,55,traffico,c2,stream applicativo,108,seq,ok
+run5-tbt-2s/continentale,continentale,2,655,55,traffico,c1,stream applicativo,162,seq,ok
+run5-tbt-2s/continentale,continentale,2,658,55,traffico,c3,stream applicativo,82,seq,ok
+run5-tbt-2s/continentale,continentale,2,658,55,traffico,c2,stream applicativo,109,seq,ok
+run5-tbt-2s/continentale,continentale,2,659,55,traffico,c1,stream applicativo,163,seq,ok
+run5-tbt-2s/continentale,continentale,2,660,56,traffico,c5,stream applicativo,53,seq,ok
+run5-tbt-2s/continentale,continentale,2,660,56,traffico,c4,stream applicativo,66,seq,ok
+run5-tbt-2s/continentale,continentale,2,661,56,gas/refill,admin,m2,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,661,56,traffico,c1,stream applicativo,164,seq,ok
+run5-tbt-2s/continentale,continentale,2,662,56,traffico,c2,stream applicativo,110,seq,ok
+run5-tbt-2s/continentale,continentale,2,663,56,gas/reconcile,m3,treasury,22.4567,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,663,56,gas/reconcile,m2,treasury,4.8259,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,663,56,gas/reconcile,m1,treasury,95.5315,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,664,56,traffico,c3,stream applicativo,83,seq,ok
+run5-tbt-2s/continentale,continentale,2,664,56,traffico,c1,stream applicativo,165,seq,ok
+run5-tbt-2s/continentale,continentale,2,667,56,traffico,c4,stream applicativo,67,seq,ok
+run5-tbt-2s/continentale,continentale,2,667,56,traffico,c2,stream applicativo,111,seq,ok
+run5-tbt-2s/continentale,continentale,2,667,56,traffico,c1,stream applicativo,166,seq,ok
+run5-tbt-2s/continentale,continentale,2,669,56,traffico,c5,stream applicativo,54,seq,ok
+run5-tbt-2s/continentale,continentale,2,670,56,traffico,c3,stream applicativo,84,seq,ok
+run5-tbt-2s/continentale,continentale,2,670,56,traffico,c1,stream applicativo,167,seq,ok
+run5-tbt-2s/continentale,continentale,2,672,57,traffico,c2,stream applicativo,112,seq,ok
+run5-tbt-2s/continentale,continentale,2,674,57,gas/refill,admin,m1,100.0,GAS,"l'admin finanzia il nodo: init = dotazione iniziale, refill = rifornimento sotto soglia"
+run5-tbt-2s/continentale,continentale,2,674,57,traffico,c1,stream applicativo,168,seq,ok
+run5-tbt-2s/continentale,continentale,2,675,57,gas/reconcile,m3,treasury,17.9241,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,675,57,gas/reconcile,m2,treasury,61.8735,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,675,57,gas/reconcile,m1,treasury,5.5854,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,676,57,traffico,c4,stream applicativo,68,seq,ok
+run5-tbt-2s/continentale,continentale,2,677,57,traffico,c3,stream applicativo,85,seq,ok
+run5-tbt-2s/continentale,continentale,2,677,57,traffico,c2,stream applicativo,113,seq,ok
+run5-tbt-2s/continentale,continentale,2,678,57,traffico,c1,stream applicativo,169,seq,ok
+run5-tbt-2s/continentale,continentale,2,680,57,traffico,c5,stream applicativo,55,seq,ok
+run5-tbt-2s/continentale,continentale,2,681,57,traffico,c1,stream applicativo,170,seq,ok
+run5-tbt-2s/continentale,continentale,2,682,57,traffico,c2,stream applicativo,114,seq,ok
+run5-tbt-2s/continentale,continentale,2,683,57,traffico,c4,stream applicativo,69,seq,ok
+run5-tbt-2s/continentale,continentale,2,683,57,traffico,c3,stream applicativo,86,seq,ok
+run5-tbt-2s/continentale,continentale,2,683,57,traffico,c1,stream applicativo,171,seq,ok
+run5-tbt-2s/continentale,continentale,2,686,58,traffico,c2,stream applicativo,115,seq,ok
+run5-tbt-2s/continentale,continentale,2,686,58,traffico,c1,stream applicativo,172,seq,ok
+run5-tbt-2s/continentale,continentale,2,687,58,gas/reconcile,m3,treasury,14.315,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,687,58,gas/reconcile,m2,treasury,24.6589,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,687,58,gas/reconcile,m1,treasury,96.167,GAS,il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita)
+run5-tbt-2s/continentale,continentale,2,689,58,traffico,c5,stream applicativo,56,seq,ok
+run5-tbt-2s/continentale,continentale,2,689,58,traffico,c3,stream applicativo,87,seq,ok
+run5-tbt-2s/continentale,continentale,2,689,58,traffico,c1,stream applicativo,173,seq,ok
+run5-tbt-2s/continentale,continentale,2,691,58,traffico,c4,stream applicativo,70,seq,ok
+run5-tbt-2s/continentale,continentale,2,691,58,traffico,c2,stream applicativo,116,seq,ok
+run5-tbt-2s/continentale,continentale,2,692,58,traffico,c1,stream applicativo,174,seq,ok
+run5-tbt-2s/continentale,continentale,2,696,59,traffico,c3,stream applicativo,88,seq,ok
+run5-tbt-2s/continentale,continentale,2,696,59,traffico,c2,stream applicativo,117,seq,ok
+run5-tbt-2s/continentale,continentale,2,696,59,traffico,c1,stream applicativo,175,seq,ok

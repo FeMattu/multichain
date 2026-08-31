@@ -48,7 +48,8 @@ Output in `<livello>/run/`:
 run/
 ├── data/<host>/          datadir isolato per nodo (blocchi, wallet, debug.log)
 ├── shared/<host>.addr    indirizzi raccolti durante il bootstrap
-├── metrics/              CSV, snapshot JSON e summary.txt
+├── metrics/              CSV, snapshot JSON, summary.txt, summary_epoche.txt
+│   └── epoche/           campionamenti a ogni epoca (verifica, fork, treasury)
 ├── shadow.data/          output di Shadow (stdout/stderr per processo)
 └── shadow.log            log del simulatore
 ```
@@ -373,6 +374,65 @@ nodo admin (`listblocks` riporta il proposer di ogni altezza): il parsing dei
 * ESG certificati, adesioni, riconciliazione, movimenti GAS;
 * `weightverifyweights`: la ricomputazione indipendente dei pesi pubblicati.
 
+### Le stesse analisi, epoca per epoca
+
+`tools/summary_per_epoca.py` gira subito dopo e scrive
+`metrics/summary_epoche.txt`: stessa struttura, ma un blocco per epoca invece di
+uno per run. La differenza non e' cosmetica. Il riepilogo di run confronta i
+blocchi di **tutta** la finestra con l'**ultimo** peso pubblicato, e lo dichiara:
+se il peso e' cambiato fra le epoche — ed e' esattamente cio' che il weight
+engine fa — il test e' solo indicativo. Il riepilogo per epoca confronta invece
+i blocchi di ogni epoca col peso che era davvero **leggibile alla punta della
+catena** mentre venivano proposti.
+
+Attenzione allo sfasamento di una epoca: il record marcato `epoch = e` viene
+pubblicato a epoca **gia' chiusa**, dopo il margine di stabilita', quindi entra
+in vigore dentro l'epoca `e+1`. La colonna `marca` della tabella "Peso VIGENTE"
+lo rende leggibile a occhio.
+
+Ogni blocco riporta, per quella sola epoca: intervallo fra blocchi contro il
+target; peso vigente e peso marcato; la catena del peso anello per anello
+(ESG, `tau`, `c_i`, `Theta`, `W_k`, `A_k`, `B`, `R_k`, `rho`, `w_k` pubblicato e
+ricalcolato); proposer **osservati e attesi** con il chi-quadro dell'epoca e
+quello a finestra scorrevole, ciascuno con la propria attesa minima e il
+verdetto sulla sufficienza del campione; delay di sortition e margine `G`;
+riconciliazione; la verifica indipendente dei pesi nodo per nodo. In testa, un
+"quadro d'insieme" con una riga per epoca.
+
+Il chi-quadro su una singola epoca di 12 blocchi ha attesa minima intorno a 1 e
+**non e' concludente**: il file lo dice in ogni blocco invece di lasciarlo
+dedurre. E' la finestra scorrevole a portare il campione a un livello leggibile
+— o un `weight-epoch-length` piu' lungo, come nella run a epoche da 100 blocchi,
+dove l'attesa minima supera 5 e il test per epoca diventa valido da solo.
+
+### Campionamenti a ogni epoca (`metrics/epoche/`)
+
+`role_admin.sh epoch_watch` gira **dentro** la simulazione, dal momento in cui
+parte il traffico, e a ogni epoca chiusa e sepolta appende cio' che a fine run
+non sarebbe piu' ricostruibile:
+
+* `verify_epoche.jsonl` — `weightverifyweights` a quella epoca. La RPC riporta
+  solo l'**ultima** epoca che il nodo ha verificato, quindi lo snapshot finale
+  ne conserverebbe una sola;
+* `node_state_epoche.csv` — altezza, best-hash e peer di ogni nodo a quella
+  epoca: e' cio' che rende visibile un fork **riassorbito** a metà run, che
+  `node_state.csv` (istantanea finale) non mostrerebbe;
+* `treasury_epoche.csv` — il saldo del treasury come serie, non come numero
+  finale.
+
+Il campionamento usa solo bash e curl, mai un interprete: per lo stesso motivo
+per cui `sim_common.sh` usa curl e non `multichain-cli` (vedi *Vincoli di
+Shadow*), un processo Python avviato a ogni epoca dentro la simulazione
+sposterebbe l'orologio simulato del nodo che nel frattempo deve rifornire il
+GAS. Il `.txt` viene percio' costruito **fuori** da Shadow, a simulazione
+conclusa, da `run.sh`.
+
+Le epoche interamente dentro la fase di setup non vengono campionate: non hanno
+blocchi governati dalla wPoA. Le epoche pronte vengono recuperate **tutte** a
+ogni controllo, non solo l'ultima: la finestra di sepoltura e' larga poche
+altezze e con `target-block-time` basso un solo campionamento per ciclo
+salterebbe epoche intere.
+
 `tools/compare_levels.py` mette in fila le run dei quattro livelli in una sola
 tabella (RTT massimo, block time, quote dei proposer, margine della timer race,
 alternanze, numero di teste distinte): e' il confronto che l'esperimento vuole
@@ -484,6 +544,8 @@ shadow/
 │   ├── role_miner.sh          membership + riconciliazione
 │   ├── role_company.sh        membership + traffico di filiera
 │   ├── collect_metrics.py     snapshot + debug.log → summary.txt
+│   ├── summary_per_epoca.py   le stesse analisi, epoca per epoca →
+│   │                          summary_epoche.txt
 │   └── compare_levels.py      tabella di confronto fra i quattro livelli
 └── <livello>/
     ├── topologia_myledger_<livello>.gml
