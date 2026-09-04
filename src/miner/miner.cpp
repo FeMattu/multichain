@@ -722,19 +722,15 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn,CWallet *pwallet,CP
 //                const unsigned char *pubkey_hash=(unsigned char *)Hash160(ppubkey->begin(),ppubkey->end()).begin();
 //                *canMine=mc_gState->m_Permissions->CanMine(NULL,pubkey_hash);
                 uint160 pubkey_hash=Hash160(ppubkey->begin(),ppubkey->end());
-/* MCHN START - wPoA: mirror the validator-side rule (CheckBlockPermissions). On
-   wPoA-governed heights the mining-diversity spacing no longer applies, so this
-   node is "able to mine" whenever it holds the mine permission — otherwise a
-   validator that legitimately wins two consecutive rounds would log "cannot mine
-   now" and skip its own block-validity self-test. Cfr. §5.12.3, step 1. */
-                if(WPoAActiveAtHeight(nHeight))
-                {
-                    *canMine=mc_gState->m_Permissions->CanCustom(NULL,&pubkey_hash,MC_PTP_MINE);
-                }
-                else
-                {
-                    *canMine=mc_gState->m_Permissions->CanMine(NULL,&pubkey_hash);
-                }
+/* MCHN START - wPoA: mirrors the validator-side rule (CheckBlockPermissions). On
+   wPoA-governed heights the mining-diversity spacing no longer applies, so this node is
+   "able to mine" whenever it holds the mine permission -- otherwise a validator that
+   legitimately wins two consecutive rounds logs "cannot mine now" and skips its own
+   block-validity self-test. That is now enforced inside IsBarredByDiversity, so plain
+   CanMine() already returns the raw permission here and the two sides cannot drift
+   apart. The earlier CanCustom(MC_PTP_MINE) form also read mempool-pending grants,
+   which the validator side must not do. Cfr. §5.12.3, step 1. */
+                *canMine=mc_gState->m_Permissions->CanMine(NULL,&pubkey_hash);
 /* MCHN END */
                 if((*canMine & MC_PTP_MINE) == 0)
                 {

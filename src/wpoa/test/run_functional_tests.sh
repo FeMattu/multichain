@@ -5,8 +5,8 @@
 # The functional suite is now a SINGLE orchestrated system-level run
 # (functional_test_wpoa_system.sh): it starts ONE multi-node network, waits for
 # weight convergence and a block warm-up ONCE, and then verifies every feature
-# (weight, stream permissions, malus, multi-node consistency, VRF, RANDAO,
-# sortition, distribution) against
+# (weight, stream permissions, malus, multi-node consistency, mining-diversity,
+# VRF, RANDAO, sortition, distribution) against
 # that shared run. This script is the thin, robust wrapper around it — it adds a
 # hard timeout safety-net and the QUICK profile, and normalises the exit code.
 #
@@ -24,6 +24,9 @@
 # Environment:
 #   QUICK=1                 reduced sample sizes / budgets for a fast pass
 #   INCLUDE_PUBLIC_SELECTOR run the extra sortition-off scenario (default off)
+#   SKIP_DIVERSITY_SCENARIO=1  skip the 4-miner mining-diversity regression scenario
+#                           (it runs automatically when NODES<4, where the shared
+#                            run cannot express a consecutive wPoA win)
 #   FUNCTIONAL_TIMEOUT      hard timeout in seconds for the whole run (default 1800; 0 = none)
 #   NO_WARN=1               suppress the warning banner (for CI)
 #   DRY_RUN=1               print the plan without launching anything
@@ -39,7 +42,7 @@ FUNCTIONAL_TIMEOUT="${FUNCTIONAL_TIMEOUT:-1800}"
 QUICK="${QUICK:-0}"
 DRY_RUN="${DRY_RUN:-0}"
 
-usage() { sed -n '2,32p' "${BASH_SOURCE[0]}" | sed 's/^#\{0,1\} \{0,1\}//'; }
+usage() { sed -n '2,35p' "${BASH_SOURCE[0]}" | sed 's/^#\{0,1\} \{0,1\}//'; }
 
 for arg in "$@"; do
     case "$arg" in

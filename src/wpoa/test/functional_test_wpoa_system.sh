@@ -18,6 +18,7 @@
 #                      check_malus                  Psi inert, false evidence refused
 #                                                    (both malus families)
 #                      check_multinode_consistency  no persistent fork
+#                      check_diversity_spacing      mining-diversity inert under wPoA
 #                      check_vrf                    reveals carried & verified, 0 rejects
 #                      check_randao                 beacon seed derived, 0 fallback folds
 #                      check_sortition              private path engaged, 0 public argmin
@@ -30,6 +31,13 @@
 # (sortition replaces the public argmin path). It reuses the same library, so no
 # bootstrap code is duplicated. Off by default → the default cost is one network.
 #
+# A THIRD scenario (scenario_diversity_spacing) runs automatically when — and only
+# when — NODES < 4: the native mining-diversity spacing is arithmetically inert below
+# 4 miners, so the shared run cannot express a validator winning two consecutive wPoA
+# rounds. It is a 4-miner network with skewed weights, and it is the targeted
+# regression for that bug. Suppress with SKIP_DIVERSITY_SCENARIO=1; at NODES>=4 it is
+# skipped because check_diversity_spacing already covered the case in the shared run.
+#
 # Requires the node to be built first (./autogen.sh && ./configure && make).
 #
 # Usage:
@@ -41,7 +49,8 @@
 #
 # Key env (see also functional_lib.sh): NODES, WEIGHTS, SETUP_BLOCKS,
 #   SAMPLE_BLOCKS, CONFIRM_BUFFER, DRIVE_TIMEOUT, RANDAO_LOOKBACK,
-#   SORTITION_DELTA, SORTITION_LAMBDA, DIST_TOLERANCE, BINDIR, KEEP_LOGS.
+#   SORTITION_DELTA, SORTITION_LAMBDA, DIST_TOLERANCE, BINDIR, KEEP_LOGS,
+#   SKIP_DIVERSITY_SCENARIO.
 #
 # Exit code: 0 iff every CRITICAL check passed; non-zero otherwise.
 set -uo pipefail
@@ -258,6 +267,80 @@ check_multinode_consistency() {
     fl_assert_zero "$mism" "nodes disagreeing on the chain at height $SAMPLE_END"
 }
 
+# The three symptom counters, asserted by check_diversity_spacing in both regimes.
+_check_diversity_symptoms() {
+    local denied cannot nokey
+    denied=$(fl_logcount_all "Permission denied for miner")
+    cannot=$(fl_logcount_all "cannot mine now, waiting")
+    nokey=$(fl_logcount_all "no local mining key, waiting")
+    fl_log "per-node 'Permission denied for miner':"; fl_logcount_per_node "Permission denied for miner"
+    fl_assert_zero "$denied" "'Permission denied for miner' block rejections"
+    fl_assert_zero "$cannot" "miner-side 'cannot mine now' back-offs"
+    fl_assert_zero "$nokey"  "elected proposers that found no local mining key"
+}
+
+# REGRESSION — mining-diversity spacing must be inert on wPoA-governed heights.
+#
+# The native rule (mc_Permissions::IsBarredByDiversity) is round-robin: it forbids a
+# miner from producing a block within `spacing` heights of its previous one. Under
+# weighted selection every permissioned address takes part in every round, so a heavier
+# validator legitimately wins two CONSECUTIVE rounds — which the native rule rejects.
+#
+# The defect was masked by the default 3-node set-up, where the computed spacing
+# degenerates to 1 and the rule is arithmetically inert; from 4 miners upward (with the
+# default mining-diversity 0.3) it becomes 2 and bites. So this check FIRST asserts the
+# run is in the biting regime, then asserts the consecutive win was accepted.
+#
+# The three symptom counters are the three faces of the same bug:
+#   "Permission denied for miner"  — validator side, block admission (CheckBlockPermissions)
+#   "cannot mine now, waiting"     — miner side, CreateNewBlock's canMine self-test probe
+#   "no local mining key, waiting" — miner side, GetKeyFromAddressBook via GetAllPermissions:
+#                                    the elected proposer concludes it holds no mining key
+#                                    and sleeps through its own round (the stalling face)
+check_diversity_spacing() {
+    local d spacing
+    d="$(fl_chain_param 0 mining-diversity)"
+    [ -n "$d" ] || { fl_bad "could not read mining-diversity from getblockchainparams"; return; }
+    spacing="$(fl_native_diversity_spacing "$NODES" "$d")"
+    fl_log "miners=$NODES  mining-diversity=$d  ->  native spacing=$spacing"
+
+    if [ "${spacing:-1}" -lt 2 ]; then
+        # Not a failure: at this miner count the native rule is arithmetically inert, so
+        # there is nothing for it to break. The consecutive-win case is covered by
+        # scenario_diversity_spacing, which the orchestration runs precisely when this
+        # shared run cannot express it. Assert the symptom counters anyway — they are
+        # meaningful at any miner count — and skip the pair requirement.
+        fl_log "native spacing is $spacing: the native rule is inert at $NODES miners, so this"
+        fl_log "shared run cannot express the consecutive-win case (covered by the dedicated scenario)."
+        _check_diversity_symptoms
+        return
+    fi
+    fl_ok "native spacing is $spacing (>=2): the consecutive-win regime is under test"
+
+    # Count consecutive same-miner pairs over the sample window.
+    local miners=() pairs=0 i
+    while IFS= read -r line; do [ -n "$line" ] && miners+=("$line"); done \
+        < <(fl_block_miners 0 "$SAMPLE_START" "$SAMPLE_END")
+    if [ "${#miners[@]}" -lt 2 ]; then
+        fl_bad "could not read block miners for heights $SAMPLE_START..$SAMPLE_END"
+        return
+    fi
+    for ((i = 1; i < ${#miners[@]}; i++)); do
+        [ "${miners[i]}" = "${miners[i-1]}" ] && pairs=$((pairs + 1))
+    done
+    fl_log "blocks sampled: ${#miners[@]} (heights $SAMPLE_START..$SAMPLE_END); consecutive same-miner pairs: $pairs"
+
+    _check_diversity_symptoms
+
+    # A run with zero consecutive pairs proves nothing either way: report it as a
+    # failure of the TEST to exercise the case, not as a pass.
+    if [ "$pairs" -gt 0 ]; then
+        fl_ok "a validator won two consecutive wPoA rounds and the block was accepted ($pairs occurrence(s))"
+    else
+        fl_bad "no consecutive same-miner pair occurred: INCONCLUSIVE (raise SAMPLE_BLOCKS, or skew WEIGHTS so one validator wins more often)"
+    fi
+}
+
 # VRF reveals were carried and verified network-wide; the prover never failed and
 # nothing was rejected for a VRF reason. Under the full stack the verify is logged
 # by the sortition path (see check_sortition); here we assert the VRF invariants.
@@ -342,6 +425,40 @@ scenario_public_selector() {
     fl_teardown
 }
 
+# Dedicated 4-miner scenario for the mining-diversity regression.
+#
+# Needed only because the native spacing is arithmetically inert below 4 miners (see
+# check_diversity_spacing): at the default NODES=3 the shared run simply cannot express a
+# consecutive win. Weights are deliberately skewed so the heaviest validator wins often
+# and consecutive pairs appear within a short sample: with 100/200/400/800 the chance that
+# any given pair of adjacent heights has the same proposer is sum(p_i^2) ~= 0.38, so a
+# 30-block window yields ~11 of them.
+#
+# The orchestration runs this ONLY when the shared run could not cover the case, so the
+# default cost is one extra short network and NODES>=4 runs pay nothing.
+scenario_diversity_spacing() {
+    fl_phase "SCENARIO: mining-diversity regression (4 miners, skewed weights)"
+    local NODES=4
+    local WEIGHTS="100 200 400 800"
+    local SAMPLE_BLOCKS=30
+    fl_log "miners=$NODES weights=($WEIGHTS) — native spacing becomes 2 and would bar consecutive wins"
+
+    fl_start_network "$FULL_STACK_ARGS"
+    fl_wait_weight_convergence || fl_die "weights did not converge (diversity scenario)"
+    local cur; cur="$(fl_tip_height 0)"; cur="${cur:-0}"
+    SAMPLE_START=$(( cur + 1 )); [ "$SAMPLE_START" -lt "$SETUP_BLOCKS" ] && SAMPLE_START=$SETUP_BLOCKS
+    SAMPLE_END=$(( SAMPLE_START + SAMPLE_BLOCKS - 1 ))
+    fl_drive_to_height $(( SAMPLE_END + CONFIRM_BUFFER )) "$DRIVE_TIMEOUT" \
+        "4-miner stall — a proposer barred by mining-diversity would look exactly like this" \
+        || fl_die "diversity scenario did not reach height $SAMPLE_END (chain stalled)"
+
+    fl_check_begin "diversity_spacing_4n" 1
+        check_diversity_spacing
+    fl_check_end || true
+
+    fl_teardown
+}
+
 ################################################################################
 # ORCHESTRATION
 ################################################################################
@@ -366,6 +483,7 @@ fl_check_begin "weight"                1; check_weight;                fl_check_
 fl_check_begin "stream_permissions"    1; check_stream_permissions;    fl_check_end || true
 fl_check_begin "malus"                 1; check_malus;                 fl_check_end || true
 fl_check_begin "multinode_consistency" 1; check_multinode_consistency; fl_check_end || true
+fl_check_begin "diversity_spacing"     1; check_diversity_spacing;     fl_check_end || true
 fl_check_begin "vrf"                   1; check_vrf;                   fl_check_end || true
 fl_check_begin "randao"                1; check_randao;                fl_check_end || true
 fl_check_begin "sortition"             1; check_sortition;             fl_check_end || true
@@ -373,6 +491,14 @@ fl_check_begin "distribution"          1; check_distribution;          fl_check_
 
 fl_phase "PHASE 4/4 — teardown"
 fl_teardown
+
+# ---- mining-diversity regression --------------------------------------------
+# Runs only when the shared run above could not exercise it, i.e. when the native
+# spacing is inert at this miner count. At NODES>=4 check_diversity_spacing already
+# covered it on the shared network and this costs nothing.
+if [ "${SKIP_DIVERSITY_SCENARIO:-0}" != "1" ] && [ "$NODES" -lt 4 ]; then
+    scenario_diversity_spacing
+fi
 
 # ---- optional independent regime --------------------------------------------
 if [ "${INCLUDE_PUBLIC_SELECTOR:-0}" = "1" ]; then

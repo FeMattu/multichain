@@ -441,6 +441,30 @@ typedef struct mc_Permissions
 } mc_Permissions;
 
 
+/* MCHN START - wPoA: mining-diversity gate hook
+
+   Under weighted proof-of-authority every address holding the mine permission takes
+   part in every round, and a heavier validator may legitimately win two consecutive
+   heights. The native mining-diversity spacing (IsBarredByDiversity) is a round-robin
+   rule and rejects exactly that, so it must be inert on wPoA-governed heights.
+
+   The predicate that decides whether wPoA governs a height lives in
+   src/wpoa/wpoa_selector.cpp (WPoAActiveAtHeight), which is compiled only into
+   libbitcoin_wallet. permission.cpp is also compiled into libbitcoin_multichain and
+   libbitcoinconsensus, which do not link wpoa/*, so it cannot call that predicate
+   directly without leaving an unresolved symbol in the utility binaries and in the
+   standalone consensus library.
+
+   Hence this hook: wpoa_selector.cpp installs it at static-initialisation time (before
+   main()), so there is exactly ONE definition of "wPoA governs height h" and no
+   duplicated activation logic. Targets that do not link wpoa/* leave it NULL and keep
+   the native behaviour byte-for-byte. Takes the block height, returns non-zero when
+   wPoA governs it. Cfr. §5.12.3, block validation step 1. */
+
+extern int (*mc_WPoAGovernsMiningHook)(uint32_t block);
+
+/* MCHN END */
+
 
 #endif	/* MULTICHAIN_PERMISSION_H */
 

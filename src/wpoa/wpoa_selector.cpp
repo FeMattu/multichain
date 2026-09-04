@@ -15,6 +15,7 @@
 #include "utils/util.h"                  // LogPrint, LogPrintf, fDebug
 #include "chainparams/state.h"           // mc_gState, IsProtocolMultichain,
                                          //   GetInt64Param, MCP_ANYONE_CAN_MINE
+#include "permissions/permission.h"      // mc_WPoAGovernsMiningHook (diversity gate)
 
 using namespace std;
 
@@ -72,6 +73,38 @@ bool WPoAActiveAtHeight(int height)
     int setup_blocks = (int)mc_gState->m_NetworkParams->GetInt64Param("setupfirstblocks");
     return height >= setup_blocks;
 }
+
+/* MCHN START - wPoA: neutralise the native mining-diversity spacing on governed heights.
+
+   The spacing is a round-robin rule; wPoA replaces it with weighted selection, in which
+   every permissioned address takes part in every round and a heavier validator may
+   legitimately win two consecutive heights. It is gated at its source,
+   mc_Permissions::IsBarredByDiversity, so that every consumer of the mine permission
+   agrees without each having to special-case wPoA -- notably CWallet::GetKeyFromAddressBook
+   (via GetAllPermissions), which the miner uses to find its OWN mining key: barred there, an
+   elected proposer concludes it holds no mining key and skips its own round.
+
+   permission.cpp cannot call this predicate directly: it is also compiled into
+   libbitcoin_multichain and libbitcoinconsensus, which do not link wpoa/*. It exposes a
+   function-pointer hook instead, installed here so the predicate keeps exactly one
+   definition. Installed at static-initialisation time (before main()), so it is in place
+   for every code path; the gate's VALUE still follows g_wpoa_enabled, which AppInit2
+   resolves from params.dat plus the runtime flags, exactly like every other wPoA
+   consumer. Cfr. §5.12.3, block validation step 1. */
+
+static int WPoAGovernsMiningThunk(uint32_t block)
+{
+    return WPoAActiveAtHeight((int)block) ? 1 : 0;
+}
+
+namespace {
+struct WPoADiversityGateInstaller
+{
+    WPoADiversityGateInstaller() { mc_WPoAGovernsMiningHook = &WPoAGovernsMiningThunk; }
+};
+static WPoADiversityGateInstaller wpoa_diversity_gate_installer;
+} // namespace
+/* MCHN END */
 
 bool WPoAVRFActiveAtHeight(int height)
 {

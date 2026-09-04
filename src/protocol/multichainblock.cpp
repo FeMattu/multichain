@@ -1190,22 +1190,19 @@ bool CheckBlockPermissions(const CBlock& block,CBlockIndex* prev_block,unsigned 
                     CKeyID pubKeyHash=pubKeyOut.GetID();
                     memcpy(lpMinerAddress,pubKeyHash.begin(),20);
 /* MCHN START - wPoA: the mine permission still gates the signer, but the
-   mining-diversity spacing does not. Under weighted selection every address with
-   the mine permission takes part in every round, and a heavier validator may
-   legitimately win two consecutive heights — which CanMine()'s round-robin
-   spacing would reject. So on wPoA-governed heights check the raw mine
-   permission (CanCustom = GetPermission, no spacing); every other height keeps
-   the native CanMine() unchanged. Cfr. §5.12.3, block validation step 1. */
-                    int nMinerPerm;
-                    if(WPoAActiveAtHeight(prev_block->nHeight+1))
-                    {
-                        nMinerPerm=mc_gState->m_Permissions->CanCustom(NULL,pubKeyHash.begin(),MC_PTP_MINE);
-                    }
-                    else
-                    {
-                        nMinerPerm=mc_gState->m_Permissions->CanMine(NULL,pubKeyHash.begin());
-                    }
-                    if(!nMinerPerm)
+   mining-diversity spacing does not: under weighted selection every address with the
+   mine permission takes part in every round, and a heavier validator may legitimately
+   win two consecutive heights, which the round-robin spacing would reject.
+
+   The spacing is now neutralised at its source on wPoA-governed heights
+   (mc_Permissions::IsBarredByDiversity), so CanMine() is again the right call here and
+   the height no longer needs special-casing. It previously read CanCustom(MC_PTP_MINE)
+   to bypass the spacing, which also -- unintentionally -- switched the lookup to
+   checkmempool=1: CanMine() reads confirmed permissions only, CanCustom() honours grants
+   still sitting in the mempool. In a CONSENSUS check that is a fork, since the mempool is
+   per-node: a block signed under an unconfirmed grant would be accepted by whoever holds
+   that transaction and rejected by everyone else. Cfr. §5.12.3, block validation step 1. */
+                    if(!mc_gState->m_Permissions->CanMine(NULL,pubKeyHash.begin()))
 /* MCHN END */
                     {
                 //                mc_DumpSize("Connection address",pubKeyHash.begin(),20,20);
