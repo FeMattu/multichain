@@ -78,6 +78,25 @@ public:
      */
     bool RegisterLocalWeight(uint32_t weight, uint32_t epoch = 0);
 
+    /**
+     * Make the stream usable: create it (CLOSED) if missing, then subscribe.
+     * Idempotent and safe to call on every tick from any publication thread.
+     *
+     * Exposed because the ORDER matters. Creating the stream needs only the `create`
+     * permission, which the genesis admin holds from block 1; a weight only becomes
+     * computable once the first epoch is buried. While the create was reachable ONLY
+     * from RegisterLocalWeight it was sequenced after an event that itself requires the
+     * stream: nobody published because the stream was missing, and the stream stayed
+     * missing because nobody had a weight to publish. Calling this before the epoch gate
+     * breaks that ordering deterministically, on every clean network.
+     *
+     * Returns true when the stream exists AND this node is subscribed; false while a
+     * create/subscribe is still pending, or when this node may not create it (no
+     * `create` permission) -- which is the correct outcome for a non-admin node: it
+     * waits for the admin's stream and subscribes to it.
+     */
+    bool EnsureStreamReady();
+
     /** Latest confirmed weight for this node, or 0 if not yet registered. */
     uint32_t GetLocalWeight();
 
@@ -117,8 +136,10 @@ private:
     std::string   m_StreamName;   //!< "wpoa-weights"
     std::string   m_LocalAddress; //!< cached node address
 
-    bool m_CreateAttempted;       //!< guards against issuing >1 create tx
-    bool m_SubscribeAttempted;    //!< guards against redundant subscribe calls
+    bool m_CreateBroadcast;       //!< a create tx IS in flight: never issue a second one
+    int  m_CreateFailures;        //!< failed create attempts; bounded retry, see the .cpp
+    bool m_SubscribeIssued;       //!< subscribe accepted: never re-issue (would rescan)
+    int  m_SubscribeFailures;     //!< failed subscribe attempts; bounded retry
 
     void ResolveLocalAddress();
     bool GetStreamEntity(mc_EntityDetails* entity);

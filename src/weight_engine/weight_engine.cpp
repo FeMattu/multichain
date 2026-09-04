@@ -265,6 +265,21 @@ void ThreadWeightEngine()
             continue;
         }
 
+        // Same treatment for the OUTPUT stream, and for the same reason. wpoa-weights used
+        // to be created lazily, from inside RegisterLocalWeight far below -- i.e. only once
+        // this node already had a weight to publish. That sequenced the create after an
+        // event which itself needs the stream, and a clean network deadlocked: no weight
+        // could be published because the stream was missing, and the stream stayed missing
+        // because no weight was computable until an epoch had been buried. Creating it here,
+        // before the epoch gate, uses only the `create` permission the genesis admin holds
+        // from block 1, so the stream (and the write grants that target it) are in place
+        // long before wPoA engages at setup-first-blocks.
+        //
+        // Not a hard gate: a node with no create permission never gets a true here, and must
+        // still verify its peers' weights below. Only its OWN publish needs the stream, and
+        // RegisterLocalWeight re-checks independently.
+        registry.EnsureStreamReady();
+
         int height = -1;
         {
             LOCK(cs_main);

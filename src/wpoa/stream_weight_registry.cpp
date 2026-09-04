@@ -34,6 +34,13 @@ static const int MC_WPOA_MAX_ATTEMPTS      = 200;   // ~10 minutes worst case
 // After a successful publish, how long to wait for the tx to be mined & imported
 // before printing the debug dump (so it shows the confirmed value, not 0).
 static const int MC_WPOA_CONFIRM_ATTEMPTS  = 20;    // 20 * 3s = up to ~60s
+// How many FAILED create/subscribe attempts to make before giving up. A failure can be
+// transient (wallet still locked, no spendable output yet, the `create` grant not yet
+// confirmed) or permanent (this node simply has no create permission, which is the normal
+// case for every non-admin node). Retrying a bounded number of times rides out the former
+// without logging forever about the latter. Previously a single attempt -- successful or
+// not -- latched permanently, so ONE transient error wedged the node for its whole run.
+static const int MC_WPOA_STREAM_SETUP_MAX_ATTEMPTS = 20;   // 20 * 3s = up to ~60s
 
 // ---------------------------------------------------------------------------
 // Construction
@@ -44,8 +51,10 @@ StreamWeightRegistry::StreamWeightRegistry(mc_WalletTxs* pwalletIn)
     m_pWalletTxs       = pwalletIn;
     m_StreamName       = MC_WPOA_WEIGHTS_STREAM_NAME;
     m_LocalAddress     = "";
-    m_CreateAttempted  = false;
-    m_SubscribeAttempted = false;
+    m_CreateBroadcast    = false;
+    m_CreateFailures     = 0;
+    m_SubscribeIssued    = false;
+    m_SubscribeFailures  = 0;
     ResolveLocalAddress();
 }
 
@@ -110,20 +119,30 @@ bool StreamWeightRegistry::GetStreamEntity(mc_EntityDetails* entity)
     return (entity->GetEntityType() == MC_ENT_TYPE_STREAM);
 }
 
-// Ensures the stream exists. If missing, issues exactly one `create` transaction
-// and returns false (the stream only becomes usable once that tx confirms).
+// Ensures the stream exists. If missing, issues a `create` transaction and returns false
+// (the stream only becomes usable once that tx confirms).
 bool StreamWeightRegistry::EnsureStreamExists()
 {
     mc_EntityDetails entity;
     if (GetStreamEntity(&entity))
     {
+        // Also the convergence point of the multi-admin race: stream names are unique, so
+        // if two admins create concurrently one transaction is rejected -- and the loser
+        // finds the winner's stream here on its next tick and stops trying.
         return true;
     }
 
-    if (m_CreateAttempted)
+    if (m_CreateBroadcast)
     {
-        // create tx already broadcast, still waiting for confirmation
+        // create tx already broadcast, still waiting for confirmation. Never issue a
+        // second one: it would at best be rejected as a duplicate name and at worst race
+        // the first.
         return false;
+    }
+
+    if (m_CreateFailures >= MC_WPOA_STREAM_SETUP_MAX_ATTEMPTS)
+    {
+        return false;   // gave up; almost certainly no `create` permission on this node
     }
 
     // create ["stream", "wpoa-weights", false] -> CLOSED (write permission
@@ -137,21 +156,25 @@ bool StreamWeightRegistry::EnsureStreamExists()
     params.push_back(m_StreamName);
     params.push_back(false);
 
-    m_CreateAttempted = true;
     try
     {
         Value result = createcmd(params, false);
+        m_CreateBroadcast = true;   // latch ONLY on a real broadcast
         LogPrintf("[StreamWeightRegistry] Stream '%s' create tx broadcast: %s\n",
                   m_StreamName.c_str(), result.get_str().c_str());
     }
     catch (const Object& objError)
     {
-        LogPrintf("[StreamWeightRegistry] ERROR creating stream '%s' (create permission required?)\n",
-                  m_StreamName.c_str());
+        m_CreateFailures++;
+        LogPrintf("[StreamWeightRegistry] could not create stream '%s' (attempt %d/%d): "
+                  "create permission required, or the wallet has no spendable output yet\n",
+                  m_StreamName.c_str(), m_CreateFailures, MC_WPOA_STREAM_SETUP_MAX_ATTEMPTS);
     }
     catch (const std::exception& e)
     {
-        LogPrintf("[StreamWeightRegistry] ERROR creating stream '%s': %s\n", m_StreamName.c_str(), e.what());
+        m_CreateFailures++;
+        LogPrintf("[StreamWeightRegistry] could not create stream '%s' (attempt %d/%d): %s\n",
+                  m_StreamName.c_str(), m_CreateFailures, MC_WPOA_STREAM_SETUP_MAX_ATTEMPTS, e.what());
     }
     return false; // not usable until confirmed
 }
@@ -175,31 +198,57 @@ bool StreamWeightRegistry::EnsureSubscribed()
         return true;
     }
 
-    if (m_SubscribeAttempted)
+    if (m_SubscribeIssued)
     {
-        return false; // subscribe issued, import still catching up
+        // subscribe already issued, the import is still catching up. Do not re-issue: a
+        // redundant subscribe would restart the rescan of the stream on every tick.
+        return false;
+    }
+
+    if (m_SubscribeFailures >= MC_WPOA_STREAM_SETUP_MAX_ATTEMPTS)
+    {
+        return false;
     }
 
     Array params;
     params.push_back(m_StreamName);
 
-    m_SubscribeAttempted = true;
     try
     {
         subscribe(params, false);
+        m_SubscribeIssued = true;   // latch ONLY on a call that did not throw
         LogPrintf("[StreamWeightRegistry] Subscribed to stream '%s'\n", m_StreamName.c_str());
         // Re-check: subscription import may complete synchronously for a short stream.
         return m_pWalletTxs != NULL && m_pWalletTxs->WRPFindEntity(&entStat);
     }
     catch (const Object& objError)
     {
-        LogPrintf("[StreamWeightRegistry] ERROR subscribing to '%s'\n", m_StreamName.c_str());
+        m_SubscribeFailures++;
+        LogPrintf("[StreamWeightRegistry] could not subscribe to '%s' (attempt %d/%d)\n",
+                  m_StreamName.c_str(), m_SubscribeFailures, MC_WPOA_STREAM_SETUP_MAX_ATTEMPTS);
     }
     catch (const std::exception& e)
     {
-        LogPrintf("[StreamWeightRegistry] ERROR subscribing to '%s': %s\n", m_StreamName.c_str(), e.what());
+        m_SubscribeFailures++;
+        LogPrintf("[StreamWeightRegistry] could not subscribe to '%s' (attempt %d/%d): %s\n",
+                  m_StreamName.c_str(), m_SubscribeFailures, MC_WPOA_STREAM_SETUP_MAX_ATTEMPTS, e.what());
     }
     return false;
+}
+
+// Create-if-missing + subscribe, in that order. See the header for why this is public and
+// why the publication threads must call it BEFORE they have anything to publish.
+bool StreamWeightRegistry::EnsureStreamReady()
+{
+    if (m_pWalletTxs == NULL || pwalletMain == NULL)
+    {
+        return false;
+    }
+    if (!EnsureStreamExists())
+    {
+        return false;
+    }
+    return EnsureSubscribed();
 }
 
 // Publishes one weight record: key = node address, data = {"json": {...}}.
@@ -282,13 +331,9 @@ bool StreamWeightRegistry::RegisterLocalWeight(uint32_t weight, uint32_t epoch)
         return false;
     }
 
-    if (!EnsureStreamExists())
+    if (!EnsureStreamReady())
     {
-        return false; // created just now or waiting for confirmation
-    }
-    if (!EnsureSubscribed())
-    {
-        return false; // subscribing / import in progress
+        return false; // created/subscribed just now, or waiting for confirmation
     }
 
     // Idempotency: skip if the latest confirmed record already carries this weight.
