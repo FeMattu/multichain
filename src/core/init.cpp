@@ -3589,6 +3589,40 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
                 return InitError(_("weight-engine: -enableweightengine requires the wPoA weights stream (-enablewpoaweights)."));
             }
 
+            // Bootstrap ordering on a CLEAN network. wPoA starts electing proposers at
+            // setup-first-blocks, but the engine can only compute the first w_k once the
+            // first epoch is BURIED, which happens at
+            //     weight-epoch-length + MC_WEIGHT_DEFAULT_STABILITY_MARGIN - 1.
+            // If that lands at or after setup-first-blocks, the weights stream is still
+            // empty when the selector first needs it: WPoASelectProposer elects nobody, no
+            // node mines, the height never advances, no epoch ever buries, and no weight is
+            // ever computed. The chain stops dead at setup-first-blocks, reporting only
+            // "0 validators, total=0" and "cannot score (unsynced or unweighted)" with
+            // nothing to say why. The stock defaults (epoch 100, margin 6, setup 60) are on
+            // the wrong side of this, so it is easy to hit and hard to diagnose.
+            //
+            // Deliberately a warning and NOT an InitError: a node joining a chain that is
+            // already PAST that height -- weights having been published by other means, such
+            // as the static -weight path -- syncs from height 0 and would otherwise refuse
+            // to start against a perfectly healthy network.
+            if (we_enabled && g_wpoa_enabled && (mc_gState != NULL) && (mc_gState->m_NetworkParams != NULL))
+            {
+                int setup_blocks = (int)mc_gState->m_NetworkParams->GetInt64Param("setupfirstblocks");
+                int first_weight_height = (int)epoch_len + MC_WEIGHT_DEFAULT_STABILITY_MARGIN - 1;
+                if (first_weight_height >= setup_blocks)
+                {
+                    LogPrintf("[WeightEngine] WARNING: bootstrap ordering. The first weight cannot exist "
+                              "before height %d (weight-epoch-length=%d + stability margin=%d - 1), but wPoA "
+                              "starts electing proposers at setup-first-blocks=%d. On a clean network the "
+                              "weights stream is still empty there, no proposer can be elected, and the chain "
+                              "will stall at height %d. Set setup-first-blocks greater than %d, or lower "
+                              "weight-epoch-length, in params.dat BEFORE starting the network.\n",
+                              first_weight_height, (int)epoch_len,
+                              MC_WEIGHT_DEFAULT_STABILITY_MARGIN, setup_blocks,
+                              setup_blocks, first_weight_height);
+                }
+            }
+
             g_weight_engine_enabled  = we_enabled;
             g_weight_epoch_length    = (int)epoch_len;
             g_weight_kappa           = kappa;
