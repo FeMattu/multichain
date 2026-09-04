@@ -1976,9 +1976,37 @@ int mc_Permissions::CanMineBlockOnFork(const void* lpAddress,uint32_t block,uint
     
 }
 
+/* MCHN START - wPoA: see the comment on the declaration in permission.h. NULL in every
+   target that does not link wpoa/* (multichain-util, multichain-cli, libbitcoinconsensus),
+   which therefore keeps the native mining-diversity behaviour unchanged. */
+int (*mc_WPoAGovernsMiningHook)(uint32_t block)=NULL;
+/* MCHN END */
+
 int mc_Permissions::IsBarredByDiversity(uint32_t block,uint32_t last,int miner_count)
 {
     int diversity;
+
+/* MCHN START - wPoA: the mining-diversity spacing does not apply on wPoA-governed
+   heights. Gating here, at the single point where the spacing is computed, keeps every
+   caller consistent by construction: CanMine, CanMineBlock, CanMineBlockOnFork,
+   GetAllPermissions (and through it CWallet::GetKeyFromAddressBook, i.e. the miner's own
+   "do I hold a mining key" probe), UpdateChainMiningStatus (nCanMine, which ranks
+   branches in CBlockIndexWorkComparator), the coinbase receive exemption in
+   MultiChainTransaction_CheckAssetTransfers and the listminers next-allowed estimate.
+   Patching those call sites one by one would leave the next one to be written broken.
+
+   `block` is the height under consideration, so the gate is a pure function of
+   (height, chain params): the miner and every validator necessarily agree on it, which
+   is the same property WPoAActiveAtHeight is built to guarantee. Cfr. §5.12.3. */
+    if(mc_WPoAGovernsMiningHook != NULL)
+    {
+        if(mc_WPoAGovernsMiningHook(block))
+        {
+            return 0;
+        }
+    }
+/* MCHN END */
+
     if(miner_count)
     {
         if(block >= mc_gState->m_NetworkParams->GetInt64Param("setupfirstblocks"))

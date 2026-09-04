@@ -81,6 +81,37 @@ fl_node_total() {
 fl_tip_height()  { fl_cli "$1" getblockcount 2>/dev/null; }
 fl_blockhash_at(){ fl_cli "$1" getblockhash "$2" 2>/dev/null; }
 
+# Value of one chain parameter as reported by getblockchainparams, e.g.
+#   fl_chain_param 0 mining-diversity  ->  0.3
+fl_chain_param() {
+    fl_cli "$1" getblockchainparams 2>/dev/null \
+        | grep -oE "\"$2\"[[:space:]]*:[[:space:]]*[^,}]+" \
+        | sed -E 's/.*:[[:space:]]*//; s/[[:space:]"]+$//' | head -n1
+}
+
+# One miner address per line for heights <from>..<to>, in ascending height order.
+# listblocks returns the whole range in a single RPC (blockToJSONForListBlocks
+# carries "miner"), so this stays one round-trip regardless of the window size.
+fl_block_miners() {
+    fl_cli "$1" listblocks "$2-$3" 2>/dev/null \
+        | grep -oE '"miner"[[:space:]]*:[[:space:]]*"[^"]*"' \
+        | sed -E 's/.*"([^"]*)"$/\1/'
+}
+
+# The spacing the NATIVE mining-diversity rule would impose, replicating
+# mc_Permissions::IsBarredByDiversity: floor(miners*diversity - eps) + 1, clamped to
+# [1, miners]. A block is barred when (height - last_mined_by_this_miner) <= spacing-1,
+# so spacing 1 is inert and spacing >= 2 forbids consecutive blocks by the same miner.
+# Used to assert a run is actually in the regime where the rule would bite.
+fl_native_diversity_spacing() {
+    awk -v n="$1" -v d="$2" 'BEGIN{
+        s=int(n*d-0.000001)+1
+        if(s<1)s=1
+        if(s>n)s=n
+        print s
+    }'
+}
+
 # "true" / "false" — whether publishing to <stream> needs a write permission.
 # Reads the "write" flag of the stream's "restrict" object (liststreams verbose).
 fl_stream_write_restricted() {
