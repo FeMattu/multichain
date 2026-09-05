@@ -1,0 +1,5 @@
+experiment_id,area,replication_id,target_block_time,dumpfunction,malus_enabled,sigma_id,sigma_s,source,what_it_measures,n,median_s,p90_s,max_s,note
+run6-tbt-10s,intercontinentale,1,10,none,true,S1_topology,0.04575,max one-way shortest-path latency between miners from the .gml (rtt/2),"propagation latency; deterministic (jitter 0 us), not a variance",3,,,,
+run6-tbt-10s,intercontinentale,1,10,none,true,S2_scheduler_residual_sd,0.73266994,sd of block_time - parent_time - D_logged(observed winner) over measured rounds,quantisation of the 1 s time bar and block timestamps plus miner loop granularity: the noise that actually decides the race,450,0.845,1.916,3.041,PRIMARY estimate for the Prop. 5.18 bound
+run6-tbt-10s,intercontinentale,1,10,none,true,S2b_inversion_gap,0.3955581,D_observed_winner - D_min on inverted rounds,size of the disadvantage overcome by the observed winner (only on inverted rounds; biased by selection),33,0.424,0.949,1.295,"reported for comparison, not used in the bound"
+run6-tbt-10s,intercontinentale,1,10,none,true,S3_packet_loss,,,,,,,,"not computable: packet loss is not observable from the archived logs (1 s resolution, no per-message trace)"

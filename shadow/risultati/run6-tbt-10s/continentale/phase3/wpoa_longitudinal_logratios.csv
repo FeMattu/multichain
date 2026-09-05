@@ -1,0 +1,10 @@
+experiment_id,area,replication_id,target_block_time,dumpfunction,malus_enabled,epoch,validator_i,validator_j,log_ratio_observed,log_ratio_theoretical,O_i,O_j,B,validator_i_host,validator_j_host
+run6-tbt-10s,continentale,1,10,none,true,3,13dLyCBDhkFk9EvyBWMaksK6xny9AXSn7m75Nn,18JDemQBu6Vrxd4WjEuSr62wjZLUFXv5vbjJqL,-2.24374459,-2.34764259,7,66,100,m3,m1
+run6-tbt-10s,continentale,1,10,none,true,3,13dLyCBDhkFk9EvyBWMaksK6xny9AXSn7m75Nn,1QzENiRJk8XJxu1SKwJtDLtjjCBGMHXU1zUaWc,-1.34992672,-1.38362951,7,27,100,m3,m2
+run6-tbt-10s,continentale,1,10,none,true,3,18JDemQBu6Vrxd4WjEuSr62wjZLUFXv5vbjJqL,1QzENiRJk8XJxu1SKwJtDLtjjCBGMHXU1zUaWc,0.89381788,0.96401308,66,27,100,m1,m2
+run6-tbt-10s,continentale,1,10,none,true,4,13dLyCBDhkFk9EvyBWMaksK6xny9AXSn7m75Nn,18JDemQBu6Vrxd4WjEuSr62wjZLUFXv5vbjJqL,-2.41079868,-2.33472109,7,78,100,m3,m1
+run6-tbt-10s,continentale,1,10,none,true,4,13dLyCBDhkFk9EvyBWMaksK6xny9AXSn7m75Nn,1QzENiRJk8XJxu1SKwJtDLtjjCBGMHXU1zUaWc,-0.76214005,-1.2265437,7,15,100,m3,m2
+run6-tbt-10s,continentale,1,10,none,true,4,18JDemQBu6Vrxd4WjEuSr62wjZLUFXv5vbjJqL,1QzENiRJk8XJxu1SKwJtDLtjjCBGMHXU1zUaWc,1.64865863,1.10817739,78,15,100,m1,m2
+run6-tbt-10s,continentale,1,10,none,true,5,13dLyCBDhkFk9EvyBWMaksK6xny9AXSn7m75Nn,18JDemQBu6Vrxd4WjEuSr62wjZLUFXv5vbjJqL,-1.92990981,-2.35010862,9,62,100,m3,m1
+run6-tbt-10s,continentale,1,10,none,true,5,13dLyCBDhkFk9EvyBWMaksK6xny9AXSn7m75Nn,1QzENiRJk8XJxu1SKwJtDLtjjCBGMHXU1zUaWc,-1.17007125,-1.37833435,9,29,100,m3,m2
+run6-tbt-10s,continentale,1,10,none,true,5,18JDemQBu6Vrxd4WjEuSr62wjZLUFXv5vbjJqL,1QzENiRJk8XJxu1SKwJtDLtjjCBGMHXU1zUaWc,0.75983856,0.97177427,62,29,100,m1,m2

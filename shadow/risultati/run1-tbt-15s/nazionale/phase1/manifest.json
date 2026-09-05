@@ -1,0 +1,336 @@
+{
+ "experiment_id": "run1-tbt-15s",
+ "area": "nazionale",
+ "replication_id": 1,
+ "run_id": "run1-tbt-15s/nazionale",
+ "source_path": "/home/mattu/multichain/shadow/esperimenti/run1-tbt-15s/nazionale",
+ "target_block_time": 15,
+ "weight_epoch_length": 12,
+ "setup_blocks": 60,
+ "final_height": 173,
+ "dump_function": "none",
+ "malus_enabled": "true",
+ "params": {
+  "chain_name": "poesianazionale",
+  "target_block_time": "15",
+  "setup_first_blocks": "60",
+  "mining_diversity": "0.0",
+  "mining_turnover": "0.5",
+  "weight_epoch_length": "12",
+  "weight_kappa": "100",
+  "weight_alpha": "0.2",
+  "weight_lambda": "0.5",
+  "wpoa_sortition_delta": "0.5",
+  "wpoa_sortition_lambda": "0.2",
+  "wpoa_randao_lookback": "1",
+  "dump_function": "none",
+  "enable_wpoa": "true",
+  "enable_wpoa_selection": "true",
+  "enable_wpoa_sortition": "true",
+  "enable_wpoa_malus": "true",
+  "enable_weight_engine": "true",
+  "minimum_relay_fee": "20000000",
+  "first_block_reward": "100000000000000",
+  "weight_treasury_address": "18QrmhtdHAfw8gknT5hxBStfGY63AhuQZCSDcg",
+  "wpoa_malus_mu": "0.5",
+  "wpoa_malus_max": "4",
+  "wpoa_malus_equiv_points": "4",
+  "wpoa_malus_delay_points": "0.25",
+  "wpoa_malus_selfwrite_points": "[null]",
+  "wpoa_malus_badweight_points": "[null]",
+  "native_currency_multiple": 100000000.0,
+  "initial_block_reward": "0"
+ },
+ "params_source_host": "admin",
+ "startup_params": {
+  "sortition_delta": "0.5",
+  "sortition_lambda": "0.2",
+  "dump_function": "none",
+  "randao_lookback": "1",
+  "malus_mu": "0.5",
+  "malus_max": "4",
+  "malus_equiv_points": "4",
+  "malus_delay_points": "0.25",
+  "malus_selfwrite_points": "1",
+  "malus_badweight_points": "2",
+  "weight_epoch_length": "12",
+  "weight_kappa": "100",
+  "weight_alpha": "0.2",
+  "weight_lambda": "0.5",
+  "weight_treasury_address": "18QrmhtdHAfw8gknT5hxBStfGY63AhuQZCSDcg"
+ },
+ "startup_params_host": "m1",
+ "shadow": {
+  "general_seed": "60828",
+  "poesia_rng_seed": "20260828",
+  "gml": "/home/mattu/multichain/shadow/nazionale/topologia_myledger_nazionale.gml",
+  "level_json": "/home/mattu/multichain/shadow/config/levels/nazionale.json",
+  "rtt_max_between_miners_ms": 10.206,
+  "rtt_max_all_hosts_ms": 22.016
+ },
+ "hosts": [
+  {
+   "host": "admin",
+   "address": "",
+   "role": "admin",
+   "cluster_head_host": "",
+   "esg": "",
+   "gml_node_id": 7,
+   "label": "Bologna",
+   "lat": 44.4949,
+   "lon": 11.3426
+  },
+  {
+   "host": "c1",
+   "address": "1Y5QRkhzARWsjpX6bCWXciUpGN8T2ze3WhG63W",
+   "role": "company",
+   "cluster_head_host": "m1",
+   "esg": 77.16,
+   "gml_node_id": 3,
+   "label": "Torino",
+   "lat": 45.0703,
+   "lon": 7.6869
+  },
+  {
+   "host": "c2",
+   "address": "161et7NmSyvnXFLeGZdKmT2B2Jrn6V4cLW2GqV",
+   "role": "company",
+   "cluster_head_host": "m1",
+   "esg": 99.26,
+   "gml_node_id": 4,
+   "label": "Venezia",
+   "lat": 45.4408,
+   "lon": 12.3155
+  },
+  {
+   "host": "c3",
+   "address": "1VCJ6Rs96dU42SWb4DKQhkbKrsWk3tVQttroWW",
+   "role": "company",
+   "cluster_head_host": "m2",
+   "esg": 92.76,
+   "gml_node_id": 5,
+   "label": "Firenze",
+   "lat": 43.7696,
+   "lon": 11.2558
+  },
+  {
+   "host": "c4",
+   "address": "12yyEfvNgL31dZBBgys5SGTLZJP9Z83G1ejqjj",
+   "role": "company",
+   "cluster_head_host": "m2",
+   "esg": 70.53,
+   "gml_node_id": 6,
+   "label": "Perugia",
+   "lat": 43.1107,
+   "lon": 12.3908
+  },
+  {
+   "host": "c5",
+   "address": "17SfcQCbjFcmL6cHPtoKWfroGQmqFYDvMcAe4h",
+   "role": "company",
+   "cluster_head_host": "m3",
+   "esg": 76.32,
+   "gml_node_id": 9,
+   "label": "Palermo",
+   "lat": 38.1157,
+   "lon": 13.3615
+  },
+  {
+   "host": "ca",
+   "address": "",
+   "role": "ca",
+   "cluster_head_host": "",
+   "esg": "",
+   "gml_node_id": 8,
+   "label": "Bari",
+   "lat": 41.1171,
+   "lon": 16.8719
+  },
+  {
+   "host": "m1",
+   "address": "19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi",
+   "role": "miner",
+   "cluster_head_host": "m1",
+   "esg": 26.46,
+   "gml_node_id": 0,
+   "label": "HUB_NORD_Milano",
+   "lat": 45.4642,
+   "lon": 9.19
+  },
+  {
+   "host": "m2",
+   "address": "17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU",
+   "role": "miner",
+   "cluster_head_host": "m2",
+   "esg": 24.17,
+   "gml_node_id": 1,
+   "label": "HUB_CENTRO_Roma",
+   "lat": 41.9028,
+   "lon": 12.4964
+  },
+  {
+   "host": "m3",
+   "address": "14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj",
+   "role": "miner",
+   "cluster_head_host": "m3",
+   "esg": 17.5,
+   "gml_node_id": 2,
+   "label": "HUB_SUD_Napoli",
+   "lat": 40.8518,
+   "lon": 14.2681
+  }
+ ],
+ "miners": [
+  "m1",
+  "m2",
+  "m3"
+ ],
+ "epochs": [
+  {
+   "epoch": 1,
+   "start_height": 0,
+   "end_height": 11,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 2,
+   "start_height": 12,
+   "end_height": 23,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 3,
+   "start_height": 24,
+   "end_height": 35,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 4,
+   "start_height": 36,
+   "end_height": 47,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 5,
+   "start_height": 48,
+   "end_height": 59,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 6,
+   "start_height": 60,
+   "end_height": 71,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": true
+  },
+  {
+   "epoch": 7,
+   "start_height": 72,
+   "end_height": 83,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 8,
+   "start_height": 84,
+   "end_height": 95,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 9,
+   "start_height": 96,
+   "end_height": 107,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 10,
+   "start_height": 108,
+   "end_height": 119,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 11,
+   "start_height": 120,
+   "end_height": 131,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 12,
+   "start_height": 132,
+   "end_height": 143,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 13,
+   "start_height": 144,
+   "end_height": 155,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 14,
+   "start_height": 156,
+   "end_height": 167,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 15,
+   "start_height": 168,
+   "end_height": 179,
+   "buried": false,
+   "fully_measured": true,
+   "partially_in_setup": false
+  }
+ ],
+ "row_counts": {
+  "blocks": 173,
+  "sortition_scores": 369,
+  "phi": 491,
+  "verify_lines": 137,
+  "sortition_ok_blocks": 136,
+  "rejects": 0,
+  "weight_engine_log": 172,
+  "malus_log": 0,
+  "weights_stream": 36,
+  "esg_stream": 8,
+  "membership_stream": 8,
+  "malus_stream": 0,
+  "traffic": 866,
+  "gas_transfers": 32,
+  "gas_balances": 720,
+  "reconciliation": 45,
+  "verify_snapshot": 3,
+  "node_state": 10,
+  "unconfirmed_txids": 4,
+  "topology_latency": 45,
+  "topology_edges": 20,
+  "hosts": 10
+ },
+ "warnings": [],
+ "phase": 1
+}

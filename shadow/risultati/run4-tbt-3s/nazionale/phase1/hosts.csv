@@ -1,0 +1,11 @@
+host,address,role,cluster_head_host,esg,gml_node_id,label,lat,lon
+admin,,admin,,,7,Bologna,44.4949,11.3426
+c1,1BcH8Y9BYTZ1h8V5EJMmu29g3F1Cpz8QDQ3z3E,company,m1,17.5,3,Torino,45.0703,7.6869
+c2,14bxQXRV6SLyVcpEDK9CZu4fSG2bJt37eEJ8ep,company,m1,77.16,4,Venezia,45.4408,12.3155
+c3,1UgRUwEYvbGLKGifyd6iEiLqu4LMKjACEYfj4v,company,m2,99.26,5,Firenze,43.7696,11.2558
+c4,1Wn3ZhubfkcfqefJg2RhQ781sLSPMdg2wMjLKL,company,m2,92.76,6,Perugia,43.1107,12.3908
+c5,149xLWRgHiqgcszXwC6GDsrpvc8WsKbzGfDiPu,company,m3,70.53,9,Palermo,38.1157,13.3615
+ca,,ca,,,8,Bari,41.1171,16.8719
+m1,1ETD6u7wdHS6P9D1mxb1Qx3Aapa2DwAyyZutL2,miner,m1,85.56,0,HUB_NORD_Milano,45.4642,9.19
+m2,1WKxQntNgmP3dtjbv3UL3DHV2JEciQTnQ4K3sr,miner,m2,26.46,1,HUB_CENTRO_Roma,41.9028,12.4964
+m3,1LtuCHDRfFnaxMXGm2gmsN7NoezE7zExV3Cet8,miner,m3,24.17,2,HUB_SUD_Napoli,40.8518,14.2681

@@ -1,6 +1,0 @@
-gruppo,punti_lineare,lin_intercetta,lin_pendenza,lin_r2,punti_loglog,log_intercetta,log_esponente,log_r2,esponente_atteso,nota
-livello=continentale,6,0.01484,0.110253,0.965432,6,-2.148458,-0.704126,0.874834,-1,"il fit lineare e' frazione(G<100ms) contro 1/Dmax; il log-log e' ln(frazione) contro ln(Dmax), la cui pendenza e' l'esponente empirico della legge di scala"
-livello=intercontinentale,6,0.003675,0.124326,0.949759,6,-1.965235,-1.086431,0.81993,-1,"il fit lineare e' frazione(G<100ms) contro 1/Dmax; il log-log e' ln(frazione) contro ln(Dmax), la cui pendenza e' l'esponente empirico della legge di scala"
-livello=nazionale,6,0.013211,0.116282,0.976253,6,-2.090441,-0.753572,0.934602,-1,"il fit lineare e' frazione(G<100ms) contro 1/Dmax; il log-log e' ln(frazione) contro ln(Dmax), la cui pendenza e' l'esponente empirico della legge di scala"
-livello=regionale,6,0.017496,0.119317,0.993637,6,-2.056951,-0.679557,0.97641,-1,"il fit lineare e' frazione(G<100ms) contro 1/Dmax; il log-log e' ln(frazione) contro ln(Dmax), la cui pendenza e' l'esponente empirico della legge di scala"
-tutta la campagna,24,0.012306,0.117544,0.956887,24,-2.065271,-0.805921,0.808083,-1,"il fit lineare e' frazione(G<100ms) contro 1/Dmax; il log-log e' ln(frazione) contro ln(Dmax), la cui pendenza e' l'esponente empirico della legge di scala"

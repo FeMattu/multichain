@@ -1,0 +1,656 @@
+{
+ "experiment_id": "run5-tbt-2s",
+ "area": "intercontinentale",
+ "replication_id": 1,
+ "run_id": "run5-tbt-2s/intercontinentale",
+ "source_path": "/home/mattu/multichain/shadow/esperimenti/run5-tbt-2s/intercontinentale",
+ "target_block_time": 2,
+ "weight_epoch_length": 12,
+ "setup_blocks": 200,
+ "final_height": 655,
+ "dump_function": "none",
+ "malus_enabled": "true",
+ "params": {
+  "chain_name": "poesiaintercontinentale",
+  "target_block_time": "2",
+  "setup_first_blocks": "200",
+  "mining_diversity": "0.0",
+  "mining_turnover": "0.5",
+  "weight_epoch_length": "12",
+  "weight_kappa": "100",
+  "weight_alpha": "0.2",
+  "weight_lambda": "0.5",
+  "wpoa_sortition_delta": "0.5",
+  "wpoa_sortition_lambda": "0.2",
+  "wpoa_randao_lookback": "1",
+  "dump_function": "none",
+  "enable_wpoa": "true",
+  "enable_wpoa_selection": "true",
+  "enable_wpoa_sortition": "true",
+  "enable_wpoa_malus": "true",
+  "enable_weight_engine": "true",
+  "minimum_relay_fee": "20000000",
+  "first_block_reward": "100000000000000",
+  "weight_treasury_address": "18QrmhtdHAfw8gknT5hxBStfGY63AhuQZCSDcg",
+  "wpoa_malus_mu": "0.5",
+  "wpoa_malus_max": "4",
+  "wpoa_malus_equiv_points": "4",
+  "wpoa_malus_delay_points": "0.25",
+  "wpoa_malus_selfwrite_points": "[null]",
+  "wpoa_malus_badweight_points": "[null]",
+  "native_currency_multiple": 100000000.0,
+  "initial_block_reward": "0"
+ },
+ "params_source_host": "admin",
+ "startup_params": {
+  "sortition_delta": "0.5",
+  "sortition_lambda": "0.2",
+  "dump_function": "none",
+  "randao_lookback": "1",
+  "malus_mu": "0.5",
+  "malus_max": "4",
+  "malus_equiv_points": "4",
+  "malus_delay_points": "0.25",
+  "malus_selfwrite_points": "1",
+  "malus_badweight_points": "2",
+  "weight_epoch_length": "12",
+  "weight_kappa": "100",
+  "weight_alpha": "0.2",
+  "weight_lambda": "0.5",
+  "weight_treasury_address": "18QrmhtdHAfw8gknT5hxBStfGY63AhuQZCSDcg"
+ },
+ "startup_params_host": "m1",
+ "shadow": {
+  "general_seed": "60827",
+  "poesia_rng_seed": "20260827",
+  "gml": "/home/mattu/multichain/shadow/intercontinentale/topologia_myledger_intercontinentale.gml",
+  "level_json": "/home/mattu/multichain/shadow/config/levels/intercontinentale.json",
+  "rtt_max_between_miners_ms": 91.5,
+  "rtt_max_all_hosts_ms": 112.006
+ },
+ "hosts": [
+  {
+   "host": "admin",
+   "address": "",
+   "role": "admin",
+   "cluster_head_host": "",
+   "esg": "",
+   "gml_node_id": 7,
+   "label": "Paris",
+   "lat": 48.8566,
+   "lon": 2.3522
+  },
+  {
+   "host": "c1",
+   "address": "1aX4umCtKstiozYa4tVe1Rh9Aiqq9R5o1fVLcR",
+   "role": "company",
+   "cluster_head_host": "m1",
+   "esg": 17.5,
+   "gml_node_id": 3,
+   "label": "Zurich",
+   "lat": 47.3769,
+   "lon": 8.5417
+  },
+  {
+   "host": "c2",
+   "address": "11tWJUTEFZMnnqPqtXVqvWntL2Z9Yc8TTXPcp",
+   "role": "company",
+   "cluster_head_host": "m1",
+   "esg": 77.16,
+   "gml_node_id": 4,
+   "label": "Marseille",
+   "lat": 43.2965,
+   "lon": 5.3698
+  },
+  {
+   "host": "c3",
+   "address": "1VcizJ6rkG1itxGrpfDaZorcsMTcAUTf5j58ut",
+   "role": "company",
+   "cluster_head_host": "m2",
+   "esg": 99.26,
+   "gml_node_id": 5,
+   "label": "Amsterdam",
+   "lat": 52.3676,
+   "lon": 4.9041
+  },
+  {
+   "host": "c4",
+   "address": "1MRWzyWJDtxVbPS9TH4DS7DRkYwScoxFtS6gZ5",
+   "role": "company",
+   "cluster_head_host": "m2",
+   "esg": 92.76,
+   "gml_node_id": 6,
+   "label": "Warszawa",
+   "lat": 52.2297,
+   "lon": 21.0122
+  },
+  {
+   "host": "c5",
+   "address": "1TTAcjy475TYbx7ZHNNnZKAPEUybttR3xS6jwt",
+   "role": "company",
+   "cluster_head_host": "m3",
+   "esg": 70.53,
+   "gml_node_id": 9,
+   "label": "Toronto",
+   "lat": 43.6532,
+   "lon": -79.3832
+  },
+  {
+   "host": "ca",
+   "address": "",
+   "role": "ca",
+   "cluster_head_host": "",
+   "esg": "",
+   "gml_node_id": 8,
+   "label": "London",
+   "lat": 51.5074,
+   "lon": -0.1278
+  },
+  {
+   "host": "m1",
+   "address": "1CMdrBmxo2wcbEWHTtRHXuKRi6pGt4zPLLdt25",
+   "role": "miner",
+   "cluster_head_host": "m1",
+   "esg": 85.56,
+   "gml_node_id": 0,
+   "label": "HUB_IT_Milano",
+   "lat": 45.4642,
+   "lon": 9.19
+  },
+  {
+   "host": "m2",
+   "address": "1Hfp7q7MU1cqZ39ggatAxed6qU28DdMjLTSgcH",
+   "role": "miner",
+   "cluster_head_host": "m2",
+   "esg": 26.46,
+   "gml_node_id": 1,
+   "label": "HUB_DE_Frankfurt",
+   "lat": 50.1109,
+   "lon": 8.6821
+  },
+  {
+   "host": "m3",
+   "address": "1HCscGy3u1Tw99kZsZNhREFhcEUCrPpbkBJBPv",
+   "role": "miner",
+   "cluster_head_host": "m3",
+   "esg": 24.17,
+   "gml_node_id": 2,
+   "label": "HUB_US_New_York",
+   "lat": 40.7128,
+   "lon": -74.006
+  }
+ ],
+ "miners": [
+  "m1",
+  "m2",
+  "m3"
+ ],
+ "epochs": [
+  {
+   "epoch": 1,
+   "start_height": 0,
+   "end_height": 11,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 2,
+   "start_height": 12,
+   "end_height": 23,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 3,
+   "start_height": 24,
+   "end_height": 35,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 4,
+   "start_height": 36,
+   "end_height": 47,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 5,
+   "start_height": 48,
+   "end_height": 59,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 6,
+   "start_height": 60,
+   "end_height": 71,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 7,
+   "start_height": 72,
+   "end_height": 83,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 8,
+   "start_height": 84,
+   "end_height": 95,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 9,
+   "start_height": 96,
+   "end_height": 107,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 10,
+   "start_height": 108,
+   "end_height": 119,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 11,
+   "start_height": 120,
+   "end_height": 131,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 12,
+   "start_height": 132,
+   "end_height": 143,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 13,
+   "start_height": 144,
+   "end_height": 155,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 14,
+   "start_height": 156,
+   "end_height": 167,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 15,
+   "start_height": 168,
+   "end_height": 179,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 16,
+   "start_height": 180,
+   "end_height": 191,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 17,
+   "start_height": 192,
+   "end_height": 203,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": true
+  },
+  {
+   "epoch": 18,
+   "start_height": 204,
+   "end_height": 215,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 19,
+   "start_height": 216,
+   "end_height": 227,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 20,
+   "start_height": 228,
+   "end_height": 239,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 21,
+   "start_height": 240,
+   "end_height": 251,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 22,
+   "start_height": 252,
+   "end_height": 263,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 23,
+   "start_height": 264,
+   "end_height": 275,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 24,
+   "start_height": 276,
+   "end_height": 287,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 25,
+   "start_height": 288,
+   "end_height": 299,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 26,
+   "start_height": 300,
+   "end_height": 311,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 27,
+   "start_height": 312,
+   "end_height": 323,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 28,
+   "start_height": 324,
+   "end_height": 335,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 29,
+   "start_height": 336,
+   "end_height": 347,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 30,
+   "start_height": 348,
+   "end_height": 359,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 31,
+   "start_height": 360,
+   "end_height": 371,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 32,
+   "start_height": 372,
+   "end_height": 383,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 33,
+   "start_height": 384,
+   "end_height": 395,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 34,
+   "start_height": 396,
+   "end_height": 407,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 35,
+   "start_height": 408,
+   "end_height": 419,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 36,
+   "start_height": 420,
+   "end_height": 431,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 37,
+   "start_height": 432,
+   "end_height": 443,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 38,
+   "start_height": 444,
+   "end_height": 455,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 39,
+   "start_height": 456,
+   "end_height": 467,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 40,
+   "start_height": 468,
+   "end_height": 479,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 41,
+   "start_height": 480,
+   "end_height": 491,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 42,
+   "start_height": 492,
+   "end_height": 503,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 43,
+   "start_height": 504,
+   "end_height": 515,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 44,
+   "start_height": 516,
+   "end_height": 527,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 45,
+   "start_height": 528,
+   "end_height": 539,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 46,
+   "start_height": 540,
+   "end_height": 551,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 47,
+   "start_height": 552,
+   "end_height": 563,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 48,
+   "start_height": 564,
+   "end_height": 575,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 49,
+   "start_height": 576,
+   "end_height": 587,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 50,
+   "start_height": 588,
+   "end_height": 599,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 51,
+   "start_height": 600,
+   "end_height": 611,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 52,
+   "start_height": 612,
+   "end_height": 623,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 53,
+   "start_height": 624,
+   "end_height": 635,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 54,
+   "start_height": 636,
+   "end_height": 647,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 55,
+   "start_height": 648,
+   "end_height": 659,
+   "buried": false,
+   "fully_measured": true,
+   "partially_in_setup": false
+  }
+ ],
+ "row_counts": {
+  "blocks": 655,
+  "sortition_scores": 1510,
+  "phi": 2017,
+  "verify_lines": 638,
+  "sortition_ok_blocks": 637,
+  "rejects": 0,
+  "weight_engine_log": 693,
+  "malus_log": 0,
+  "weights_stream": 113,
+  "esg_stream": 8,
+  "membership_stream": 8,
+  "malus_stream": 0,
+  "traffic": 506,
+  "gas_transfers": 75,
+  "gas_balances": 414,
+  "reconciliation": 138,
+  "verify_snapshot": 3,
+  "node_state": 10,
+  "unconfirmed_txids": 0,
+  "topology_latency": 45,
+  "topology_edges": 20,
+  "hosts": 10
+ },
+ "warnings": [],
+ "phase": 1
+}

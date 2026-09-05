@@ -65,208 +65,41 @@ except ImportError:
     _pd = None
     USING_PANDAS = False
 
+# The pure helpers (readers, discovery, txs.log index, height->epoch map,
+# protocol functions g/Psi, event tables, weight-engine fold, Gini, Spearman,
+# families) now live in pipeline/common.py, shared with the three-phase
+# pipeline. They are re-imported here so that `summary_per_epoca.py` and every
+# `az.<name>` reference keep working unchanged.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pipeline.common import (  # noqa: E402
+    LEVELS, RTT_FALLBACK, RUN_DIR_RE, DELAY_RE, PARAM_KEYS, UPDATETX_RE, NEWTX_RE,
+    PER_RUN_TABLES, TXID_PREFIX_LEN, FAMILY_PARAMS,
+    is_noise, read_json, rpc_result, read_csv_rows, parse_params_dat, as_float, as_int,
+    discover_runs, find_debug_logs, extract_meta, extract_host_maps, build_tx_index,
+    _txs_logs, tx_height, epoch_of, apply_dumping, malus_correction, effective_after_malus,
+    _gas_balance_samples, _next_sample, extract_event_tables, _weight_records,
+    _inforce_shares, weight_engine_inputs, weight_engine_fold, gini, normalized_entropy,
+    _spearman, build_families,
+)
+
 
 LOG = logging.getLogger("analizza")
-
-LEVELS = ["regionale", "nazionale", "continentale", "intercontinentale"]
 
 # Valori critici della chi-quadro al 5%, per gradi di liberta'. Tabulati qui
 # perche' scipy non e' una dipendenza garantita.
 CHI2_CRIT_05 = {1: 3.841, 2: 5.991, 3: 7.815, 4: 9.488, 5: 11.070,
                 6: 12.592, 7: 14.067, 8: 15.507, 9: 16.919, 10: 18.307}
 
-# RTT massimo end-to-end per livello, in ms (da check_topology.py --matrix).
-# Serve solo come etichetta dell'asse "geografia": se networkx e' disponibile
-# viene ricalcolato dal .gml, altrimenti si usa questo fallback.
-RTT_FALLBACK = {"regionale": 10.0, "nazionale": 22.0,
-                "continentale": 44.7, "intercontinentale": 112.0}
-
-RUN_DIR_RE = re.compile(r"^run(\d+)-tbt-(\d+)s$")
-DELAY_RE = re.compile(
-    r"wPoA-sortition height=(\d+) score=([0-9.eE+-]+) delay=([0-9.]+)s")
 CHI2_RE = re.compile(
     r"chi-quadro = ([0-9.]+)\s+\(df=(\d+), critico 5% = ([0-9.]+)\)\s+->\s+(.+)")
-
-# Parametri di params.dat che descrivono un esperimento. Chiave = nome nel file.
-PARAM_KEYS = [
-    "chain-name", "target-block-time", "setup-first-blocks", "mining-diversity",
-    "mining-turnover", "weight-epoch-length", "weight-kappa", "weight-alpha",
-    "weight-lambda", "wpoa-sortition-delta", "wpoa-sortition-lambda",
-    "wpoa-randao-lookback", "dump-function", "enable-wpoa",
-    "enable-wpoa-selection", "enable-wpoa-sortition", "enable-wpoa-malus",
-    "enable-weight-engine", "minimum-relay-fee", "first-block-reward",
-    "weight-treasury-address", "wpoa-malus-mu", "wpoa-malus-max",
-    "wpoa-malus-equiv-points", "wpoa-malus-delay-points",
-    "wpoa-malus-selfwrite-points", "wpoa-malus-badweight-points",
-    # La conversione GAS: `native-currency-multiple` e' il numero di unita'
-    # grezze per unita' di visualizzazione. Le RPC (e quindi ogni CSV scritto
-    # dall'harness) parlano in unita' di visualizzazione, cioe' gia' in GAS; a
-    # richiedere la conversione sono i soli parametri di catena espressi in
-    # unita' grezze, i due premi di mining qui sotto e minimum-relay-fee.
-    "native-currency-multiple", "initial-block-reward",
-]
-
 
 # --------------------------------------------------------------------------
 # utilita' di lettura, tolleranti ai file mancanti o malformati
 # --------------------------------------------------------------------------
 
-def is_noise(path):
-    """I file `*:Zone.Identifier` sono artefatti di WSL/NTFS, non dati."""
-    return ":Zone.Identifier" in path.name
-
-
-def read_json(path):
-    if not path.exists():
-        return None
-    try:
-        with path.open(encoding="utf-8", errors="replace") as fh:
-            return json.load(fh)
-    except (ValueError, OSError) as exc:
-        LOG.warning("JSON illeggibile %s: %s", path, exc)
-        return None
-
-
-def rpc_result(path):
-    """Estrae il campo `result` da uno snapshot JSON-RPC, o None."""
-    payload = read_json(path)
-    if payload is None:
-        return None
-    if isinstance(payload, dict):
-        if payload.get("error"):
-            LOG.warning("RPC in errore in %s: %s", path, payload["error"])
-            return None
-        return payload.get("result")
-    return payload
-
-
-def read_csv_rows(path, expected_cols=None, has_header=None):
-    """Legge un CSV di metrics/ restituendo (header, righe).
-
-    `has_header=None` autorileva: se la prima cella e' un nome di colonna noto
-    (non numerico e non un indirizzo) la riga e' trattata come intestazione.
-    Serve perche' `membership.csv` e `gas_transfers.csv` sono scritti SENZA
-    intestazione, mentre gli altri CSV ce l'hanno.
-    """
-    if not path.exists():
-        return None, []
-    try:
-        with path.open(encoding="utf-8", errors="replace", newline="") as fh:
-            rows = [r for r in csv.reader(fh) if r and any(c.strip() for c in r)]
-    except OSError as exc:
-        LOG.warning("CSV illeggibile %s: %s", path, exc)
-        return None, []
-    if not rows:
-        return None, []
-    if has_header is None:
-        first = rows[0]
-        has_header = bool(expected_cols) and [c.strip() for c in first] == expected_cols
-    if has_header:
-        return [c.strip() for c in rows[0]], rows[1:]
-    return None, rows
-
-
-def parse_params_dat(path):
-    """params.dat: righe `chiave = valore   # commento`."""
-    out = {}
-    if not path.exists():
-        return out
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError as exc:
-        LOG.warning("params.dat illeggibile %s: %s", path, exc)
-        return out
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, rest = line.partition("=")
-        key = key.strip()
-        if key not in PARAM_KEYS:
-            continue
-        value = rest.split("#", 1)[0].strip()
-        if value:
-            out[key] = value
-    return out
-
-
-def as_float(text, default=None):
-    try:
-        return float(str(text).strip())
-    except (TypeError, ValueError):
-        return default
-
-
-def as_int(text, default=None):
-    try:
-        return int(float(str(text).strip()))
-    except (TypeError, ValueError):
-        return default
-
-
 # --------------------------------------------------------------------------
 # discovery
 # --------------------------------------------------------------------------
-
-def discover_runs(root):
-    """Trova tutte le coppie (cartella-run, livello) sotto `root`.
-
-    Non hardcoda ne' l'insieme delle run ne' quello dei livelli: enumera le
-    directory che corrispondono al pattern `runN-tbt-Ts` e, dentro ciascuna,
-    ogni sottodirectory che contenga `run/metrics/`. Aggiungere run nuove e
-    rilanciare basta.
-    """
-    found = []
-    if not root.is_dir():
-        LOG.error("root inesistente: %s", root)
-        return found
-    for run_dir in sorted(p for p in root.iterdir() if p.is_dir()):
-        m = RUN_DIR_RE.match(run_dir.name)
-        if not m:
-            LOG.debug("ignoro directory non conforme: %s", run_dir.name)
-            continue
-        run_index, tbt_from_name = int(m.group(1)), int(m.group(2))
-        for level_dir in sorted(p for p in run_dir.iterdir() if p.is_dir()):
-            metrics = level_dir / "run" / "metrics"
-            # Dalla riorganizzazione dell'output, dentro `runN-tbt-Ts/` vivono
-            # anche cartelle che NON sono livelli geografici (il confronto fra
-            # aree). Un livello e' tale solo se porta con se' `run/metrics/`.
-            if not metrics.is_dir():
-                LOG.debug("ignoro %s: non contiene run/metrics", level_dir.name)
-                continue
-            found.append({
-                "run_id": "%s/%s" % (run_dir.name, level_dir.name),
-                "run_dir": run_dir.name,
-                "run_index": run_index,
-                "tbt_dirname": tbt_from_name,
-                "livello": level_dir.name,
-                "path": level_dir,
-                "metrics": metrics,
-                "data": level_dir / "run" / "data",
-            })
-    LOG.info("trovate %d run in %s", len(found), root)
-    return found
-
-
-def find_debug_logs(data_dir):
-    """I debug.log stanno in `data/<host>/debug.log` nelle run archiviate e in
-    `data/<host>/<chain>/debug.log` in quelle appena eseguite: si cercano
-    entrambe le forme, restituendo (host, path)."""
-    out = []
-    if not data_dir.is_dir():
-        return out
-    for host_dir in sorted(p for p in data_dir.iterdir() if p.is_dir()):
-        direct = host_dir / "debug.log"
-        if direct.is_file():
-            out.append((host_dir.name, direct))
-            continue
-        for sub in sorted(p for p in host_dir.iterdir() if p.is_dir()):
-            nested = sub / "debug.log"
-            if nested.is_file():
-                out.append((host_dir.name, nested))
-                break
-    return out
-
 
 # --------------------------------------------------------------------------
 # ispezione dello schema
@@ -372,82 +205,6 @@ def chi_square(observed, expected):
         if exp > 0:
             stat += (obs - exp) ** 2 / exp
     return stat, max(1, len(observed) - 1)
-
-
-def extract_meta(run):
-    """Metadati della run: params.dat sigillato + getinfo, non il nome cartella."""
-    meta = {
-        "run_id": run["run_id"], "run_dir": run["run_dir"],
-        "run_index": run["run_index"], "livello": run["livello"],
-        "tbt_dirname": run["tbt_dirname"],
-    }
-    params = {}
-    if run["data"].is_dir():
-        for host_dir in sorted(p for p in run["data"].iterdir() if p.is_dir()):
-            params = parse_params_dat(host_dir / "params.dat")
-            if params:
-                meta["params_da_host"] = host_dir.name
-                break
-    meta["params_trovato"] = bool(params)
-    for key in PARAM_KEYS:
-        meta[key.replace("-", "_")] = params.get(key, "")
-
-    info = rpc_result(run["metrics"] / "admin_getinfo.json") or {}
-    meta["setupblocks_getinfo"] = info.get("setupblocks", "")
-    meta["chainname_getinfo"] = info.get("chainname", "")
-    meta["protocolversion"] = info.get("protocolversion", "")
-
-    tbt_params = as_int(params.get("target-block-time"))
-    meta["tbt"] = tbt_params if tbt_params is not None else run["tbt_dirname"]
-    meta["tbt_params"] = tbt_params if tbt_params is not None else ""
-    # Il nome cartella e' una promessa, params.dat e' il fatto: se divergono
-    # la run e' etichettata male e ogni confronto per tbt sarebbe falsato.
-    meta["tbt_mismatch"] = int(tbt_params is not None and tbt_params != run["tbt_dirname"])
-
-    setup_params = as_int(params.get("setup-first-blocks"))
-    setup_info = as_int(info.get("setupblocks"))
-    meta["setup_blocks"] = setup_params if setup_params is not None else (setup_info or 0)
-    meta["setup_mismatch"] = int(
-        setup_params is not None and setup_info is not None and setup_params != setup_info)
-
-    meta["epoch_len"] = as_int(params.get("weight-epoch-length"), 12)
-    meta["mining_diversity_val"] = as_float(params.get("mining-diversity"))
-    meta["delta"] = as_float(params.get("wpoa-sortition-delta"), 0.5)
-    meta["lambda_sortition"] = as_float(params.get("wpoa-sortition-lambda"), 0.0)
-    meta["rtt_max_ms"] = RTT_FALLBACK.get(run["livello"], "")
-
-    # Conversione GAS: letta run per run, mai hardcodata. Se params.dat manca il
-    # campo resta vuoto e ogni riga che ne dipende (il premio di mining) viene
-    # omessa invece che stimata.
-    ncm = as_float(params.get("native-currency-multiple"))
-    meta["native_currency_multiple"] = ncm if ncm is not None else ""
-    meta["fonte_conversione_gas"] = (
-        "params.dat di %s (native-currency-multiple)" % meta.get("params_da_host", "?")
-        if ncm is not None else "non disponibile: nessun params.dat leggibile")
-    return meta
-
-
-def extract_host_maps(run):
-    """host -> indirizzo (da esg_scores.csv) e host -> cluster (da membership.csv)."""
-    addr_by_host, host_by_addr, esg_by_host = {}, {}, {}
-    header, rows = read_csv_rows(run["metrics"] / "esg_scores.csv",
-                                 expected_cols=["host", "address", "esg"])
-    for row in rows:
-        if len(row) < 3:
-            continue
-        host, addr, esg = row[0].strip(), row[1].strip(), as_float(row[2])
-        addr_by_host[host] = addr
-        host_by_addr[addr] = host
-        esg_by_host[host] = esg
-
-    cluster_by_host = {}
-    _, mrows = read_csv_rows(run["metrics"] / "membership.csv", has_header=False)
-    for row in mrows:
-        if len(row) < 3:
-            continue
-        host, _addr, miner_addr = row[0].strip(), row[1].strip(), row[2].strip()
-        cluster_by_host[host] = host_by_addr.get(miner_addr, miner_addr)
-    return addr_by_host, host_by_addr, esg_by_host, cluster_by_host
 
 
 def extract_blocks(run, meta):
@@ -851,402 +608,6 @@ def extract_esg(run, meta, esg_by_host, cluster_by_host, addr_by_host):
 # le colonne seguono l'ordine del sorgente perche' una run con
 # `dumpfunction = sqrt` o con malus attivi resti leggibile senza modifiche.
 
-UPDATETX_RE = re.compile(r"UpdateTx ([0-9a-f]{8,}), block (-?\d+)")
-NEWTX_RE = re.compile(r"NewTx ([0-9a-f]{64}), block (-?\d+)")
-
-# Tabelle scritte dentro `<run>/<livello>/dati/`, accanto ai dati che descrivono.
-PER_RUN_TABLES = ["peso_riconciliazione", "account_ledger", "gas_transfers",
-                  "esg_publish", "membership_events", "traffic_events",
-                  "tabellone_eventi", "errori_integrita", "disuguaglianza_pesi"]
-
-# Il prefisso con cui txs.log abbrevia un txid nelle righe UpdateTx.
-TXID_PREFIX_LEN = 10
-
-
-def build_tx_index(run):
-    """Indice delle conferme: prefisso del txid -> altezza del blocco che l'ha confermato.
-
-    I CSV in `metrics/` registrano l'altezza al momento dell'INVIO della RPC, non
-    quella di conferma: usarla per assegnare una transazione a un'epoca sbaglia
-    sistematicamente al confine fra epoche, ed e' proprio al confine che il
-    motore dei pesi cambia risultato. `data/<host>/txs.log` porta invece
-    `UpdateTx <prefisso>, block <N>` con l'altezza reale.
-
-    Restituisce anche i txid creati e mai confermati (`NewTx` senza `UpdateTx`
-    con block >= 0): sono la firma di una transazione caduta — orfana o
-    rifiutata dalla mempool — e sono l'unico modo di distinguere "il nodo ha
-    riconciliato" da "il nodo ha provato a riconciliare".
-    """
-    conf = {}
-    seen_new = {}
-    for host, path in _txs_logs(run["data"]):
-        try:
-            text = path.read_text(errors="ignore")
-        except OSError:
-            continue
-        for line in text.splitlines():
-            m = UPDATETX_RE.search(line)
-            if m:
-                height = int(m.group(2))
-                if height >= 0:
-                    pre = m.group(1)[:TXID_PREFIX_LEN]
-                    if pre not in conf or height < conf[pre]:
-                        conf[pre] = height
-                continue
-            m = NEWTX_RE.search(line)
-            if m:
-                seen_new.setdefault(m.group(1), set()).add(host)
-                # Un nodo che riceve una transazione gia' dentro un blocco la
-                # registra direttamente come NewTx con l'altezza: senza questo
-                # ramo quelle transazioni risulterebbero "mai confermate".
-                height = int(m.group(2))
-                if height >= 0:
-                    pre = m.group(1)[:TXID_PREFIX_LEN]
-                    if pre not in conf or height < conf[pre]:
-                        conf[pre] = height
-    # Chi ha CREATO la transazione non e' deducibile da txs.log — un nodo la
-    # registra sia quando la firma sia quando la riceve — quindi si riportano
-    # tutti i nodi che l'hanno vista, senza attribuirne la paternita'.
-    non_confermate = [(txid, sorted(hosts)) for txid, hosts in sorted(seen_new.items())
-                      if txid[:TXID_PREFIX_LEN] not in conf]
-    return conf, non_confermate
-
-
-def _txs_logs(data_dir):
-    """`txs.log` sta in `data/<host>/` o in `data/<host>/<chain>/`, come i debug.log."""
-    out = []
-    if not data_dir.is_dir():
-        return out
-    for host_dir in sorted(p for p in data_dir.iterdir() if p.is_dir()):
-        direct = host_dir / "txs.log"
-        if direct.is_file():
-            out.append((host_dir.name, direct))
-            continue
-        for sub in sorted(p for p in host_dir.iterdir() if p.is_dir()):
-            nested = sub / "txs.log"
-            if nested.is_file():
-                out.append((host_dir.name, nested))
-                break
-    return out
-
-
-def tx_height(index, txid):
-    """Altezza di conferma di un txid, o None se non e' mai stato confermato."""
-    if not txid or len(txid) < TXID_PREFIX_LEN:
-        return None
-    return index.get(txid[:TXID_PREFIX_LEN])
-
-
-def epoch_of(height, epoch_len):
-    """epoca(h) = h // len + 1, la stessa mappa di HeightToEpoch nel sorgente."""
-    if height is None or not epoch_len or epoch_len < 1:
-        return None
-    return int(height) // int(epoch_len) + 1
-
-
-def apply_dumping(weight, dump_function):
-    """g(.) di Def. 5.9, nella forma di wpoa_selector.h::ApplyDumping."""
-    w = float(weight)
-    if dump_function == "sqrt":
-        return math.sqrt(w)
-    if dump_function == "log":
-        return math.log(1.0 + w)
-    return w
-
-
-def malus_correction(accumulator, m_max):
-    """Psi = max(0, 1 - M / M_max), Def. 5.24 (malus_record.h::CorrectionFactor)."""
-    if not m_max or m_max <= 0:
-        return 1.0
-    psi = 1.0 - float(accumulator) / float(m_max)
-    if psi <= 0.0:
-        return 0.0
-    return min(psi, 1.0)
-
-
-def effective_after_malus(weight, psi):
-    """w_eff = w * Psi, con l'arrotondamento e il pavimento di EffectiveWeight."""
-    if weight == 0 or psi <= 0.0:
-        return 0
-    if psi >= 1.0:
-        return int(weight)
-    w = float(weight) * psi
-    if w >= float(weight):
-        return int(weight)
-    r = int(math.floor(w + 0.5))
-    return r if r else 1
-
-
-def _gas_balance_samples(run):
-    """host -> [(height, saldo)] ordinati: gas_balances.csv e' un CAMPIONE periodico
-    scritto dal ciclo di rifornimento dell'admin, non un'istantanea per movimento."""
-    samples = {}
-    _h, rows = read_csv_rows(run["metrics"] / "gas_balances.csv",
-                             expected_cols=["height", "host", "balance"])
-    for row in rows:
-        if len(row) < 3:
-            continue
-        height, host, bal = as_int(row[0]), row[1].strip(), as_float(row[2])
-        if height is None or bal is None:
-            continue
-        samples.setdefault(host, []).append((height, bal))
-    for host in samples:
-        samples[host].sort()
-    return samples
-
-
-def _next_sample(samples, host, height):
-    """Primo campione di saldo a partire da `height`, o (None, None)."""
-    for h, bal in samples.get(host, []):
-        if h >= height:
-            return h, bal
-    return None, None
-
-
-def extract_event_tables(run, meta, maps, txindex):
-    """Le quattro tabelle relazionali degli eventi, piu' il tabellone denormalizzato.
-
-    Fonte di verita': le tabelle separate. Il tabellone e' una vista di comodo
-    per filtrare rapidamente su un singolo host senza incrociare quattro file.
-    """
-    addr_by_host, host_by_addr, esg_by_host, cluster_by_host = maps
-    epoch_len = meta["epoch_len"]
-    base = {"run_id": meta["run_id"], "livello": meta["livello"], "tbt": meta["tbt"]}
-    out = {name: [] for name in PER_RUN_TABLES}
-
-    # --- traffico di filiera: la fonte diretta di tau_i --------------------
-    _h, rows = read_csv_rows(run["metrics"] / "traffic.csv",
-                             expected_cols=["height", "host", "seq", "txid_or_error"])
-    for row in rows:
-        if len(row) < 4:
-            continue
-        h_send, host, seq, txid = as_int(row[0]), row[1].strip(), as_int(row[2]), row[3].strip()
-        is_tx = len(txid) == 64 and all(c in "0123456789abcdef" for c in txid)
-        h_conf = tx_height(txindex, txid) if is_tx else None
-        if not is_tx:
-            esito, dettaglio = "errore", txid
-        elif h_conf is None:
-            esito, dettaglio = "non_confermata", "txid mai comparso in un blocco"
-        else:
-            esito, dettaglio = "ok", ""
-        rec = dict(base)
-        rec.update({
-            "height_invio": h_send if h_send is not None else "",
-            "height_conferma": h_conf if h_conf is not None else "",
-            "epoca": epoch_of(h_conf, epoch_len) or "",
-            "nodo_publisher": host,
-            "indirizzo": addr_by_host.get(host, ""),
-            "miner_cluster": cluster_by_host.get(host, ""),
-            "seq": seq if seq is not None else "",
-            "esito": esito, "dettaglio_errore": dettaglio, "txid": txid if is_tx else "",
-        })
-        out["traffic_events"].append(rec)
-
-    # --- pubblicazioni ESG (stream chiuso, solo la CA delegata) ------------
-    for item in (rpc_result(run["metrics"] / "esg.json") or []):
-        if not isinstance(item, dict):
-            continue
-        payload = ((item.get("data") or {}).get("json")) or {}
-        addr = payload.get("node_address") or (item.get("keys") or [""])[0]
-        pub_addr = (item.get("publishers") or [""])[0]
-        h_conf = tx_height(txindex, item.get("txid", ""))
-        rec = dict(base)
-        rec.update({
-            "height_conferma": h_conf if h_conf is not None else "",
-            "epoca": epoch_of(h_conf, epoch_len) or "",
-            "nodo_certificato": host_by_addr.get(addr, addr[:10]),
-            "indirizzo_certificato": addr,
-            "esg_score": payload.get("esg", ""),
-            "publisher": host_by_addr.get(pub_addr, "ca"),
-            "publisher_indirizzo": pub_addr,
-            "txid": item.get("txid", ""),
-        })
-        out["esg_publish"].append(rec)
-
-    # --- adesioni ai cluster (auto-attestate) ------------------------------
-    for item in (rpc_result(run["metrics"] / "membership.json") or []):
-        if not isinstance(item, dict):
-            continue
-        payload = ((item.get("data") or {}).get("json")) or {}
-        addr = payload.get("node_address", "")
-        miner = payload.get("miner_address", "")
-        h_conf = tx_height(txindex, item.get("txid", ""))
-        rec = dict(base)
-        rec.update({
-            "height_conferma": h_conf if h_conf is not None else "",
-            "epoca": epoch_of(h_conf, epoch_len) or "",
-            "azienda": host_by_addr.get(addr, addr[:10]),
-            "indirizzo": addr,
-            "miner_cluster": host_by_addr.get(miner, miner[:10]),
-            "miner_indirizzo": miner,
-            "evento": "adesione" if addr != miner else "auto-adesione del miner",
-            "txid": item.get("txid", ""),
-        })
-        out["membership_events"].append(rec)
-
-    # --- movimenti di GAS: init/refill dall'admin + riconciliazioni --------
-    #
-    # LIMITE DICHIARATO. `gas_transfers.csv` non porta il txid, quindi per
-    # init/refill l'altezza e' quella di INVIO e la conferma non e'
-    # dimostrabile; `gas_balances.csv` e' un campione periodico e non contiene
-    # affatto l'admin, quindi il saldo del mittente dopo un init/refill non e'
-    # ricostruibile. Le colonne restano, con la fonte dichiarata riga per riga.
-    samples = _gas_balance_samples(run)
-    _h, rows = read_csv_rows(run["metrics"] / "gas_transfers.csv",
-                             expected_cols=["height", "tipo", "host", "importo"],
-                             has_header=False)
-    for row in rows:
-        if len(row) < 4:
-            continue
-        h_send, tipo, dest, amount = as_int(row[0]), row[1].strip(), row[2].strip(), as_float(row[3])
-        sh, sbal = _next_sample(samples, dest, h_send if h_send is not None else 0)
-        rec = dict(base)
-        rec.update({
-            "height": h_send if h_send is not None else "",
-            "height_conferma": "",
-            "epoca": epoch_of(h_send, epoch_len) or "",
-            "tipo": tipo,
-            "nodo_mittente": "admin", "indirizzo_mittente": addr_by_host.get("admin", ""),
-            "nodo_destinatario": dest, "indirizzo_destinatario": addr_by_host.get(dest, ""),
-            "importo_gas": amount if amount is not None else "",
-            "saldo_mittente_dopo": "",
-            "fonte_saldo_mittente": "non_disponibile (l'admin non e' campionato in gas_balances.csv)",
-            "saldo_destinatario_dopo": sbal if sbal is not None else "",
-            "fonte_saldo_destinatario": ("campione a height=%d" % sh) if sh is not None
-                                        else "non_disponibile",
-            "note": "l'admin finanzia il nodo: init = dotazione iniziale, "
-                    "refill = rifornimento sotto soglia; height e' l'altezza di INVIO, "
-                    "non di conferma (gas_transfers.csv non porta il txid)",
-        })
-        out["gas_transfers"].append(rec)
-
-    _h, rows = read_csv_rows(run["metrics"] / "reconciliation.csv",
-                             expected_cols=["height", "epoch", "miner", "balance", "sent"])
-    treasury = meta.get("weight_treasury_address", "")
-    for row in rows:
-        if len(row) < 5:
-            continue
-        h_send, ep, miner = as_int(row[0]), as_int(row[1]), row[2].strip()
-        bal, sent = as_float(row[3]), as_float(row[4])
-        # La transazione entra in mempool all'altezza registrata e viene
-        # confermata nel blocco successivo: modello validato sulle run (vedi
-        # verifica_riconciliazione.log). Non e' una conferma dimostrata.
-        h_conf = (h_send + 1) if h_send is not None else None
-        rec = dict(base)
-        rec.update({
-            "height": h_send if h_send is not None else "",
-            "height_conferma": h_conf if h_conf is not None else "",
-            "epoca": epoch_of(h_conf, epoch_len) or "",
-            "tipo": "reconcile",
-            "nodo_mittente": miner, "indirizzo_mittente": addr_by_host.get(miner, ""),
-            "nodo_destinatario": "treasury", "indirizzo_destinatario": treasury,
-            "importo_gas": sent if sent is not None else "",
-            "saldo_mittente_prima": bal if bal is not None else "",
-            "saldo_mittente_dopo": round(bal - sent, 4)
-                                   if (bal is not None and sent is not None) else "",
-            "fonte_saldo_mittente": "getbalance del miner stesso subito prima "
-                                    "dell'invio, meno sent",
-            "saldo_destinatario_dopo": "",
-            "fonte_saldo_destinatario": "non_disponibile (il treasury e' letto solo a fine run)",
-            "note": "il miner paga il treasury: e' la R_k dell'epoca (Cap. 6.4). "
-                    "sent=0 significa nessun invio (saldo sotto la riserva o RPC fallita); "
-                    "epoca registrata dall'harness = %s, epoca di conferma usata qui = %s"
-                    % (ep, epoch_of(h_conf, epoch_len)),
-        })
-        out["gas_transfers"].append(rec)
-
-    # --- tabellone denormalizzato (vista di comodo) -----------------------
-    for rec in out["traffic_events"]:
-        out["tabellone_eventi"].append(dict(base, **{
-            "height": rec["height_conferma"] or rec["height_invio"], "epoca": rec["epoca"],
-            "categoria_evento": "traffico", "nodo_mittente": rec["nodo_publisher"],
-            "nodo_destinatario": "stream applicativo", "importo": rec["seq"],
-            "unita": "seq", "note": rec["esito"]}))
-    for rec in out["esg_publish"]:
-        out["tabellone_eventi"].append(dict(base, **{
-            "height": rec["height_conferma"], "epoca": rec["epoca"],
-            "categoria_evento": "esg", "nodo_mittente": rec["publisher"],
-            "nodo_destinatario": rec["nodo_certificato"], "importo": rec["esg_score"],
-            "unita": "punteggio ESG", "note": "stream chiuso, scrive solo la CA delegata"}))
-    for rec in out["membership_events"]:
-        out["tabellone_eventi"].append(dict(base, **{
-            "height": rec["height_conferma"], "epoca": rec["epoca"],
-            "categoria_evento": "membership", "nodo_mittente": rec["azienda"],
-            "nodo_destinatario": rec["miner_cluster"], "importo": "", "unita": "",
-            "note": rec["evento"]}))
-    for rec in out["gas_transfers"]:
-        out["tabellone_eventi"].append(dict(base, **{
-            "height": rec["height_conferma"] or rec["height"], "epoca": rec["epoca"],
-            "categoria_evento": "gas/" + rec["tipo"], "nodo_mittente": rec["nodo_mittente"],
-            "nodo_destinatario": rec["nodo_destinatario"], "importo": rec["importo_gas"],
-            "unita": "GAS", "note": rec["note"].split(";")[0]}))
-    out["tabellone_eventi"].sort(
-        key=lambda r: (as_int(r.get("height"), 10 ** 9), r.get("categoria_evento", "")))
-    return out
-
-
-def _weight_records(run, txindex):
-    """I record di wpoa-weights con l'altezza REALE in cui sono diventati leggibili.
-
-    Il campo `height` dentro il payload e' l'altezza che il publisher aveva in
-    mano quando ha costruito il record; quella che conta per la selezione e'
-    l'altezza in cui la transazione e' stata confermata, perche' prima di quel
-    blocco nessun altro nodo puo' leggere il peso.
-    """
-    recs = []
-    for item in (rpc_result(run["metrics"] / "weights.json") or []):
-        if not isinstance(item, dict):
-            continue
-        payload = ((item.get("data") or {}).get("json")) or {}
-        addr, weight = payload.get("node_address"), payload.get("weight")
-        if addr is None or weight is None:
-            continue
-        recs.append({
-            "address": addr,
-            "epoca": as_int(payload.get("epoch")),
-            "peso": as_int(weight),
-            "height_payload": as_int(payload.get("height")),
-            "height_conferma": tx_height(txindex, item.get("txid", "")),
-            "txid": item.get("txid", ""),
-        })
-    recs.sort(key=lambda r: (r["height_conferma"] if r["height_conferma"] is not None
-                             else 10 ** 9, r["epoca"] or 0))
-    return recs
-
-
-def _inforce_shares(records, blocks, setup, dump_fn, psi_by_epoch, epoch_len, m_max):
-    """Per ogni blocco misurato, la quota attesa di ciascun miner con il peso VIGENTE.
-
-    Un blocco all'altezza h e' proposto leggendo la mappa dei pesi alla punta
-    h-1: valgono quindi i soli record confermati prima di h. Legare invece i
-    blocchi dell'epoca e al record marcato `epoch=e` sarebbe sbagliato, perche'
-    il motore pubblica il peso dell'epoca e a epoca gia' finita — il record
-    marcato e entra in vigore dentro l'epoca e+1.
-    """
-    per_block = []
-    inforce = {}
-    idx = 0
-    for blk in blocks:
-        h = blk["height"]
-        while idx < len(records) and records[idx]["height_conferma"] is not None \
-                and records[idx]["height_conferma"] < h:
-            rec = records[idx]
-            inforce[rec["address"]] = rec
-            idx += 1
-        if h <= setup or not inforce:
-            continue
-        eff = {}
-        for addr, rec in inforce.items():
-            psi = psi_by_epoch.get((addr, (epoch_of(h, epoch_len) or 1) - 1), 1.0)
-            eff[addr] = apply_dumping(effective_after_malus(rec["peso"], psi), dump_fn)
-        tot = sum(eff.values())
-        if tot <= 0:
-            continue
-        per_block.append((h, blk.get("miner"), {a: v / tot for a, v in eff.items()},
-                          {a: r["epoca"] for a, r in inforce.items()}))
-    return per_block
-
-
 def compute_weight_reconciliation(run, meta, maps, events, txindex, blocks, window):
     """La tabella di riconciliazione del peso: una riga per (epoca, miner).
 
@@ -1265,108 +626,16 @@ def compute_weight_reconciliation(run, meta, maps, events, txindex, blocks, wind
     dump_fn = (str(meta.get("dump_function") or "none")).strip().lower() or "none"
     log = []
 
-    # --- input statici: cluster, ESG e l'epoca da cui sono leggibili -------
-    cluster_addr, memb_epoch = {}, {}
-    for rec in events["membership_events"]:
-        addr, miner = rec["indirizzo"], rec["miner_indirizzo"]
-        if not addr or not miner:
-            continue
-        cluster_addr.setdefault(miner, set())
-        if addr != miner:                       # il miner non e' azienda di se stesso
-            cluster_addr[miner].add(addr)
-        memb_epoch[addr] = min(memb_epoch.get(addr, 10 ** 9), rec["epoca"] or 10 ** 9)
-    esg_addr, esg_epoch = {}, {}
-    for rec in events["esg_publish"]:
-        addr = rec["indirizzo_certificato"]
-        val = as_float(rec["esg_score"])
-        if not addr or val is None:
-            continue
-        esg_addr[addr] = val
-        esg_epoch[addr] = min(esg_epoch.get(addr, 10 ** 9), rec["epoca"] or 10 ** 9)
-
-    # --- input derivati dai blocchi: tau (attivita') e R (riconciliazione) --
-    tau = Counter()
-    for rec in events["traffic_events"]:
-        if rec["esito"] == "ok" and rec["epoca"]:
-            tau[(rec["indirizzo"], rec["epoca"])] += 1
-    for rec in events["esg_publish"] + events["membership_events"]:
-        pub = rec.get("publisher_indirizzo") or rec.get("indirizzo")
-        if pub and rec["epoca"]:
-            tau[(pub, rec["epoca"])] += 1
-    wrecs = _weight_records(run, txindex)
-    for rec in wrecs:
-        ep = epoch_of(rec["height_conferma"], epoch_len)
-        if ep:
-            tau[(rec["address"], ep)] += 1
-    reconciled = Counter()
-    for rec in events["gas_transfers"]:
-        if rec["tipo"] != "reconcile" or not rec["epoca"]:
-            continue
-        amount = as_float(rec["importo_gas"], 0.0) or 0.0
-        if amount <= 0:
-            continue                            # sent=0: nessuna transazione emessa
-        tau[(rec["indirizzo_mittente"], rec["epoca"])] += 1
-        reconciled[(rec["indirizzo_mittente"], rec["epoca"])] += amount
-
-    # --- malus: accumulatore M e correzione Psi, per epoca -----------------
-    malus_points = Counter()
-    n_malus_rec = 0
-    for item in (rpc_result(run["metrics"] / "malus.json") or []):
-        n_malus_rec += 1                        # nessuna run di questa campagna ne ha
-    psi_by_epoch, malus_by_epoch = {}, {}
-
-    published, pub_height = {}, {}
-    for rec in wrecs:
-        if rec["epoca"] is not None:
-            published[(rec["address"], rec["epoca"])] = rec["peso"]
-            pub_height[(rec["address"], rec["epoca"])] = rec["height_conferma"]
-
-    miners = sorted(cluster_addr) or sorted({a for a, _e in published})
+    # --- inputs and forward fold: shared with the new three-phase pipeline
+    # (pipeline/common.py::weight_engine_inputs / weight_engine_fold). Only the
+    # comparison and the chi-square columns below stay in this legacy script.
+    inputs = weight_engine_inputs(run, meta, events, txindex)
+    wrecs = inputs["wrecs"]
+    published, pub_height = inputs["published"], inputs["pub_height"]
+    miners, n_malus_rec = inputs["miners"], inputs["n_malus_rec"]
     max_epoch = max([e for _a, e in published] +
                     [epoch_of(b["height"], epoch_len) or 1 for b in blocks] + [1])
-
-    # --- il fold in avanti, epoca per epoca (weight_engine.h::ComputeEpoch) -
-    state = {m: (0.0, 0.0) for m in miners}     # (B^(e-1), rho^(e-1))
-    derived = {}
-    for e in range(1, max_epoch + 1):
-        esg_e = {a: v for a, v in esg_addr.items() if esg_epoch.get(a, 10 ** 9) <= e}
-        comp_e = {m: sorted(c for c in cluster_addr.get(m, ())
-                            if memb_epoch.get(c, 10 ** 9) <= e) for m in miners}
-        theta = float(sum(tau[(c, e)] for m in miners for c in comp_e[m]))
-        raw, contrib = {}, {}
-        for m in miners:
-            if memb_epoch.get(m, 10 ** 9) > e:
-                raw[m], contrib[m] = 0.0, []
-                continue
-            parts = [(c, esg_e.get(c, 0.0), tau[(c, e)],
-                      esg_e.get(c, 0.0) * tau[(c, e)] / kappa) for c in comp_e[m]]
-            contrib[m] = parts
-            raw[m] = esg_e.get(m, 0.0) * (tau[(m, e)] + sum(p[3] for p in parts))
-        total_raw = sum(raw.values())
-        new_state = {}
-        for m in miners:
-            b_prev, rho_prev = state.get(m, (0.0, 0.0)) if e >= 2 else (0.0, 0.0)
-            alloc = 0.0 if total_raw <= 0 else alpha * theta * raw[m] / total_raw
-            r_k = float(reconciled[(m, e)])
-            denom = alloc + b_prev
-            clamped = 0.0 if denom <= 0 else min(max(r_k, 0.0), denom)
-            rho = 0.0 if denom <= 0 else clamped / denom
-            balance = alloc - clamped + b_prev
-            w = raw[m] if e <= 1 else raw[m] * (rho_prev * lam + (1.0 - lam))
-            scaled = w * kappa
-            iw = 1 if not (scaled >= 1.0) else int(math.floor(scaled + 0.5))
-            m_acc = mu * malus_by_epoch.get((m, e - 1), 0.0) + malus_points[(m, e)]
-            malus_by_epoch[(m, e)] = m_acc
-            psi_by_epoch[(m, e)] = malus_correction(m_acc, m_max)
-            derived[(m, e)] = {
-                "esg_miner": esg_e.get(m, 0.0), "tau_miner": tau[(m, e)],
-                "contrib": contrib[m], "theta": theta, "raw": raw[m],
-                "alloc": alloc, "rho": rho, "rho_prev": rho_prev if e >= 2 else "",
-                "balance_prev": b_prev, "balance": balance, "reconciled": r_k,
-                "w": w, "int_weight": iw, "malus": m_acc,
-            }
-            new_state[m] = (balance, rho)
-        state = new_state
+    derived, psi_by_epoch, _malus_by_epoch = weight_engine_fold(inputs, meta, max_epoch)
 
     # --- quote osservate e attese, con il peso VIGENTE blocco per blocco ---
     per_block = _inforce_shares(wrecs, blocks, meta["setup_blocks"], dump_fn,
@@ -1693,7 +962,6 @@ def write_area_comparison(mirror, run_dir_name, per_level):
     return out_dir, len(div_esg)
 
 
-
 # --------------------------------------------------------------------------
 # Sez. 4.3 - bilancio GAS per nodo (account_ledger.csv)
 # --------------------------------------------------------------------------
@@ -1911,30 +1179,6 @@ def build_account_ledger(run, meta, maps, events, blocks, specials):
 # --------------------------------------------------------------------------
 # Sez. 4.6 - concentrazione del peso (disuguaglianza_pesi.csv)
 # --------------------------------------------------------------------------
-
-def gini(values):
-    """Indice di Gini su valori non negativi. 0 = equidistribuzione, ->1 = tutto
-    a uno solo. Definito come meta' della differenza media relativa, la forma
-    che non richiede di ordinare in classi."""
-    vals = [float(v) for v in values if v is not None and float(v) >= 0]
-    n = len(vals)
-    total = sum(vals)
-    if n < 2 or total <= 0:
-        return 0.0
-    vals.sort()
-    cum = sum((2 * (i + 1) - n - 1) * v for i, v in enumerate(vals))
-    return cum / (n * total)
-
-
-def normalized_entropy(values):
-    """H/H_max sulle quote: 1 = equidistribuzione, 0 = un solo host ha tutto."""
-    vals = [float(v) for v in values if v is not None and float(v) > 0]
-    total = sum(vals)
-    if len(vals) < 2 or total <= 0:
-        return 0.0
-    h = -sum((v / total) * math.log(v / total) for v in vals)
-    return h / math.log(len(vals))
-
 
 def build_inequality(pr_rows, meta):
     """Una riga per epoca: quanto e' concentrato il peso, e quanto lo erano gia'
@@ -2170,46 +1414,6 @@ def build_integrity(run, meta, pr_rows, ledger, events, blocks, maps, specials, 
 # Sez. 4.9 - test aggiuntivi, aggregati su tutta la campagna
 # --------------------------------------------------------------------------
 
-def _spearman(xs, ys):
-    """(rho, p) di Spearman, o ('', '') se il campione non lo consente.
-
-    Con scipy si usa scipy.stats.spearmanr; senza, si calcola il solo
-    coefficiente sui ranghi (Pearson sui ranghi) e il p-value resta vuoto —
-    dichiarato, mai stimato.
-    """
-    pairs = [(x, y) for x, y in zip(xs, ys) if x is not None and y is not None]
-    if len(pairs) < 3:
-        return "", "", len(pairs)
-    xs = [p[0] for p in pairs]
-    ys = [p[1] for p in pairs]
-    if len(set(xs)) < 2 or len(set(ys)) < 2:
-        return "", "", len(pairs)     # una serie costante: rho non e' definito
-    if USING_SCIPY:
-        res = _scipy_stats.spearmanr(xs, ys)
-        rho, pval = float(res[0]), float(res[1])
-        return round(rho, 6), round(pval, 6), len(pairs)
-
-    def ranks(vals):
-        order = sorted(range(len(vals)), key=lambda i: vals[i])
-        out = [0.0] * len(vals)
-        i = 0
-        while i < len(order):
-            j = i
-            while j + 1 < len(order) and vals[order[j + 1]] == vals[order[i]]:
-                j += 1
-            avg = (i + j) / 2.0 + 1.0
-            for k in range(i, j + 1):
-                out[order[k]] = avg
-            i = j + 1
-        return out
-
-    rx, ry = ranks(xs), ranks(ys)
-    mx, my = sum(rx) / len(rx), sum(ry) / len(ry)
-    num = sum((a - mx) * (b - my) for a, b in zip(rx, ry))
-    den = math.sqrt(sum((a - mx) ** 2 for a in rx) * sum((b - my) ** 2 for b in ry))
-    return (round(num / den, 6) if den else ""), "", len(pairs)
-
-
 def build_correlations(meta, pr_rows, ledger):
     """Sez. 4.9.1 - il canale selezione -> GAS -> riconciliazione -> peso futuro.
 
@@ -2367,48 +1571,6 @@ def build_prop518_fit(margins):
                     "empirico della legge di scala",
         })
     return out
-
-
-# Parametri che definiscono una famiglia di confronto: due run appartengono
-# alla stessa famiglia per il parametro P se differiscono SOLO per P.
-FAMILY_PARAMS = ["target_block_time", "mining_diversity", "weight_epoch_length",
-                 "weight_kappa", "weight_lambda", "wpoa_sortition_delta",
-                 "wpoa_sortition_lambda", "wpoa_randao_lookback", "dump_function"]
-
-
-def build_families(index):
-    """Sez. 4.9.5 - le famiglie di run che differiscono per ESATTAMENTE un
-    parametro, costruite dall'indice invece che dichiarate a mano.
-
-    Il livello geografico entra nella chiave di raggruppamento quando NON e' la
-    variabile in esame; quando lo e' (famiglia `livello`), entra invece nella
-    chiave tutto il resto. Gli assi 2 e 3 della campagna attuale — livello a tbt
-    costante, tbt a livello costante — sono i due casi particolari che questo
-    meccanismo produce da solo, senza che siano scritti da nessuna parte.
-    """
-    out = []
-    for param in FAMILY_PARAMS + ["livello"]:
-        gruppi = defaultdict(list)
-        for row in index:
-            if row.get("stato") in ("errore", "incompleta"):
-                continue
-            chiave = tuple((k, str(row.get(k, ""))) for k in FAMILY_PARAMS + ["livello"]
-                           if k != param)
-            gruppi[chiave].append(row)
-        for chiave, rows in gruppi.items():
-            valori = sorted({str(r.get(param, "")) for r in rows})
-            if len(valori) < 2:
-                continue
-            out.append({
-                "parametro_variato": param,
-                "valori": " | ".join(valori),
-                "n_run": len(rows),
-                "run_id": " ".join(sorted(r["run_id"] for r in rows)),
-                "costanti": "; ".join("%s=%s" % (k, v) for k, v in chiave),
-            })
-    out.sort(key=lambda r: (r["parametro_variato"], r["costanti"]))
-    return out
-
 
 
 # --------------------------------------------------------------------------

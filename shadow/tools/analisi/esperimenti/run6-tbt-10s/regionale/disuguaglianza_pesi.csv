@@ -1,7 +1,0 @@
-run_id,livello,tbt,epoca,n_host_con_peso,gini_peso_pubblicato,gini_peso_effettivo,entropia_normalizzata_peso,host_dominante,quota_host_dominante,gini_atteso_da_input,gini_contributi_c_i,delta_gini_pubblicato_input
-run6-tbt-10s/regionale,regionale,10,1,3,0.400343,0.400343,0.731144,m1,0.668067,0.400343,0.21152,0.0
-run6-tbt-10s/regionale,regionale,10,2,3,0.408794,0.408794,0.718988,m1,0.677584,0.406922,0.214175,0.001872
-run6-tbt-10s/regionale,regionale,10,3,2,0.266153,0.266153,0.784658,m2,0.766153,0.40453,0.211498,-0.138377
-run6-tbt-10s/regionale,regionale,10,4,3,0.408862,0.408862,0.718623,m1,0.676988,0.405133,0.213657,0.003729
-run6-tbt-10s/regionale,regionale,10,5,3,0.406748,0.406748,0.721832,m1,0.674934,0.405005,0.212578,0.001743
-run6-tbt-10s/regionale,regionale,10,6,0,0.0,0.0,0.0,,,0.40526,0.212106,-0.40526

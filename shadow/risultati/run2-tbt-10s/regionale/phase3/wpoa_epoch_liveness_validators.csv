@@ -1,0 +1,73 @@
+experiment_id,area,replication_id,target_block_time,dumpfunction,malus_enabled,epoch,validator_host,validator_address,n_rounds_theoretical_argmin,n_rounds_theoretical_argmin_lost,MissedTurnRate,MissedTurnRate_note,n_rounds_won_not_argmin,blocks_won
+run2-tbt-10s,regionale,1,10,none,true,6,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,6,0,0.0,,1,7
+run2-tbt-10s,regionale,1,10,none,true,6,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,1,1,1.0,,0,0
+run2-tbt-10s,regionale,1,10,none,true,6,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run2-tbt-10s,regionale,1,10,none,true,7,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,9,0,0.0,,0,9
+run2-tbt-10s,regionale,1,10,none,true,7,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,3,0,0.0,,0,3
+run2-tbt-10s,regionale,1,10,none,true,7,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run2-tbt-10s,regionale,1,10,none,true,8,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,7,0,0.0,,2,9
+run2-tbt-10s,regionale,1,10,none,true,8,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,3,2,0.66666667,,0,1
+run2-tbt-10s,regionale,1,10,none,true,8,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,2,0,0.0,,0,2
+run2-tbt-10s,regionale,1,10,none,true,9,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,11,0,0.0,,0,11
+run2-tbt-10s,regionale,1,10,none,true,9,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run2-tbt-10s,regionale,1,10,none,true,9,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,1,0,0.0,,0,1
+run2-tbt-10s,regionale,1,10,none,true,10,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,7,0,0.0,,3,10
+run2-tbt-10s,regionale,1,10,none,true,10,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,4,2,0.5,,0,2
+run2-tbt-10s,regionale,1,10,none,true,10,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,1,1,1.0,,0,0
+run2-tbt-10s,regionale,1,10,none,true,11,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,8,0,0.0,,1,9
+run2-tbt-10s,regionale,1,10,none,true,11,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,3,1,0.33333333,,0,2
+run2-tbt-10s,regionale,1,10,none,true,11,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,1,0,0.0,,0,1
+run2-tbt-10s,regionale,1,10,none,true,12,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,10,0,0.0,,2,12
+run2-tbt-10s,regionale,1,10,none,true,12,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,2,2,1.0,,0,0
+run2-tbt-10s,regionale,1,10,none,true,12,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run2-tbt-10s,regionale,1,10,none,true,13,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,7,0,0.0,,2,9
+run2-tbt-10s,regionale,1,10,none,true,13,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,4,1,0.25,,0,3
+run2-tbt-10s,regionale,1,10,none,true,13,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,1,1,1.0,,0,0
+run2-tbt-10s,regionale,1,10,none,true,14,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,10,0,0.0,,1,11
+run2-tbt-10s,regionale,1,10,none,true,14,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,2,1,0.5,,0,1
+run2-tbt-10s,regionale,1,10,none,true,14,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run2-tbt-10s,regionale,1,10,none,true,15,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,7,0,0.0,,0,7
+run2-tbt-10s,regionale,1,10,none,true,15,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,5,0,0.0,,0,5
+run2-tbt-10s,regionale,1,10,none,true,15,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run2-tbt-10s,regionale,1,10,none,true,16,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,9,0,0.0,,0,9
+run2-tbt-10s,regionale,1,10,none,true,16,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,3,0,0.0,,0,3
+run2-tbt-10s,regionale,1,10,none,true,16,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run2-tbt-10s,regionale,1,10,none,true,17,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,7,0,0.0,,2,9
+run2-tbt-10s,regionale,1,10,none,true,17,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,3,1,0.33333333,,0,2
+run2-tbt-10s,regionale,1,10,none,true,17,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,2,1,0.5,,0,1
+run2-tbt-10s,regionale,1,10,none,true,18,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,9,0,0.0,,1,10
+run2-tbt-10s,regionale,1,10,none,true,18,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,2,0,0.0,,0,2
+run2-tbt-10s,regionale,1,10,none,true,18,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,1,1,1.0,,0,0
+run2-tbt-10s,regionale,1,10,none,true,19,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,6,2,0.33333333,,0,4
+run2-tbt-10s,regionale,1,10,none,true,19,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,5,0,0.0,,2,7
+run2-tbt-10s,regionale,1,10,none,true,19,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,1,0,0.0,,0,1
+run2-tbt-10s,regionale,1,10,none,true,20,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,6,0,0.0,,1,7
+run2-tbt-10s,regionale,1,10,none,true,20,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,6,1,0.16666667,,0,5
+run2-tbt-10s,regionale,1,10,none,true,20,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run2-tbt-10s,regionale,1,10,none,true,21,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,7,1,0.14285714,,2,8
+run2-tbt-10s,regionale,1,10,none,true,21,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,5,2,0.4,,1,4
+run2-tbt-10s,regionale,1,10,none,true,21,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run2-tbt-10s,regionale,1,10,none,true,22,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,5,0,0.0,,3,8
+run2-tbt-10s,regionale,1,10,none,true,22,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,7,3,0.42857143,,0,4
+run2-tbt-10s,regionale,1,10,none,true,22,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run2-tbt-10s,regionale,1,10,none,true,23,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,8,0,0.0,,2,10
+run2-tbt-10s,regionale,1,10,none,true,23,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,4,2,0.5,,0,2
+run2-tbt-10s,regionale,1,10,none,true,23,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run2-tbt-10s,regionale,1,10,none,true,24,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,8,0,0.0,,1,9
+run2-tbt-10s,regionale,1,10,none,true,24,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,4,1,0.25,,0,3
+run2-tbt-10s,regionale,1,10,none,true,24,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run2-tbt-10s,regionale,1,10,none,true,25,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,9,2,0.22222222,,0,7
+run2-tbt-10s,regionale,1,10,none,true,25,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,3,0,0.0,,2,5
+run2-tbt-10s,regionale,1,10,none,true,25,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run2-tbt-10s,regionale,1,10,none,true,26,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,6,0,0.0,,2,8
+run2-tbt-10s,regionale,1,10,none,true,26,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,6,2,0.33333333,,0,4
+run2-tbt-10s,regionale,1,10,none,true,26,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run2-tbt-10s,regionale,1,10,none,true,27,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,10,1,0.1,,1,10
+run2-tbt-10s,regionale,1,10,none,true,27,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,2,1,0.5,,1,2
+run2-tbt-10s,regionale,1,10,none,true,27,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run2-tbt-10s,regionale,1,10,none,true,28,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,1,0,0.0,,1,2
+run2-tbt-10s,regionale,1,10,none,true,28,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,1,1,1.0,,0,0
+run2-tbt-10s,regionale,1,10,none,true,28,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run2-tbt-10s,regionale,1,10,none,true,all,m1,1KzW2ShtUjCJuvMCFeYJrHKrcGfjEj2t77aQAv,173,6,0.03468208,,28,195
+run2-tbt-10s,regionale,1,10,none,true,all,m2,1S5cgrFXRwv4CuTTTJy8S9h42X7UwwZUUN52kq,78,24,0.30769231,,6,60
+run2-tbt-10s,regionale,1,10,none,true,all,m3,1ddHuTA1GMyEmio87QhyJBkR7WPUSwnavqqzM,10,4,0.4,,0,6

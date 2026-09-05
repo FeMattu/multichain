@@ -1,0 +1,107 @@
+experiment_id,area,replication_id,target_block_time,dumpfunction,malus_enabled,epoch,argmin_class_host,n,ks_stat,ks_p,mean_gap_x_rate,expected_mean,note
+run5-tbt-2s,continentale,1,2,none,true,17,m2,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,17,m1,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,18,m2,7,0.43681712,0.09898339,1.5580692,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,18,m3,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,18,m1,4,0.38523354,0.48533277,0.57380779,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,19,m1,11,0.20849118,0.6529191,1.27354822,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,19,m3,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,20,m2,4,0.58526991,0.08009852,0.28614089,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,20,m3,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,20,m1,6,0.26193067,0.71991456,0.87129419,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,21,m2,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,21,m1,9,0.35269769,0.16632032,0.71521065,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,21,m3,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,22,m1,7,0.16978177,0.96667437,0.99697124,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,22,m2,5,0.36221479,0.4257979,1.81004367,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,23,m1,6,0.26262802,0.71695173,1.24907818,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,23,m2,6,0.43660169,0.14760672,1.63269123,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,24,m1,7,0.36882655,0.23181647,0.56334551,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,24,m2,3,0.74928544,0.03151873,1.5776883,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,24,m3,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,25,m2,3,0.64407713,0.09214938,0.2256241,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,25,m3,4,0.29748449,0.77854839,1.63462212,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,25,m1,5,0.21672202,0.93132911,1.03685235,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,26,m1,6,0.32859857,0.44045033,2.46548801,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,26,m2,3,0.41791532,0.54517891,1.07212156,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,26,m3,3,0.31043839,0.85735332,1.13371042,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,27,m1,10,0.15596613,0.93809232,1.01260618,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,27,m3,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,27,m2,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,28,m2,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,28,m1,8,0.24647692,0.63022555,1.30221191,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,28,m3,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,29,m1,6,0.40660754,0.20847152,0.57793108,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,29,m2,3,0.35165626,0.728319,0.728546,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,29,m3,3,0.32671897,0.80319912,0.79288319,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,30,m3,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,30,m2,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,30,m1,9,0.24388442,0.57758163,1.1428217,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,31,m2,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,31,m1,9,0.20553698,0.77136239,0.80543088,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,31,m3,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,32,m3,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,32,m1,9,0.47250848,0.02297119,0.9439077,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,32,m2,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,33,m1,11,0.23679574,0.49518491,0.68486816,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,33,m3,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,34,m2,6,0.37746964,0.28297602,1.3383278,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,34,m1,6,0.33232263,0.42701217,0.84745376,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,35,m2,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,35,m1,8,0.44104973,0.06189773,3.1880456,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,35,m3,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,36,m3,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,36,m1,7,0.31528491,0.40609766,0.55056318,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,36,m2,3,0.57446459,0.18341414,2.02912736,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,37,m1,7,0.39453888,0.17074038,0.44447297,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,37,m2,5,0.34878709,0.47423429,1.18598203,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,38,m2,3,0.46673046,0.41494782,0.36658352,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,38,m3,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,38,m1,7,0.41672233,0.12917822,1.57241543,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,39,m3,3,0.28504935,0.92036468,0.9712158,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,39,m1,7,0.35370547,0.27467346,0.67102612,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,39,m2,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,40,m1,10,0.25293122,0.46947845,0.75001314,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,40,m3,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,40,m2,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,41,m1,10,0.24742949,0.49711527,0.71626774,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,41,m2,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,42,m1,6,0.38928531,0.25092939,0.48572595,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,42,m2,5,0.32075957,0.58199189,1.4018479,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,42,m3,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,43,m1,8,0.37588032,0.15972245,0.57715545,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,43,m2,4,0.35731491,0.5798959,0.9640368,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,44,m3,4,0.55475333,0.11163429,0.39535221,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,44,m2,4,0.38971383,0.47059727,1.48610177,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,44,m1,4,0.61030307,0.05943572,0.2056676,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,45,m3,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,45,m2,4,0.22733135,0.95789185,1.02555442,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,45,m1,7,0.41050768,0.13986888,1.30741062,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,46,m3,3,0.57507419,0.18239728,0.44930054,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,46,m2,3,0.48082309,0.37946583,1.55393004,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,46,m1,6,0.40313705,0.21654496,1.54725661,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,47,m1,6,0.27605217,0.6590114,0.66741679,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,47,m2,4,0.6167202,0.05484199,0.22361029,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,47,m3,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,48,m1,10,0.19015493,0.79868967,0.92523434,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,48,m2,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,49,m1,9,0.25780403,0.50848351,0.89474983,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,49,m2,3,0.6287595,0.10774935,0.27214837,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,50,m1,7,0.42448656,0.11676618,1.06313826,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,50,m2,4,0.34562596,0.62007633,0.61734742,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,50,m3,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,51,m1,5,0.33702806,0.51861944,1.1740574,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,51,m2,6,0.21636706,0.8894101,0.85800099,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,51,m3,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,52,m3,3,0.69342455,0.05762914,1.2633461,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,52,m1,7,0.2028892,0.88495589,0.97400645,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,52,m2,2,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,53,m2,5,0.49011202,0.12570444,0.36604548,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,53,m1,7,0.30793749,0.43454234,0.61453981,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,54,m2,5,0.33563383,0.5239767,1.11456194,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,54,m1,7,0.36653049,0.23798957,2.02740872,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,55,m1,3,0.4586587,0.43578489,0.52899757,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,55,m2,1,,,,,not computable: n < 3 or W - w_i <= 0
+run5-tbt-2s,continentale,1,2,none,true,all,m2,122,0.09958058,0.16622247,1.0883775,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,all,m1,278,0.07551344,0.07971648,1.0170057,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run5-tbt-2s,continentale,1,2,none,true,all,m3,51,0.11878271,0.4344495,0.96206244,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"

@@ -1,0 +1,25 @@
+experiment_id,area,replication_id,target_block_time,dumpfunction,malus_enabled,epoch,validator_i,validator_j,log_ratio_observed,log_ratio_theoretical,O_i,O_j,B,note,validator_i_host,validator_j_host
+run1-tbt-15s,intercontinentale,1,15,none,true,7,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,,1.9988522,9,0,12,not computable: a zero count in the epoch,m1,m3
+run1-tbt-15s,intercontinentale,1,15,none,true,7,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,1.09861229,0.71264446,9,3,12,,m1,m2
+run1-tbt-15s,intercontinentale,1,15,none,true,7,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,,-1.28620774,0,3,12,not computable: a zero count in the epoch,m3,m2
+run1-tbt-15s,intercontinentale,1,15,none,true,8,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,0.40546511,2.00109674,6,4,12,,m1,m3
+run1-tbt-15s,intercontinentale,1,15,none,true,8,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,1.09861229,0.70672408,6,2,12,,m1,m2
+run1-tbt-15s,intercontinentale,1,15,none,true,8,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,0.69314718,-1.29437266,4,2,12,,m3,m2
+run1-tbt-15s,intercontinentale,1,15,none,true,9,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,0.84729786,1.95170538,7,3,12,,m1,m3
+run1-tbt-15s,intercontinentale,1,15,none,true,9,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,1.25276297,0.69119227,7,2,12,,m1,m2
+run1-tbt-15s,intercontinentale,1,15,none,true,9,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,0.40546511,-1.26051311,3,2,12,,m3,m2
+run1-tbt-15s,intercontinentale,1,15,none,true,10,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,1.38629436,1.97524457,8,2,12,,m1,m3
+run1-tbt-15s,intercontinentale,1,15,none,true,10,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,1.38629436,0.70418323,8,2,12,,m1,m2
+run1-tbt-15s,intercontinentale,1,15,none,true,10,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,0.0,-1.27106134,2,2,12,,m3,m2
+run1-tbt-15s,intercontinentale,1,15,none,true,11,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,1.94591015,1.93049282,7,1,12,,m1,m3
+run1-tbt-15s,intercontinentale,1,15,none,true,11,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,0.55961579,0.67702847,7,4,12,,m1,m2
+run1-tbt-15s,intercontinentale,1,15,none,true,11,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,-1.38629436,-1.25346435,1,4,12,,m3,m2
+run1-tbt-15s,intercontinentale,1,15,none,true,12,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,1.5040774,2.01364563,9,2,12,,m1,m3
+run1-tbt-15s,intercontinentale,1,15,none,true,12,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,2.19722458,0.6858036,9,1,12,,m1,m2
+run1-tbt-15s,intercontinentale,1,15,none,true,12,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,0.69314718,-1.32784204,2,1,12,,m3,m2
+run1-tbt-15s,intercontinentale,1,15,none,true,13,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,,1.99757807,4,0,12,not computable: a zero count in the epoch,m1,m3
+run1-tbt-15s,intercontinentale,1,15,none,true,13,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,-0.69314718,0.70302596,4,8,12,,m1,m2
+run1-tbt-15s,intercontinentale,1,15,none,true,13,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,,-1.29455211,0,8,12,not computable: a zero count in the epoch,m3,m2
+run1-tbt-15s,intercontinentale,1,15,none,true,14,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,2.19722458,1.93755913,9,1,12,,m1,m3
+run1-tbt-15s,intercontinentale,1,15,none,true,14,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,1.5040774,0.72115207,9,2,12,,m1,m2
+run1-tbt-15s,intercontinentale,1,15,none,true,14,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,-0.69314718,-1.21640706,1,2,12,,m3,m2

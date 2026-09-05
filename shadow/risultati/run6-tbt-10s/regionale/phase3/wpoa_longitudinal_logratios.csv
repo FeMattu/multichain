@@ -1,0 +1,10 @@
+experiment_id,area,replication_id,target_block_time,dumpfunction,malus_enabled,epoch,validator_i,validator_j,log_ratio_observed,log_ratio_theoretical,O_i,O_j,B,validator_i_host,validator_j_host
+run6-tbt-10s,regionale,1,10,none,true,3,1FFo3ah8sAKS4svacrTuQgQBUPEKrjop9rucCp,1LC9SkHzxLmLLFfkwQEj9rh3sam26QwqQtCo9N,1.35962611,0.96277825,74,19,100,m1,m2
+run6-tbt-10s,regionale,1,10,none,true,3,1FFo3ah8sAKS4svacrTuQgQBUPEKrjop9rucCp,1TxbTqvswKsuDDV5Yn8biA1UVPNko7mhCHbU88,2.35815494,2.34911904,74,7,100,m1,m3
+run6-tbt-10s,regionale,1,10,none,true,3,1LC9SkHzxLmLLFfkwQEj9rh3sam26QwqQtCo9N,1TxbTqvswKsuDDV5Yn8biA1UVPNko7mhCHbU88,0.99852883,1.38634079,19,7,100,m2,m3
+run6-tbt-10s,regionale,1,10,none,true,4,1FFo3ah8sAKS4svacrTuQgQBUPEKrjop9rucCp,1LC9SkHzxLmLLFfkwQEj9rh3sam26QwqQtCo9N,1.69167601,1.13162415,76,14,100,m1,m2
+run6-tbt-10s,regionale,1,10,none,true,4,1FFo3ah8sAKS4svacrTuQgQBUPEKrjop9rucCp,1TxbTqvswKsuDDV5Yn8biA1UVPNko7mhCHbU88,2.02814825,2.33294198,76,10,100,m1,m3
+run6-tbt-10s,regionale,1,10,none,true,4,1LC9SkHzxLmLLFfkwQEj9rh3sam26QwqQtCo9N,1TxbTqvswKsuDDV5Yn8biA1UVPNko7mhCHbU88,0.33647224,1.20131783,14,10,100,m2,m3
+run6-tbt-10s,regionale,1,10,none,true,5,1FFo3ah8sAKS4svacrTuQgQBUPEKrjop9rucCp,1LC9SkHzxLmLLFfkwQEj9rh3sam26QwqQtCo9N,1.09861229,0.97198503,69,23,100,m1,m2
+run6-tbt-10s,regionale,1,10,none,true,5,1FFo3ah8sAKS4svacrTuQgQBUPEKrjop9rucCp,1TxbTqvswKsuDDV5Yn8biA1UVPNko7mhCHbU88,2.15466496,2.36117568,69,8,100,m1,m3
+run6-tbt-10s,regionale,1,10,none,true,5,1LC9SkHzxLmLLFfkwQEj9rh3sam26QwqQtCo9N,1TxbTqvswKsuDDV5Yn8biA1UVPNko7mhCHbU88,1.05605267,1.38919065,23,8,100,m2,m3

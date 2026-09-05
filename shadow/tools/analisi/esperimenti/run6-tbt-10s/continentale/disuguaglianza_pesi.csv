@@ -1,7 +1,0 @@
-run_id,livello,tbt,epoca,n_host_con_peso,gini_peso_pubblicato,gini_peso_effettivo,entropia_normalizzata_peso,host_dominante,quota_host_dominante,gini_atteso_da_input,gini_contributi_c_i,delta_gini_pubblicato_input
-run6-tbt-10s/continentale,continentale,10,1,3,0.400343,0.400343,0.731144,m1,0.668067,0.400343,0.21152,0.0
-run6-tbt-10s/continentale,continentale,10,2,3,0.408824,0.408824,0.718994,m1,0.677747,0.406906,0.214476,0.001919
-run6-tbt-10s/continentale,continentale,10,3,3,0.422928,0.422928,0.699776,m1,0.702505,0.404602,0.211278,0.018326
-run6-tbt-10s/continentale,continentale,10,4,3,0.408186,0.408186,0.719809,m1,0.676727,0.40635,0.213771,0.001837
-run6-tbt-10s/continentale,continentale,10,5,3,0.407304,0.407304,0.720861,m1,0.675155,0.406378,0.2135,0.000926
-run6-tbt-10s/continentale,continentale,10,6,0,0.0,0.0,0.0,,,0.405241,0.211138,-0.405241
