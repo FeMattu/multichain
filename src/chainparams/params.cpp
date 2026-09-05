@@ -12,6 +12,7 @@ const uint32_t FreePortRangesOver50[]={2644,2744,2870,4244,4324,4374,4754,5744,6
 const unsigned char c_DefaultMessageStart[4]={0xfb,0xb4,0xc7,0xde};
 
 #include "chainparams/paramlist.h"
+#include "weight_engine/weight_streams.h"   // MC_WEIGHT_DEFAULT_STABILITY_MARGIN (names/#defines only, no deps)
 
 
 int mc_OneMultichainParam::IsRelevant(int version)
@@ -1250,6 +1251,122 @@ int mc_MultichainParams::CalculateHash(unsigned char *hash)
     return MC_ERR_NOERROR;
 }
 
+
+/* MCHN START - wPoA/weight-engine bootstrap ordering. See params.h for the rationale. */
+
+int mc_MultichainParams::AdjustSetupFirstBlocks(int weight_engine_on,int wpoa_selection_on,
+                                               int64_t *lpOldValue,int64_t *lpNewValue)
+{
+    int64_t epoch,setup,required,first_computable;
+    int index,size,offset;
+
+    if(lpOldValue)
+    {
+        *lpOldValue=0;
+    }
+    if(lpNewValue)
+    {
+        *lpNewValue=0;
+    }
+
+    if(IsProtocolMultichain() == 0)
+    {
+        return MC_ERR_NOERROR;
+    }
+
+    // Only the weight engine has this constraint: it is what makes a weight unavailable
+    // until an epoch has been buried. With a static -weight every node has a weight from
+    // startup and the setup phase length is nobody's business but the operator's.
+    //
+    // The two switches come from the CALLER rather than from params.dat, because at genesis
+    // they may legitimately be arriving as runtime flags that params.dat does not yet carry
+    // (AppInit2 resolves params.dat + command line and warns when they disagree). Reading
+    // them here would silently miss exactly the case that stalls: a chain created by a node
+    // started with -enableweightengine on a params.dat that still says false.
+    if(weight_engine_on == 0)
+    {
+        return MC_ERR_NOERROR;
+    }
+
+    // ... and only when wPoA actually CONSUMES those weights to elect. With selection off
+    // an empty registry stalls nothing: the native miner rotation still governs.
+    if(wpoa_selection_on == 0)
+    {
+        return MC_ERR_NOERROR;
+    }
+
+    epoch=GetInt64Param("weightepochlength");
+    setup=GetInt64Param("setupfirstblocks");
+    if(epoch < 1)
+    {
+        return MC_ERR_NOERROR;                                                  // out of range, Validate() reports it
+    }
+
+    // The first weight is COMPUTABLE here...
+    first_computable=epoch+MC_WEIGHT_DEFAULT_STABILITY_MARGIN-1;
+
+    // ...but the selector reads CONFIRMED items only, so the value still has to be published
+    // and mined, in a block the native rules can still produce. wPoA may therefore engage
+    // only strictly after that, hence the +1 on top of the publication slack. Setting the
+    // floor at plain epoch+margin would put the confirming block at the first wPoA height,
+    // which cannot be produced without the registry it would populate.
+    required=first_computable+MC_WEIGHT_SETUP_PUBLISH_MARGIN+1;
+
+    if(setup >= required)
+    {
+        return MC_ERR_NOERROR;                                                  // a larger value wins, left untouched
+    }
+
+    // setup-first-blocks is a USER parameter, and SetParam() refuses those by design: it
+    // serves only CALCULATED/COMMENT entries and never overwrites one already present.
+    // Write the corrected value straight into the parameter store instead. Deliberately
+    // NOT exposed as a general "overwrite any user parameter" helper -- rewriting a
+    // hash-enforced parameter is legitimate ONLY here, on the creation path, before the
+    // parameter hash is taken.
+    index=m_lpIndex->Get("setupfirstblocks");
+    if(index < 0)
+    {
+        return MC_ERR_INTERNAL_ERROR;
+    }
+
+    size=4;                                                                     // MC_PRM_UINT32
+
+    if(m_lpCoord[2 * index + 0] >= 0)
+    {
+        if(m_lpCoord[2 * index + 1] != size)
+        {
+            return MC_ERR_INTERNAL_ERROR;
+        }
+        mc_PutLE(m_lpData+m_lpCoord[2 * index + 0],&required,size);             // same size, in place
+    }
+    else
+    {
+        // Not stored yet (value left at its default). Append, exactly as SetParam does:
+        // m_lpData is allocated in Init() with room for every parameter, so this fits.
+        offset=m_Size;
+        strcpy(m_lpData+offset,"setupfirstblocks");
+        offset+=strlen("setupfirstblocks")+1;
+        mc_PutLE(m_lpData+offset,&size,MC_PRM_PARAM_SIZE_BYTES);
+        offset+=MC_PRM_PARAM_SIZE_BYTES;
+        mc_PutLE(m_lpData+offset,&required,size);
+        m_lpCoord[2 * index + 0]=offset;
+        m_lpCoord[2 * index + 1]=size;
+        m_Size=offset+size;
+    }
+
+    if(lpOldValue)
+    {
+        *lpOldValue=setup;
+    }
+    if(lpNewValue)
+    {
+        *lpNewValue=required;
+    }
+
+    return MC_ERR_NOERROR;
+}
+
+/* MCHN END */
 
 int mc_MultichainParams::Validate()
 {

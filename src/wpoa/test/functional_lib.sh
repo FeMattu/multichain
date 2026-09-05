@@ -235,6 +235,27 @@ fl_start_network() {
     sed -i -E "s/^(mine-empty-rounds[[:space:]]*=[[:space:]]*)[-0-9.]+/\11000/"              "$params" || true
     sed -i -E "s/^(setup-first-blocks[[:space:]]*=[[:space:]]*)[0-9]+/\1$SETUP_BLOCKS/"       "$params" || true
 
+    # Optional extra params.dat overrides, one "key = value" per line. Chain parameters are
+    # hash-enforced and inherited by joining nodes, so anything consensus-critical -- the
+    # weight-engine switches, weight-epoch-length, the wPoA phase flags -- belongs HERE and
+    # not on the command line. Passed as a runtime flag instead, the value applies to this
+    # node only: it diverges from its own chain (AppInit2 warns about exactly that), and any
+    # parameter DERIVED at genesis is computed from the file rather than from the override.
+    if [ -n "${FL_PARAM_OVERRIDES:-}" ]; then
+        local _k _v _line
+        while IFS= read -r _line; do
+            [ -z "${_line// /}" ] && continue
+            _k="$(printf '%s' "${_line%%=*}" | xargs)"
+            _v="$(printf '%s' "${_line#*=}"  | xargs)"
+            if grep -qE "^${_k}[[:space:]]*=" "$params"; then
+                sed -i -E "s|^(${_k}[[:space:]]*=[[:space:]]*)[^#]*|\1${_v} |" "$params"
+                fl_log "params.dat: $_k = $_v"
+            else
+                fl_log "WARNING: params.dat has no key '$_k'; override skipped"
+            fi
+        done <<< "$FL_PARAM_OVERRIDES"
+    fi
+
     fl_log "starting node 0 (seed, weight=${FL_WEIGHTS[0]})..."
     # shellcheck disable=SC2086
     "$BINDIR/multichaind" "$FL_CHAIN" -datadir="${FL_DATADIRS[0]}" -port="${FL_P2PPORTS[0]}" \

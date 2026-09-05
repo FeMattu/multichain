@@ -6,6 +6,44 @@
 #include "utils/random.h"
 #include "utils/util.h"
 
+
+/* MCHN START - wPoA/weight-engine bootstrap ordering.
+   Raise setup-first-blocks to its floor before the generated params.dat is written, so the
+   file the operator is about to edit already shows a coherent value. This is a convenience,
+   not the enforcement: params.dat stays editable until the first multichaind run, so the
+   authoritative correction happens in mc_MultichainParams::Build() just before the parameter
+   hash is computed. Both call the same derivation. */
+static void mc_ReportSetupFirstBlocksFloor(mc_MultichainParams *params)
+{
+    int64_t old_setup=0,new_setup=0;
+
+    if(params == NULL)
+    {
+        return;
+    }
+    // Here the switches DO come from the parameter set: Read() has already folded any
+    // -enableweightengine / -enablewpoa* command-line argument into it.
+    if(params->AdjustSetupFirstBlocks(
+           params->GetInt64Param("enableweightengine") != 0,
+           (params->GetInt64Param("enablewpoaselection") != 0) ||
+               (params->GetInt64Param("enablewpoa") != 0),
+           &old_setup,&new_setup))
+    {
+        return;
+    }
+    if(new_setup == 0)
+    {
+        return;
+    }
+
+    printf("\nWARNING: setup-first-blocks raised from %d to %d.\n",(int)old_setup,(int)new_setup);
+    printf("         With the weight engine enabled, no weight can exist before height %d\n",(int)new_setup);
+    printf("         (weight-epoch-length + stability margin), and wPoA starts electing\n");
+    printf("         proposers at setup-first-blocks -- so %d would have stalled the chain.\n",(int)old_setup);
+    printf("         The corrected value is written to params.dat and inherited by every node.\n\n");
+}
+/* MCHN END */
+
 int main(int argc, char* argv[])
 {
     int err;
@@ -65,6 +103,10 @@ int main(int argc, char* argv[])
                 {
 //                    err=params->Create(mc_gState->m_Params->m_Arguments[1],version);
                     err=params->Read(mc_gState->m_Params->m_Arguments[1],argc, argv,version);
+                }
+                if(err == MC_ERR_NOERROR)
+                {
+                    mc_ReportSetupFirstBlocksFloor(params);
                 }
                 if(err == MC_ERR_NOERROR)
                 {
@@ -132,6 +174,10 @@ int main(int argc, char* argv[])
                 {
                     err=params->Clone(mc_gState->m_Params->m_Arguments[2],paramsOld);
                 }                
+                if(err == MC_ERR_NOERROR)
+                {
+                    mc_ReportSetupFirstBlocksFloor(params);
+                }
                 if(err == MC_ERR_NOERROR)
                 {
                     err=params->Validate();
