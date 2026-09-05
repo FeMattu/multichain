@@ -142,6 +142,41 @@ typedef struct mc_MultichainParams
     int Read(const char* name,int argc, char* argv[],int create_version);
     int Clone(const char *name,mc_MultichainParams *source);
     int Build(const unsigned char* pubkey,int pubkey_size);
+
+/* MCHN START - wPoA/weight-engine bootstrap ordering
+
+   Raises setup-first-blocks to the floor the weight engine needs, when the chain is
+   configured to run it under wPoA selection.
+
+   wPoA starts electing proposers at setup-first-blocks, but the engine cannot compute the
+   first weight until the first epoch is BURIED, at
+       weight-epoch-length + MC_WEIGHT_DEFAULT_STABILITY_MARGIN - 1,
+   and the value must then be published and CONFIRMED before the selector can read it --
+   hence MC_WEIGHT_SETUP_PUBLISH_MARGIN on top.
+   Set setup-first-blocks below that and a clean network has an empty weights registry exactly
+   when the selector first needs one: nobody is elected, nobody mines, no epoch ever buries,
+   and the chain stops dead at setup-first-blocks. The stock defaults (epoch 100, margin 6,
+   setup 60) are on the wrong side of it.
+
+   So the floor is DERIVED rather than merely checked: a smaller configured value is raised
+   to it, a larger one is left alone (an operator may legitimately want a longer native setup
+   phase). Callers report the change; *lpNewValue is 0 when nothing was touched.
+
+   The two switches are passed IN, not read from params.dat: at genesis they may be arriving
+   as runtime flags the file does not carry yet, and that is precisely the configuration that
+   stalls.
+
+   Only ever called while the chain is being CREATED — from Build(), before the parameter
+   hash is computed, and from multichain-util. That is deliberate: setup-first-blocks is
+   hash-enforced and inherited through params.dat, so the corrected value has to be part of
+   the chain's identity from the start. It reaches every joining node by the normal
+   parameter inheritance, and it is never rewritten on an existing chain, which would fork
+   it. Cfr. §5.12.3 and the weight-engine epoch geometry. */
+
+    int AdjustSetupFirstBlocks(int weight_engine_on,int wpoa_selection_on,
+                               int64_t *lpOldValue,int64_t *lpNewValue);
+/* MCHN END */
+
     int Validate();
     int CalculateHash(unsigned char *hash);
     int Write(int overwrite);

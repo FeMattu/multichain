@@ -54,25 +54,72 @@ NODES="${NODES:-3}"
 SETUP_BLOCKS="${SETUP_BLOCKS:-30}"
 EPOCH_LEN="${EPOCH_LEN:-10}"
 STABILITY_MARGIN=6                  # MC_WEIGHT_DEFAULT_STABILITY_MARGIN
+PUBLISH_MARGIN=3                    # MC_WEIGHT_SETUP_PUBLISH_MARGIN
 ESG_SCORE="${ESG_SCORE:-15}"
 TARGET_BLOCK_TIME="${TARGET_BLOCK_TIME:-2}"
 DRIVE_TIMEOUT="${DRIVE_TIMEOUT:-400}"
 WEIGHT_TIMEOUT="${WEIGHT_TIMEOUT:-240}"
 KEEP_LOGS="${KEEP_LOGS:-0}"
 
-ENGINE_ARGS="-enablewpoa=1 -enableweightengine=1 -weightepochlength=$EPOCH_LEN -debug=wpoa"
+# The weight-engine and wPoA switches, and the epoch length, are hash-enforced CHAIN
+# parameters: they go into params.dat, not onto the command line. Passing them as runtime
+# flags would make each node diverge from its own chain, and would make the genesis-time
+# setup-first-blocks floor be derived from the file's epoch length instead of the one
+# actually in force. Only -debug is a genuine per-node runtime option.
+# weight-epoch-length is what the setup-first-blocks floor is DERIVED from, and it is a
+# hash-enforced chain parameter: every node must agree on it, so it goes in params.dat. Put
+# it on the command line instead and the floor would be computed from the file's value while
+# the node ran on another -- the two would disagree.
+export FL_PARAM_OVERRIDES="weight-epoch-length = $EPOCH_LEN"
+# The enable switches stay on the command line: params.dat's own enable-wpoa master is not
+# consulted by the flag resolution in AppInit2 (only the per-phase keys are), so setting it
+# in the file would leave wPoA off and the weight engine would refuse to start.
+ENGINE_ARGS="-enablewpoa=1 -enableweightengine=1 -debug=wpoa"
 
 FIRST_WEIGHT_HEIGHT=$(( EPOCH_LEN + STABILITY_MARGIN - 1 ))
+# The floor the node enforces at genesis (mc_MultichainParams::AdjustSetupFirstBlocks):
+# the first weight must be CONFIRMED, not merely computable, before wPoA starts electing.
+SETUP_FLOOR=$(( FIRST_WEIGHT_HEIGHT + PUBLISH_MARGIN + 1 ))
 
 trap 'fl_teardown' EXIT
 
 fl_phase "SETUP — clean network, weight engine ON (epoch=$EPOCH_LEN, setup-first-blocks=$SETUP_BLOCKS)"
 fl_require_binaries
-fl_log "invariant: setup-first-blocks($SETUP_BLOCKS) > epoch($EPOCH_LEN) + margin($STABILITY_MARGIN) - 1 = $FIRST_WEIGHT_HEIGHT"
-if [ "$FIRST_WEIGHT_HEIGHT" -ge "$SETUP_BLOCKS" ]; then
-    fl_die "misconfigured test: the first weight lands at $FIRST_WEIGHT_HEIGHT >= setup-first-blocks $SETUP_BLOCKS, so the registry CANNOT be populated in time (lower EPOCH_LEN or raise SETUP_BLOCKS)"
+fl_log "first weight computable at $FIRST_WEIGHT_HEIGHT; confirmed by $(( FIRST_WEIGHT_HEIGHT + PUBLISH_MARGIN )); floor = $SETUP_FLOOR"
+if [ "$SETUP_BLOCKS" -lt "$SETUP_FLOOR" ]; then
+    fl_log "configured setup-first-blocks ($SETUP_BLOCKS) is BELOW the floor: the node must raise it to $SETUP_FLOOR"
 fi
 fl_start_network "$ENGINE_ARGS"
+
+# From here on use the EFFECTIVE value the chain settled on, not the one we asked for: the
+# genesis node raises it to the floor when the configured value could not work, and every
+# later assertion has to be about the height wPoA really engages at.
+EFFECTIVE_SETUP="$(fl_chain_param 0 setup-first-blocks)"
+[ -n "$EFFECTIVE_SETUP" ] || fl_die "could not read setup-first-blocks from getblockchainparams"
+fl_log "effective setup-first-blocks on chain: $EFFECTIVE_SETUP (configured: $SETUP_BLOCKS)"
+
+# ---------------------------------------------------------------------------
+# 0. The floor is enforced, and it is enforced ON CHAIN.
+# ---------------------------------------------------------------------------
+# setup-first-blocks is hash-enforced and inherited through params.dat, so raising it at
+# genesis is the only way the corrected value can reach every node. Asserting it via
+# getblockchainparams (not by reading the seed's file) proves it really is the chain's value.
+fl_check_begin "setup_first_blocks_floor" 1
+    if [ "$SETUP_BLOCKS" -lt "$SETUP_FLOOR" ]; then
+        fl_assert_eq "$EFFECTIVE_SETUP" "$SETUP_FLOOR" \
+            "a too-low setup-first-blocks ($SETUP_BLOCKS) was raised to the floor"
+    else
+        fl_assert_eq "$EFFECTIVE_SETUP" "$SETUP_BLOCKS" \
+            "a sufficient setup-first-blocks was left untouched"
+    fi
+    if [ "${EFFECTIVE_SETUP:-0}" -gt "$(( FIRST_WEIGHT_HEIGHT + PUBLISH_MARGIN ))" ]; then
+        fl_ok "wPoA engages ($EFFECTIVE_SETUP) strictly after the first weight can confirm ($(( FIRST_WEIGHT_HEIGHT + PUBLISH_MARGIN )))"
+    else
+        fl_bad "wPoA engages at $EFFECTIVE_SETUP, at or before the first weight can confirm ($(( FIRST_WEIGHT_HEIGHT + PUBLISH_MARGIN )))"
+    fi
+fl_check_end || true
+
+SETUP_BLOCKS="$EFFECTIVE_SETUP"
 
 # ---------------------------------------------------------------------------
 # 1. The stream exists, and it exists EARLY — before wPoA engages.

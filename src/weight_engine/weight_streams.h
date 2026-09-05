@@ -146,4 +146,15 @@
  *  weightepochlength. */
 #define MC_WEIGHT_DEFAULT_STABILITY_MARGIN   6
 
+/** Blocks of slack the setup-first-blocks floor adds on top of the epoch geometry.
+ *
+ *  The first weight is COMPUTABLE at  weight-epoch-length + STABILITY_MARGIN - 1, but being
+ *  computable is not enough: the selector reads CONFIRMED stream items only. The value has
+ *  to be noticed by the engine on its next tick, published as a transaction, and mined into
+ *  a block -- and that block must still be one the NATIVE rules can produce, because once
+ *  wPoA governs a height it needs the registry it is waiting for. Setting the floor at
+ *  exactly epoch+margin puts the confirming block at the first wPoA height, which is a
+ *  deadlock: 3 blocks cover the engine tick, the confirmation, and propagation to peers. */
+#define MC_WEIGHT_SETUP_PUBLISH_MARGIN       3
+
 #endif // MC_WEIGHT_STREAMS_H

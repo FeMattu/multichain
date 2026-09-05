@@ -1758,6 +1758,80 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
                     bytes_written=write(OutputPipe,bufOutput,strlen(bufOutput));                
                 }
                 mc_gState->m_NetworkParams->SetGlobals();                           // Needed to update IsProtocolMultichain flag in case of bitcoin
+
+/* MCHN START - wPoA/weight-engine bootstrap ordering.
+
+   THIS IS THE GENESIS NODE, and this is the last moment the chain's parameters can still
+   change: params.dat has been editable right up to now (multichain-util says as much when
+   it generates the file), and Build() below computes the parameter hash over whatever we
+   leave here. Raising setup-first-blocks at this point therefore makes the corrected value
+   part of the chain's identity, so every joining node inherits it through the ordinary
+   params.dat propagation rather than having to be told separately.
+
+   The reverse -- rewriting it on an already-running chain -- must never happen:
+   setup-first-blocks is hash-enforced, and changing it later would fork the network. Hence
+   the correction lives on the genesis path only, and the weight-engine block further down
+   in AppInit2 merely WARNS when it meets a chain created before this rule existed.
+
+   The switches are resolved here rather than read from params.dat because a genesis node
+   may legitimately be started with -enableweightengine / -enablewpoa on a params.dat that
+   still says false -- which is exactly the configuration that stalls. Mirrors the
+   authoritative resolution in the weight-engine block below (params.dat as the baseline,
+   command line overriding it). */
+                {
+                    mc_MultichainParams *np=mc_gState->m_NetworkParams;
+                    int we_on = mapArgs.count("-enableweightengine")
+                                    ? (GetBoolArg("-enableweightengine",false) ? 1 : 0)
+                                    : (np->GetInt64Param("enableweightengine") != 0);
+                    // Selection resolves exactly as the weight-engine/wPoA block further down
+                    // does it, and deliberately so: deriving the floor from a wPoA that will
+                    // not actually run would lengthen the setup phase of a chain that never
+                    // needed it. An explicit phase flag wins; otherwise the runtime master
+                    // sets the baseline; otherwise the inherited params.dat phase value.
+                    // NOTE: the master is honoured from the COMMAND LINE only, matching that
+                    // block -- params.dat's own enable-wpoa is not consulted there either.
+                    int sel_on;
+                    if(mapArgs.count("-enablewpoaselection"))
+                    {
+                        sel_on = GetBoolArg("-enablewpoaselection",false) ? 1 : 0;
+                    }
+                    else if(mapArgs.count("-enablewpoa") || mapArgs.count("-wpoaenable"))
+                    {
+                        sel_on = mapArgs.count("-enablewpoa")
+                                     ? (GetBoolArg("-enablewpoa",false) ? 1 : 0)
+                                     : (GetBoolArg("-wpoaenable",false) ? 1 : 0);
+                    }
+                    else
+                    {
+                        sel_on = (np->GetInt64Param("enablewpoaselection") != 0);
+                    }
+
+                    int64_t old_setup=0,new_setup=0;
+                    if(np->AdjustSetupFirstBlocks(we_on,sel_on,&old_setup,&new_setup))
+                    {
+                        return InitError(_("Cannot adjust setup-first-blocks for the weight engine"));
+                    }
+                    if(new_setup)
+                    {
+                        LogPrintf("[WeightEngine] setup-first-blocks raised from %d to %d: with "
+                                  "weight-epoch-length=%d the first weight cannot be confirmed before "
+                                  "height %d, and wPoA starts electing proposers at setup-first-blocks, "
+                                  "so %d would have stalled this chain there. The corrected value goes "
+                                  "into params.dat and is inherited by every node.\n",
+                                  (int)old_setup,(int)new_setup,
+                                  (int)np->GetInt64Param("weightepochlength"),
+                                  (int)new_setup,(int)old_setup);
+                        if(!GetBoolArg("-shortoutput", false))
+                        {
+                            sprintf(bufOutput,"WARNING: setup-first-blocks raised from %d to %d "
+                                              "(weight engine needs it; value stored in params.dat)\n",
+                                    (int)old_setup,(int)new_setup);
+                            bytes_written=write(OutputPipe,bufOutput,strlen(bufOutput));
+                        }
+                    }
+                }
+/* MCHN END */
+
                 if(mc_gState->m_NetworkParams->Build(pubKey,pubKeySize))
                 {
                     return InitError(_("Cannot build new blockchain"));
