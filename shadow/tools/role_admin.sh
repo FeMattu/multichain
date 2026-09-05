@@ -79,18 +79,28 @@ do_grant() {
     # --- permessi di scrittura sugli stream ---------------------------------
     # Vanno concessi UNO STREAM PER CHIAMATA: 'grant addr "a.write,b.write"'
     # viene rifiutato da MultiChain con "Could not parse entity key".
-    # wpoa-weights va creato ESPLICITAMENTE dall'admin. Con il weight engine
-    # attivo il registro non lo crea da solo finche' non ha un peso da
-    # pubblicare, e non ha un peso finche' non esistono i record di membership
-    # e ESG -> senza questa create la rete si blocca a setup-first-blocks con
-    # "cannot score (unsynced or unweighted)". Lo si crea CLOSED, esattamente
-    # come farebbe StreamWeightRegistry::EnsureStreamExists().
-    if rpc_ok "$IP" create '["stream","wpoa-weights",false]'; then
-        log "stream wpoa-weights creato (closed)"
+    # wpoa-weights NON viene piu' creato da qui. Il nodo lo crea da solo all'avvio:
+    # ThreadWeightEngine chiama EnsureStreamReady() prima del gate d'epoca, quindi lo
+    # stream (e i grant .write che lo puntano) esistono molto prima che la wPoA ingaggi.
+    #
+    # Prima non era cosi': la create era raggiungibile solo da RegisterLocalWeight, cioe'
+    # solo quando un nodo aveva GIA' un peso da pubblicare -- e un peso non c'era finche'
+    # un'epoca non era sepolta. La rete si fermava a setup-first-blocks con
+    # "cannot score (unsynced or unweighted)", e questo script creava lo stream a mano per
+    # aggirare il problema.
+    #
+    # Aggirarlo qui pero' nascondeva il comportamento del prodotto all'esperimento. Ora
+    # l'harness lo MISURA: aspetta che lo stream compaia da solo e registra a che altezza,
+    # cosi' il summary puo' confrontarla con setup-first-blocks. Se non comparisse, la
+    # riga sotto lo direbbe invece di mascherarlo.
+    if wait_stream "$IP" wpoa-weights 900; then
+        local wpoa_h_after; wpoa_h_after="$(rpc_result "$IP" getblockcount)"
+        log "stream wpoa-weights creato dal nodo, visibile entro height ${wpoa_h_after:-?}"
+        echo "${wpoa_h_after:-}" > "$METRICS/wpoa_weights_stream_height.txt"
     else
-        log "stream wpoa-weights gia' presente"
+        log "ATTENZIONE: wpoa-weights non e' comparso (bootstrap del registro fallito)"
+        echo "" > "$METRICS/wpoa_weights_stream_height.txt"
     fi
-    wait_stream "$IP" wpoa-weights 900 || log "ATTENZIONE: wpoa-weights non confermato"
     wait_stream "$IP" weight-engine-membership 900 || true
     wait_stream "$IP" weight-engine-esg 900 || true
     for h in $MINERS $COMPANIES; do
@@ -276,6 +286,11 @@ do_snapshot() {
     rpc "$IP" weightverifyweights                            > "$METRICS/verify.json"
     rpc "$IP" getinfo                                        > "$METRICS/admin_getinfo.json"
     rpc "$IP" listpermissions '["mine"]'                     > "$METRICS/permissions_mine.json"
+    # I parametri COME LI HA LA CATENA. Gli argomenti passati a collect_metrics dicono
+    # cosa si credeva di aver configurato; questo dice su cosa la rete ha davvero girato
+    # -- e i due possono divergere (un valore alzato alla genesi, un flag di runtime mai
+    # finito in params.dat). Ogni soglia del summary si calcola da qui.
+    rpc "$IP" getblockchainparams                            > "$METRICS/chainparams.json"
 
     # stato per-nodo: altezza e conteggio peer (rilevamento di fork persistenti)
     # altezza di riferimento comune, scelta abbastanza sotto il tip da essere

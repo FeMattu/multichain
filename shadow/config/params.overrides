@@ -28,17 +28,29 @@ WEIGHT_LAMBDA=0.5             # w_k = W_k * [rho_{k,e-1}*lambda + (1-lambda)]
 
 # --- catena -----------------------------------------------------------------
 TARGET_BLOCK_TIME=15          # default; sovrascrivibile con run.sh tbt=<n>
-SETUP_FIRST_BLOCKS=60         # > epoca(12) + margine di stabilita'(6) = 18
+# Deve stare sopra il floor da cui il primo peso puo' essere CONFERMATO:
+#   epoca(12) + margine di stabilita'(6) - 1 = 17  -> calcolabile
+#   + margine di pubblicazione(3) + 1            = 21 -> confermato e leggibile
+# 60 lascia margine abbondante, e serve anche a dare tempo ad admin/CA di
+# registrare membership ed ESG prima che la wPoA ingaggi.
+SETUP_FIRST_BLOCKS=60
 MINE_EMPTY_ROUNDS=1000        # blocchi anche senza traffico: serve al campionamento
 # Lo Spacing nativo vale ceil(d*(N-1)) blocchi fra due blocchi dello stesso
-# firmatario. La tesi (5.12.3) prevede che sotto wPoA sia rimosso, ma la misura
-# mostra che resta vincolante: con d=0.3 e N=4 (admin + 3 miner) lo spacing vale
-# 1, nessun miner puo' firmare due blocchi di fila e la distribuzione osservata
-# collassa su un round robin qualunque siano i pesi (0 blocchi consecutivi su 190
-# misurati, contro ~99 attesi). d=0 lo rende inerte per costruzione e lascia
-# misurare la sola selezione pesata. Alzarlo di nuovo e' il modo per misurare
-# quanto lo spacing residuo interferisca con la wPoA.
-MINING_DIVERSITY=0
+# firmatario. La tesi (5.12.3) prevede che sotto wPoA non si applichi, e ora e'
+# cosi': il vincolo e' neutralizzato alla fonte (mc_Permissions::IsBarredByDiversity)
+# sulle sole altezze governate dalla wPoA, e resta pienamente attivo altrove.
+#
+# Prima lo era solo sulla carta, e la misura lo mostrava: con d=0.3 e N=4 nessun
+# miner poteva firmare due blocchi di fila e la distribuzione osservata collassava
+# su un round robin qualunque fossero i pesi (0 blocchi consecutivi su 190
+# misurati, contro ~99 attesi). Si era quindi azzerato d per poter misurare la
+# sola selezione pesata.
+#
+# Quel workaround non serve piu' ed e' stato rimosso: d torna al default di
+# MultiChain. Tenerlo a un valore REALE e' ora parte dell'esperimento, perche' la
+# sezione "Spacing" del summary verifica che le vittorie consecutive avvengano
+# comunque -- se tornassero a zero con d>0 sarebbe una regressione del gate.
+MINING_DIVERSITY=0.3
 
 # --- economia del GAS (cap. 4.2.1 / 4.3.1 della tesi) -----------------------
 NATIVE_CURRENCY_MULTIPLE=100000000    # 1 GAS = 1e8 unita' raw

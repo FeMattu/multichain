@@ -29,6 +29,89 @@ import sys
 from collections import Counter, defaultdict
 
 
+class Checks(object):
+    """Named verdicts, rendered as the headline table and as summary.json.
+
+    Every section registers what it actually decided, instead of leaving the reader to
+    infer it from a wall of numbers. `value` is the single figure that justifies the
+    verdict, so the table stays readable at a glance and the JSON stays comparable
+    across runs and across levels.
+    """
+
+    OK, WARN, FAIL, NA = "OK", "ATTENZIONE", "ERRORE", "n/d"
+    _RANK = {OK: 0, NA: 1, WARN: 2, FAIL: 3}
+
+    def __init__(self):
+        self.rows = []
+
+    def add(self, name, status, detail, value=None):
+        self.rows.append({"check": name, "esito": status,
+                          "valore": value, "dettaglio": detail})
+
+    def worst(self):
+        if not self.rows:
+            return self.NA
+        return max((r["esito"] for r in self.rows), key=lambda st: self._RANK.get(st, 1))
+
+    def render(self):
+        if not self.rows:
+            return []
+        mark = {self.OK: "OK  ", self.WARN: "WARN", self.FAIL: "FAIL", self.NA: " -  "}
+        w = max(len(r["check"]) for r in self.rows)
+        tally = Counter(r["esito"] for r in self.rows)
+        breakdown = ", ".join("{} {}".format(tally[k], lbl)
+                              for k, lbl in ((self.OK, "OK"), (self.WARN, "da guardare"),
+                                             (self.FAIL, "falliti"), (self.NA, "non valutati"))
+                              if tally[k])
+        lines = ["",
+                 "== VERDETTI =====================================================",
+                 "  Esito complessivo: {}   ({} su {} controlli)".format(
+                     self.worst(), breakdown, len(self.rows)),
+                 ""]
+        for r in self.rows:
+            val = "" if r["valore"] is None else str(r["valore"])
+            lines.append("  [{}] {:<{w}}  {:>14}   {}".format(
+                mark.get(r["esito"], "?   "), r["check"], val, r["dettaglio"], w=w))
+        lines.append("")
+        lines.append("  Il dettaglio di ogni voce e' nella sezione omonima piu' sotto.")
+        return lines
+
+
+def read_chain_params(m, args):
+    """Chain parameters AS THE CHAIN HAS THEM, falling back to the CLI arguments.
+
+    The caller passes what it believes it configured; getblockchainparams reports what the
+    chain actually runs on. They can differ -- a value may be raised at genesis, or a
+    runtime flag may not have reached params.dat -- and every threshold in this report
+    (the wPoA start height, the epoch geometry, the native spacing) has to be computed
+    from the real one or the whole summary is quietly wrong.
+    """
+    cp = load_result(os.path.join(m, "chainparams.json"))
+    got = {}
+    if isinstance(cp, dict):
+        got = cp
+    return {
+        "setup_blocks": int(got.get("setup-first-blocks", args.setup_blocks)),
+        "epoch_len": int(got.get("weight-epoch-length", args.epoch_len)),
+        "tbt": int(got.get("target-block-time", args.tbt)),
+        "mining_diversity": float(got.get("mining-diversity", -1.0)),
+        "from_chain": bool(got),
+    }
+
+
+def native_spacing(miner_count, diversity):
+    """The spacing mc_Permissions::IsBarredByDiversity would impose, replicated exactly.
+
+    diversity = floor(miner_count * d) + 1, clamped to [1, miner_count]. A spacing of 1 is
+    inert (a block is barred when height - last <= spacing-1 = 0, never true); 2 or more
+    forbids the same signer on consecutive heights.
+    """
+    if miner_count <= 0 or diversity < 0:
+        return None
+    sp = int(miner_count * diversity - 1e-9) + 1
+    return max(1, min(sp, miner_count))
+
+
 def load_result(path):
     """Carica un file di risposta JSON-RPC e ne restituisce il campo result."""
     if not os.path.exists(path):
@@ -58,7 +141,7 @@ CHI2_CRIT_05 = {1: 3.841, 2: 5.991, 3: 7.815, 4: 9.488,
                 5: 11.070, 6: 12.592, 7: 14.067, 8: 15.507}
 
 
-def analyse_blocks(blocks, setup_blocks, tbt, out):
+def analyse_blocks(blocks, setup_blocks, tbt, out, chk=None, facts=None):
     measured = [b for b in blocks if b["height"] > setup_blocks]
     out.append("")
     out.append("── Blocchi ────────────────────────────────────────────────────")
@@ -72,7 +155,16 @@ def analyse_blocks(blocks, setup_blocks, tbt, out):
 
     if len(measured) < 3:
         out.append("  ATTENZIONE: finestra troppo corta per le statistiche.")
+        if chk:
+            chk.add("liveness wPoA", Checks.FAIL,
+                    "solo {} blocchi oltre setup-first-blocks: la catena non e' "
+                    "avanzata sotto wPoA".format(len(measured)), len(measured))
         return measured
+
+    if chk:
+        chk.add("liveness wPoA", Checks.OK,
+                "la catena ha prodotto blocchi oltre l'altezza di transizione",
+                "{} blocchi".format(len(measured)))
 
     deltas = [measured[i]["time"] - measured[i - 1]["time"]
               for i in range(1, len(measured))]
@@ -87,10 +179,21 @@ def analyse_blocks(blocks, setup_blocks, tbt, out):
         out.append("    dev.std {:8.2f} s".format(
             statistics.pstdev(deltas) if len(deltas) > 1 else 0.0))
         out.append("    min/max {:8.2f} / {:.2f} s".format(min(deltas), max(deltas)))
+        if facts is not None:
+            facts["intervallo_medio_s"] = round(mean, 3)
+            facts["intervallo_target_s"] = tbt
+            facts["blocchi_finestra_wpoa"] = len(measured)
+            facts["blocchi_totali"] = len(blocks)
+        if chk:
+            drift = abs(mean - tbt) / tbt if tbt else 0.0
+            chk.add("ritmo dei blocchi",
+                    Checks.OK if drift <= 0.20 else Checks.WARN,
+                    "intervallo medio vs target {} s ({:+.1f}%)".format(tbt, 100.0 * (mean - tbt) / tbt),
+                    "{:.2f} s".format(mean))
     return measured
 
 
-def analyse_proposers(measured, weights_by_addr, host_by_addr, out):
+def analyse_proposers(measured, weights_by_addr, host_by_addr, out, chk=None, facts=None):
     out.append("")
     out.append("── Distribuzione dei proposer vs peso pubblicato ──────────────")
     counts = Counter(b["miner"] for b in measured)
@@ -113,40 +216,57 @@ def analyse_proposers(measured, weights_by_addr, host_by_addr, out):
         out.append("  {:<6} {:<40} {:>7} {:>8.1%} {:>9} {:>8.1%}".format(
             host_by_addr.get(a, "?"), a, counts[a], share, w or "-", exp_share))
 
-    # Diagnostica dello spacing: sotto selezione pesata la probabilita' che due
-    # blocchi consecutivi abbiano lo stesso proposer e' sum_i p_i^2. Se il valore
-    # osservato e' ZERO, non e' un caso: significa che una regola di alternanza
-    # (lo Spacing di mining-diversity) e' ancora vincolante, e la distribuzione
-    # osservata e' quella di un round robin, non quella dei pesi.
+    # Le vittorie consecutive sono la firma della selezione pesata: le altezze sono
+    # estratte in modo indipendente, quindi la frequenza attesa e' sum_i p_i^2. Il valore
+    # e' riportato qui e giudicato nella sezione "Spacing", dove si conosce anche lo
+    # spacing nativo che si applicherebbe.
     seq = [b["miner"] for b in measured]
     consec = sum(1 for i in range(1, len(seq)) if seq[i] == seq[i - 1])
     shares = [counts[a] / total_blocks for a in addrs]
     exp_consec = sum(p * p for p in shares) * max(0, len(seq) - 1)
+    longest, cur = 1, 1
+    for i in range(1, len(seq)):
+        cur = cur + 1 if seq[i] == seq[i - 1] else 1
+        longest = max(longest, cur)
     out.append("")
     out.append("  blocchi consecutivi dello stesso proposer: {} osservati, "
                "{:.1f} attesi".format(consec, exp_consec))
-    if consec == 0 and exp_consec >= 3:
-        out.append("  -> ZERO alternanze violate su {} blocchi: lo Spacing di "
-                   "mining-diversity".format(len(seq)))
-        out.append("     e' ancora vincolante sulle altezze governate dalla wPoA. Con")
-        out.append("     mining-diversity=d e N indirizzi con permesso mine, lo spacing")
-        out.append("     vale ceil(d*(N-1)); a 1 impedisce due blocchi di fila allo stesso")
-        out.append("     firmatario e appiattisce la distribuzione verso il round robin,")
-        out.append("     indipendentemente dai pesi. Impostare mining-diversity=0 in")
-        out.append("     config/params.overrides per renderlo inerte e misurare la sola")
-        out.append("     selezione pesata.")
+    out.append("  sequenza piu' lunga dello stesso proposer: {} blocchi".format(longest))
+    if facts is not None:
+        facts["consecutivi_osservati"] = consec
+        facts["consecutivi_attesi"] = round(exp_consec, 1)
+        facts["sequenza_massima"] = longest
+        facts["proposer"] = {
+            host_by_addr.get(a, a): {
+                "blocchi": counts[a],
+                "quota": round(counts[a] / total_blocks, 4),
+                "peso": weights_by_addr.get(a, 0),
+            } for a in addrs
+        }
 
     stat, df = chi_square(observed, expected)
     if stat is None:
         out.append("")
         out.append("  chi-quadro non applicabile (frequenze attese < 5): "
                    "servono piu' blocchi misurati.")
+        if chk:
+            chk.add("distribuzione dei proposer", Checks.NA,
+                    "frequenze attese < 5: finestra troppo corta per il test", None)
     else:
         crit = CHI2_CRIT_05.get(df)
         verdict = "compatibile" if (crit and stat <= crit) else "NON compatibile"
         out.append("")
         out.append("  chi-quadro = {:.3f}  (df={}, critico 5% = {})  -> {} con la "
                    "selezione pesata".format(stat, df, crit, verdict))
+        if facts is not None:
+            facts["chi_quadro"] = round(stat, 3)
+            facts["chi_quadro_critico_5pct"] = crit
+        if chk:
+            chk.add("distribuzione dei proposer",
+                    Checks.OK if (crit and stat <= crit) else Checks.WARN,
+                    "chi-quadro vs critico 5% = {} (df={}): {} con i pesi".format(
+                        crit, df, verdict),
+                    "{:.3f}".format(stat))
         out.append("  NB: il peso usato e' l'ULTIMO pubblicato; se e' cambiato fra")
         out.append("      le epoche il test e' solo indicativo: va letto insieme alla")
         out.append("      traiettoria per epoca riportata sopra.")
@@ -189,12 +309,126 @@ def analyse_weights(weights_items, host_by_addr, out):
     return latest
 
 
-def analyse_consistency(run, out):
+def analyse_bootstrap_and_spacing(m, cp, facts, out, chk):
+    """The two invariants the harness used to work around instead of measuring.
+
+    BOOTSTRAP. wpoa-weights is created by the node itself (ThreadWeightEngine calls
+    EnsureStreamReady before the epoch gate), not by role_admin.sh. What matters is that it
+    exists BEFORE wPoA starts electing: if it appeared only after setup-first-blocks the
+    registry would be empty exactly when the selector first needed it.
+
+    SPACING. The native mining-diversity rule is round-robin and would forbid the same
+    signer on consecutive heights; it is neutralised on wPoA-governed heights at its source.
+    The run is only able to demonstrate that when the configured spacing would actually
+    bite (>= 2) -- with spacing 1 the rule is inert anyway and the observation proves
+    nothing either way, which is stated rather than glossed over.
+    """
+    out.append("")
+    out.append("── Invarianti: bootstrap del registro e spacing ───────────────")
+
+    setup = cp["setup_blocks"]
+
+    # -- bootstrap del registro dei pesi ------------------------------------
+    h_txt = os.path.join(m, "wpoa_weights_stream_height.txt")
+    stream_h = None
+    if os.path.exists(h_txt):
+        raw = open(h_txt).read().strip()
+        if raw.isdigit():
+            stream_h = int(raw)
+    if stream_h is None:
+        out.append("  stream wpoa-weights   : altezza di comparsa non registrata")
+        chk.add("bootstrap wpoa-weights", Checks.NA,
+                "altezza di comparsa non registrata dallo snapshot", None)
+    else:
+        out.append("  stream wpoa-weights   : visibile entro height {} "
+                   "(la wPoA ingaggia a {})".format(stream_h, setup))
+        facts["stream_visibile_a_height"] = stream_h
+        if stream_h < setup:
+            out.append("  -> creato dal nodo con {} blocchi di margine sulla transizione."
+                       .format(setup - stream_h))
+            chk.add("bootstrap wpoa-weights", Checks.OK,
+                    "stream creato dal nodo prima della transizione wPoA (a {})".format(setup),
+                    "height {}".format(stream_h))
+        else:
+            out.append("  -> ATTENZIONE: comparso a transizione gia' avvenuta: il registro")
+            out.append("     era vuoto quando il selettore ne aveva bisogno.")
+            chk.add("bootstrap wpoa-weights", Checks.FAIL,
+                    "stream comparso solo a height {}, oltre la transizione {}".format(
+                        stream_h, setup),
+                    "height {}".format(stream_h))
+
+    # -- spacing nativo -----------------------------------------------------
+    perms = load_result(os.path.join(m, "permissions_mine.json")) or []
+    miners = set()
+    if isinstance(perms, list):
+        for e in perms:
+            if isinstance(e, dict) and e.get("address"):
+                miners.add(e["address"])
+    n_miners = len(miners)
+    d = cp["mining_diversity"]
+    sp = native_spacing(n_miners, d)
+
+    if sp is None:
+        out.append("  spacing nativo        : non calcolabile "
+                   "(mining-diversity o conteggio miner assenti)")
+        chk.add("spacing inerte sotto wPoA", Checks.NA,
+                "mining-diversity o numero di miner non disponibili", None)
+        return
+
+    out.append("  mining-diversity      : {:g}  su {} indirizzi con permesso mine"
+               .format(d, n_miners))
+    out.append("  spacing nativo        : {} blocchi fra due blocchi dello stesso "
+               "firmatario".format(sp))
+    facts["mining_diversity"] = d
+    facts["miner_con_permesso"] = n_miners
+    facts["spacing_nativo"] = sp
+
+    consec = facts.get("consecutivi_osservati")
+    exp = facts.get("consecutivi_attesi")
+
+    if sp < 2:
+        out.append("  -> spacing 1: la regola nativa e' inerte per costruzione a questo")
+        out.append("     numero di miner, quindi questa run NON discrimina. Serve un d o")
+        out.append("     un N che portino lo spacing a >= 2 per metterla alla prova.")
+        chk.add("spacing inerte sotto wPoA", Checks.NA,
+                "spacing nativo 1: inerte comunque, la run non discrimina",
+                "spacing {}".format(sp))
+        return
+
+    if consec is None:
+        chk.add("spacing inerte sotto wPoA", Checks.NA,
+                "nessun conteggio di blocchi consecutivi disponibile", None)
+        return
+
+    out.append("  -> con spacing {} la regola nativa VIETEREBBE due blocchi di fila allo"
+               .format(sp))
+    out.append("     stesso proposer. Osservati: {} (attesi {} sotto selezione pesata)."
+               .format(consec, exp))
+    if consec > 0:
+        out.append("     Le vittorie consecutive avvengono: il vincolo e' neutralizzato")
+        out.append("     sulle altezze governate dalla wPoA, come previsto (5.12.3).")
+        chk.add("spacing inerte sotto wPoA", Checks.OK,
+                "spacing {} vieterebbe i blocchi di fila, ma se ne osservano {} (attesi {})"
+                .format(sp, consec, exp),
+                "{} consecutivi".format(consec))
+    else:
+        out.append("     ZERO su una finestra in cui se ne attendevano {}: il vincolo e'"
+                   .format(exp))
+        out.append("     tornato vincolante e la distribuzione collassa sul round robin.")
+        chk.add("spacing inerte sotto wPoA", Checks.FAIL,
+                "0 blocchi consecutivi con spacing {} attivo (attesi {}): regressione del gate"
+                .format(sp, exp),
+                "0 consecutivi")
+
+
+def analyse_consistency(run, out, chk=None):
     out.append("")
     out.append("── Consistenza fra nodi a fine run ────────────────────────────")
     path = os.path.join(run, "metrics", "node_state.csv")
     if not os.path.exists(path):
         out.append("  node_state.csv assente (snapshot non eseguito).")
+        if chk:
+            chk.add("consistenza fra nodi", Checks.NA, "snapshot per-nodo non eseguito", None)
         return
     rows = [l.strip().split(",") for l in open(path) if l.strip()][1:]
     if not rows:
@@ -215,21 +449,37 @@ def analyse_consistency(run, out):
     spread = (max(heights) - min(heights)) if heights else 0
     if len(tips) == 1:
         out.append("  -> tutti i nodi sulla stessa testa: nessun fork.")
+        if chk:
+            chk.add("consistenza fra nodi", Checks.OK,
+                    "tutti i nodi sulla stessa testa", "{} nodi".format(len(rows)))
     elif spread <= 1 and len(deep) == 1:
         out.append("  -> teste diverse ma altezze a {} blocco di distanza e stesso hash "
                    "sepolto:".format(spread))
         out.append("     e' il normale ritardo di propagazione fra i nodi, non un fork.")
+        if chk:
+            chk.add("consistenza fra nodi", Checks.OK,
+                    "teste a {} blocco di distanza, stesso hash sepolto: propagazione".format(spread),
+                    "{} teste".format(len(tips)))
     elif len(deep) == 1:
         out.append("  -> {} teste distinte ma prefisso comune 6 blocchi sotto: "
                    "corsa al tip in corso, non un fork persistente.".format(len(tips)))
         out.append("     E' il caso previsto quando due delay cadono a distanza inferiore")
         out.append("     alla latenza di propagazione (Sez. 3.3.2 / 5.10.5).")
+        if chk:
+            chk.add("consistenza fra nodi", Checks.OK,
+                    "prefisso comune 6 blocchi sotto: corsa al tip, non un fork",
+                    "{} teste".format(len(tips)))
     else:
         out.append("  -> ATTENZIONE: {} teste E {} prefissi sepolti distinti: "
                    "fork persistente.".format(len(tips), len(deep)))
+        if chk:
+            chk.add("consistenza fra nodi", Checks.FAIL,
+                    "{} teste e {} prefissi sepolti distinti: fork persistente".format(
+                        len(tips), len(deep)),
+                    "{} prefissi".format(len(deep)))
 
 
-def analyse_logs(run, chain, out):
+def analyse_logs(run, chain, out, chk=None, facts=None):
     """Contatori diagnostici dai debug.log dei nodi."""
     patterns = {
         "blocchi validati dalla sortition": r"VerifyBlockMinerWPoA: sortition OK",
@@ -257,9 +507,41 @@ def analyse_logs(run, chain, out):
                     if re.search(pat, line):
                         counts[name] += 1
     out.append("")
-    out.append("── Contatori diagnostici (somma sui 10 debug.log) ─────────────")
+    out.append("── Contatori diagnostici (somma sui debug.log) ────────────────")
     for name in patterns:
         out.append("  {:<32} {}".format(name, counts[name]))
+    if facts is not None:
+        facts["contatori_log"] = {k: counts[k] for k in patterns}
+
+    if chk is None:
+        return
+
+    # I contatori che hanno un significato di PASS/FAIL, non solo informativo.
+    rejects = counts["blocchi RIFIUTATI dalla sortition"]
+    chk.add("validazione sortition",
+            Checks.OK if rejects == 0 else Checks.FAIL,
+            "blocchi rifiutati dalla sortition sotto operativita' onesta",
+            rejects)
+
+    stalls = counts["attese per mappa pesi vuota"]
+    ok_blocks = counts["blocchi validati dalla sortition"]
+    if stalls == 0:
+        chk.add("registro dei pesi popolato", Checks.OK,
+                "nessuna attesa per mappa pesi vuota", 0)
+    elif ok_blocks > 0:
+        # Qualche attesa a ridosso della transizione e' fisiologica; solo se la catena
+        # non fosse mai ripartita sarebbe un problema, e lo direbbe la liveness.
+        chk.add("registro dei pesi popolato", Checks.WARN,
+                "{} attese per mappa vuota, ma la catena e' comunque avanzata".format(stalls),
+                stalls)
+    else:
+        chk.add("registro dei pesi popolato", Checks.FAIL,
+                "attese per mappa pesi vuota e nessun blocco validato: stallo", stalls)
+
+    folds = counts["fold di fallback RANDAO"]
+    chk.add("beacon RANDAO",
+            Checks.OK if folds == 0 else Checks.WARN,
+            "fold di fallback (reveal mancanti) sulle altezze governate", folds)
 
 
 DELAY_RE = re.compile(
@@ -373,10 +655,21 @@ def main():
     args = ap.parse_args()
 
     m = os.path.join(args.run, "metrics")
-    out = ["",
-           "══════════════════════════════════════════════════════════════════",
-           "  POESIA / wPoA — riepilogo run: livello {}".format(args.level),
-           "══════════════════════════════════════════════════════════════════"]
+    chk = Checks()
+    facts = {}
+    cp = read_chain_params(m, args)
+
+    head = ["",
+            "══════════════════════════════════════════════════════════════════",
+            "  POESIA / wPoA — riepilogo run: livello {}".format(args.level),
+            "══════════════════════════════════════════════════════════════════",
+            "",
+            "  parametri di catena{}: setup-first-blocks={}  weight-epoch-length={}  "
+            "target-block-time={}s  mining-diversity={}".format(
+                "" if cp["from_chain"] else " (dai soli argomenti: chainparams.json assente)",
+                cp["setup_blocks"], cp["epoch_len"], cp["tbt"],
+                "{:g}".format(cp["mining_diversity"]) if cp["mining_diversity"] >= 0 else "n/d")]
+    out = []
 
     # indirizzo -> host, dai file depositati durante il bootstrap
     host_by_addr = {}
@@ -397,18 +690,19 @@ def main():
         out.append("  catena, oppure lo snapshot finale non e' stato eseguito.")
         out.append("  Controlla {}/shadow.log e i debug.log dei nodi.".format(args.run))
     else:
-        measured = analyse_blocks(blocks, args.setup_blocks, args.tbt, out)
+        measured = analyse_blocks(blocks, cp["setup_blocks"], cp["tbt"], out, chk, facts)
         latest_w = analyse_weights(weights_items, host_by_addr, out)
-        analyse_proposers(measured, latest_w, host_by_addr, out)
-        analyse_delays(args.run, args.chain, args.setup_blocks, args.tbt,
+        analyse_proposers(measured, latest_w, host_by_addr, out, chk, facts)
+        analyse_bootstrap_and_spacing(m, cp, facts, out, chk)
+        analyse_delays(args.run, args.chain, cp["setup_blocks"], cp["tbt"],
                        args.delta, out)
 
-    analyse_consistency(args.run, out)
+    analyse_consistency(args.run, out, chk)
     tail_csv(args.run, "esg_scores.csv", out, "ESG certificati dal CA")
     tail_csv(args.run, "membership.csv", out, "Adesioni ai cluster")
     tail_csv(args.run, "reconciliation.csv", out, "Riconciliazione verso il treasury")
     tail_csv(args.run, "gas_transfers.csv", out, "Movimenti GAS (init + rifornimenti)")
-    analyse_logs(args.run, args.chain, out)
+    analyse_logs(args.run, args.chain, out, chk, facts)
 
     verify = load_result(os.path.join(m, "verify.json"))
     if verify is not None:
@@ -417,12 +711,32 @@ def main():
         out.append("  " + json.dumps(verify)[:600])
 
     out.append("")
-    text = "\n".join(out)
+
+    # I verdetti vanno IN TESTA: chi apre il file deve vedere l'esito prima dei numeri
+    # che lo giustificano, non doverlo ricostruire leggendo tutto.
+    text = "\n".join(head + chk.render() + out)
     print(text)
     with open(os.path.join(m, "summary.txt"), "w") as fh:
         fh.write(text + "\n")
-    print("[collect_metrics] riepilogo scritto in {}/summary.txt".format(m))
-    return 0
+
+    # Gemello machine-readable: stessi verdetti e stesse cifre, in una forma che
+    # compare_levels.py e l'analisi degli esperimenti possono aggregare senza dover
+    # ri-parsare il testo (che e' pensato per essere letto, non consumato).
+    payload = {
+        "livello": args.level,
+        "chain": args.chain,
+        "parametri": cp,
+        "esito": chk.worst(),
+        "verdetti": chk.rows,
+        "metriche": facts,
+    }
+    with open(os.path.join(m, "summary.json"), "w") as fh:
+        json.dump(payload, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+
+    print("[collect_metrics] riepilogo in {}/summary.txt e {}/summary.json"
+          .format(m, m))
+    return 0 if chk.worst() != Checks.FAIL else 1
 
 
 if __name__ == "__main__":

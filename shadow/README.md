@@ -48,7 +48,7 @@ Output in `<livello>/run/`:
 run/
 ├── data/<host>/          datadir isolato per nodo (blocchi, wallet, debug.log)
 ├── shared/<host>.addr    indirizzi raccolti durante il bootstrap
-├── metrics/              CSV, snapshot JSON, summary.txt, summary_epoche.txt
+├── metrics/              CSV, snapshot JSON, summary.txt, summary.json, summary_epoche.txt
 │   └── epoche/           campionamenti a ogni epoca (verifica, fork, treasury)
 ├── shadow.data/          output di Shadow (stdout/stderr per processo)
 └── shadow.log            log del simulatore
@@ -359,13 +359,34 @@ spendibile che serve ai rifornimenti.
 
 ## Metriche
 
-`tools/collect_metrics.py` gira in coda a ogni run e scrive
-`metrics/summary.txt`. La sorgente primaria e' lo **snapshot JSON** prodotto dal
-nodo admin (`listblocks` riporta il proposer di ogni altezza): il parsing dei
-`debug.log` serve solo ai contatori diagnostici.
+`tools/collect_metrics.py` gira in coda a ogni run e scrive due file gemelli:
+`metrics/summary.txt` da leggere e `metrics/summary.json` da aggregare. La sorgente
+primaria e' lo **snapshot JSON** prodotto dal nodo admin (`listblocks` riporta il
+proposer di ogni altezza): il parsing dei `debug.log` serve solo ai contatori
+diagnostici.
+
+Il testo si apre con un blocco **VERDETTI**: una riga per controllo, con esito
+(`OK` / `ATTENZIONE` / `ERRORE` / `n/d`), la singola cifra che lo giustifica e una
+frase di motivazione, piu' l'esito complessivo e il conteggio. Serve a leggere
+l'esito prima dei numeri, invece di doverlo ricostruire dall'intero file; il
+dettaglio resta nelle sezioni omonime sotto. Un controllo che non si e' potuto
+valutare dice `n/d` anziche' passare in silenzio. `summary.json` porta gli stessi
+verdetti e le stesse cifre in forma strutturata, cosi' il confronto fra run e fra
+livelli non deve ri-parsare il testo. Exit code diverso da 0 se un controllo
+fallisce.
+
+Le soglie sono calcolate dai parametri **della catena** (`metrics/chainparams.json`,
+da `getblockchainparams`), non dagli argomenti passati allo script: i due possono
+divergere — un valore alzato alla genesi, un flag di runtime mai finito in
+`params.dat` — e in quel caso l'intero riepilogo sarebbe tarato male.
 
 * intervallo fra blocchi nella finestra wPoA (media, mediana, σ, min/max) contro
   `target-block-time` — misura diretta dell'effetto della retroazione `λΦ`;
+* **invarianti di bootstrap e Spacing**: a che altezza e' comparso `wpoa-weights`
+  rispetto alla transizione wPoA, e lo spacing nativo che si applicherebbe
+  (`min(floor(N·d)+1, N)`) confrontato con le vittorie consecutive osservate. Con
+  spacing ≥ 2 le ripetizioni **devono** esserci: zero significherebbe che il
+  vincolo e' tornato attivo. Con spacing 1 la run non discrimina, e lo dice;
 * **distribuzione dei proposer contro i pesi pubblicati**, con test chi-quadro:
   e' la verifica sperimentale del Teor. 5.3;
 * traiettoria per epoca dei pesi su `wpoa-weights`;
@@ -455,10 +476,24 @@ stesso firmatario". La distribuzione osservata collassava quindi su un round
 robin (circa 40 / 35 / 25 %) qualunque fossero i pesi pubblicati.
 
 La tesi (Sez. 5.12.3) prevede che sotto wPoA lo Spacing sia rimosso, e
-`VerifyBlockMinerWPoA` in effetti non lo applica in validazione; la misura dice
-che sul percorso del **miner** resta invece efficace — esattamente il caso di cui
-avverte la Sez. 7.4. `params.overrides` imposta percio' `MINING_DIVERSITY=0`,
-che lo rende inerte per costruzione (`ceil(0) = 0`).
+`VerifyBlockMinerWPoA` in effetti non lo applicava in validazione; la misura
+diceva pero' che sul percorso del **miner** restava efficace — esattamente il caso
+di cui avverte la Sez. 7.4. All'epoca di queste misure `params.overrides` imponeva
+percio' `MINING_DIVERSITY=0`, che lo rendeva inerte per costruzione.
+
+**Non serve piu'.** Il vincolo e' ora neutralizzato alla fonte, in
+`mc_Permissions::IsBarredByDiversity`, sulle sole altezze governate dalla wPoA: e'
+un punto unico, quindi ne beneficiano insieme la validazione, il percorso del
+miner (`GetKeyFromAddressBook`, che e' cio' che rendeva sterile la sola patch in
+validazione), il ranking di fork-choice e la stima di `listminers`. `d` e' quindi
+tornato al default di MultiChain (0.3) ed e' ora *parte* dell'esperimento: la
+sezione «Invarianti» di `summary.txt` calcola lo spacing nativo che si
+applicherebbe e verifica che le vittorie consecutive avvengano comunque. Se
+tornassero a zero con `d > 0`, sarebbe una regressione del gate — ed e' il
+controllo `spacing inerte sotto wPoA` a dirlo.
+
+I numeri riportati sotto restano quelli misurati con `d = 0` e vanno letti come
+tali.
 
 **Controprova.** La stessa configurazione con `d = 0` (regionale, 109 blocchi
 misurati):
@@ -543,7 +578,7 @@ shadow/
 │   ├── role_ca.sh             certificazione ESG
 │   ├── role_miner.sh          membership + riconciliazione
 │   ├── role_company.sh        membership + traffico di filiera
-│   ├── collect_metrics.py     snapshot + debug.log → summary.txt
+│   ├── collect_metrics.py     snapshot + debug.log → summary.txt + summary.json
 │   ├── summary_per_epoca.py   le stesse analisi, epoca per epoca →
 │   │                          summary_epoche.txt
 │   └── compare_levels.py      tabella di confronto fra i quattro livelli

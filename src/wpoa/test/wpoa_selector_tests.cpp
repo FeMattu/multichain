@@ -13,7 +13,12 @@
 //   * the degenerate cases (empty map, single validator, zero weights);
 //   * probability preservation — Pr[i elected] = w_i / Σ w_j (thesis §7.4) —
 //     empirically over many distinct seeds, with a chi-square goodness-of-fit
-//     check whose observed-vs-expected table is printed as a thesis artifact.
+//     check whose observed-vs-expected table is printed as a thesis artifact;
+//   * INDEPENDENCE between heights: the back-to-back win rate must converge to
+//     Σ p_i², so a validator legitimately repeats. This is the property the
+//     native mining-diversity spacing used to destroy on wPoA-governed heights,
+//     and the one the shadow runs measured as "0 consecutive blocks out of 190
+//     against ~99 expected".
 
 #define BOOST_TEST_MODULE wPoASelectorTests
 #include <boost/test/included/unit_test.hpp>
@@ -258,6 +263,143 @@ static double win_ratio(DumpingFunction fn, uint32_t trials)
     }
     BOOST_REQUIRE(light > 0);
     return (double)heavy / (double)light;
+}
+
+// ---- consecutive selection (the property mining-diversity used to break) --
+
+// Weighted selection draws each height INDEPENDENTLY, so nothing forbids the same
+// validator from winning two heights in a row: over a run of consecutive seeds the
+// back-to-back rate must converge to sum_i p_i^2, and for a heavy validator that is a
+// large number, not a rounding error.
+//
+// This is the pure-logic counterpart of a consensus rule that used to violate it. The
+// native mining-diversity spacing is round-robin: it barred a signer from producing a
+// block within `spacing` heights of its previous one, so the elected proposer's block was
+// rejected (or never built) and the observed distribution collapsed onto an alternation
+// no matter what the weights said. The shadow runs measured exactly that -- 0 consecutive
+// blocks out of 190 against ~99 expected -- until the spacing was neutralised on
+// wPoA-governed heights at its source, mc_Permissions::IsBarredByDiversity.
+//
+// The selector itself was never at fault, which is the point: this test pins the
+// expectation the consensus layer has to honour, so a future rule that quietly reintroduces
+// alternation is caught here, node-free, instead of in a multi-hour network run.
+static void run_consecutive(const std::map<std::string, uint32_t>& w,
+                            uint32_t heights, double tol, const char* label)
+{
+    uint64_t total_weight = 0;
+    for (std::map<std::string, uint32_t>::const_iterator it = w.begin(); it != w.end(); ++it)
+    {
+        total_weight += it->second;
+    }
+    BOOST_REQUIRE(total_weight > 0);
+
+    // Expected back-to-back rate under independent weighted draws: sum_i p_i^2.
+    double expected_rate = 0.0;
+    for (std::map<std::string, uint32_t>::const_iterator it = w.begin(); it != w.end(); ++it)
+    {
+        double p = (double)it->second / (double)total_weight;
+        expected_rate += p * p;
+    }
+
+    // Consecutive SEEDS, standing in for consecutive block heights on one chain.
+    std::string prev;
+    uint64_t consecutive = 0, pairs = 0;
+    uint64_t longest = 0, current = 0;
+    for (uint32_t h = 0; h < heights; h++)
+    {
+        std::vector<unsigned char> seed = make_seed(h);
+        std::string winner = select(seed, w);
+        BOOST_REQUIRE(!winner.empty());
+        if (!prev.empty())
+        {
+            pairs++;
+            if (winner == prev)
+            {
+                consecutive++;
+                current++;
+                if (current > longest) longest = current;
+            }
+            else
+            {
+                current = 0;
+            }
+        }
+        prev = winner;
+    }
+
+    double observed_rate = pairs ? (double)consecutive / (double)pairs : 0.0;
+
+    std::printf("\n  Consecutive-win rate, %s (%u heights, %zu validators):\n",
+                label, heights, w.size());
+    std::printf("    expected sum(p_i^2) = %.4f\n", expected_rate);
+    std::printf("    observed            = %.4f  (%llu of %llu adjacent pairs)\n",
+                observed_rate, (unsigned long long)consecutive, (unsigned long long)pairs);
+    std::printf("    longest same-proposer streak = %llu\n", (unsigned long long)(longest + 1));
+
+    // The headline assertion: back-to-back wins HAPPEN. Zero here would mean the draw had
+    // acquired a memory of the previous height, which is precisely the defect.
+    BOOST_CHECK_MESSAGE(consecutive > 0,
+                        "no validator ever won two consecutive heights over " << heights
+                        << " draws: the selection is alternating, not weighted");
+
+    BOOST_CHECK_MESSAGE(std::fabs(observed_rate - expected_rate) < tol,
+                        "consecutive-win rate " << observed_rate << " deviates from the "
+                        << "expected sum(p_i^2) = " << expected_rate
+                        << " by more than " << tol);
+}
+
+BOOST_AUTO_TEST_CASE(consecutive_wins_match_sum_of_squares_equal_weights)
+{
+    // 4 equal validators -> sum(p_i^2) = 4 * 0.25^2 = 0.25.
+    std::map<std::string, uint32_t> w;
+    w["1AconsecEqualAAAAAAAAAAAAAAAAAAAAAAA"] = 100;
+    w["1BconsecEqualBBBBBBBBBBBBBBBBBBBBBBB"] = 100;
+    w["1CconsecEqualCCCCCCCCCCCCCCCCCCCCCCC"] = 100;
+    w["1DconsecEqualDDDDDDDDDDDDDDDDDDDDDDD"] = 100;
+    run_consecutive(w, 100000, 0.01, "4 equal validators");
+}
+
+BOOST_AUTO_TEST_CASE(consecutive_wins_match_sum_of_squares_skewed)
+{
+    // The shadow experiment's shape: 100/200/400/800 -> shares .0667 .1333 .2667 .5333,
+    // sum(p_i^2) ~= 0.378. Under a spacing rule this would be 0.
+    std::map<std::string, uint32_t> w;
+    w["1AconsecSkewAAAAAAAAAAAAAAAAAAAAAAAA"] = 100;
+    w["1BconsecSkewBBBBBBBBBBBBBBBBBBBBBBBB"] = 200;
+    w["1CconsecSkewCCCCCCCCCCCCCCCCCCCCCCCC"] = 400;
+    w["1DconsecSkewDDDDDDDDDDDDDDDDDDDDDDDD"] = 800;
+    run_consecutive(w, 100000, 0.01, "skewed 100:200:400:800");
+}
+
+BOOST_AUTO_TEST_CASE(consecutive_wins_dominant_validator_repeats_often)
+{
+    // A validator holding ~90% of the weight must win back-to-back most of the time.
+    // Any alternation rule caps this near 0.5 however heavy it is, so the bound is a
+    // sharp discriminator rather than a formality.
+    std::map<std::string, uint32_t> w;
+    w["1AdominantAAAAAAAAAAAAAAAAAAAAAAAAAA"] = 900;
+    w["1BminorityBBBBBBBBBBBBBBBBBBBBBBBBBB"] = 50;
+    w["1CminorityCCCCCCCCCCCCCCCCCCCCCCCCCC"] = 50;
+    run_consecutive(w, 100000, 0.01, "dominant 90%");
+
+    // sum(p_i^2) = 0.81 + 0.0025 + 0.0025 = 0.815
+    std::string prev;
+    uint64_t consecutive = 0, pairs = 0;
+    for (uint32_t h = 0; h < 20000; h++)
+    {
+        std::vector<unsigned char> seed = make_seed(h);
+        std::string winner = select(seed, w);
+        if (!prev.empty())
+        {
+            pairs++;
+            if (winner == prev) consecutive++;
+        }
+        prev = winner;
+    }
+    double rate = pairs ? (double)consecutive / (double)pairs : 0.0;
+    BOOST_CHECK_MESSAGE(rate > 0.70,
+                        "a 90% validator repeated on only " << (rate * 100.0)
+                        << "% of adjacent heights: an alternation rule is capping it");
 }
 
 BOOST_AUTO_TEST_CASE(dumping_compresses_whale_dominance)

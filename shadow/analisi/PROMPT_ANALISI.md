@@ -344,8 +344,12 @@ scipy. `min_attesa`, `campione_sufficiente` (1 sse attesa >= 5 in ogni classe).
 `consecutivi_osservati` **[M]** (quante volte lo stesso miner ha proposto due
 blocchi di fila) contro `consecutivi_attesi` **[I]** = `somma(p_i^2) * (n-1)`
 sulle quote osservate. Se osservati << attesi, c'e' uno Spacing residuo che
-impedisce le ripetizioni: incrocialo con `mining_diversity` (che a 0 dovrebbe
-renderlo inerte, Sez. 3.3.1).
+impedisce le ripetizioni. Incrocialo con `mining_diversity` e con il numero di
+indirizzi che hanno il permesso `mine`: lo spacing nativo vale
+`min(floor(N*d) + 1, N)` ed e' inerte solo quando risulta 1. Con spacing >= 2 e
+osservati == 0 la regola e' tornata vincolante (regressione del gate di
+`IsBarredByDiversity`); con spacing 1 la run non discrimina, perche' la regola
+sarebbe inerte comunque.
 
 #### `sortition_margins.csv` — la corsa dei timer
 `rtt_max_ms` **[I]**, `banda_dmax_s` = `delta * tbt` **[I]**, `round` **[M]**,

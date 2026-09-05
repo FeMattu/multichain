@@ -687,7 +687,11 @@ def build(run, args):
         fmt(meta.get("wpoa_sortition_delta")), fmt(meta.get("wpoa_sortition_lambda"))))
     out.append("  dump-function        : {}   (none = smorzamento anti-whale inerte)".format(
         meta.get("dump_function") or "-"))
-    out.append("  mining-diversity     : {}   (0 = Spacing nativo inerte)".format(
+    # Lo Spacing nativo e' neutralizzato alla fonte sulle altezze governate dalla wPoA,
+    # quindi d non deve piu' valere 0 per essere inerte li'. Resta pienamente attivo sulle
+    # altezze native (la fase di setup), che e' il motivo per cui il valore va comunque
+    # riportato. Il verdetto sta nella sezione "Invarianti" di summary.txt.
+    out.append("  mining-diversity     : {}   (inerte sulle altezze wPoA; attivo in setup)".format(
         fmt(meta.get("mining_diversity"))))
     out.append("  malus mu / M_max     : {} / {}   record di malus nella run: {}".format(
         fmt(meta.get("wpoa_malus_mu")), fmt(meta.get("wpoa_malus_max")),

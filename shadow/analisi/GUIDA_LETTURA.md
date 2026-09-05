@@ -40,9 +40,13 @@ Una riga per run. Le colonne `chain_name … first_block_reward` sono lette
   etichettata male** e ogni confronto per `tbt` che la include e' falsato.
 * `setup_blocks` / `setup_mismatch` — analogo, incrociando `params.dat` con
   `setupblocks` di `getinfo`.
-* `mining_diversity_val` — deve essere `0.0`. Se non lo e', lo Spacing nativo e'
-  attivo e la distribuzione dei proposer **non** e' quella della wPoA (vedi
-  sotto, *alternanze*).
+* `mining_diversity_val` — il valore di `mining-diversity` della catena. Nelle run
+  storiche e' `0.0`, perche' allora lo Spacing nativo restava vincolante sotto wPoA
+  e lo si azzerava per poterlo aggirare. Ora il vincolo e' inerte per costruzione
+  sulle altezze governate dalla wPoA, quindi **un valore diverso da 0 non invalida
+  piu' la run**: e' anzi la configurazione preferibile, perche' mette il gate alla
+  prova. Quello che conta e' l'esito di *alternanze* (vedi sotto): con spacing
+  nativo >= 2 le ripetizioni devono comunque esserci.
 * `stato` — `completa` / `parziale` / `incompleta` / `errore`; `note` dice
   perche'.
 * `malus_events_found` — record trovati sul registro dei malus. Zero ovunque
@@ -191,9 +195,11 @@ stocastico e dalla contesa sulle risorse, non da un jitter modellato.
 
 Nell'ordine. Ogni passo puo' invalidare quelli successivi.
 
-1. **`run_index.csv`** — `stato = completa`? `tbt_mismatch = 0`?
-   `mining_diversity_val = 0.0`? Se no, fermati: la run non e' confrontabile
-   con le altre.
+1. **`run_index.csv`** — `stato = completa`? `tbt_mismatch = 0`? Se no, fermati:
+   la run non e' confrontabile con le altre. (`mining_diversity_val` non e' piu'
+   un criterio di scarto: vedi la voce dedicata sopra. Confronta pero' run con lo
+   stesso valore, perche' `d` cambia lo spacing nativo e quindi cosa la run
+   dimostra.)
 2. **`forks.csv`** — verdetto `fork persistente`? Se si', la catena non ha
    tenuto e le statistiche sui proposer sono calcolate su una storia che non
    tutti i nodi condividono.
