@@ -1,0 +1,27 @@
+experiment_id,area,replication_id,target_block_time,dumpfunction,malus_enabled,epoch,argmin_class_host,n,ks_stat,ks_p,mean_gap_x_rate,expected_mean,note
+run1-tbt-15s,regionale,1,15,none,true,6,m2,4,0.27688339,0.83866521,0.92234143,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,6,m1,7,0.2348951,0.75781693,1.41326429,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,7,m2,5,0.57871533,0.04052588,0.24327301,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,7,m1,7,0.34582178,0.29906709,0.88179826,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,8,m1,7,0.20978175,0.86083114,0.8795334,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,8,m2,4,0.46469714,0.2572244,0.67049978,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,8,m3,1,,,,,not computable: n < 3 or W - w_i <= 0
+run1-tbt-15s,regionale,1,15,none,true,9,m3,2,,,,,not computable: n < 3 or W - w_i <= 0
+run1-tbt-15s,regionale,1,15,none,true,9,m2,2,,,,,not computable: n < 3 or W - w_i <= 0
+run1-tbt-15s,regionale,1,15,none,true,9,m1,8,0.17283146,0.93928912,1.13746072,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,10,m1,7,0.18569325,0.93469977,1.1275252,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,10,m2,5,0.29815076,0.67127138,1.03569447,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,11,m2,5,0.57318081,0.04371629,1.32361632,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,11,m1,5,0.40944286,0.28459638,0.61718066,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,11,m3,2,,,,,not computable: n < 3 or W - w_i <= 0
+run1-tbt-15s,regionale,1,15,none,true,12,m1,7,0.356522,0.26629747,1.07956559,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,12,m2,4,0.30107184,0.76747454,0.87916249,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,12,m3,1,,,,,not computable: n < 3 or W - w_i <= 0
+run1-tbt-15s,regionale,1,15,none,true,13,m1,6,0.4471236,0.12991462,0.57594597,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,13,m2,5,0.28439974,0.72455149,0.80450012,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,13,m3,1,,,,,not computable: n < 3 or W - w_i <= 0
+run1-tbt-15s,regionale,1,15,none,true,14,m1,11,0.1486049,0.93945884,1.17811437,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,14,m3,1,,,,,not computable: n < 3 or W - w_i <= 0
+run1-tbt-15s,regionale,1,15,none,true,all,m2,34,0.13683706,0.50436877,0.80185498,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,all,m1,65,0.10314335,0.46312155,1.01957431,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"
+run1-tbt-15s,regionale,1,15,none,true,all,m3,8,0.37345773,0.16486236,0.50427565,1.0,"gap standardised by (W - w_i) of its round, tested against Exp(1)"

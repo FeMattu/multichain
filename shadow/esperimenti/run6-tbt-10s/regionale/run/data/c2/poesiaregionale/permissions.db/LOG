@@ -1,0 +1,5 @@
+2000/01/01-00:02:30.615590 7ffff7e4cbc0 Recovering log #6
+2000/01/01-00:02:30.615636 7ffff7e4cbc0 Level-0 table #8: started
+2000/01/01-00:02:30.615666 7ffff7e4cbc0 Level-0 table #8: 203 bytes OK
+2000/01/01-00:02:30.615728 7ffff7e4cbc0 Delete type=3 #4
+2000/01/01-00:02:30.615751 7ffff7e4cbc0 Delete type=0 #6

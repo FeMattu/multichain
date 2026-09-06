@@ -1,0 +1,162 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "POESIA / wPoA - descrittore di simulazione Shadow",
+  "description": "Unico file passato a run.sh --config=. Referenzia per path i due assi riusabili (parametri di catena e topologia) e dichiara la dislocazione dei nodi. Vedi README.md sezione 'Configurazione dichiarativa'.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "blockchain_params_file", "topology_file", "nodes"],
+
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "maxLength": 48,
+      "description": "Nome della simulazione. Da' il nome alla directory di run (runs/<name>/) e, senza i trattini, a quello della catena (poesia<name>)."
+    },
+    "description": {
+      "type": "string",
+      "description": "Testo libero: finisce in testa allo shadow.yaml generato."
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Seme di riproducibilita'. Alimenta general.seed di Shadow e l'estrazione degli ESG (POESIA_RNG_SEED). Default 20260827."
+    },
+    "blockchain_params_file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Path (relativo alla directory shadow/) del file .dat con i parametri di catena. Formato KEY=VALUE sourceable da bash, come config/params.overrides."
+    },
+    "topology_file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Path (relativo alla directory shadow/) del .gml passato a network.graph.file.path. Definisce SOLO latenze, banda e packet loss fra i network_node_id."
+    },
+
+    "shadow": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Impostazioni del simulatore. Ogni campo e' opzionale.",
+      "properties": {
+        "stop_time": {
+          "description": "'auto' (o campo omesso) calcola il tempo di stop dai parametri di catena; una durata esplicita ha la precedenza e sovrascrive il calcolo.",
+          "oneOf": [
+            { "const": "auto" },
+            {
+              "type": "string",
+              "pattern": "^[0-9]+ ?(ns|us|ms|s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours)$"
+            }
+          ]
+        },
+        "time_granularity": {
+          "description": "'host_native' minimizza l'approssimazione temporale, 'fast' privilegia la velocita', una durata esplicita finisce tal quale in experimental.runahead.",
+          "oneOf": [
+            { "enum": ["host_native", "fast"] },
+            { "type": "string", "pattern": "^[0-9]+ ?(ns|us|ms|s)$" }
+          ]
+        },
+        "parallelism": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "general.parallelism. 0 = Shadow sceglie da solo (un thread per core)."
+        }
+      }
+    },
+
+    "scaling": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Generazione automatica delle aziende a partire dai miner.",
+      "properties": {
+        "factor": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "n_companies = n_miners * factor. Il comportamento e' SEMPRE lineare: non esistono varianti sqrt/log per questo campo."
+        },
+        "ca_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3,
+          "description": "Ridondante e facoltativo: se presente deve coincidere con la lunghezza di nodes.ca, altrimenti la validazione fallisce."
+        }
+      }
+    },
+
+    "nodes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["miners", "ca", "admin"],
+      "description": "Dislocazione manuale dei nodi. Indipendente dalla topologia: piu' host possono condividere lo stesso network_node_id.",
+      "properties": {
+        "miners": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 254,
+          "items": { "$ref": "#/definitions/node" }
+        },
+        "companies": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 254,
+          "items": { "$ref": "#/definitions/companyNode" },
+          "description": "Facoltativo. Se omesso viene generato da scaling.factor, distribuendo le location a rotazione fra quelle dei miner."
+        },
+        "ca": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": { "$ref": "#/definitions/node" },
+          "description": "Fra 1 e 3 Certification Authority. I target ESG vengono ripartiti fra loro a rotazione."
+        },
+        "admin": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": { "$ref": "#/definitions/node" },
+          "description": "Esattamente un nodo amministratore (Apuana SB): tiene il premine ed e' il seed della rete."
+        }
+      }
+    }
+  },
+
+  "definitions": {
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "location", "network_node_id"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]{0,15}$",
+          "description": "Nome dell'host in Shadow e della sua datadir. Deve essere unico fra TUTTE le categorie e valido come suffisso di variabile d'ambiente (POESIA_IP_<id>)."
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Etichetta geografica leggibile. Puramente documentale: le latenze vengono dal .gml, non da qui."
+        },
+        "network_node_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Nodo del .gml su cui l'host viene attestato. Deve esistere nella topologia referenziata."
+        }
+      }
+    },
+    "companyNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "location", "network_node_id"],
+      "properties": {
+        "id": { "$ref": "#/definitions/node/properties/id" },
+        "location": { "$ref": "#/definitions/node/properties/location" },
+        "network_node_id": { "$ref": "#/definitions/node/properties/network_node_id" },
+        "cluster": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]{0,15}$",
+          "description": "Id del miner di cui l'azienda diventa membro (weight-engine-membership). Se omesso, le aziende sono assegnate ai miner a rotazione."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,2 @@
+experiment_id,area,replication_id,target_block_time,dumpfunction,malus_enabled,n_epochs,gini_delta_first,gini_delta_last,gini_delta_max,gini_delta_slope_per_epoch,gini_published_last3_sd,verdict_descriptive,note
+run4-tbt-3s,intercontinentale,1,3,none,true,36,0.0,4.4e-06,0.03251605,-0.00064476,0.0727328,published Gini grows slower than input Gini,descriptive slope of gini_published - gini_input over epochs; a plateau is consistent with lambda_w < 1 (Prop. 6.2)

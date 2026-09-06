@@ -1,0 +1,8 @@
+# output delle run: rigenerabile, non va versionato
+*/run/
+# output delle simulazioni dichiarative (una directory per descrittore)
+runs/
+shadow.data/
+shadow.log
+*.pyc
+__pycache__/

@@ -1,0 +1,3230 @@
+
+══════════════════════════════════════════════════════════════════
+  POESIA / wPoA — riepilogo PER EPOCA: livello intercontinentale
+══════════════════════════════════════════════════════════════════
+
+── Parametri della run (da params.dat, non dal nome cartella) ───
+  run                  : run4-tbt-3s/intercontinentale
+  catena               : poesiaintercontinentale
+  target-block-time    : 3 s   (nome cartella: 3 s, mismatch: no)
+  setup-first-blocks   : 144 blocchi
+  weight-epoch-length  : 12 blocchi   -> epoca(h) = h/12 + 1
+  weight-kappa / alpha / lambda_w : 100 / 0.2 / 0.5
+  wpoa-sortition delta / lambda   : 0.5 / 0.2
+  dump-function        : none   (none = smorzamento anti-whale inerte)
+  mining-diversity     : 0.0   (0 = Spacing nativo inerte)
+  malus mu / M_max     : 0.5 / 4   record di malus nella run: 0
+  blocchi totali       : 535   epoche con blocchi misurati: 33
+  pesi non riprodotti dal ricalcolo, su tutta la run: 0
+
+  COME SI LEGGE. Ogni epoca e' confrontata col peso che era davvero
+  leggibile alla punta della catena mentre i suoi blocchi venivano
+  proposti, non con l'ultimo peso della run: il record marcato e viene
+  pubblicato a epoca chiusa e vale dentro l'epoca e+1. Un peso che
+  cresce di epoca in epoca perche' il cluster e' virtuoso, con la quota
+  che lo segue, NON e' un'anomalia: e' il comportamento previsto.
+
+── Quadro d'insieme per epoca ─────────────────────────────────
+   epoca  blocchi  dt medio      chi2      df   att.min  suff.  G mediano    verdetto
+      13       11      3.50     1.611       2      1.19     no      1.089 compatibile
+      14       12      3.55     4.322       2      1.24     no      0.390 compatibile
+      15       12      3.64     5.287       2      1.22     no      0.497 compatibile
+      16       12      3.55    21.024       2      1.42     no      0.414 NON compat.
+      17       12      4.00     2.726       2      1.16     no      0.613 compatibile
+      18       12      3.55     5.966       2      1.01     no      0.697 compatibile
+      19       12      3.45     1.684       2      1.13     no      1.165 compatibile
+      20       12      3.36     1.530       2      1.35     no      1.037 compatibile
+      21       12      3.36     4.098       2      1.11     no      0.856 compatibile
+      22       12      3.64     0.024       2      0.98     no      0.812 compatibile
+      23       12      3.36     3.962       2      1.33     no      1.278 compatibile
+      24       12      3.09     5.612       2      1.14     no      1.076 compatibile
+      25       12      3.18     5.374       2      1.06     no      1.332 compatibile
+      26       12      3.18     4.103       2      1.31     no      1.083 compatibile
+      27       12      3.73     3.662       2      1.34     no      0.607 compatibile
+      28       12      4.00     1.460       2      1.28     no      0.720 compatibile
+      29       12      3.82     6.814       2      1.33     no      1.006 NON compat.
+      30       12      3.45     6.168       2      1.10     no      0.638 NON compat.
+      31       12      3.82     5.676       2      1.03     no      0.711 compatibile
+      32       12      3.36     3.400       2      1.20     no      0.635 compatibile
+      33       12      3.55     0.466       2      1.35     no      1.505 compatibile
+      34       12      3.36     1.376       2      1.22     no      1.523 compatibile
+      35       12      3.64     2.783       2      1.04     no      0.833 compatibile
+      36       12      3.82     5.912       2      1.24     no      0.233 compatibile
+      37       12      3.73     6.340       2      1.23     no      0.882 NON compat.
+      38       12      3.82     1.317       2      1.09     no      0.781 compatibile
+      39       12      3.55     3.888       2      1.04     no      1.173 compatibile
+      40       12      3.36     5.713       2      1.29     no      1.193 compatibile
+      41       12      3.45     6.279       2      1.17     no      0.715 NON compat.
+      42       12      3.73     7.342       2      1.02     no      1.135 NON compat.
+      43       12      3.73     1.786       2      1.22     no      1.274 compatibile
+      44       12      3.73     5.824       2      1.40     no      0.277 compatibile
+      45        8      3.57     4.026       2      0.81     no      1.136 compatibile
+  (dt medio in s; att.min = attesa minima per classe del chi-quadro;
+   suff. = attesa minima >= 5, la soglia sotto la quale il test su una
+   singola epoca non e' concludente)
+
+── Epoca 13  (altezze 144..155) ───────────────────────────────
+  blocchi misurati    : 11 (height 145..155)
+  intervallo fra blocchi, target = 3 s:
+    media       3.50 s     scarto vs target +0.50 s (+16.7%)
+    mediana     3.00 s
+    dev.std     0.92 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            44404      e12    62.8%
+    m2            18080      e12    25.6%
+    m3             8243      e12    11.7%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 13 vale di norma il record marcato e12, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2         10     525.0      2.18    99.90   1.000       1.000       52503      52503
+    m2        26.46       2          5     180.8      0.75    25.97   1.000       1.000           -      18080
+    m3        24.17       2          1      65.4      0.27     4.95   1.000       1.000        6539       6539
+    ricalcolabilita' (Sez. 5.11.1): 2 esatto, 1 non pubblicato in questa epoca
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:6,c2:4
+      m2     <- c3:3,c4:2
+      m3     <- c5:1
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:1.0500,c2:3.0864
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:0.7053
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 16
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA           9      7.11    81.8%    64.6%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           1      2.71     9.1%    24.6%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           1      1.19     9.1%    10.8%
+    scostamento massimo |osservata - attesa|: 17.2%
+    blocchi consecutivi dello stesso proposer: 8 osservati, 6.9 attesi
+
+    chi-quadro dell'epoca = 1.611  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.19   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 11 blocchi) = 1.611 (df=2, critico 5% = 5.991) -> compatibile
+    attesa minima nella finestra: 1.19   sufficiente: NO
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            11     1.660     2.974     3.981         49.1%
+    m2            11     2.829     3.833     4.432         77.8%
+    m3            11     2.892     4.214     4.467         90.5%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 11 round):
+      media 1.131 s   mediana 1.089 s   minimo 0.178 s   5o perc. 0.178 s
+      round con G < 100 ms: 0 su 11 (0.0%)
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.1785       0.0000    99.9007     0.0000    1.0000
+    m2         0.7502       0.0000    25.9690     0.0000    1.0000
+    m3         0.2713       0.0000     4.9468     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 13
+    pubblicazioni del motore (da debug.log, [M]): m1=52503 @h161  m2=18080 @h161  m3=6539 @h161
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             2        3            0            1   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                2        3            0            1   tutti coincidenti
+      m2                2        3            0            1   tutti coincidenti
+      m3                2        3            0            1   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 13:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    33
+    seed RANDAO derivati            2231
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 14  (altezze 156..167) ───────────────────────────────
+  blocchi misurati    : 12 (height 156..167)
+  intervallo fra blocchi, target = 3 s:
+    media       3.55 s     scarto vs target +0.55 s (+18.2%)
+    mediana     4.00 s
+    dev.std     0.99 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            52503      e13    68.1%
+    m2            18080      e12    23.4%
+    m3             6539      e13     8.5%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 14 vale di norma il record marcato e13, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          8     444.0      1.90   101.11   1.000       1.000       44404      44404
+    m2        26.46       1          4     128.1      0.55    70.40   1.000       1.000       12808      12808
+    m3        24.17       2          2      82.4      0.35     3.97   1.000       1.000        8243       8243
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:5,c2:3
+      m2     <- c3:2,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.8750,c2:2.3148
+      m2     <- c3:1.9852,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 14
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          11      7.80    91.7%    65.0%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           1      1.24     8.3%    10.3%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           0      2.96     0.0%    24.7%
+    scostamento massimo |osservata - attesa|: 26.7%
+    blocchi consecutivi dello stesso proposer: 10 osservati, 9.3 attesi
+
+    chi-quadro dell'epoca = 4.322  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.24   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 23 blocchi) = 5.662 (df=2, critico 5% = 5.991) -> compatibile
+    attesa minima nella finestra: 2.43   sufficiente: NO
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.442     3.265     4.357         58.8%
+    m2            12     1.590     3.898     4.400         79.9%
+    m3            12     3.421     4.237     4.417         91.2%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 0.756 s   mediana 0.390 s   minimo 0.020 s   5o perc. 0.020 s
+      round con G < 100 ms: 2 su 12 (16.7%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         1.8995       0.0000   101.1094     0.0000    1.0000
+    m2         0.5479       0.0000    70.4026     0.0000    1.0000
+    m3         0.3526       0.0000     3.9663     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 14
+    pubblicazioni del motore (da debug.log, [M]): m1=44404 @h173  m2=12808 @h173  m3=8243 @h173
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 14:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            4444
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 15  (altezze 168..179) ───────────────────────────────
+  blocchi misurati    : 12 (height 168..179)
+  intervallo fra blocchi, target = 3 s:
+    media       3.64 s     scarto vs target +0.64 s (+21.2%)
+    mediana     4.00 s
+    dev.std     0.98 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            44404      e14    67.8%
+    m2            12808      e14    19.6%
+    m3             8243      e14    12.6%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 15 vale di norma il record marcato e14, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          9     510.1      2.11   100.96   1.000       1.000       51006      51006
+    m2        26.46       2          5     180.8      0.75    28.13   1.000       1.000       18080      18080
+    m3        24.17       2          2      82.4      0.34    23.15   1.000       1.000           -       8243
+    ricalcolabilita' (Sez. 5.11.1): 2 esatto, 1 non pubblicato in questa epoca
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:5,c2:4
+      m2     <- c3:3,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.8750,c2:3.0864
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 16
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA           9      8.16    75.0%    68.0%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           3      1.22    25.0%    10.2%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           0      2.62     0.0%    21.8%
+    scostamento massimo |osservata - attesa|: 21.8%
+    blocchi consecutivi dello stesso proposer: 9 osservati, 6.9 attesi
+
+    chi-quadro dell'epoca = 5.287  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.22   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 35 blocchi) = 8.437 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 3.65   sufficiente: NO
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.452     3.417     4.299         63.9%
+    m2            12     1.707     4.032     4.433         84.4%
+    m3            12     1.635     3.849     4.395         78.3%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 1.036 s   mediana 0.497 s   minimo 0.044 s   5o perc. 0.044 s
+      round con G < 100 ms: 2 su 12 (16.7%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.1107       0.0000   100.9570     0.0000    1.0000
+    m2         0.7482       0.0000    28.1339     0.0000    1.0000
+    m3         0.3411       0.0000    23.1488     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 15
+    pubblicazioni del motore (da debug.log, [M]): m1=51006 @h185  m2=18080 @h185  m3=8243 @h185
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             2        3            0            1   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                2        3            0            1   tutti coincidenti
+      m2                2        3            0            1   tutti coincidenti
+      m3                2        3            0            1   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 15:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            4281
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 16  (altezze 180..191) ───────────────────────────────
+  blocchi misurati    : 12 (height 180..191)
+  intervallo fra blocchi, target = 3 s:
+    media       3.55 s     scarto vs target +0.55 s (+18.2%)
+    mediana     3.00 s
+    dev.std     1.08 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            51006      e15    66.0%
+    m2            18080      e15    23.4%
+    m3             8243      e14    10.7%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 16 vale di norma il record marcato e15, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          9     459.0      2.10   100.56   1.000       1.000       45901      45901
+    m2        26.46       2          5     180.8      0.83    11.16   1.000       1.000           -      18080
+    m3        24.17       1          2      58.3      0.27    18.61   1.000       1.000        5826       5826
+    ricalcolabilita' (Sez. 5.11.1): 2 esatto, 1 non pubblicato in questa epoca
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:6,c2:3
+      m2     <- c3:3,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:1.0500,c2:2.3148
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 16
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           9      2.54    75.0%    21.2%
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA           3      8.05    25.0%    67.1%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.41     0.0%    11.8%
+    scostamento massimo |osservata - attesa|: 53.8%
+    blocchi consecutivi dello stesso proposer: 10 osservati, 6.9 attesi
+
+    chi-quadro dell'epoca = 21.024  (df=2, critico 5% = 5.991)  -> NON compatibile
+    attesa minima per classe: 1.42   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 47 blocchi) = 0.089 (df=2, critico 5% = 5.991) -> compatibile
+    attesa minima nella finestra: 5.07   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.495     3.434     4.344         64.5%
+    m2            12     1.560     3.494     4.400         66.5%
+    m3            12     2.309     3.894     4.383         79.8%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 0.816 s   mediana 0.414 s   minimo 0.087 s   5o perc. 0.087 s
+      round con G < 100 ms: 1 su 12 (8.3%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.1041       0.0000   100.5646     0.0000    1.0000
+    m2         0.8288       0.0000    11.1631     0.0000    1.0000
+    m3         0.2671       0.0000    18.6060     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 16
+    pubblicazioni del motore (da debug.log, [M]): m1=45901 @h197  m2=18080 @h197  m3=5826 @h197
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             2        3            0            1   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                2        3            0            1   tutti coincidenti
+      m2                2        3            0            1   tutti coincidenti
+      m3                2        3            0            1   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 16:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            4309
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 17  (altezze 192..203) ───────────────────────────────
+  blocchi misurati    : 12 (height 192..203)
+  intervallo fra blocchi, target = 3 s:
+    media       4.00 s     scarto vs target +1.00 s (+33.3%)
+    mediana     4.00 s
+    dev.std     0.85 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            45901      e16    65.8%
+    m2            18080      e15    25.9%
+    m3             5826      e16     8.3%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 17 vale di norma il record marcato e16, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2         10     525.0      2.32   100.34   1.000       1.000       52503      52503
+    m2        26.46       1          6     178.9      0.79    64.95   1.000       1.000       17889      17889
+    m3        24.17       2          1      65.4      0.29    14.88   1.000       1.000        6539       6539
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:6,c2:4
+      m2     <- c3:3,c4:3
+      m3     <- c5:1
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:1.0500,c2:3.0864
+      m2     <- c3:2.9778,c4:2.7828
+      m3     <- c5:0.7053
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 17
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA           7      7.90    58.3%    65.9%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           5      2.93    41.7%    24.4%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.16     0.0%     9.7%
+    scostamento massimo |osservata - attesa|: 17.2%
+    blocchi consecutivi dello stesso proposer: 10 osservati, 5.7 attesi
+
+    chi-quadro dell'epoca = 2.726  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.16   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 59 blocchi) = 0.354 (df=2, critico 5% = 5.991) -> compatibile
+    attesa minima nella finestra: 6.23   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.374     3.325     4.361         60.8%
+    m2            12     2.376     3.881     4.340         79.4%
+    m3            12     4.246     4.296     4.367         93.2%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 0.946 s   mediana 0.613 s   minimo 0.073 s   5o perc. 0.073 s
+      round con G < 100 ms: 1 su 12 (8.3%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.3204       0.0000   100.3385     0.0000    1.0000
+    m2         0.7906       0.0000    64.9547     0.0000    1.0000
+    m3         0.2890       0.0000    14.8758     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 17
+    pubblicazioni del motore (da debug.log, [M]): m1=52503 @h209  m2=17889 @h209  m3=6539 @h209
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 17:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            3501
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 18  (altezze 204..215) ───────────────────────────────
+  blocchi misurati    : 12 (height 204..215)
+  intervallo fra blocchi, target = 3 s:
+    media       3.55 s     scarto vs target +0.55 s (+18.2%)
+    mediana     3.00 s
+    dev.std     1.23 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            52503      e17    68.2%
+    m2            17889      e17    23.3%
+    m3             6539      e17     8.5%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 18 vale di norma il record marcato e17, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          9     510.1      2.05   100.62   1.000       1.000       51006      51006
+    m2        26.46       2          4     154.5      0.62    26.19   1.000       1.000       15454      15454
+    m3        24.17       2          2      82.4      0.33    11.87   1.000       1.000        8243       8243
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:5,c2:4
+      m2     <- c3:2,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.8750,c2:3.0864
+      m2     <- c3:1.9852,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 15
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          12      8.02   100.0%    66.8%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           0      2.98     0.0%    24.8%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.01     0.0%     8.4%
+    scostamento massimo |osservata - attesa|: 33.2%
+    blocchi consecutivi dello stesso proposer: 11 osservati, 11.0 attesi
+
+    chi-quadro dell'epoca = 5.966  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.01   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 0.803 (df=2, critico 5% = 5.991) -> compatibile
+    attesa minima nella finestra: 6.05   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.475     2.887     4.259         46.2%
+    m2            12     1.839     3.905     4.416         80.2%
+    m3            12     2.353     4.090     4.417         86.3%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 0.988 s   mediana 0.697 s   minimo 0.101 s   5o perc. 0.101 s
+      round con G < 100 ms: 0 su 12 (0.0%)
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.0483       0.0000   100.6208     0.0000    1.0000
+    m2         0.6206       0.0000    26.1879     0.0000    1.0000
+    m3         0.3310       0.0000    11.8705     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 18
+    pubblicazioni del motore (da debug.log, [M]): m1=51006 @h221  m2=15454 @h221  m3=8243 @h221
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 18:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            2993
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 19  (altezze 216..227) ───────────────────────────────
+  blocchi misurati    : 12 (height 216..227)
+  intervallo fra blocchi, target = 3 s:
+    media       3.45 s     scarto vs target +0.45 s (+15.2%)
+    mediana     3.00 s
+    dev.std     0.78 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            51006      e18    68.3%
+    m2            15454      e18    20.7%
+    m3             8243      e18    11.0%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 19 vale di norma il record marcato e18, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          8     444.0      1.88   101.31   1.000       1.000       44404      44404
+    m2        26.46       2          5     180.8      0.77    70.42   1.000       1.000       18080      18080
+    m3        24.17       2          2      82.4      0.35     9.47   1.000       1.000           -       8243
+    ricalcolabilita' (Sez. 5.11.1): 2 esatto, 1 non pubblicato in questa epoca
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:5,c2:3
+      m2     <- c3:3,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.8750,c2:2.3148
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 15
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          10      8.21    83.3%    68.4%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           2      2.67    16.7%    22.2%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.13     0.0%     9.4%
+    scostamento massimo |osservata - attesa|: 14.9%
+    blocchi consecutivi dello stesso proposer: 7 osservati, 7.9 attesi
+
+    chi-quadro dell'epoca = 1.684  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.13   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 1.838 (df=2, critico 5% = 5.991) -> compatibile
+    attesa minima nella finestra: 5.94   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.423     3.045     4.345         51.5%
+    m2            12     1.933     3.470     4.400         65.7%
+    m3            12     3.883     4.277     4.395         92.6%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 1.268 s   mediana 1.165 s   minimo 0.082 s   5o perc. 0.082 s
+      round con G < 100 ms: 1 su 12 (8.3%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         1.8835       0.0000   101.3065     0.0000    1.0000
+    m2         0.7669       0.0000    70.4182     0.0000    1.0000
+    m3         0.3497       0.0000     9.4663     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 19
+    pubblicazioni del motore (da debug.log, [M]): m1=44404 @h233  m2=18080 @h233  m3=8243 @h233
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             2        3            0            1   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                2        3            0            1   tutti coincidenti
+      m2                2        3            0            1   tutti coincidenti
+      m3                2        3            0            1   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 19:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            4849
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 20  (altezze 228..239) ───────────────────────────────
+  blocchi misurati    : 12 (height 228..239)
+  intervallo fra blocchi, target = 3 s:
+    media       3.36 s     scarto vs target +0.36 s (+12.1%)
+    mediana     3.00 s
+    dev.std     1.23 s
+    min/max     2.00 / 6.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            44404      e19    62.8%
+    m2            18080      e19    25.6%
+    m3             8243      e18    11.7%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 20 vale di norma il record marcato e19, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          9     510.1      2.02   100.85   1.000       1.000       51006      51006
+    m2        26.46       2          4     154.5      0.61    28.24   1.000       1.000       15454      15454
+    m3        24.17       1          1      41.2      0.16     7.55   1.000       1.000        4122       4122
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:5,c2:4
+      m2     <- c3:2,c4:2
+      m3     <- c5:1
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.8750,c2:3.0864
+      m2     <- c3:1.9852,c4:1.8552
+      m3     <- c5:0.7053
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 14
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA           9      7.92    75.0%    66.0%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           3      2.73    25.0%    22.7%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.36     0.0%    11.3%
+    scostamento massimo |osservata - attesa|: 11.3%
+    blocchi consecutivi dello stesso proposer: 10 osservati, 6.9 attesi
+
+    chi-quadro dell'epoca = 1.530  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.35   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 8.013 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 6.07   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.498     3.167     4.448         55.6%
+    m2            12     2.252     3.594     4.467         69.8%
+    m3            12     2.121     3.858     4.467         78.6%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 0.966 s   mediana 1.037 s   minimo 0.019 s   5o perc. 0.019 s
+      round con G < 100 ms: 1 su 12 (8.3%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.0234       0.0000   100.8544     0.0000    1.0000
+    m2         0.6131       0.0000    28.2383     0.0000    1.0000
+    m3         0.1635       0.0000     7.5488     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 20
+    pubblicazioni del motore (da debug.log, [M]): m1=51006 @h245  m2=15454 @h245  m3=4122 @h245
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 20:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            4035
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 21  (altezze 240..251) ───────────────────────────────
+  blocchi misurati    : 12 (height 240..251)
+  intervallo fra blocchi, target = 3 s:
+    media       3.36 s     scarto vs target +0.36 s (+12.1%)
+    mediana     4.00 s
+    dev.std     1.15 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            51006      e20    72.3%
+    m2            15454      e20    21.9%
+    m3             4122      e20     5.8%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 21 vale di norma il record marcato e20, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          9     459.0      2.03   100.75   1.000       1.000       45901      45901
+    m2        26.46       2          5     180.8      0.80    11.31   1.000       1.000       18080      18080
+    m3        24.17       2          2      82.4      0.37     6.06   1.000       1.000        8243       8243
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:6,c2:3
+      m2     <- c3:3,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:1.0500,c2:2.3148
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 16
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          10      8.01    83.3%    66.7%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           2      1.11    16.7%     9.2%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           0      2.88     0.0%    24.0%
+    scostamento massimo |osservata - attesa|: 24.0%
+    blocchi consecutivi dello stesso proposer: 10 osservati, 7.9 attesi
+
+    chi-quadro dell'epoca = 4.098  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.11   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 5.267 (df=2, critico 5% = 5.991) -> compatibile
+    attesa minima nella finestra: 5.76   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.602     2.839     4.004         44.6%
+    m2            12     3.258     4.145     4.433         88.2%
+    m3            12     2.622     4.046     4.433         84.9%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 1.285 s   mediana 0.856 s   minimo 0.195 s   5o perc. 0.195 s
+      round con G < 100 ms: 0 su 12 (0.0%)
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.0337       0.0000   100.7504     0.0000    1.0000
+    m2         0.8011       0.0000    11.3056     0.0000    1.0000
+    m3         0.3652       0.0000     6.0636     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 21
+    pubblicazioni del motore (da debug.log, [M]): m1=45901 @h257  m2=18080 @h257  m3=8243 @h257
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 21:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            4306
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 22  (altezze 252..263) ───────────────────────────────
+  blocchi misurati    : 12 (height 252..263)
+  intervallo fra blocchi, target = 3 s:
+    media       3.64 s     scarto vs target +0.64 s (+21.2%)
+    mediana     4.00 s
+    dev.std     0.88 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            45901      e21    63.6%
+    m2            18080      e21    25.0%
+    m3             8243      e21    11.4%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 22 vale di norma il record marcato e21, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          9     510.1      2.11   101.30   1.000       1.000       51006      51006
+    m2        26.46       2          5     180.8      0.75    64.27   1.000       1.000           -      18080
+    m3        24.17       2          2      82.4      0.34     4.84   1.000       1.000           -       8243
+    ricalcolabilita' (Sez. 5.11.1): 1 esatto, 2 non pubblicato in questa epoca
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:5,c2:4
+      m2     <- c3:3,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.8750,c2:3.0864
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 16
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA           8      8.24    66.7%    68.6%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           3      2.78    25.0%    23.2%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           1      0.98     8.3%     8.2%
+    scostamento massimo |osservata - attesa|: 2.0%
+    blocchi consecutivi dello stesso proposer: 8 osservati, 5.7 attesi
+
+    chi-quadro dell'epoca = 0.024  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 0.98   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 5.625 (df=2, critico 5% = 5.991) -> compatibile
+    attesa minima nella finestra: 5.58   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     2.013     3.275     4.195         59.2%
+    m2            12     2.903     4.063     4.402         85.4%
+    m3            12     1.872     4.085     4.450         86.2%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 1.023 s   mediana 0.812 s   minimo 0.114 s   5o perc. 0.114 s
+      round con G < 100 ms: 0 su 12 (0.0%)
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.1107       0.0000   101.2990     0.0000    1.0000
+    m2         0.7482       0.0000    64.2728     0.0000    1.0000
+    m3         0.3411       0.0000     4.8432     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 22
+    pubblicazioni del motore (da debug.log, [M]): m1=51006 @h269  m2=18080 @h269  m3=8243 @h269
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             1        3            0            2   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                1        3            0            2   tutti coincidenti
+      m2                1        3            0            2   tutti coincidenti
+      m3                1        3            0            2   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 22:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            4038
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 23  (altezze 264..275) ───────────────────────────────
+  blocchi misurati    : 12 (height 264..275)
+  intervallo fra blocchi, target = 3 s:
+    media       3.36 s     scarto vs target +0.36 s (+12.1%)
+    mediana     3.00 s
+    dev.std     0.88 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            51006      e22    66.0%
+    m2            18080      e21    23.4%
+    m3             8243      e21    10.7%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 23 vale di norma il record marcato e22, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2         10     525.0      2.42   100.46   1.000       1.000       52503      52503
+    m2        26.46       1          5     154.3      0.71    25.75   1.000       1.000       15434      15434
+    m3        24.17       1          2      58.3      0.27     3.95   1.000       1.000        5826       5826
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:6,c2:4
+      m2     <- c3:3,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:1.0500,c2:3.0864
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 17
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          11      7.75    91.7%    64.6%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           1      2.92     8.3%    24.3%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.33     0.0%    11.1%
+    scostamento massimo |osservata - attesa|: 27.1%
+    blocchi consecutivi dello stesso proposer: 9 osservati, 9.3 attesi
+
+    chi-quadro dell'epoca = 3.962  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.33   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 4.750 (df=2, critico 5% = 5.991) -> compatibile
+    attesa minima nella finestra: 5.90   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.460     3.179     4.396         56.0%
+    m2            12     1.940     3.703     4.383         73.4%
+    m3            12     2.500     3.937     4.400         81.2%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 1.230 s   mediana 1.278 s   minimo 0.116 s   5o perc. 0.116 s
+      round con G < 100 ms: 0 su 12 (0.0%)
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.4200       0.0000   100.4641     0.0000    1.0000
+    m2         0.7114       0.0000    25.7527     0.0000    1.0000
+    m3         0.2686       0.0000     3.9528     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 23
+    pubblicazioni del motore (da debug.log, [M]): m1=52503 @h281  m2=15434 @h281  m3=5826 @h281
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 23:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            3795
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 24  (altezze 276..287) ───────────────────────────────
+  blocchi misurati    : 12 (height 276..287)
+  intervallo fra blocchi, target = 3 s:
+    media       3.09 s     scarto vs target +0.09 s (+3.0%)
+    mediana     3.00 s
+    dev.std     0.90 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            52503      e23    71.2%
+    m2            15434      e23    20.9%
+    m3             5826      e23     7.9%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 24 vale di norma il record marcato e23, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          7     429.1      1.59   101.14   1.000       1.000       42907      42907
+    m2        26.46       2          4     154.5      0.57    70.27   1.000       1.000       15454      15454
+    m3        24.17       2          1      65.4      0.24    23.15   1.000       1.000        6539       6539
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:4,c2:3
+      m2     <- c3:2,c4:2
+      m3     <- c5:1
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.7000,c2:2.3148
+      m2     <- c3:1.9852,c4:1.8552
+      m3     <- c5:0.7053
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 12
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          12      8.18   100.0%    68.1%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           0      2.68     0.0%    22.4%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.14     0.0%     9.5%
+    scostamento massimo |osservata - attesa|: 31.9%
+    blocchi consecutivi dello stesso proposer: 11 osservati, 11.0 attesi
+
+    chi-quadro dell'epoca = 5.612  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.14   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 7.388 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 5.92   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.506     2.684     4.116         39.5%
+    m2            11     2.442     3.902     4.433         80.1%
+    m3            12     3.013     4.093     4.433         86.4%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 1.248 s   mediana 1.076 s   minimo 0.020 s   5o perc. 0.020 s
+      round con G < 100 ms: 1 su 12 (8.3%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         1.5867       0.0000   101.1418     0.0000    1.0000
+    m2         0.5715       0.0000    70.2739     0.0000    1.0000
+    m3         0.2418       0.0000    23.1532     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 24
+    pubblicazioni del motore (da debug.log, [M]): m1=42907 @h293  m2=15454 @h293  m3=6539 @h293
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 24:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    35
+    seed RANDAO derivati            3824
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 25  (altezze 288..299) ───────────────────────────────
+  blocchi misurati    : 12 (height 288..299)
+  intervallo fra blocchi, target = 3 s:
+    media       3.18 s     scarto vs target +0.18 s (+6.1%)
+    mediana     3.00 s
+    dev.std     0.94 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            42907      e24    66.1%
+    m2            15454      e24    23.8%
+    m3             6539      e24    10.1%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 25 vale di norma il record marcato e24, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          8     444.0      1.83   101.05   1.000       1.000       44404      44404
+    m2        26.46       2          4     154.5      0.64    28.02   1.000       1.000           -      15454
+    m3        24.17       2          2      82.4      0.34    18.49   1.000       1.000        8243       8243
+    ricalcolabilita' (Sez. 5.11.1): 2 esatto, 1 non pubblicato in questa epoca
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:5,c2:3
+      m2     <- c3:2,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.8750,c2:2.3148
+      m2     <- c3:1.9852,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 14
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          12      8.29   100.0%    69.1%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           0      2.66     0.0%    22.1%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.06     0.0%     8.8%
+    scostamento massimo |osservata - attesa|: 30.9%
+    blocchi consecutivi dello stesso proposer: 11 osservati, 11.0 attesi
+
+    chi-quadro dell'epoca = 5.374  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.06   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 12.186 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 5.62   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.682     2.946     4.301         48.2%
+    m2            12     2.613     4.119     4.471         87.3%
+    m3            12     1.534     3.881     4.467         79.4%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 1.285 s   mediana 1.332 s   minimo 0.024 s   5o perc. 0.024 s
+      round con G < 100 ms: 1 su 12 (8.3%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         1.8257       0.0000   101.0528     0.0000    1.0000
+    m2         0.6354       0.0000    28.0190     0.0000    1.0000
+    m3         0.3389       0.0000    18.4865     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 25
+    pubblicazioni del motore (da debug.log, [M]): m1=44404 @h305  m2=15454 @h305  m3=8243 @h305
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             2        3            0            1   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                2        3            0            1   tutti coincidenti
+      m2                2        3            0            1   tutti coincidenti
+      m3                2        3            0            1   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 25:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            3066
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 26  (altezze 300..311) ───────────────────────────────
+  blocchi misurati    : 12 (height 300..311)
+  intervallo fra blocchi, target = 3 s:
+    media       3.18 s     scarto vs target +0.18 s (+6.1%)
+    mediana     3.00 s
+    dev.std     0.94 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            44404      e25    65.2%
+    m2            15454      e24    22.7%
+    m3             8243      e25    12.1%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 26 vale di norma il record marcato e25, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          8     444.0      1.87   101.13   1.000       1.000           -      44404
+    m2        26.46       1          5     154.3      0.65    11.12   1.000       1.000       15434      15434
+    m3        24.17       2          1      65.4      0.28    14.76   1.000       1.000        6539       6539
+    ricalcolabilita' (Sez. 5.11.1): 2 esatto, 1 non pubblicato in questa epoca
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:5,c2:3
+      m2     <- c3:3,c4:2
+      m3     <- c5:1
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.8750,c2:2.3148
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:0.7053
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 14
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          11      7.89    91.7%    65.7%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           1      1.31     8.3%    10.9%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           0      2.80     0.0%    23.3%
+    scostamento massimo |osservata - attesa|: 25.9%
+    blocchi consecutivi dello stesso proposer: 10 osservati, 9.3 attesi
+
+    chi-quadro dell'epoca = 4.103  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.31   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 14.137 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 5.82   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.484     2.932     4.325         47.7%
+    m2            12     2.466     4.121     4.500         87.4%
+    m3            12     1.692     4.011     4.517         83.7%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 1.405 s   mediana 1.083 s   minimo 0.457 s   5o perc. 0.457 s
+      round con G < 100 ms: 0 su 12 (0.0%)
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         1.8731       0.0000   101.1260     0.0000    1.0000
+    m2         0.6511       0.0000    11.1171     0.0000    1.0000
+    m3         0.2758       0.0000    14.7590     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 26
+    pubblicazioni del motore (da debug.log, [M]): m1=44404 @h317  m2=15434 @h317  m3=6539 @h317
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             2        3            0            1   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                2        3            0            1   tutti coincidenti
+      m2                2        3            0            1   tutti coincidenti
+      m3                2        3            0            1   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 26:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            4743
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 27  (altezze 312..323) ───────────────────────────────
+  blocchi misurati    : 12 (height 312..323)
+  intervallo fra blocchi, target = 3 s:
+    media       3.73 s     scarto vs target +0.73 s (+24.2%)
+    mediana     4.00 s
+    dev.std     1.05 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            44404      e25    66.9%
+    m2            15434      e26    23.3%
+    m3             6539      e26     9.9%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 27 vale di norma il record marcato e26, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       1         10     439.5      2.13   101.19   1.000       1.000       43947      43947
+    m2        26.46       2          5     180.8      0.87    64.40   1.000       1.000       18080      18080
+    m3        24.17       2          2      82.4      0.40    11.76   1.000       1.000        8243       8243
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:6,c2:4
+      m2     <- c3:3,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:1.0500,c2:3.0864
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 17
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          11      7.91    91.7%    65.9%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           1      2.75     8.3%    22.9%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.34     0.0%    11.2%
+    scostamento massimo |osservata - attesa|: 25.8%
+    blocchi consecutivi dello stesso proposer: 10 osservati, 9.3 attesi
+
+    chi-quadro dell'epoca = 3.662  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.34   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 21.660 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 6.18   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.491     3.215     4.310         57.1%
+    m2            12     2.225     3.863     4.417         78.8%
+    m3            12     3.265     4.285     4.433         92.8%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 1.144 s   mediana 0.607 s   minimo 0.036 s   5o perc. 0.036 s
+      round con G < 100 ms: 1 su 12 (8.3%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.1264       0.0000   101.1851     0.0000    1.0000
+    m2         0.8748       0.0000    64.4020     0.0000    1.0000
+    m3         0.3989       0.0000    11.7593     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 27
+    pubblicazioni del motore (da debug.log, [M]): m1=43947 @h329  m2=18080 @h329  m3=8243 @h329
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 27:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            3089
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 28  (altezze 324..335) ───────────────────────────────
+  blocchi misurati    : 12 (height 324..335)
+  intervallo fra blocchi, target = 3 s:
+    media       4.00 s     scarto vs target +1.00 s (+33.3%)
+    mediana     4.00 s
+    dev.std     0.74 s
+    min/max     3.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            43947      e27    62.5%
+    m2            18080      e27    25.7%
+    m3             8243      e27    11.7%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 28 vale di norma il record marcato e27, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2         10     525.0      2.33   101.16   1.000       1.000       52503      52503
+    m2        26.46       2          6     205.3      0.91    25.77   1.000       1.000       20535      20535
+    m3        24.17       2          2      82.4      0.37     9.38   1.000       1.000           -       8243
+    ricalcolabilita' (Sez. 5.11.1): 2 esatto, 1 non pubblicato in questa epoca
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:6,c2:4
+      m2     <- c3:3,c4:3
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:1.0500,c2:3.0864
+      m2     <- c3:2.9778,c4:2.7828
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 18
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA           9      7.81    75.0%    65.1%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           3      2.91    25.0%    24.3%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.28     0.0%    10.6%
+    scostamento massimo |osservata - attesa|: 10.6%
+    blocchi consecutivi dello stesso proposer: 10 osservati, 6.9 attesi
+
+    chi-quadro dell'epoca = 1.460  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.28   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 16.813 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 6.12   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     2.224     3.435     4.172         64.5%
+    m2            12     1.947     3.577     4.236         69.2%
+    m3            12     3.455     4.189     4.350         89.6%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 0.828 s   mediana 0.720 s   minimo 0.109 s   5o perc. 0.109 s
+      round con G < 100 ms: 0 su 12 (0.0%)
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.3254       0.0000   101.1580     0.0000    1.0000
+    m2         0.9095       0.0000    25.7708     0.0000    1.0000
+    m3         0.3651       0.0000     9.3832     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 28
+    pubblicazioni del motore (da debug.log, [M]): m1=52503 @h341  m2=20535 @h341  m3=8243 @h341
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             2        3            0            1   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                2        3            0            1   tutti coincidenti
+      m2                2        3            0            1   tutti coincidenti
+      m3                2        3            0            1   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 28:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            3792
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 29  (altezze 336..347) ───────────────────────────────
+  blocchi misurati    : 12 (height 336..347)
+  intervallo fra blocchi, target = 3 s:
+    media       3.82 s     scarto vs target +0.82 s (+27.3%)
+    mediana     4.00 s
+    dev.std     0.94 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            52503      e28    64.6%
+    m2            20535      e28    25.3%
+    m3             8243      e27    10.1%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 29 vale di norma il record marcato e28, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          9     510.1      2.18   100.87   1.000       1.000       51006      51006
+    m2        26.46       2          5     180.8      0.77    70.56   1.000       1.000       18080      18080
+    m3        24.17       1          2      58.3      0.25     7.48   1.000       1.000        5826       5826
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:5,c2:4
+      m2     <- c3:3,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.8750,c2:3.0864
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 16
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA           7      7.61    58.3%    63.4%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           4      1.33    33.3%    11.1%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           1      3.06     8.3%    25.5%
+    scostamento massimo |osservata - attesa|: 22.3%
+    blocchi consecutivi dello stesso proposer: 8 osservati, 5.0 attesi
+
+    chi-quadro dell'epoca = 6.814  (df=2, critico 5% = 5.991)  -> NON compatibile
+    attesa minima per classe: 1.33   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 9.011 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 6.31   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.375     3.390     4.353         63.0%
+    m2            12     1.987     3.735     4.383         74.5%
+    m3            12     2.209     3.892     4.383         79.7%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 0.993 s   mediana 1.006 s   minimo 0.014 s   5o perc. 0.014 s
+      round con G < 100 ms: 2 su 12 (16.7%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.1788       0.0000   100.8724     0.0000    1.0000
+    m2         0.7723       0.0000    70.5589     0.0000    1.0000
+    m3         0.2489       0.0000     7.4823     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 29
+    pubblicazioni del motore (da debug.log, [M]): m1=51006 @h353  m2=18080 @h353  m3=5826 @h353
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 29:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            5694
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 30  (altezze 348..359) ───────────────────────────────
+  blocchi misurati    : 12 (height 348..359)
+  intervallo fra blocchi, target = 3 s:
+    media       3.45 s     scarto vs target +0.45 s (+15.2%)
+    mediana     3.00 s
+    dev.std     0.99 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            51006      e29    68.1%
+    m2            18080      e29    24.1%
+    m3             5826      e29     7.8%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 30 vale di norma il record marcato e29, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          9     459.0      1.89   100.60   1.000       1.000       45901      45901
+    m2        26.46       2          4     154.5      0.64    28.13   1.000       1.000       15454      15454
+    m3        24.17       2          1      65.4      0.27     6.08   1.000       1.000        6539       6539
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:6,c2:3
+      m2     <- c3:2,c4:2
+      m3     <- c5:1
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:1.0500,c2:2.3148
+      m2     <- c3:1.9852,c4:1.8552
+      m3     <- c5:0.7053
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 14
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          12      7.93   100.0%    66.0%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           0      2.98     0.0%    24.8%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.10     0.0%     9.2%
+    scostamento massimo |osservata - attesa|: 34.0%
+    blocchi consecutivi dello stesso proposer: 11 osservati, 11.0 attesi
+
+    chi-quadro dell'epoca = 6.168  (df=2, critico 5% = 5.991)  -> NON compatibile
+    attesa minima per classe: 1.10   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 9.531 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 6.35   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.394     2.884     4.358         46.1%
+    m2            12     2.311     3.781     4.346         76.0%
+    m3            12     2.042     3.976     4.400         82.5%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 0.901 s   mediana 0.638 s   minimo 0.090 s   5o perc. 0.090 s
+      round con G < 100 ms: 1 su 12 (8.3%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         1.8930       0.0000   100.6034     0.0000    1.0000
+    m2         0.6373       0.0000    28.1332     0.0000    1.0000
+    m3         0.2697       0.0000     6.0751     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 30
+    pubblicazioni del motore (da debug.log, [M]): m1=45901 @h365  m2=15454 @h365  m3=6539 @h365
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 30:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            3989
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 31  (altezze 360..371) ───────────────────────────────
+  blocchi misurati    : 12 (height 360..371)
+  intervallo fra blocchi, target = 3 s:
+    media       3.82 s     scarto vs target +0.82 s (+27.3%)
+    mediana     4.00 s
+    dev.std     1.03 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            45901      e30    67.6%
+    m2            15454      e30    22.8%
+    m3             6539      e30     9.6%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 31 vale di norma il record marcato e30, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          9     510.1      2.11   101.05   1.000       1.000       51006      51006
+    m2        26.46       2          5     180.8      0.75    11.16   1.000       1.000       18080      18080
+    m3        24.17       2          2      82.4      0.34     4.83   1.000       1.000        8243       8243
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:5,c2:4
+      m2     <- c3:3,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.8750,c2:3.0864
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 16
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          12      8.15   100.0%    67.9%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           0      2.83     0.0%    23.6%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.03     0.0%     8.5%
+    scostamento massimo |osservata - attesa|: 32.1%
+    blocchi consecutivi dello stesso proposer: 11 osservati, 11.0 attesi
+
+    chi-quadro dell'epoca = 5.676  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.03   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 10.374 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 6.07   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.576     3.284     4.377         59.5%
+    m2            12     3.000     4.160     4.400         88.7%
+    m3            12     3.765     4.317     4.417         93.9%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 0.924 s   mediana 0.711 s   minimo 0.100 s   5o perc. 0.100 s
+      round con G < 100 ms: 0 su 12 (0.0%)
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.1107       0.0000   101.0518     0.0000    1.0000
+    m2         0.7482       0.0000    11.1629     0.0000    1.0000
+    m3         0.3411       0.0000     4.8299     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 31
+    pubblicazioni del motore (da debug.log, [M]): m1=51006 @h378  m2=18080 @h377  m3=8243 @h377
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 31:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            3898
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 32  (altezze 372..383) ───────────────────────────────
+  blocchi misurati    : 12 (height 372..383)
+  intervallo fra blocchi, target = 3 s:
+    media       3.36 s     scarto vs target +0.36 s (+12.1%)
+    mediana     3.00 s
+    dev.std     1.07 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            51006      e31    66.0%
+    m2            18080      e31    23.4%
+    m3             8243      e31    10.7%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 32 vale di norma il record marcato e31, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          8     444.0      1.83   101.36   1.000       1.000       44404      44404
+    m2        26.46       2          4     154.5      0.64    64.39   1.000       1.000       15454      15454
+    m3        24.17       2          2      82.4      0.34     3.83   1.000       1.000           -       8243
+    ricalcolabilita' (Sez. 5.11.1): 2 esatto, 1 non pubblicato in questa epoca
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:5,c2:3
+      m2     <- c3:2,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.8750,c2:2.3148
+      m2     <- c3:1.9852,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 14
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          11      8.05    91.7%    67.1%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           1      2.76     8.3%    23.0%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.20     0.0%    10.0%
+    scostamento massimo |osservata - attesa|: 24.6%
+    blocchi consecutivi dello stesso proposer: 10 osservati, 9.3 attesi
+
+    chi-quadro dell'epoca = 3.400  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.20   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 10.207 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 5.93   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.719     2.938     4.378         47.9%
+    m2            12     1.491     3.608     4.407         70.3%
+    m3            12     2.133     3.904     4.433         80.1%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 0.849 s   mediana 0.635 s   minimo 0.078 s   5o perc. 0.078 s
+      round con G < 100 ms: 1 su 12 (8.3%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         1.8257       0.0000   101.3605     0.0000    1.0000
+    m2         0.6354       0.0000    64.3889     0.0000    1.0000
+    m3         0.3389       0.0000     3.8338     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 32
+    pubblicazioni del motore (da debug.log, [M]): m1=44404 @h389  m2=15454 @h389  m3=8243 @h389
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             2        3            0            1   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                2        3            0            1   tutti coincidenti
+      m2                2        3            0            1   tutti coincidenti
+      m3                2        3            0            1   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 32:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            5522
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 33  (altezze 384..395) ───────────────────────────────
+  blocchi misurati    : 12 (height 384..395)
+  intervallo fra blocchi, target = 3 s:
+    media       3.55 s     scarto vs target +0.55 s (+18.2%)
+    mediana     4.00 s
+    dev.std     0.66 s
+    min/max     2.00 / 4.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            44404      e32    65.2%
+    m2            15454      e32    22.7%
+    m3             8243      e31    12.1%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 33 vale di norma il record marcato e32, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2         10     525.0      2.40   101.26   1.000       1.000       52503      52503
+    m2        26.46       2          6     205.3      0.94    25.68   1.000       1.000       20535      20535
+    m3        24.17       1          2      58.3      0.27    23.04   1.000       1.000        5826       5826
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:6,c2:4
+      m2     <- c3:3,c4:3
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:1.0500,c2:3.0864
+      m2     <- c3:2.9778,c4:2.7828
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 18
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA           9      7.88    75.0%    65.6%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           2      2.77    16.7%    23.1%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           1      1.35     8.3%    11.3%
+    scostamento massimo |osservata - attesa|: 9.4%
+    blocchi consecutivi dello stesso proposer: 5 osservati, 6.6 attesi
+
+    chi-quadro dell'epoca = 0.466  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.35   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 10.952 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 6.00   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.593     3.110     4.409         53.7%
+    m2            12     2.453     3.813     4.432         77.1%
+    m3            12     1.946     3.890     4.417         79.7%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 1.418 s   mediana 1.505 s   minimo 0.315 s   5o perc. 0.315 s
+      round con G < 100 ms: 0 su 12 (0.0%)
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.3967       0.0000   101.2643     0.0000    1.0000
+    m2         0.9374       0.0000    25.6827     0.0000    1.0000
+    m3         0.2660       0.0000    23.0368     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 33
+    pubblicazioni del motore (da debug.log, [M]): m1=52503 @h401  m2=20535 @h401  m3=5826 @h401
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 33:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            3602
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 34  (altezze 396..407) ───────────────────────────────
+  blocchi misurati    : 12 (height 396..407)
+  intervallo fra blocchi, target = 3 s:
+    media       3.36 s     scarto vs target +0.36 s (+12.1%)
+    mediana     3.00 s
+    dev.std     1.37 s
+    min/max     2.00 / 6.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            52503      e33    66.6%
+    m2            20535      e33    26.0%
+    m3             5826      e33     7.4%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 34 vale di norma il record marcato e33, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          7     429.1      1.51   100.25   1.000       1.000       42907      42907
+    m2        26.46       2          3     130.0      0.46    70.46   1.000       1.000       12999      12999
+    m3        24.17       2          1      65.4      0.23    18.50   1.000       1.000        6539       6539
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:4,c2:3
+      m2     <- c3:2,c4:1
+      m3     <- c5:1
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.7000,c2:2.3148
+      m2     <- c3:1.9852,c4:0.9276
+      m3     <- c5:0.7053
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 11
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA           9      7.89    75.0%    65.8%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           3      2.89    25.0%    24.1%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.22     0.0%    10.1%
+    scostamento massimo |osservata - attesa|: 10.1%
+    blocchi consecutivi dello stesso proposer: 8 osservati, 6.9 attesi
+
+    chi-quadro dell'epoca = 1.376  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.22   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 13.120 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 5.89   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.468     2.733     4.469         41.1%
+    m2            12     3.046     4.081     4.517         86.0%
+    m3            12     3.286     4.217     4.533         90.6%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 1.414 s   mediana 1.523 s   minimo 0.057 s   5o perc. 0.057 s
+      round con G < 100 ms: 1 su 12 (8.3%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         1.5117       0.0000   100.2530     0.0000    1.0000
+    m2         0.4580       0.0000    70.4567     0.0000    1.0000
+    m3         0.2304       0.0000    18.5033     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 34
+    pubblicazioni del motore (da debug.log, [M]): m1=42907 @h413  m2=12999 @h413  m3=6539 @h413
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 34:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            4004
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 35  (altezze 408..419) ───────────────────────────────
+  blocchi misurati    : 12 (height 408..419)
+  intervallo fra blocchi, target = 3 s:
+    media       3.64 s     scarto vs target +0.64 s (+21.2%)
+    mediana     4.00 s
+    dev.std     0.64 s
+    min/max     2.00 / 4.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            42907      e34    68.7%
+    m2            12999      e34    20.8%
+    m3             6539      e34    10.5%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 35 vale di norma il record marcato e34, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2         10     525.0      2.33   100.71   1.000       1.000       52503      52503
+    m2        26.46       2          6     205.3      0.91    28.35   1.000       1.000       20535      20535
+    m3        24.17       2          2      82.4      0.37    14.78   1.000       1.000        8243       8243
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:6,c2:4
+      m2     <- c3:3,c4:3
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:1.0500,c2:3.0864
+      m2     <- c3:2.9778,c4:2.7828
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 18
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA           7      8.10    58.3%    67.5%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           5      2.86    41.7%    23.9%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.04     0.0%     8.7%
+    scostamento massimo |osservata - attesa|: 17.8%
+    blocchi consecutivi dello stesso proposer: 9 osservati, 5.7 attesi
+
+    chi-quadro dell'epoca = 2.783  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.04   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 6.262 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 5.83   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     2.144     3.426     4.291         64.2%
+    m2            12     2.064     3.834     4.383         77.8%
+    m3            12     3.646     4.251     4.450         91.7%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 0.824 s   mediana 0.833 s   minimo 0.051 s   5o perc. 0.051 s
+      round con G < 100 ms: 1 su 12 (8.3%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.3254       0.0000   100.7117     0.0000    1.0000
+    m2         0.9095       0.0000    28.3451     0.0000    1.0000
+    m3         0.3651       0.0000    14.7783     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 35
+    pubblicazioni del motore (da debug.log, [M]): m1=52503 @h425  m2=20535 @h425  m3=8243 @h425
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 35:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            3805
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 36  (altezze 420..431) ───────────────────────────────
+  blocchi misurati    : 12 (height 420..431)
+  intervallo fra blocchi, target = 3 s:
+    media       3.82 s     scarto vs target +0.82 s (+27.3%)
+    mediana     4.00 s
+    dev.std     1.03 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            52503      e35    64.6%
+    m2            20535      e35    25.3%
+    m3             8243      e35    10.1%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 36 vale di norma il record marcato e35, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2         10     525.0      2.26   100.41   1.000       1.000           -      52503
+    m2        26.46       2          5     180.8      0.78    11.69   1.000       1.000       18080      18080
+    m3        24.17       2          2      82.4      0.36    11.79   1.000       1.000           -       8243
+    ricalcolabilita' (Sez. 5.11.1): 1 esatto, 2 non pubblicato in questa epoca
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:6,c2:4
+      m2     <- c3:3,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:1.0500,c2:3.0864
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 17
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          12      8.04   100.0%    67.0%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           0      2.72     0.0%    22.7%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.24     0.0%    10.3%
+    scostamento massimo |osservata - attesa|: 33.0%
+    blocchi consecutivi dello stesso proposer: 11 osservati, 11.0 attesi
+
+    chi-quadro dell'epoca = 5.912  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.24   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 6.476 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 6.05   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.731     3.242     4.383         58.1%
+    m2            12     3.358     4.143     4.433         88.1%
+    m3            12     1.770     4.169     4.433         89.0%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 0.682 s   mediana 0.233 s   minimo 0.015 s   5o perc. 0.015 s
+      round con G < 100 ms: 4 su 12 (33.3%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.2646       0.0000   100.4074     0.0000    1.0000
+    m2         0.7798       0.0000    11.6916     0.0000    1.0000
+    m3         0.3556       0.0000    11.7925     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 36
+    pubblicazioni del motore (da debug.log, [M]): m1=52503 @h437  m2=18080 @h437  m3=8243 @h437
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             1        3            0            2   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                1        3            0            2   tutti coincidenti
+      m2                1        3            0            2   tutti coincidenti
+      m3                1        3            0            2   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 36:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            4698
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 37  (altezze 432..443) ───────────────────────────────
+  blocchi misurati    : 12 (height 432..443)
+  intervallo fra blocchi, target = 3 s:
+    media       3.73 s     scarto vs target +0.73 s (+24.2%)
+    mediana     4.00 s
+    dev.std     0.96 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            52503      e35    66.6%
+    m2            18080      e36    22.9%
+    m3             8243      e35    10.5%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 37 vale di norma il record marcato e36, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       1          8     358.5      1.73   101.41   1.000       1.000       35848      35848
+    m2        26.46       2          5     180.8      0.87    64.52   1.000       1.000           -      18080
+    m3        24.17       1          1      41.2      0.20     9.40   1.000       1.000        4122       4122
+    ricalcolabilita' (Sez. 5.11.1): 2 esatto, 1 non pubblicato in questa epoca
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:5,c2:3
+      m2     <- c3:3,c4:2
+      m3     <- c5:1
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.8750,c2:2.3148
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:0.7053
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 14
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          12      7.85   100.0%    65.4%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           0      2.92     0.0%    24.3%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.23     0.0%    10.3%
+    scostamento massimo |osservata - attesa|: 34.6%
+    blocchi consecutivi dello stesso proposer: 11 osservati, 11.0 attesi
+
+    chi-quadro dell'epoca = 6.340  (df=2, critico 5% = 5.991)  -> NON compatibile
+    attesa minima per classe: 1.23   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 7.617 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 6.08   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.662     3.155     4.380         55.2%
+    m2            12     2.047     3.991     4.377         83.0%
+    m3            12     2.085     3.806     4.367         76.9%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 0.922 s   mediana 0.882 s   minimo 0.181 s   5o perc. 0.181 s
+      round con G < 100 ms: 0 su 12 (0.0%)
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         1.7291       0.0000   101.4091     0.0000    1.0000
+    m2         0.8721       0.0000    64.5155     0.0000    1.0000
+    m3         0.1988       0.0000     9.4038     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 37
+    pubblicazioni del motore (da debug.log, [M]): m1=35848 @h449  m2=18080 @h449  m3=4122 @h449
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             2        3            0            1   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                2        3            0            1   tutti coincidenti
+      m2                2        3            0            1   tutti coincidenti
+      m3                2        3            0            1   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 37:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            3933
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 38  (altezze 444..455) ───────────────────────────────
+  blocchi misurati    : 12 (height 444..455)
+  intervallo fra blocchi, target = 3 s:
+    media       3.82 s     scarto vs target +0.82 s (+27.3%)
+    mediana     4.00 s
+    dev.std     0.83 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            35848      e37    61.8%
+    m2            18080      e36    31.1%
+    m3             4122      e37     7.1%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 38 vale di norma il record marcato e37, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2         10     525.0      2.34   101.02   1.000       1.000       52503      52503
+    m2        26.46       1          5     154.3      0.69    25.73   1.000       1.000       15434      15434
+    m3        24.17       2          2      82.4      0.37     7.58   1.000       1.000        8243       8243
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:6,c2:4
+      m2     <- c3:3,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:1.0500,c2:3.0864
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 17
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA           8      7.75    66.7%    64.6%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           4      3.16    33.3%    26.4%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.09     0.0%     9.1%
+    scostamento massimo |osservata - attesa|: 9.1%
+    blocchi consecutivi dello stesso proposer: 10 osservati, 6.1 attesi
+
+    chi-quadro dell'epoca = 1.317  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.09   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 8.033 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 5.82   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.631     3.201     4.179         56.7%
+    m2            12     2.128     3.672     4.364         72.4%
+    m3            12     2.422     4.075     4.367         85.8%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 0.808 s   mediana 0.781 s   minimo 0.027 s   5o perc. 0.027 s
+      round con G < 100 ms: 1 su 12 (8.3%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.3433       0.0000   101.0164     0.0000    1.0000
+    m2         0.6888       0.0000    25.7335     0.0000    1.0000
+    m3         0.3679       0.0000     7.5791     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 38
+    pubblicazioni del motore (da debug.log, [M]): m1=52503 @h461  m2=15434 @h461  m3=8243 @h461
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 38:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            5152
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 39  (altezze 456..467) ───────────────────────────────
+  blocchi misurati    : 12 (height 456..467)
+  intervallo fra blocchi, target = 3 s:
+    media       3.55 s     scarto vs target +0.55 s (+18.2%)
+    mediana     4.00 s
+    dev.std     0.78 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            52503      e38    68.9%
+    m2            15434      e38    20.3%
+    m3             8243      e38    10.8%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 39 vale di norma il record marcato e38, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          9     510.1      2.12   100.99   1.000       1.000       51006      51006
+    m2        26.46       2          5     179.1      0.74    70.43   1.000       1.000       17908      17908
+    m3        24.17       2          2      82.4      0.34     5.97   1.000       1.000           -       8243
+    ricalcolabilita' (Sez. 5.11.1): 2 esatto, 1 non pubblicato in questa epoca
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:5,c2:4
+      m2     <- c3:2,c4:3
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.8750,c2:3.0864
+      m2     <- c3:1.9852,c4:2.7828
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 16
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          11      7.77    91.7%    64.7%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           1      3.19     8.3%    26.6%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.04     0.0%     8.7%
+    scostamento massimo |osservata - attesa|: 26.9%
+    blocchi consecutivi dello stesso proposer: 10 osservati, 9.3 attesi
+
+    chi-quadro dell'epoca = 3.888  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.04   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 10.013 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 5.64   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.408     3.091     4.366         53.0%
+    m2            12     2.420     3.799     4.383         76.6%
+    m3            12     4.216     4.325     4.362         94.2%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 1.289 s   mediana 1.173 s   minimo 0.039 s   5o perc. 0.039 s
+      round con G < 100 ms: 2 su 12 (16.7%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.1154       0.0000   100.9872     0.0000    1.0000
+    m2         0.7427       0.0000    70.4345     0.0000    1.0000
+    m3         0.3419       0.0000     5.9739     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 39
+    pubblicazioni del motore (da debug.log, [M]): m1=51006 @h473  m2=17908 @h473  m3=8243 @h473
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             2        3            0            1   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                2        3            0            1   tutti coincidenti
+      m2                2        3            0            1   tutti coincidenti
+      m3                2        3            0            1   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 39:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            3867
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 40  (altezze 468..479) ───────────────────────────────
+  blocchi misurati    : 12 (height 468..479)
+  intervallo fra blocchi, target = 3 s:
+    media       3.36 s     scarto vs target +0.36 s (+12.1%)
+    mediana     3.00 s
+    dev.std     0.98 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            51006      e39    66.1%
+    m2            17908      e39    23.2%
+    m3             8243      e38    10.7%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 40 vale di norma il record marcato e39, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          8     444.0      1.95   101.28   1.000       1.000       44404      44404
+    m2        26.46       2          5     180.8      0.79    28.07   1.000       1.000       18080      18080
+    m3        24.17       1          2      58.3      0.26     4.75   1.000       1.000        5826       5826
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:5,c2:3
+      m2     <- c3:3,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.8750,c2:2.3148
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 15
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          12      8.13   100.0%    67.7%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           0      2.58     0.0%    21.5%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.29     0.0%    10.8%
+    scostamento massimo |osservata - attesa|: 32.3%
+    blocchi consecutivi dello stesso proposer: 11 osservati, 11.0 attesi
+
+    chi-quadro dell'epoca = 5.713  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.29   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 18.221 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 5.89   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.624     3.029     4.362         51.0%
+    m2            12     2.206     3.833     4.433         77.8%
+    m3            12     3.183     4.282     4.467         92.7%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 1.218 s   mediana 1.193 s   minimo 0.075 s   5o perc. 0.075 s
+      round con G < 100 ms: 1 su 12 (8.3%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         1.9501       0.0000   101.2838     0.0000    1.0000
+    m2         0.7940       0.0000    28.0657     0.0000    1.0000
+    m3         0.2559       0.0000     4.7549     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 40
+    pubblicazioni del motore (da debug.log, [M]): m1=44404 @h485  m2=18080 @h485  m3=5826 @h485
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 40:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            6096
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 41  (altezze 480..491) ───────────────────────────────
+  blocchi misurati    : 12 (height 480..491)
+  intervallo fra blocchi, target = 3 s:
+    media       3.45 s     scarto vs target +0.45 s (+15.2%)
+    mediana     3.00 s
+    dev.std     1.16 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            44404      e40    65.0%
+    m2            18080      e40    26.5%
+    m3             5826      e40     8.5%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 41 vale di norma il record marcato e40, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2         10     525.0      2.18   100.98   1.000       1.000       52503      52503
+    m2        26.46       2          5     180.8      0.75    11.14   1.000       1.000           -      18080
+    m3        24.17       2          1      65.4      0.27     3.79   1.000       1.000        6539       6539
+    ricalcolabilita' (Sez. 5.11.1): 2 esatto, 1 non pubblicato in questa epoca
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:6,c2:4
+      m2     <- c3:3,c4:2
+      m3     <- c5:1
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:1.0500,c2:3.0864
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:0.7053
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 16
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          12      7.88   100.0%    65.6%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           0      2.95     0.0%    24.6%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.17     0.0%     9.8%
+    scostamento massimo |osservata - attesa|: 34.4%
+    blocchi consecutivi dello stesso proposer: 11 osservati, 11.0 attesi
+
+    chi-quadro dell'epoca = 6.279  (df=2, critico 5% = 5.991)  -> NON compatibile
+    attesa minima per classe: 1.17   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 18.509 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 5.82   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.464     2.860     4.374         45.3%
+    m2            12     1.533     3.628     4.432         70.9%
+    m3            12     3.240     4.245     4.432         91.5%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 0.955 s   mediana 0.715 s   minimo 0.001 s   5o perc. 0.001 s
+      round con G < 100 ms: 3 su 12 (25.0%)
+      -> in questi round il margine e' dell'ordine della latenza
+         di rete: il vincitore osservato puo' differire da quello
+         designato dallo score (Prop. 5.18), e la distribuzione
+         dei proposer si appiattisce rispetto ai pesi.
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.1785       0.0000   100.9849     0.0000    1.0000
+    m2         0.7502       0.0000    11.1358     0.0000    1.0000
+    m3         0.2713       0.0000     3.7949     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 41
+    pubblicazioni del motore (da debug.log, [M]): m1=52503 @h497  m2=18080 @h497  m3=6539 @h497
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             2        3            0            1   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                2        3            0            1   tutti coincidenti
+      m2                2        3            0            1   tutti coincidenti
+      m3                2        3            0            1   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 41:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            3588
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 42  (altezze 492..503) ───────────────────────────────
+  blocchi misurati    : 12 (height 492..503)
+  intervallo fra blocchi, target = 3 s:
+    media       3.73 s     scarto vs target +0.73 s (+24.2%)
+    mediana     4.00 s
+    dev.std     1.14 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            52503      e41    68.1%
+    m2            18080      e40    23.4%
+    m3             6539      e41     8.5%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 42 vale di norma il record marcato e41, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          8     444.0      1.90   101.40   1.000       1.000       44404      44404
+    m2        26.46       1          4     128.1      0.55    64.29   1.000       1.000       12808      12808
+    m3        24.17       2          2      82.4      0.35    23.01   1.000       1.000        8243       8243
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:5,c2:3
+      m2     <- c3:2,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.8750,c2:2.3148
+      m2     <- c3:1.9852,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 14
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           7      3.02    58.3%    25.2%
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA           5      7.95    41.7%    66.3%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.02     0.0%     8.5%
+    scostamento massimo |osservata - attesa|: 33.1%
+    blocchi consecutivi dello stesso proposer: 9 osservati, 5.7 attesi
+
+    chi-quadro dell'epoca = 7.342  (df=2, critico 5% = 5.991)  -> NON compatibile
+    attesa minima per classe: 1.02   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 8.018 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 5.61   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.819     3.338     4.406         61.3%
+    m2            12     1.525     3.568     4.415         68.9%
+    m3            12     4.075     4.351     4.433         95.0%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 1.179 s   mediana 1.135 s   minimo 0.214 s   5o perc. 0.214 s
+      round con G < 100 ms: 0 su 12 (0.0%)
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         1.8995       0.0000   101.4003     0.0000    1.0000
+    m2         0.5479       0.0000    64.2930     0.0000    1.0000
+    m3         0.3526       0.0000    23.0116     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 42
+    pubblicazioni del motore (da debug.log, [M]): m1=44404 @h509  m2=12808 @h509  m3=8243 @h509
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             1        3            0            2   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 42:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            5411
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 43  (altezze 504..515) ───────────────────────────────
+  blocchi misurati    : 12 (height 504..515)
+  intervallo fra blocchi, target = 3 s:
+    media       3.73 s     scarto vs target +0.73 s (+24.2%)
+    mediana     4.00 s
+    dev.std     0.62 s
+    min/max     3.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            44404      e42    67.8%
+    m2            12808      e42    19.6%
+    m3             8243      e42    12.6%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 43 vale di norma il record marcato e42, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2         10     525.0      2.26   100.33   1.000       1.000       52503      52503
+    m2        26.46       2          5     180.8      0.78    26.22   1.000       1.000       18080      18080
+    m3        24.17       2          2      82.4      0.36    18.39   1.000       1.000           -       8243
+    ricalcolabilita' (Sez. 5.11.1): 2 esatto, 1 non pubblicato in questa epoca
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:6,c2:4
+      m2     <- c3:3,c4:2
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:1.0500,c2:3.0864
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 17
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          10      8.16    83.3%    68.0%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           2      2.62    16.7%    21.8%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.22     0.0%    10.2%
+    scostamento massimo |osservata - attesa|: 15.4%
+    blocchi consecutivi dello stesso proposer: 8 osservati, 7.9 attesi
+
+    chi-quadro dell'epoca = 1.786  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.22   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 9.638 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 5.75   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.554     3.131     4.347         54.4%
+    m2            12     1.742     4.034     4.367         84.5%
+    m3            12     3.114     4.246     4.367         91.5%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 1.258 s   mediana 1.274 s   minimo 0.103 s   5o perc. 0.103 s
+      round con G < 100 ms: 0 su 12 (0.0%)
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.2646       0.0000   100.3324     0.0000    1.0000
+    m2         0.7798       0.0000    26.2232     0.0000    1.0000
+    m3         0.3556       0.0000    18.3851     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 43
+    pubblicazioni del motore (da debug.log, [M]): m1=52503 @h521  m2=18080 @h521  m3=8243 @h521
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             2        3            0            1   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                2        3            0            1   tutti coincidenti
+      m2                2        3            0            1   tutti coincidenti
+      m3                2        3            0            1   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 43:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            3771
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 44  (altezze 516..527) ───────────────────────────────
+  blocchi misurati    : 12 (height 516..527)
+  intervallo fra blocchi, target = 3 s:
+    media       3.73 s     scarto vs target +0.73 s (+24.2%)
+    mediana     4.00 s
+    dev.std     1.14 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            52503      e43    66.6%
+    m2            18080      e43    22.9%
+    m3             8243      e42    10.5%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 44 vale di norma il record marcato e43, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          9     510.1      2.24   100.86   1.000       1.000       51006      51006
+    m2        26.46       2          6     205.3      0.90    70.55   1.000       1.000       20535      20535
+    m3        24.17       1          2      58.3      0.26    14.70   1.000       1.000        5826       5826
+    ricalcolabilita' (Sez. 5.11.1): 3 esatto
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:5,c2:4
+      m2     <- c3:3,c4:3
+      m3     <- c5:2
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:0.8750,c2:3.0864
+      m2     <- c3:2.9778,c4:2.7828
+      m3     <- c5:1.4106
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 17
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA          12      8.08   100.0%    67.3%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           0      2.52     0.0%    21.0%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      1.40     0.0%    11.7%
+    scostamento massimo |osservata - attesa|: 32.7%
+    blocchi consecutivi dello stesso proposer: 11 osservati, 11.0 attesi
+
+    chi-quadro dell'epoca = 5.824  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 1.40   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 60 blocchi) = 10.623 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 6.11   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.485     3.492     4.228         66.4%
+    m2            12     1.343     3.887     4.380         79.6%
+    m3            12     3.780     4.211     4.383         90.4%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 0.715 s   mediana 0.277 s   minimo 0.102 s   5o perc. 0.102 s
+      round con G < 100 ms: 0 su 12 (0.0%)
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         2.2415       0.0000   100.8608     0.0000    1.0000
+    m2         0.9024       0.0000    70.5539     0.0000    1.0000
+    m3         0.2561       0.0000    14.6950     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 44
+    pubblicazioni del motore (da debug.log, [M]): m1=51006 @h533  m2=20535 @h533  m3=5826 @h533
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 44:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            4982
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── Epoca 45  (altezze 528..539) ───────────────────────────────
+  blocchi misurati    : 8 (height 528..535)
+  intervallo fra blocchi, target = 3 s:
+    media       3.57 s     scarto vs target +0.57 s (+19.0%)
+    mediana     4.00 s
+    dev.std     1.18 s
+    min/max     2.00 / 5.00 s
+
+  Peso VIGENTE all'ultimo blocco dell'epoca (mappa leggibile alla punta)
+    host           peso    marca     quota
+    m1            51006      e44    65.9%
+    m2            20535      e44    26.5%
+    m3             5826      e44     7.5%
+    (la marca e' l'epoca di cui il record dichiara il peso: dentro
+     l'epoca 45 vale di norma il record marcato e44, perche' il motore
+     pubblica a epoca chiusa, dopo il margine di stabilita')
+
+  Catena del peso di QUESTA epoca (Def. 6.1-6.9)
+    host        ESG  tau_Mk   tau_clus       W_k       A_k      R_k     rho    rho(e-1)  w_k pubbl.  ricalcolo
+    m1        85.56       2          9     459.0      1.95   101.23   1.000       1.000           -      45901
+    m2        26.46       2          5     180.8      0.77    28.13   1.000       1.000           -      18080
+    m3        24.17       2          1      65.4      0.28    11.74   1.000       1.000           -       6539
+    ricalcolabilita' (Sez. 5.11.1): 3 non pubblicato in questa epoca
+    attivita' tau_i delle aziende del cluster, transazioni CONFERMATE nell'epoca:
+      m1     <- c1:6,c2:3
+      m2     <- c3:3,c4:2
+      m3     <- c5:1
+    contributi c_i = ESG_i*tau_i/kappa  (kappa = 100):
+      m1     <- c1:1.0500,c2:2.3148
+      m2     <- c3:2.9778,c4:1.8552
+      m3     <- c5:0.7053
+    Theta (attivita' di rete, somma dei soli tau delle aziende) = 15
+
+  Distribuzione dei proposer vs peso VIGENTE nell'epoca
+    host   indirizzo                                osservati    attesi    q.oss.  q.attesa
+    m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA           8      5.32   100.0%    66.5%
+    m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5           0      1.87     0.0%    23.4%
+    m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm           0      0.81     0.0%    10.1%
+    scostamento massimo |osservata - attesa|: 33.5%
+    blocchi consecutivi dello stesso proposer: 7 osservati, 7.0 attesi
+
+    chi-quadro dell'epoca = 4.026  (df=2, critico 5% = 5.991)  -> compatibile
+    attesa minima per classe: 0.81   campione sufficiente (>=5): NO
+    NB: con attesa < 5 il chi-quadro su una sola epoca NON e'
+        concludente. Con epoche di 12 blocchi e' la norma, non un
+        difetto: vale la finestra scorrevole qui sotto.
+    chi-quadro a finestra (5 epoche, 56 blocchi) = 9.320 (df=2, critico 5% = 5.991) -> NON compatibile
+    attesa minima nella finestra: 5.63   sufficiente: SI
+
+  Delay di sortition nell'epoca — banda [1.50, 4.50] s (T=3 s, delta=0.5, Dmax=1.50 s)
+    host    campioni     min s   media s     max s  pos. in banda
+    m1            12     1.664     3.045     3.924         51.5%
+    m2            12     1.589     4.022     4.376         84.1%
+    m3            12     3.292     4.081     4.383         86.0%
+    margine della timer race G = D(2)-D(1) (Def. 5.15, su 12 round):
+      media 1.181 s   mediana 1.136 s   minimo 0.155 s   5o perc. 0.155 s
+      round con G < 100 ms: 0 su 12 (0.0%)
+
+  Riconciliazione verso il treasury in questa epoca (Def. 6.7-6.8)
+    host          A_k       B(e-1)        R_k       B(e)       rho
+    m1         1.9527       0.0000   101.2306     0.0000    1.0000
+    m2         0.7691       0.0000    28.1311     0.0000    1.0000
+    m3         0.2782       0.0000    11.7357     0.0000    1.0000
+    (importi in GAS, unita' di visualizzazione della valuta nativa)
+
+  Verifica indipendente dei pesi pubblicati per l'epoca 45
+    pubblicazioni del motore (da debug.log, [M]): m1=45901 @h545  m2=18080 @h545  m3=6539 @h545
+    esito della ricomputazione indipendente, nodo per nodo (da debug.log, [M]):
+      nodo    confrontati   totali   non validi  altra epoca   esito
+      admin             3        3            0            0   tutti coincidenti
+      c1                0        0            0            0   nessun record da confrontare
+      c2                0        0            0            0   nessun record da confrontare
+      c3                0        0            0            0   nessun record da confrontare
+      c4                0        0            0            0   nessun record da confrontare
+      c5                0        0            0            0   nessun record da confrontare
+      ca                0        0            0            0   nessun record da confrontare
+      m1                3        3            0            0   tutti coincidenti
+      m2                3        3            0            0   tutti coincidenti
+      m3                3        3            0            0   tutti coincidenti
+    snapshot RPC weightverifyweights all'epoca 45:
+      non catturato. La RPC riporta solo l'ULTIMA epoca verificata,
+      quindi il verdetto per epoca esiste solo se campionato durante
+      la run (metrics/epoche/verify_epoche.jsonl, scritto da
+      role_admin.sh epoch_watch). Questa run non lo ha: la tabella
+      qui sopra, ricavata dai debug.log, resta la fonte per epoca.
+
+  Contatori diagnostici dell'epoca (dai debug.log)
+    score di sortition calcolati    36
+    seed RANDAO derivati            2695
+    (solo i contatori le cui righe di log portano un'altezza sono
+     attribuibili a un'epoca; gli altri restano nel totale di run
+     in summary.txt)
+
+── ESG certificati dal CA (statici, invariati fra le epoche) ───
+  c1     1MZ34BZBycanzV6MQpn4kGo3igKxDeCFHrm4ys   17.5
+  c2     1LB6qUDEtPSL1cXPypZpfPq4jGZRpZVJ3UzARx   77.16
+  c3     14pmjhAXKHStX1ymPpwvt7n9i412fia61DZFdB   99.26
+  c4     1TFFyiBbp1YeJiDAG9heTHahno55ikaZcom68e   92.76
+  c5     1Zf6vhjhrZjDD8A5EitQbbxXVqtZKz5YEQ5i7C   70.53
+  m1     1X6UMfyYAa2CneQRWw6ESrCuLmu9JzSVF142bA   85.56
+  m2     1EjTSBbBL4yFpTtoME9NpC8UpK1PLnzA3NnRS5   26.46
+  m3     1QgfFWVY65u3QeYVETh4jPoFqBBL2MwgpBFZvm   24.17
+
+── Adesioni ai cluster ────────────────────────────────────────
+  c1     -> cluster di m1
+  c2     -> cluster di m1
+  c3     -> cluster di m2
+  c4     -> cluster di m2
+  c5     -> cluster di m3
+  m1     -> cluster di m1
+  m2     -> cluster di m2
+  m3     -> cluster di m3
+

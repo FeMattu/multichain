@@ -1,0 +1,64 @@
+{
+  "name": "tbt10s-cont-none-5n",
+  "description": "target-block-time 10s, dorsale europea, RTT massimo ~40 ms, dumping none (f(w) = w: nessuna compressione, il peso entra tal quale nell'estrazione). 5 miner, 10 aziende generate, 2 CA, 1 admin.",
+  "seed": 42,
+  "blockchain_params_file": "config/blockchain/params-tbt10s-none.dat",
+  "topology_file": "config/topologies/continental-10n.gml",
+  "shadow": {
+    "stop_time": "auto",
+    "time_granularity": "host_native",
+    "parallelism": 0
+  },
+  "scaling": {
+    "factor": 2,
+    "ca_count": 2
+  },
+  "nodes": {
+    "miners": [
+      {
+        "id": "m1",
+        "location": "Milano",
+        "network_node_id": 0
+      },
+      {
+        "id": "m2",
+        "location": "Frankfurt",
+        "network_node_id": 1
+      },
+      {
+        "id": "m3",
+        "location": "Madrid",
+        "network_node_id": 2
+      },
+      {
+        "id": "m4",
+        "location": "Amsterdam",
+        "network_node_id": 5
+      },
+      {
+        "id": "m5",
+        "location": "Paris",
+        "network_node_id": 7
+      }
+    ],
+    "ca": [
+      {
+        "id": "ca1",
+        "location": "London",
+        "network_node_id": 8
+      },
+      {
+        "id": "ca2",
+        "location": "Warszawa",
+        "network_node_id": 6
+      }
+    ],
+    "admin": [
+      {
+        "id": "admin1",
+        "location": "Zurich",
+        "network_node_id": 3
+      }
+    ]
+  }
+}

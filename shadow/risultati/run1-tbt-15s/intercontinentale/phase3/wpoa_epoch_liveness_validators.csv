@@ -1,0 +1,34 @@
+experiment_id,area,replication_id,target_block_time,dumpfunction,malus_enabled,epoch,validator_host,validator_address,n_rounds_theoretical_argmin,n_rounds_theoretical_argmin_lost,MissedTurnRate,MissedTurnRate_note,n_rounds_won_not_argmin,blocks_won
+run1-tbt-15s,intercontinentale,1,15,none,true,6,m1,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,7,0,0.0,,1,8
+run1-tbt-15s,intercontinentale,1,15,none,true,6,m3,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,1,0,0.0,,0,1
+run1-tbt-15s,intercontinentale,1,15,none,true,6,m2,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,3,1,0.33333333,,0,2
+run1-tbt-15s,intercontinentale,1,15,none,true,7,m1,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,9,0,0.0,,0,9
+run1-tbt-15s,intercontinentale,1,15,none,true,7,m3,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run1-tbt-15s,intercontinentale,1,15,none,true,7,m2,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,3,0,0.0,,0,3
+run1-tbt-15s,intercontinentale,1,15,none,true,8,m1,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,6,0,0.0,,0,6
+run1-tbt-15s,intercontinentale,1,15,none,true,8,m3,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,3,0,0.0,,1,4
+run1-tbt-15s,intercontinentale,1,15,none,true,8,m2,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,3,1,0.33333333,,0,2
+run1-tbt-15s,intercontinentale,1,15,none,true,9,m1,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,7,0,0.0,,0,7
+run1-tbt-15s,intercontinentale,1,15,none,true,9,m3,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,3,0,0.0,,0,3
+run1-tbt-15s,intercontinentale,1,15,none,true,9,m2,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,2,0,0.0,,0,2
+run1-tbt-15s,intercontinentale,1,15,none,true,10,m1,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,7,0,0.0,,1,8
+run1-tbt-15s,intercontinentale,1,15,none,true,10,m3,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,2,0,0.0,,0,2
+run1-tbt-15s,intercontinentale,1,15,none,true,10,m2,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,3,1,0.33333333,,0,2
+run1-tbt-15s,intercontinentale,1,15,none,true,11,m1,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,7,0,0.0,,0,7
+run1-tbt-15s,intercontinentale,1,15,none,true,11,m3,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,1,0,0.0,,0,1
+run1-tbt-15s,intercontinentale,1,15,none,true,11,m2,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,4,0,0.0,,0,4
+run1-tbt-15s,intercontinentale,1,15,none,true,12,m1,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,9,0,0.0,,0,9
+run1-tbt-15s,intercontinentale,1,15,none,true,12,m3,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,2,0,0.0,,0,2
+run1-tbt-15s,intercontinentale,1,15,none,true,12,m2,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,1,0,0.0,,0,1
+run1-tbt-15s,intercontinentale,1,15,none,true,13,m1,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,4,0,0.0,,0,4
+run1-tbt-15s,intercontinentale,1,15,none,true,13,m3,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,1,1,1.0,,0,0
+run1-tbt-15s,intercontinentale,1,15,none,true,13,m2,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,7,0,0.0,,1,8
+run1-tbt-15s,intercontinentale,1,15,none,true,14,m1,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,9,0,0.0,,0,9
+run1-tbt-15s,intercontinentale,1,15,none,true,14,m3,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,1,0,0.0,,0,1
+run1-tbt-15s,intercontinentale,1,15,none,true,14,m2,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,2,0,0.0,,0,2
+run1-tbt-15s,intercontinentale,1,15,none,true,15,m1,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,3,0,0.0,,0,3
+run1-tbt-15s,intercontinentale,1,15,none,true,15,m3,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,0,0,,not computable: never the theoretical argmin in this epoch,0,0
+run1-tbt-15s,intercontinentale,1,15,none,true,15,m2,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,2,0,0.0,,0,2
+run1-tbt-15s,intercontinentale,1,15,none,true,all,m1,1BCbQWmgd57VhPC3P556KkGd4Y4x8a8CV1bddD,68,0,0.0,,2,70
+run1-tbt-15s,intercontinentale,1,15,none,true,all,m3,1MLVVG8fMGWs7VjPzEUks1PZciECtd6qf8R948,14,1,0.07142857,,1,14
+run1-tbt-15s,intercontinentale,1,15,none,true,all,m2,1PwHZnrqgjRdTWg1eAavbk64Zjg1K2K25m4v5P,30,3,0.1,,1,28

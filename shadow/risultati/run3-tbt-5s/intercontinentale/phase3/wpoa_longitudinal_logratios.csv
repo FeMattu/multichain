@@ -1,0 +1,79 @@
+experiment_id,area,replication_id,target_block_time,dumpfunction,malus_enabled,epoch,validator_i,validator_j,log_ratio_observed,log_ratio_theoretical,O_i,O_j,B,note,validator_i_host,validator_j_host
+run3-tbt-5s,intercontinentale,1,5,none,true,10,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,,0.88306136,0,2,12,not computable: a zero count in the epoch,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,10,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-1.04200602,0,10,12,not computable: a zero count in the epoch,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,10,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-1.60943791,-1.92506738,2,10,12,,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,11,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1.38629436,0.91694766,4,1,12,,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,11,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-0.55961579,-1.02836846,4,7,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,11,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-1.94591015,-1.94531612,1,7,12,,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,12,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,0.0,0.89571526,2,2,12,,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,12,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-1.38629436,-1.09558249,2,8,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,12,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-1.38629436,-1.99129775,2,8,12,,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,13,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,,0.8571845,2,0,12,not computable: a zero count in the epoch,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,13,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-1.60943791,-1.02241025,2,10,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,13,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-1.87959474,0,10,12,not computable: a zero count in the epoch,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,14,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,,1.1617414,1,0,12,not computable: a zero count in the epoch,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,14,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-2.39789527,-0.99267813,1,11,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,14,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-2.15441953,0,11,12,not computable: a zero count in the epoch,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,15,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,0.69314718,1.16112001,2,1,12,,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,15,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-1.5040774,-1.00192426,2,9,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,15,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-2.19722458,-2.16304427,1,9,12,,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,16,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,,0.9485412,5,0,12,not computable: a zero count in the epoch,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,16,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-0.33647224,-0.87397463,5,7,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,16,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-1.82251583,0,7,12,not computable: a zero count in the epoch,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,17,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,,1.10026818,4,0,12,not computable: a zero count in the epoch,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,17,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-0.69314718,-0.97969263,4,8,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,17,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-2.0799608,0,8,12,not computable: a zero count in the epoch,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,18,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,,1.11836251,5,0,12,not computable: a zero count in the epoch,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,18,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-0.33647224,-1.04580221,5,7,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,18,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-2.16416472,0,7,12,not computable: a zero count in the epoch,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,19,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,0.0,0.84163313,2,2,12,,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,19,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-1.38629436,-0.9897255,2,8,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,19,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-1.38629436,-1.83135863,2,8,12,,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,20,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,0.0,0.94425443,2,2,12,,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,20,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-1.38629436,-1.03066116,2,8,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,20,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-1.38629436,-1.97491559,2,8,12,,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,21,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,,1.0835492,2,0,12,not computable: a zero count in the epoch,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,21,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-1.60943791,-1.04108654,2,10,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,21,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-2.12463574,0,10,12,not computable: a zero count in the epoch,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,22,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,,0.94775506,3,0,12,not computable: a zero count in the epoch,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,22,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-1.09861229,-0.9896876,3,9,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,22,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-1.93744266,0,9,12,not computable: a zero count in the epoch,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,23,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,,0.96021697,5,0,12,not computable: a zero count in the epoch,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,23,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-0.33647224,-0.94187347,5,7,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,23,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-1.90209044,0,7,12,not computable: a zero count in the epoch,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,24,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,,1.05981883,1,0,12,not computable: a zero count in the epoch,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,24,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-2.39789527,-0.92715878,1,11,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,24,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-1.98697761,0,11,12,not computable: a zero count in the epoch,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,25,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,,0.94859209,0,1,12,not computable: a zero count in the epoch,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,25,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-1.00536639,0,11,12,not computable: a zero count in the epoch,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,25,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-2.39789527,-1.95395848,1,11,12,,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,26,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,,1.06365628,2,0,12,not computable: a zero count in the epoch,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,26,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-1.60943791,-0.94880418,2,10,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,26,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-2.01246046,0,10,12,not computable: a zero count in the epoch,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,27,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,0.69314718,1.05831878,2,1,12,,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,27,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-1.5040774,-0.92187901,2,9,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,27,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-2.19722458,-1.98019779,1,9,12,,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,28,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,,0.91694766,0,0,12,not computable: a zero count in the epoch,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,28,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-1.02836846,0,12,12,not computable: a zero count in the epoch,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,28,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-1.94531612,0,12,12,not computable: a zero count in the epoch,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,29,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,,0.89447263,0,0,12,not computable: a zero count in the epoch,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,29,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-1.08560581,0,12,12,not computable: a zero count in the epoch,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,29,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-1.98007844,0,12,12,not computable: a zero count in the epoch,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,30,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,0.0,0.81424246,1,1,12,,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,30,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-2.30258509,-1.0512757,1,10,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,30,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-2.30258509,-1.86551816,1,10,12,,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,31,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,,1.15127506,0,0,12,not computable: a zero count in the epoch,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,31,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-0.96269083,0,12,12,not computable: a zero count in the epoch,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,31,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-2.11396589,0,12,12,not computable: a zero count in the epoch,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,32,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,0.0,1.23857974,1,1,12,,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,32,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-2.30258509,-0.93652435,1,10,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,32,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-2.30258509,-2.17510409,1,10,12,,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,33,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,,0.90484101,0,0,12,not computable: a zero count in the epoch,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,33,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-1.03663849,0,12,12,not computable: a zero count in the epoch,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,33,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,,-1.9414795,0,12,12,not computable: a zero count in the epoch,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,34,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1.60943791,1.09255017,5,1,12,,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,34,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-0.18232156,-1.01097258,5,6,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,34,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-1.79175947,-2.10352275,1,6,12,,m3,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,35,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,0.40546511,1.24155733,3,2,12,,m2,m3
+run3-tbt-5s,intercontinentale,1,5,none,true,35,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-0.84729786,-0.93217738,3,7,12,,m2,m1
+run3-tbt-5s,intercontinentale,1,5,none,true,35,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,-1.25276297,-2.17373471,2,7,12,,m3,m1

@@ -1,0 +1,25 @@
+experiment_id,area,replication_id,target_block_time,dumpfunction,malus_enabled,epoch,validator_i,validator_j,log_ratio_observed,log_ratio_theoretical,O_i,O_j,B,note,validator_i_host,validator_j_host
+run1-tbt-15s,nazionale,1,15,none,true,7,14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj,17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU,,-1.3540429,0,2,12,not computable: a zero count in the epoch,m3,m2
+run1-tbt-15s,nazionale,1,15,none,true,7,14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj,19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi,,-2.01008411,0,10,12,not computable: a zero count in the epoch,m3,m1
+run1-tbt-15s,nazionale,1,15,none,true,7,17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU,19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi,-1.60943791,-0.65604121,2,10,12,,m2,m1
+run1-tbt-15s,nazionale,1,15,none,true,8,14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj,17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU,,-1.20636303,0,4,12,not computable: a zero count in the epoch,m3,m2
+run1-tbt-15s,nazionale,1,15,none,true,8,14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj,19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi,,-1.90088787,0,8,12,not computable: a zero count in the epoch,m3,m1
+run1-tbt-15s,nazionale,1,15,none,true,8,17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU,19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi,-0.69314718,-0.69452483,4,8,12,,m2,m1
+run1-tbt-15s,nazionale,1,15,none,true,9,14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj,17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU,0.69314718,-1.20089633,2,1,12,,m3,m2
+run1-tbt-15s,nazionale,1,15,none,true,9,14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj,19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi,-1.5040774,-1.89894629,2,9,12,,m3,m1
+run1-tbt-15s,nazionale,1,15,none,true,9,17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU,19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi,-2.19722458,-0.69804996,1,9,12,,m2,m1
+run1-tbt-15s,nazionale,1,15,none,true,10,14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj,17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU,,-1.26986074,0,4,12,not computable: a zero count in the epoch,m3,m2
+run1-tbt-15s,nazionale,1,15,none,true,10,14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj,19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi,,-1.93390741,0,8,12,not computable: a zero count in the epoch,m3,m1
+run1-tbt-15s,nazionale,1,15,none,true,10,17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU,19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi,-0.69314718,-0.66404667,4,8,12,,m2,m1
+run1-tbt-15s,nazionale,1,15,none,true,11,14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj,17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU,-0.40546511,-1.33719023,2,3,12,,m3,m2
+run1-tbt-15s,nazionale,1,15,none,true,11,14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj,19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi,-1.25276297,-2.03534669,2,7,12,,m3,m1
+run1-tbt-15s,nazionale,1,15,none,true,11,17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU,19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi,-0.84729786,-0.69815646,3,7,12,,m2,m1
+run1-tbt-15s,nazionale,1,15,none,true,12,14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj,17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU,,-1.32493662,0,4,12,not computable: a zero count in the epoch,m3,m2
+run1-tbt-15s,nazionale,1,15,none,true,12,14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj,19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi,,-2.04193363,0,8,12,not computable: a zero count in the epoch,m3,m1
+run1-tbt-15s,nazionale,1,15,none,true,12,17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU,19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi,-0.69314718,-0.71699701,4,8,12,,m2,m1
+run1-tbt-15s,nazionale,1,15,none,true,13,14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj,17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU,-0.69314718,-1.23523576,2,4,12,,m3,m2
+run1-tbt-15s,nazionale,1,15,none,true,13,14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj,19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi,-1.09861229,-1.91542539,2,6,12,,m3,m1
+run1-tbt-15s,nazionale,1,15,none,true,13,17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU,19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi,-0.40546511,-0.68018963,4,6,12,,m2,m1
+run1-tbt-15s,nazionale,1,15,none,true,14,14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj,17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU,-1.60943791,-1.29731722,1,5,12,,m3,m2
+run1-tbt-15s,nazionale,1,15,none,true,14,14KnmFNEyURiePokvh2K6DsJopgbgjeyn5WeVj,19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi,-1.79175947,-1.99357508,1,6,12,,m3,m1
+run1-tbt-15s,nazionale,1,15,none,true,14,17Sjr3aPX8Bmfo7avGvib3ZJUxrz8u9aL8S8fU,19yJUVFMutzSwj7ZAFvNZCniykq7siRUGdBDmi,-0.18232156,-0.69625786,5,6,12,,m2,m1

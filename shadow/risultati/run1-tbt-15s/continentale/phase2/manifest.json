@@ -1,0 +1,240 @@
+{
+ "experiment_id": "run1-tbt-15s",
+ "replication_id": 1,
+ "area": "continentale",
+ "target_block_time": 15,
+ "dumpfunction": "none",
+ "malus_enabled": "true",
+ "weight_epoch_length": 12,
+ "run_id": "run1-tbt-15s/continentale",
+ "setup_blocks": 60,
+ "final_height": 169,
+ "params": {
+  "chain_name": "poesiacontinentale",
+  "target_block_time": "15",
+  "setup_first_blocks": "60",
+  "mining_diversity": "0.0",
+  "mining_turnover": "0.5",
+  "weight_epoch_length": "12",
+  "weight_kappa": "100",
+  "weight_alpha": "0.2",
+  "weight_lambda": "0.5",
+  "wpoa_sortition_delta": "0.5",
+  "wpoa_sortition_lambda": "0.2",
+  "wpoa_randao_lookback": "1",
+  "dump_function": "none",
+  "enable_wpoa": "true",
+  "enable_wpoa_selection": "true",
+  "enable_wpoa_sortition": "true",
+  "enable_wpoa_malus": "true",
+  "enable_weight_engine": "true",
+  "minimum_relay_fee": "20000000",
+  "first_block_reward": "100000000000000",
+  "weight_treasury_address": "18QrmhtdHAfw8gknT5hxBStfGY63AhuQZCSDcg",
+  "wpoa_malus_mu": "0.5",
+  "wpoa_malus_max": "4",
+  "wpoa_malus_equiv_points": "4",
+  "wpoa_malus_delay_points": "0.25",
+  "wpoa_malus_selfwrite_points": "[null]",
+  "wpoa_malus_badweight_points": "[null]",
+  "native_currency_multiple": 100000000.0,
+  "initial_block_reward": "0"
+ },
+ "startup_params": {
+  "sortition_delta": "0.5",
+  "sortition_lambda": "0.2",
+  "dump_function": "none",
+  "randao_lookback": "1",
+  "malus_mu": "0.5",
+  "malus_max": "4",
+  "malus_equiv_points": "4",
+  "malus_delay_points": "0.25",
+  "malus_selfwrite_points": "1",
+  "malus_badweight_points": "2",
+  "weight_epoch_length": "12",
+  "weight_kappa": "100",
+  "weight_alpha": "0.2",
+  "weight_lambda": "0.5",
+  "weight_treasury_address": "18QrmhtdHAfw8gknT5hxBStfGY63AhuQZCSDcg"
+ },
+ "shadow": {
+  "general_seed": "60828",
+  "poesia_rng_seed": "20260828",
+  "gml": "/home/mattu/multichain/shadow/continentale/topologia_myledger_continentale.gml",
+  "level_json": "/home/mattu/multichain/shadow/config/levels/continentale.json",
+  "rtt_max_between_miners_ms": 21.242,
+  "rtt_max_all_hosts_ms": 44.738
+ },
+ "miners": [
+  "m1",
+  "m2",
+  "m3"
+ ],
+ "epochs": [
+  {
+   "epoch": 1,
+   "start_height": 0,
+   "end_height": 11,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 2,
+   "start_height": 12,
+   "end_height": 23,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 3,
+   "start_height": 24,
+   "end_height": 35,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 4,
+   "start_height": 36,
+   "end_height": 47,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 5,
+   "start_height": 48,
+   "end_height": 59,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 6,
+   "start_height": 60,
+   "end_height": 71,
+   "buried": true,
+   "fully_measured": false,
+   "partially_in_setup": true
+  },
+  {
+   "epoch": 7,
+   "start_height": 72,
+   "end_height": 83,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 8,
+   "start_height": 84,
+   "end_height": 95,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 9,
+   "start_height": 96,
+   "end_height": 107,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 10,
+   "start_height": 108,
+   "end_height": 119,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 11,
+   "start_height": 120,
+   "end_height": 131,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 12,
+   "start_height": 132,
+   "end_height": 143,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 13,
+   "start_height": 144,
+   "end_height": 155,
+   "buried": true,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 14,
+   "start_height": 156,
+   "end_height": 167,
+   "buried": false,
+   "fully_measured": true,
+   "partially_in_setup": false
+  },
+  {
+   "epoch": 15,
+   "start_height": 168,
+   "end_height": 179,
+   "buried": false,
+   "fully_measured": true,
+   "partially_in_setup": false
+  }
+ ],
+ "summary": {
+  "n_measured_blocks": 109,
+  "n_rounds_with_scores": 109,
+  "n_rounds_all_candidates_logged": 109,
+  "n_inversions": 8,
+  "inversion_rate": 0.073394,
+  "n_time_bar_violations": 0,
+  "max_abs_delay_mismatch_s": 0.000554,
+  "delay_recompute_tolerance_s": 0.0015,
+  "n_candidate_rows_delay_mismatch": 0,
+  "n_rounds_delay_mismatch": 0,
+  "rounds_delay_mismatch": [],
+  "n_rounds_phi_mismatch": 0,
+  "n_rounds_argmin_delay_vs_score_disagree": 0,
+  "n_forks": 5,
+  "n_competing_blocks": 5,
+  "n_rejects": 0,
+  "n_weight_recompute_mismatches": 0,
+  "n_weight_rows": 45,
+  "malus_registry_records": 0,
+  "measured_epochs": [
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15
+  ],
+  "max_epoch": 15
+ },
+ "row_counts": {
+  "candidates_long": 327,
+  "round_level": 109,
+  "epoch_level_wpoa": 30,
+  "epoch_level_weight_engine": 45,
+  "weight_engine_verification": 14,
+  "balance_by_height": 795,
+  "malus_epoch": 45
+ },
+ "warnings": [],
+ "phase": 2
+}

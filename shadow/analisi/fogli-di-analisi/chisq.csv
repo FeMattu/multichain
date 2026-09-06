@@ -1,0 +1,21 @@
+run_id,livello,tbt,chi2_summary,df_summary,critico_summary,compatibile_summary,verdetto_summary,chi2_ricalcolato,df,critico_5pct,compatibile_ricalcolato,min_attesa,campione_sufficiente,scarto_ricalcolo,p_value
+run1-tbt-15s/continentale,continentale,15,1.729,2,5.991,1,compatibile con la selezione pesata,1.7289,2,5.991,1,9.98,1,0.0001,0.421283
+run1-tbt-15s/intercontinentale,intercontinentale,15,3.54,2,5.991,1,compatibile con la selezione pesata,3.54,2,5.991,1,9.49,1,0.0,0.170333
+run1-tbt-15s/nazionale,nazionale,15,0.499,2,5.991,1,compatibile con la selezione pesata,0.4988,2,5.991,1,9.72,1,0.0002,0.779268
+run1-tbt-15s/regionale,regionale,15,2.146,2,5.991,1,compatibile con la selezione pesata,2.1458,2,5.991,1,9.21,1,0.0002,0.342015
+run2-tbt-10s/continentale,continentale,10,0.206,2,5.991,1,compatibile con la selezione pesata,0.2056,2,5.991,1,19.0,1,0.0004,0.902307
+run2-tbt-10s/intercontinentale,intercontinentale,10,5.51,2,5.991,1,compatibile con la selezione pesata,5.5097,2,5.991,1,20.11,1,0.0003,0.063619
+run2-tbt-10s/nazionale,nazionale,10,2.764,2,5.991,1,compatibile con la selezione pesata,2.7641,2,5.991,1,20.88,1,0.0001,0.251063
+run2-tbt-10s/regionale,regionale,10,12.625,2,5.991,0,NON compatibile con la selezione pesata,12.6247,2,5.991,0,20.74,1,0.0003,0.001814
+run3-tbt-5s/continentale,continentale,5,6.563,2,5.991,0,NON compatibile con la selezione pesata,6.5626,2,5.991,0,30.24,1,0.0004,0.037579
+run3-tbt-5s/intercontinentale,intercontinentale,5,20.305,2,5.991,0,NON compatibile con la selezione pesata,20.3047,2,5.991,0,30.33,1,0.0003,3.9e-05
+run3-tbt-5s/nazionale,nazionale,5,11.312,2,5.991,0,NON compatibile con la selezione pesata,11.3119,2,5.991,0,33.12,1,0.0001,0.003497
+run3-tbt-5s/regionale,regionale,5,22.351,2,5.991,0,NON compatibile con la selezione pesata,22.3508,2,5.991,0,29.19,1,0.0002,1.4e-05
+run4-tbt-3s/continentale,continentale,3,13.518,2,5.991,0,NON compatibile con la selezione pesata,13.518,2,5.991,0,36.44,1,0.0,0.00116
+run4-tbt-3s/intercontinentale,intercontinentale,3,48.482,2,5.991,0,NON compatibile con la selezione pesata,48.4821,2,5.991,0,29.44,1,0.0001,0.0
+run4-tbt-3s/nazionale,nazionale,3,21.187,2,5.991,0,NON compatibile con la selezione pesata,21.1868,2,5.991,0,44.87,1,0.0002,2.5e-05
+run4-tbt-3s/regionale,regionale,3,10.938,2,5.991,0,NON compatibile con la selezione pesata,10.9376,2,5.991,0,29.51,1,0.0004,0.004216
+run5-tbt-2s/continentale,continentale,2,16.496,2,5.991,0,NON compatibile con la selezione pesata,16.4963,2,5.991,0,57.55,1,0.0003,0.000262
+run5-tbt-2s/intercontinentale,intercontinentale,2,50.77,2,5.991,0,NON compatibile con la selezione pesata,50.7704,2,5.991,0,68.32,1,0.0004,0.0
+run5-tbt-2s/nazionale,nazionale,2,35.286,2,5.991,0,NON compatibile con la selezione pesata,35.286,2,5.991,0,33.86,1,0.0,0.0
+run5-tbt-2s/regionale,regionale,2,24.758,2,5.991,0,NON compatibile con la selezione pesata,24.758,2,5.991,0,39.06,1,0.0,4e-06

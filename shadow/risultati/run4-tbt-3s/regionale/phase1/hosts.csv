@@ -1,0 +1,11 @@
+host,address,role,cluster_head_host,esg,gml_node_id,label,lat,lon
+admin,,admin,,,7,Modena,44.6471,10.9252
+c1,14SymtvjoTZsyNvK9hmhZXPizVBCkbRqbkLBte,company,m1,17.5,3,Pisa,43.7228,10.4017
+c2,1NANoPBR8wpgcbQn9rF3rafBCqk3Ge8FZyUyFo,company,m1,77.16,4,Siena,43.3188,11.3308
+c3,13HRhqN6skbEU5KGpLtLoZtwjN76WMQ1iMUaMB,company,m2,99.26,5,La_Spezia,44.1025,9.8241
+c4,1YdH7mJHbFr7JsSZFQrDKgWA2WQofB6BE4jWN6,company,m2,92.76,6,Savona,44.309,8.4772
+c5,1RXZQ2pkeED1MeS3kxqEnJDMNAhSdezJkkp58U,company,m3,70.53,9,Ravenna,44.4184,12.2035
+ca,,ca,,,8,Parma,44.8015,10.3279
+m1,1LDi4AMPpyKL7zUKtJHfjBPmNqTCR7cePZa1hk,miner,m1,85.56,0,HUB_TOSCANA_Firenze,43.7696,11.2558
+m2,1ZizoV8be5qn4x2Uk4tmToQ9Usx1nqZaxZUHs,miner,m2,26.46,1,HUB_LIGURIA_Genova,44.4056,8.9463
+m3,1Fvwvr9t6JbW7AevoxRSprbvz8VvNC6RQrjo4j,miner,m3,24.17,2,HUB_EMILIAROMAGNA_Bologna,44.4949,11.3426

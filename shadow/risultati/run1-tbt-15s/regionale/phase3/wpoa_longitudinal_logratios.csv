@@ -1,0 +1,25 @@
+experiment_id,area,replication_id,target_block_time,dumpfunction,malus_enabled,epoch,validator_i,validator_j,log_ratio_observed,log_ratio_theoretical,O_i,O_j,B,note,validator_i_host,validator_j_host
+run1-tbt-15s,regionale,1,15,none,true,7,126zpQGvcdYaSuvkAvrpLoXoNrPtK4JEbekAiJ,1QfNfpZhwfH6CM4ixrSJgDoDJhiRFdtubEjpYo,,-1.34769031,0,0,12,not computable: a zero count in the epoch,m3,m2
+run1-tbt-15s,regionale,1,15,none,true,7,126zpQGvcdYaSuvkAvrpLoXoNrPtK4JEbekAiJ,1YLDd55XmgLpCAy6ncxQKNEsQ8HSppoxHySYBe,,-2.02788061,0,12,12,not computable: a zero count in the epoch,m3,m1
+run1-tbt-15s,regionale,1,15,none,true,7,1QfNfpZhwfH6CM4ixrSJgDoDJhiRFdtubEjpYo,1YLDd55XmgLpCAy6ncxQKNEsQ8HSppoxHySYBe,,-0.68019031,0,12,12,not computable: a zero count in the epoch,m2,m1
+run1-tbt-15s,regionale,1,15,none,true,8,126zpQGvcdYaSuvkAvrpLoXoNrPtK4JEbekAiJ,1QfNfpZhwfH6CM4ixrSJgDoDJhiRFdtubEjpYo,-1.38629436,-1.27397847,1,4,12,,m3,m2
+run1-tbt-15s,regionale,1,15,none,true,8,126zpQGvcdYaSuvkAvrpLoXoNrPtK4JEbekAiJ,1YLDd55XmgLpCAy6ncxQKNEsQ8HSppoxHySYBe,-1.94591015,-1.99876739,1,7,12,,m3,m1
+run1-tbt-15s,regionale,1,15,none,true,8,1QfNfpZhwfH6CM4ixrSJgDoDJhiRFdtubEjpYo,1YLDd55XmgLpCAy6ncxQKNEsQ8HSppoxHySYBe,-0.55961579,-0.72478892,4,7,12,,m2,m1
+run1-tbt-15s,regionale,1,15,none,true,9,126zpQGvcdYaSuvkAvrpLoXoNrPtK4JEbekAiJ,1QfNfpZhwfH6CM4ixrSJgDoDJhiRFdtubEjpYo,0.0,-1.20334632,1,1,12,,m3,m2
+run1-tbt-15s,regionale,1,15,none,true,9,126zpQGvcdYaSuvkAvrpLoXoNrPtK4JEbekAiJ,1YLDd55XmgLpCAy6ncxQKNEsQ8HSppoxHySYBe,-2.30258509,-1.93628297,1,10,12,,m3,m1
+run1-tbt-15s,regionale,1,15,none,true,9,1QfNfpZhwfH6CM4ixrSJgDoDJhiRFdtubEjpYo,1YLDd55XmgLpCAy6ncxQKNEsQ8HSppoxHySYBe,-2.30258509,-0.73293665,1,10,12,,m2,m1
+run1-tbt-15s,regionale,1,15,none,true,10,126zpQGvcdYaSuvkAvrpLoXoNrPtK4JEbekAiJ,1QfNfpZhwfH6CM4ixrSJgDoDJhiRFdtubEjpYo,,-1.31490484,0,6,12,not computable: a zero count in the epoch,m3,m2
+run1-tbt-15s,regionale,1,15,none,true,10,126zpQGvcdYaSuvkAvrpLoXoNrPtK4JEbekAiJ,1YLDd55XmgLpCAy6ncxQKNEsQ8HSppoxHySYBe,,-1.99235617,0,6,12,not computable: a zero count in the epoch,m3,m1
+run1-tbt-15s,regionale,1,15,none,true,10,1QfNfpZhwfH6CM4ixrSJgDoDJhiRFdtubEjpYo,1YLDd55XmgLpCAy6ncxQKNEsQ8HSppoxHySYBe,0.0,-0.67745134,6,6,12,,m2,m1
+run1-tbt-15s,regionale,1,15,none,true,11,126zpQGvcdYaSuvkAvrpLoXoNrPtK4JEbekAiJ,1QfNfpZhwfH6CM4ixrSJgDoDJhiRFdtubEjpYo,-0.91629073,-1.35288728,2,5,12,,m3,m2
+run1-tbt-15s,regionale,1,15,none,true,11,126zpQGvcdYaSuvkAvrpLoXoNrPtK4JEbekAiJ,1YLDd55XmgLpCAy6ncxQKNEsQ8HSppoxHySYBe,-0.91629073,-2.03721113,2,5,12,,m3,m1
+run1-tbt-15s,regionale,1,15,none,true,11,1QfNfpZhwfH6CM4ixrSJgDoDJhiRFdtubEjpYo,1YLDd55XmgLpCAy6ncxQKNEsQ8HSppoxHySYBe,0.0,-0.68432385,5,5,12,,m2,m1
+run1-tbt-15s,regionale,1,15,none,true,12,126zpQGvcdYaSuvkAvrpLoXoNrPtK4JEbekAiJ,1QfNfpZhwfH6CM4ixrSJgDoDJhiRFdtubEjpYo,-1.38629436,-1.23363822,1,4,12,,m3,m2
+run1-tbt-15s,regionale,1,15,none,true,12,126zpQGvcdYaSuvkAvrpLoXoNrPtK4JEbekAiJ,1YLDd55XmgLpCAy6ncxQKNEsQ8HSppoxHySYBe,-1.94591015,-1.93316821,1,7,12,,m3,m1
+run1-tbt-15s,regionale,1,15,none,true,12,1QfNfpZhwfH6CM4ixrSJgDoDJhiRFdtubEjpYo,1YLDd55XmgLpCAy6ncxQKNEsQ8HSppoxHySYBe,-0.55961579,-0.69952999,4,7,12,,m2,m1
+run1-tbt-15s,regionale,1,15,none,true,13,126zpQGvcdYaSuvkAvrpLoXoNrPtK4JEbekAiJ,1QfNfpZhwfH6CM4ixrSJgDoDJhiRFdtubEjpYo,-0.40546511,-1.22120857,2,3,12,,m3,m2
+run1-tbt-15s,regionale,1,15,none,true,13,126zpQGvcdYaSuvkAvrpLoXoNrPtK4JEbekAiJ,1YLDd55XmgLpCAy6ncxQKNEsQ8HSppoxHySYBe,-1.25276297,-1.96116393,2,7,12,,m3,m1
+run1-tbt-15s,regionale,1,15,none,true,13,1QfNfpZhwfH6CM4ixrSJgDoDJhiRFdtubEjpYo,1YLDd55XmgLpCAy6ncxQKNEsQ8HSppoxHySYBe,-0.84729786,-0.73995537,3,7,12,,m2,m1
+run1-tbt-15s,regionale,1,15,none,true,14,126zpQGvcdYaSuvkAvrpLoXoNrPtK4JEbekAiJ,1QfNfpZhwfH6CM4ixrSJgDoDJhiRFdtubEjpYo,,-1.34191943,1,0,12,not computable: a zero count in the epoch,m3,m2
+run1-tbt-15s,regionale,1,15,none,true,14,126zpQGvcdYaSuvkAvrpLoXoNrPtK4JEbekAiJ,1YLDd55XmgLpCAy6ncxQKNEsQ8HSppoxHySYBe,-2.39789527,-2.04959554,1,11,12,,m3,m1
+run1-tbt-15s,regionale,1,15,none,true,14,1QfNfpZhwfH6CM4ixrSJgDoDJhiRFdtubEjpYo,1YLDd55XmgLpCAy6ncxQKNEsQ8HSppoxHySYBe,,-0.70767611,0,11,12,not computable: a zero count in the epoch,m2,m1

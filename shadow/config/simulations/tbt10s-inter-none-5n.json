@@ -1,0 +1,64 @@
+{
+  "name": "tbt10s-inter-none-5n",
+  "description": "target-block-time 10s, dorsale a cinque continenti, RTT massimo ~407 ms, dumping none (f(w) = w: nessuna compressione, il peso entra tal quale nell'estrazione). 5 miner, 10 aziende generate, 2 CA, 1 admin.",
+  "seed": 42,
+  "blockchain_params_file": "config/blockchain/params-tbt10s-none.dat",
+  "topology_file": "config/topologies/intercontinental-global-10n.gml",
+  "shadow": {
+    "stop_time": "auto",
+    "time_granularity": "host_native",
+    "parallelism": 0
+  },
+  "scaling": {
+    "factor": 2,
+    "ca_count": 2
+  },
+  "nodes": {
+    "miners": [
+      {
+        "id": "m1",
+        "location": "Milano",
+        "network_node_id": 0
+      },
+      {
+        "id": "m2",
+        "location": "Madrid",
+        "network_node_id": 1
+      },
+      {
+        "id": "m3",
+        "location": "New York",
+        "network_node_id": 2
+      },
+      {
+        "id": "m4",
+        "location": "Singapore",
+        "network_node_id": 3
+      },
+      {
+        "id": "m5",
+        "location": "Sao Paulo",
+        "network_node_id": 4
+      }
+    ],
+    "ca": [
+      {
+        "id": "ca1",
+        "location": "Frankfurt",
+        "network_node_id": 5
+      },
+      {
+        "id": "ca2",
+        "location": "Toronto",
+        "network_node_id": 8
+      }
+    ],
+    "admin": [
+      {
+        "id": "admin1",
+        "location": "Amsterdam",
+        "network_node_id": 6
+      }
+    ]
+  }
+}

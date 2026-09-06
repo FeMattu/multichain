@@ -1,0 +1,11 @@
+host,address,role,cluster_head_host,esg,gml_node_id,label,lat,lon
+admin,,admin,,,7,Paris,48.8566,2.3522
+c1,1ESxJuPreq5n4ajdCVe721fC6537dAAjkNv6JT,company,m1,17.5,3,Zurich,47.3769,8.5417
+c2,1HeU7vw9ZRKhJuJP3bGUDf7WC1thiW7MqxU5gL,company,m1,77.16,4,Marseille,43.2965,5.3698
+c3,1Atoq5b2CCV9JgRDWGbGbZE6tad9Ygdbkamw7L,company,m2,99.26,5,Amsterdam,52.3676,4.9041
+c4,1b7ke8bvGbq9gQxvE3o7PyUM6SQwo6a4xa8Kym,company,m2,92.76,6,Warszawa,52.2297,21.0122
+c5,1DAhaHzyUhToVmbabUa4yPFCVCfvdsUZiEM56M,company,m3,70.53,9,Toronto,43.6532,-79.3832
+ca,,ca,,,8,London,51.5074,-0.1278
+m1,1ihctmEdJFVpXYNx7B1rbP9ALaeCCZpNVWv4q,miner,m1,85.56,0,HUB_IT_Milano,45.4642,9.19
+m2,1MHYudquDYbqcfKFeiPme4REV3zEevG9hz5JMm,miner,m2,26.46,1,HUB_DE_Frankfurt,50.1109,8.6821
+m3,1azp6DNJXJxktRDqVLpMUDiVHKGQQTmFUsTbZR,miner,m3,24.17,2,HUB_US_New_York,40.7128,-74.006
