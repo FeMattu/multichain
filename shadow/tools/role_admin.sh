@@ -33,6 +33,13 @@ PHASE="${1:-grant}"
 IP="$POESIA_IP"
 MINERS="${POESIA_MINERS:-m1 m2 m3}"
 COMPANIES="${POESIA_COMPANIES:-c1 c2 c3 c4 c5}"
+# Le CA sono da 1 a 3 (vincolo di config/simulation.schema.json). Il default a
+# host singolo 'ca' conserva il comportamento dei quattro livelli storici, che
+# non passano POESIA_CAS.
+CAS="${POESIA_CAS:-ca}"
+# Nome dell'host amministratore: nei livelli storici e' letteralmente 'admin',
+# nei descrittori di simulazione lo decide il campo nodes.admin[0].id.
+ADMIN_HOST="${POESIA_ADMIN:-admin}"
 GAS_COMPANY="${POESIA_GAS_COMPANY:-100}"     # dotazione iniziale azienda
 GAS_MINER="${POESIA_GAS_MINER:-50}"          # fondo cassa miner (per riconciliare)
 GAS_THRESHOLD="${POESIA_GAS_THRESHOLD:-20}"  # soglia sotto cui si rifornisce
@@ -53,14 +60,14 @@ grant_one() {   # grant_one <addr> <permessi>
 do_grant() {
     wait_rpc "$IP" 600 || exit 1
     local own; own="$(rpc_result "$IP" getaddresses | grep -oE '[A-Za-z0-9]{30,40}' | head -n1)"
-    echo "$own" > "$SHARED/admin.addr"
+    echo "$own" > "$SHARED/$ADMIN_HOST.addr"
     log "indirizzo admin (Apuana SB): $own"
 
     # Attende che tutti i nodi abbiano depositato il proprio indirizzo.
     local t=0 missing
     while [ "$t" -lt 300 ]; do
         missing=""
-        for h in $MINERS $COMPANIES ca; do
+        for h in $MINERS $COMPANIES $CAS; do
             [ -s "$SHARED/$h.addr" ] || missing="$missing $h"
         done
         [ -z "$missing" ] && break
@@ -72,7 +79,7 @@ do_grant() {
     for h in $MINERS; do
         grant_one "$(addr_of "$h")" "connect,send,receive,mine"
     done
-    for h in $COMPANIES ca; do
+    for h in $COMPANIES $CAS; do
         grant_one "$(addr_of "$h")" "connect,send,receive"
     done
 
@@ -109,8 +116,10 @@ do_grant() {
     # --- ruolo di Certification Authority ------------------------------------
     # high1 e' il permesso custom che porta il ruolo di CA (weight_authorization.h).
     # NON e' implicito nell'essere amministratore: va delegato esplicitamente.
-    grant_one "$(addr_of ca)" "high1"
-    grant_one "$(addr_of ca)" "weight-engine-esg.write"
+    for h in $CAS; do
+        grant_one "$(addr_of "$h")" "high1"
+        grant_one "$(addr_of "$h")" "weight-engine-esg.write"
+    done
 
     # --- treasury della riconciliazione ---------------------------------------
     if [ -n "${POESIA_TREASURY:-}" ]; then
@@ -135,7 +144,7 @@ do_grant() {
             csv gas_transfers.csv "$(rpc_result "$IP" getblockcount),init,$h,$GAS_COMPANY"
         fi
     done
-    for h in $MINERS ca; do
+    for h in $MINERS $CAS; do
         if rpc_ok "$IP" send "[\"$(addr_of "$h")\",$GAS_MINER]"; then
             log "inviati $GAS_MINER GAS a $h"
             csv gas_transfers.csv "$(rpc_result "$IP" getblockcount),init,$h,$GAS_MINER"
@@ -151,7 +160,7 @@ do_refill() {
     while true; do
         local h bal height
         height="$(rpc_result "$IP" getblockcount)"
-        for h in $COMPANIES $MINERS ca; do
+        for h in $COMPANIES $MINERS $CAS; do
             local ip_var="POESIA_IP_${h}"
             local nip="${!ip_var:-}"
             [ -z "$nip" ] && continue
@@ -238,7 +247,7 @@ campiona_epoca() {
     # 2. stato per nodo: un fork riassorbito prima della fine run non
     #    lascerebbe altra traccia in node_state.csv, che e' un'istantanea finale.
     local hh
-    for hh in admin $MINERS $COMPANIES ca; do
+    for hh in $ADMIN_HOST $MINERS $COMPANIES $CAS; do
         local ip_var="POESIA_IP_${hh}" nip
         nip="${!ip_var:-}"
         [ -z "$nip" ] && continue
@@ -284,7 +293,7 @@ do_snapshot() {
     log "hash di riferimento confrontato all'altezza $DEEP_HEIGHT"
     csvh node_state.csv "host,height,besthash,hash_a_${DEEP_HEIGHT},peers,balance"
     local hh
-    for hh in admin $MINERS $COMPANIES ca; do
+    for hh in $ADMIN_HOST $MINERS $COMPANIES $CAS; do
         local ip_var="POESIA_IP_${hh}" nip
         nip="${!ip_var:-}"
         [ -z "$nip" ] && continue

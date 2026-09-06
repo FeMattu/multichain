@@ -17,7 +17,7 @@ ADDRESS_CHECKSUM_VALUE=303257e8
 WPOA_SORTITION_DELTA=0.5      # Delta_max = delta * target-block-time
 WPOA_SORTITION_LAMBDA=0.2     # guadagno della retroazione globale Phi
 WPOA_RANDAO_LOOKBACK=1        # k nel seed H(R_tot[n-k] || h[n] || n+1)
-WPOA_DUMPFUNCTION=none        # smorzamento anti-balena: none | sqrt | log
+WPOA_DUMPFUNCTION=sqrt        # smorzamento anti-balena: none | sqrt | log
 ENABLE_WPOA_MALUS=1           # inerte (Psi=1) senza violazioni provate
 
 # --- weight engine ----------------------------------------------------------

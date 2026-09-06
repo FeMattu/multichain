@@ -15,6 +15,16 @@ tutto il resto e' tenuto fisso apposta.
 
 (RTT end-to-end peggiore fra due host, misurato da `check_topology.py --matrix`.)
 
+Quei quattro livelli sono l'impianto **storico**, lanciato con
+`./run.sh area=<livello>` e oggi **deprecato**. Il modo supportato e' la
+**configurazione dichiarativa**: un solo descrittore JSON per esperimento,
+passato con `--config=`, che referenzia per path parametri di catena e topologia
+e dichiara la dislocazione dei nodi. Vale la pena leggere la sezione
+[Configurazione dichiarativa](#configurazione-dichiarativa) prima di tutto il
+resto: permette di variare **un asse alla volta** — dump function, topologia,
+`target-block-time`, numero di nodi — riusando gli altri intatti, cosa che il
+modo livelli non consentiva.
+
 ---
 
 ## Uso
@@ -22,37 +32,270 @@ tutto il resto e' tenuto fisso apposta.
 ```bash
 cd multichain/shadow
 
-./run.sh area=regionale                      # 60 blocchi di setup + 200 misurati, tbt 15 s
-./run.sh area=nazionale tbt=10 blocks=300
-./run.sh area=intercontinentale tbt=5        # setup viene ricalcolato da solo
-./run.sh area=continentale dry=1             # prepara tutto, non lancia Shadow
-python3 tools/compare_levels.py              # confronta le run gia' eseguite
-./run.sh /percorso/a/shadow/bin area=regionale   # come nello script originale
+./run.sh --config=config/simulations/tbt10s-cont-sqrt-5n.json
 ```
 
-| parametro | default | significato |
-|---|---|---|
-| `area=` | — | livello, obbligatorio |
-| `tbt=` | `15` | `target-block-time` in secondi |
-| `blocks=` | `200` | blocchi della finestra di misura (dopo il setup) |
-| `setup=` | auto | `setup-first-blocks`; se omesso e' calcolato (vedi *Vincolo sul setup*) |
-| `epochlen=` | `12` | `weight-epoch-length` |
-| `seed=` | `20260827` | seme di riproducibilita' (ESG e Shadow) |
-| `topology=` | `model` | `orig` usa il `.gml` originale fornito (solo `regionale`) |
-| `vdso=` | `20us` | `--unblocked-vdso-latency` di Shadow (vedi *Vincoli di Shadow*) |
-| `dry=` | `0` | `1` prepara tutto senza simulare |
+Un solo argomento, nessun altro parametro: tutto sta nel descrittore di
+simulazione. `run.sh` rifiuta qualunque altro argomento accanto a `--config=`,
+proprio perche' non esista un secondo posto dove la configurazione possa vivere.
 
-Output in `<livello>/run/`:
+Output in `runs/<nome-simulazione>/`:
 
 ```
-run/
+runs/<nome>/
 ├── data/<host>/          datadir isolato per nodo (blocchi, wallet, debug.log)
 ├── shared/<host>.addr    indirizzi raccolti durante il bootstrap
 ├── metrics/              CSV, snapshot JSON, summary.txt, summary_epoche.txt
 │   └── epoche/           campionamenti a ogni epoca (verifica, fork, treasury)
+├── shadow.yaml           generato da tools/gen_simulation.py
 ├── shadow.data/          output di Shadow (stdout/stderr per processo)
 └── shadow.log            log del simulatore
 ```
+
+---
+
+## Configurazione dichiarativa
+
+La configurazione e' divisa in **tre assi indipendenti**, ognuno in una cartella
+e in un formato propri. Il descrittore di simulazione e' l'unico file che li
+mette insieme, e li referenzia **per path**: cambiare un asse significa cambiare
+una riga, e i due file confrontati differiscono per quella riga soltanto.
+
+```
+config/
+├── simulation.schema.json         JSON Schema del descrittore (draft-07)
+├── blockchain/*.dat               ASSE 1 — parametri di catena
+├── topologies/*.gml               ASSE 2 — latenze/banda fra i network node
+└── simulations/*.json             descrittori: referenziano 1 e 2, dichiarano i nodi
+```
+
+### Il descrittore di simulazione
+
+```json
+{
+  "name": "tbt10s-cont-sqrt-5n",
+  "description": "testo libero, finisce in testa allo shadow.yaml",
+  "seed": 42,
+  "blockchain_params_file": "config/blockchain/params-tbt10s-sqrt.dat",
+  "topology_file": "config/topologies/continental-10n.gml",
+  "shadow": {
+    "stop_time": "auto",
+    "time_granularity": "host_native",
+    "parallelism": 0
+  },
+  "scaling": { "factor": 2, "ca_count": 2 },
+  "nodes": {
+    "miners": [
+      { "id": "m1", "location": "Milano", "network_node_id": 0 },
+      { "id": "m2", "location": "Frankfurt", "network_node_id": 1 }
+    ],
+    "ca":    [ { "id": "ca1", "location": "London", "network_node_id": 8 } ],
+    "admin": [ { "id": "admin1", "location": "Zurich", "network_node_id": 3 } ]
+  }
+}
+```
+
+| campo | obbligatorio | significato |
+|---|---|---|
+| `name` | si' | minuscole, cifre e trattini. Da' il nome a `runs/<name>/` e, senza trattini, alla catena (`poesia<name>`) |
+| `description` | no | testo libero, riportato in testa allo `shadow.yaml` |
+| `seed` | no (`20260827`) | alimenta `general.seed` di Shadow e l'estrazione degli ESG |
+| `blockchain_params_file` | si' | path del `.dat` con i parametri di catena |
+| `topology_file` | si' | path del `.gml` passato a `network.graph.file.path` |
+| `shadow.stop_time` | no (`auto`) | `auto` calcola, una durata esplicita sovrascrive |
+| `shadow.time_granularity` | no (`host_native`) | vedi la tabella piu' sotto |
+| `shadow.parallelism` | no (`0`) | `general.parallelism`; `0` = un thread per core |
+| `scaling.factor` | dipende | intero in `[1, 5]`; obbligatorio se `nodes.companies` e' assente |
+| `scaling.ca_count` | no | ridondante: se presente **deve** coincidere con `len(nodes.ca)` |
+| `nodes.miners` | si' | almeno 1 |
+| `nodes.companies` | no | se assente, generato da `scaling.factor` |
+| `nodes.ca` | si' | **da 1 a 3** |
+| `nodes.admin` | si' | **esattamente 1** |
+
+Ogni nodo e' `{id, location, network_node_id}`; le aziende accettano in piu' un
+`cluster` facoltativo (l'`id` del miner di cui diventano membri).
+
+**`location` e' documentale**: le latenze vengono dal `.gml`, non da li'. Chi
+decide la posizione di rete e' `network_node_id`, e piu' host possono
+condividere lo stesso — e' cosi' che 18 host stanno su una topologia a 10 nodi.
+
+**Generazione automatica delle aziende.** Se `nodes.companies` e' assente:
+
+```
+n_companies = n_miners × scaling.factor        (sempre lineare, factor intero in [1,5])
+```
+
+Le aziende generate si chiamano `c1..cN` e prendono `location` e
+`network_node_id` **a rotazione** fra quelli dei miner, con `cluster` impostato
+al miner corrispondente. Non esistono varianti `sqrt`/`log` per questo campo:
+`sqrt|none|log` nei nomi dei file riguarda la *dump function*, non lo scaling.
+
+**Vincoli validati** — `tools/gen_simulation.py` valida contro
+`config/simulation.schema.json` e poi esegue i controlli incrociati, fallendo
+con un messaggio esplicito: `admin` esattamente 1, `ca` fra 1 e 3,
+`scaling.factor` intero in `[1,5]` (`2.0` viene rifiutato, non e' un intero),
+`ca_count` coerente con `nodes.ca`, `id` unici fra tutte le categorie, e ogni
+`network_node_id` realmente presente nella topologia referenziata — l'errore
+elenca i nodi disponibili con la loro etichetta.
+
+### Asse 1 — parametri di catena (`config/blockchain/*.dat`)
+
+Formato `KEY=VALUE` sourceable da bash, **lo stesso di `config/params.overrides`**:
+`tools/prepare_params.sh` li traduce in flag di `multichain-util create` e in
+`sed` su `params.dat`. Sono valori di **catena**: hash-enforced, ereditati da
+ogni nodo che si unisce (protocollo 20014).
+
+`SETUP_FIRST_BLOCKS` accetta `auto` (vedi *Vincolo sul setup*); `MEASURE_EPOCHS`
+non e' un parametro di catena e serve solo al calcolo di `stop_time`.
+
+#### La dump function
+
+E' la compressione anti-balena `f(w)` applicata al peso **prima** dell'estrazione
+di Efraimidis–Spirakis. Nel file `.dat` e' `WPOA_DUMPFUNCTION`, diventa il flag
+di nodo `-dumpfunction` e finisce in `params.dat` come chiave `dump-function`.
+
+| valore | `f(w)` | effetto |
+|---|---|---|
+| `none` | `w` | nessuna compressione: il peso entra tal quale |
+| `sqrt` | `√w` | un divario di peso 10× compra ~3.2× di probabilita' |
+| `log` | `log(1+w)` | compressione piu' aggressiva sulle code alte |
+
+E' **consenso-critica**: un validatore con un valore diverso dagli altri
+rifiuterebbe i loro blocchi. Per questo sta in `params.dat` e non sulla riga di
+comando. Riferimenti: `src/wpoa/docs/wpoa-selector.md` §2.2 e
+`src/wpoa/docs/protocol-parameters.md`.
+
+### Asse 2 — topologia (`config/topologies/*.gml`)
+
+Vedi `config/topologies/README.md` per provenienza, rigenerazione e i vincoli
+del parser GML di Shadow. In sintesi: `continental-10n.gml` e' byte-identico
+alla topologia continentale storica (stessa definizione di livello, stesso
+generatore); `intercontinental-global-10n.gml` e' nuovo e porta la tratta
+peggiore da ~90 ms a 407 ms di RTT.
+
+### Granularita' temporale (`shadow.time_granularity`)
+
+Campi impostati nello `shadow.yaml` generato, secondo la
+[Shadow Config Specification](https://shadow.github.io/docs/guide/shadow_config_spec.html):
+
+| valore | `general.model_unblocked_syscall_latency` | `experimental.runahead` | `experimental.use_dynamic_runahead` |
+|---|---|---|---|
+| `host_native` (default) | `true` | `"1 ns"` | `false` |
+| `fast` | `true` | `"1 ms"` | `true` |
+| durata esplicita, es. `"5 ms"` | `true` | il valore dato | `false` |
+
+Due cose non ovvie, entrambe verificate sul sorgente di Shadow 3.3:
+
+**`runahead` e' un limite inferiore, non il valore usato.** Shadow calcola
+`max(latenza minima del grafo, runahead)` (`src/main/core/runahead.rs`). Quindi
+per *minimizzare* l'approssimazione non si mette un valore piccolo ma un
+**pavimento inerte**: `1 ns` non vincola nulla e lascia vincere la latenza
+minima della topologia — nei `.gml` di questo repo il self-loop da `200 us`.
+Mettere `"1 ms"`, che e' il default documentato, **alzerebbe** il runahead a
+1 ms e renderebbe la simulazione meno fedele, non piu'.
+
+**`model_unblocked_syscall_latency` resta `true` anche in `fast`.** Non e' una
+scelta di fedelta': senza, il busy-loop `Strengthen()` di `random.cpp` impedisce
+l'avanzamento del tempo simulato e i nodi non arrivano ad avviarsi (vedi
+*Vincoli di Shadow scoperti sul campo*). `fast` rilassa quindi il solo runahead.
+
+`experimental.unblocked_vdso_latency` vale sempre `20 us`: era il flag
+obbligatorio `--unblocked-vdso-latency` di `run.sh`, ora e' un campo dello
+`shadow.yaml` — ed e' il motivo per cui `run.sh` non ha piu' argomenti.
+
+### Calcolo automatico di `stop_time`
+
+Con `"stop_time": "auto"` (o il campo omesso):
+
+```
+measure_blocks = MEASURE_EPOCHS × WEIGHT_EPOCH_LENGTH
+stop_time      = 340 + (setup_first_blocks + measure_blocks) × TARGET_BLOCK_TIME + 600
+```
+
+* **340 s** — fine della timeline di bootstrap (`T_TRAFFIC`): da li' le aziende
+  generano traffico e i miner riconciliano.
+* **termine centrale** — i blocchi che devono essere effettivamente minati: la
+  fase PoA nativa piu' la finestra di misura sotto wPoA.
+* **600 s** — snapshot finale e margine di chiusura.
+
+`MEASURE_EPOCHS` vale 16 e si sovrascrive nel file `.dat`. Esempio a
+`tbt=10 s`, epoca 12, setup 64: `340 + (64 + 192)×10 + 600 = 3500 s`.
+
+Una durata esplicita (`"stop_time": "30 min"`, `"8500 s"`) **sovrascrive** il
+calcolo: l'utente ha sempre l'ultima parola. Il valore automatico che sarebbe
+stato usato viene comunque riportato nel commento dello `shadow.yaml`, cosi' la
+differenza resta visibile.
+
+Il `setup_first_blocks` usato qui e' quello **effettivo** riletto da
+`params.dat` dopo `prepare_params.sh`: `multichain-util` puo' averlo alzato da
+solo al pavimento derivato al genesi, e senza rileggerlo la finestra di misura
+si accorcerebbe in silenzio.
+
+### Cambiare un asse alla volta
+
+```bash
+# asse 'dump function': stessa catena, stessa topologia, stessi nodi
+./run.sh --config=config/simulations/tbt10s-cont-none-5n.json
+./run.sh --config=config/simulations/tbt10s-cont-sqrt-5n.json
+./run.sh --config=config/simulations/tbt10s-cont-log-5n.json
+
+# asse 'topologia': stessa catena, stessi nodi, latenze da 45 ms a 407 ms
+./run.sh --config=config/simulations/tbt10s-cont-sqrt-5n.json
+./run.sh --config=config/simulations/tbt10s-inter-sqrt-5n.json
+
+# asse 'target-block-time': stessa topologia, stessi nodi, stessa dump function
+./run.sh --config=config/simulations/tbt10s-cont-sqrt-5n.json
+./run.sh --config=config/simulations/tbt30s-cont-sqrt-5n.json
+```
+
+Che gli assi siano davvero indipendenti e' verificabile con `diff`:
+
+```bash
+diff config/simulations/tbt10s-cont-{sqrt,none}-5n.json   # name + blockchain_params_file
+diff config/blockchain/params-tbt10s-{sqrt,none}.dat      # solo WPOA_DUMPFUNCTION
+diff config/blockchain/params-tbt{10,30}s-sqrt.dat        # solo TARGET_BLOCK_TIME
+```
+
+### Configurazioni predefinite
+
+Tutte con 5 miner, 10 aziende generate (`factor: 2`), 2 CA, 1 admin, `seed: 42`,
+`time_granularity: host_native`.
+
+| descrittore | tbt | topologia | dumping | `stop_time` |
+|---|---|---|---|---|
+| `tbt10s-cont-sqrt-5n.json` | 10 s | continentale | `sqrt` | auto (3500 s) |
+| `tbt10s-cont-none-5n.json` | 10 s | continentale | `none` | auto (3500 s) |
+| `tbt10s-cont-log-5n.json` | 10 s | continentale | `log` | auto (3500 s) |
+| `tbt10s-inter-sqrt-5n.json` | 10 s | globale | `sqrt` | auto (3500 s) |
+| `tbt10s-inter-none-5n.json` | 10 s | globale | `none` | auto (3500 s) |
+| `tbt10s-inter-log-5n.json` | 10 s | globale | `log` | auto (3500 s) |
+| `tbt30s-cont-sqrt-5n.json` | 30 s | continentale | `sqrt` | **`"8500 s"`** esplicito |
+
+Miner continentali: Milano, Frankfurt, Madrid, Amsterdam, Paris (nodi 0, 1, 2,
+5, 7). Miner globali: Milano, Madrid, New York, Singapore, San Paolo (nodi 0–4).
+
+L'ultima riga usa `stop_time` esplicito **di proposito**: il valore coincide con
+quello che il calcolo automatico produce oggi, e pinnandolo il confronto con
+`tbt10s-cont-sqrt-5n` resta valido anche se in futuro `MEASURE_EPOCHS` o il
+pavimento derivato di `setup-first-blocks` dovessero cambiare.
+
+### Migrazione dal modo livelli
+
+Il lancio `./run.sh area=<livello>` **e' deprecato** ma continua a funzionare:
+stampa un avviso e prosegue, e le quattro run storiche restano riproducibili.
+
+| modo livelli | modo dichiarativo |
+|---|---|
+| `area=<livello>` | `topology_file` + la sezione `nodes` |
+| `tbt=`, `epochlen=`, `setup=` | il file in `config/blockchain/` |
+| `blocks=` | `MEASURE_EPOCHS` nel file `.dat` |
+| `seed=` | `"seed"` nel descrittore |
+| `vdso=` | sempre `20 us`, in `experimental.unblocked_vdso_latency` |
+| `dry=1` | — |
+| output in `<livello>/run/` | output in `runs/<name>/` |
+
+I due modi non si toccano: `config/params.overrides`, `config/levels/*.json` e
+le topologie in `<livello>/` restano dove sono e servono solo al modo deprecato.
 
 ---
 
@@ -324,6 +567,13 @@ setup_min = ceil(340 / tbt) + epochlen + 6 + 12
 e lo applica se `setup=` non e' stato passato; se e' stato passato e risulta
 troppo corto, si ferma con un errore invece di produrre una run che stallerebbe.
 
+Nel modo dichiarativo vale la stessa formula, con un pavimento assoluto di 60
+blocchi: `tools/gen_simulation.py` la applica quando il file `.dat` dice
+`SETUP_FIRST_BLOCKS=auto`, e rifiuta con un errore esplicito un valore intero
+che risulti sotto `setup_min`. A monte c'e' comunque la derivazione fatta da
+`multichain-util` al genesi, che puo' alzare ulteriormente il valore: e' quello
+riletto da `params.dat` a decidere la finestra di misura.
+
 ---
 
 ## Economia del GAS
@@ -525,15 +775,20 @@ non degeneri, bisogna riportare i candidati nella parte non satura della curva:
 
 ```
 shadow/
-├── run.sh                     dispatcher
+├── run.sh                     dispatcher: --config=<descrittore>
 ├── config/
-│   ├── params.overrides       parametri di catena comuni ai 4 livelli
+│   ├── simulation.schema.json JSON Schema del descrittore di simulazione
+│   ├── blockchain/*.dat       ASSE 1 — parametri di catena riusabili
+│   ├── topologies/*.gml       ASSE 2 — topologie riusabili (+ README.md)
+│   ├── simulations/*.json     descrittori: l'unico file passato a run.sh
 │   ├── treasury.json          coppia di chiavi del treasury (generata una volta)
-│   └── levels/*.json          nodi, ruoli, coordinate e archi di ogni livello
+│   ├── params.overrides       [modo livelli] parametri comuni ai 4 livelli
+│   └── levels/*.json          [modo livelli] nodi, ruoli, coordinate, archi
 ├── tools/
+│   ├── gen_simulation.py      descrittore → shadow.yaml (validazione + timeline)
 │   ├── gen_topology.py        modello di latenza → .gml
 │   ├── check_topology.py      validazione networkx + matrice RTT
-│   ├── gen_shadow_yaml.py     .gml + ruoli → shadow.yaml (timeline dei processi)
+│   ├── gen_shadow_yaml.py     [modo livelli] .gml + ruoli → shadow.yaml
 │   ├── gen_treasury.sh        coppia di chiavi del treasury (una tantum)
 │   ├── prepare_params.sh      params.dat nativo (unico passo fuori simulazione)
 │   ├── sim_common.sh          helper JSON-RPC via curl, usati dentro Shadow
@@ -547,7 +802,10 @@ shadow/
 │   ├── summary_per_epoca.py   le stesse analisi, epoca per epoca →
 │   │                          summary_epoche.txt
 │   └── compare_levels.py      tabella di confronto fra i quattro livelli
-└── <livello>/
+├── runs/<nome>/               output delle simulazioni (non versionato)
+│   ├── shadow.yaml            generato da gen_simulation.py
+│   └── data|shared|metrics/
+└── <livello>/                 [modo livelli, deprecato]
     ├── topologia_myledger_<livello>.gml
     ├── shadow.yaml            generato
     └── run/                   output della run (non versionato)

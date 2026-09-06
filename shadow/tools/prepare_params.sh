@@ -12,10 +12,22 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-. "$ROOT/config/params.overrides"
+
+# --params-file sceglie l'ASSE dei parametri di catena: e' il file referenziato
+# da blockchain_params_file nel descrittore di simulazione. Va risolto prima di
+# ogni altra opzione, perche' i default di TBT/SETUP/EPOCHLEN vengono da li'.
+# Senza l'opzione resta config/params.overrides, il default storico.
+PARAMS_FILE="$ROOT/config/params.overrides"
+for i in $(seq 1 $#); do
+    if [ "${!i}" = "--params-file" ]; then
+        j=$((i + 1)); PARAMS_FILE="${!j}"
+    fi
+done
+[ -f "$PARAMS_FILE" ] || { echo "ERRORE: file di parametri non trovato: $PARAMS_FILE" >&2; exit 2; }
+. "$PARAMS_FILE"
 
 RUN=""; CHAIN=""; TBT="$TARGET_BLOCK_TIME"; SETUP="$SETUP_FIRST_BLOCKS"; HOSTS=""
-EPOCHLEN="$WEIGHT_EPOCH_LENGTH"
+EPOCHLEN="$WEIGHT_EPOCH_LENGTH"; ADMIN="admin"
 while [ $# -gt 0 ]; do
     case "$1" in
         --run)    RUN="$2"; shift 2 ;;
@@ -24,17 +36,29 @@ while [ $# -gt 0 ]; do
         --setup)  SETUP="$2"; shift 2 ;;
         --epochlen) EPOCHLEN="$2"; shift 2 ;;
         --hosts)  HOSTS="$2"; shift 2 ;;
+        --admin)  ADMIN="$2"; shift 2 ;;
+        --params-file) shift 2 ;;   # gia' consumato sopra
         *) echo "argomento sconosciuto: $1" >&2; exit 2 ;;
     esac
 done
-[ -n "$RUN" ] && [ -n "$CHAIN" ] && [ -n "$HOSTS" ] || { echo "uso: --run DIR --chain NAME --hosts 'h1 h2 ...'" >&2; exit 2; }
+[ -n "$RUN" ] && [ -n "$CHAIN" ] && [ -n "$HOSTS" ] || { echo "uso: --run DIR --chain NAME --hosts 'h1 h2 ...' [--params-file FILE] [--admin HOST]" >&2; exit 2; }
+
+# I file di config/blockchain/ possono lasciare SETUP_FIRST_BLOCKS='auto': il
+# valore lo calcola gen_simulation.py e arriva qui via --setup. Se nessuno lo
+# ha risolto, il sed piu' sotto scriverebbe la stringa 'auto' in params.dat.
+case "$SETUP" in
+    ''|*[!0-9]*)
+        echo "ERRORE: setup-first-blocks non risolto ('$SETUP')." >&2
+        echo "       Passare --setup <n>, oppure impostare SETUP_FIRST_BLOCKS a un intero in $PARAMS_FILE." >&2
+        exit 2 ;;
+esac
 
 BINDIR="${BINDIR:-$(cd "$ROOT/../src" && pwd)}"
 TREASURY=""
 [ -f "$ROOT/config/treasury.json" ] && \
     TREASURY="$(grep -oP '"address"\s*:\s*"\K[^"]+' "$ROOT/config/treasury.json")"
 
-ADMIN_DATADIR="$RUN/data/admin"
+ADMIN_DATADIR="$RUN/data/$ADMIN"
 mkdir -p "$ADMIN_DATADIR"
 
 # -enablewpoa e' il master: accende weights + selection + VRF + RANDAO +
@@ -98,6 +122,7 @@ CONF
 done
 
 echo "[prepare_params] catena '$CHAIN' pronta"
+echo "[prepare_params]   parametri         = $PARAMS_FILE (dumping $WPOA_DUMPFUNCTION)"
 echo "[prepare_params]   target-block-time = $TBT s, setup-first-blocks = $SETUP, epoca = $EPOCHLEN blocchi"
 echo "[prepare_params]   treasury          = ${TREASURY:-<non impostato: R_k = 0>}"
 grep -E '^(enable-wpoa|enable-weight-engine|weight-epoch-length|wpoa-sortition-lambda|wpoa-sortition-delta|target-block-time|first-block-reward|minimum-relay-fee|weight-treasury-address) ' "$P" | sed 's/^/[prepare_params]   /'

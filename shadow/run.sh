@@ -1,13 +1,24 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# POESIA / wPoA — simulazioni Shadow multi-livello.
+# POESIA / wPoA — simulazioni Shadow.
+#
+# MODO DICHIARATIVO (raccomandato). Un solo argomento, nessun altro parametro:
+#
+#   ./run.sh --config=config/simulations/tbt10s-cont-sqrt-5n.json
+#
+# Tutto — parametri di catena, topologia, nodi, seed, granularita' temporale —
+# e' dichiarato nel descrittore JSON, che referenzia per path i due assi
+# riusabili: config/blockchain/*.dat e config/topologies/*.gml. Vedi il README,
+# sezione "Configurazione dichiarativa".
+#
+# MODO LIVELLI (DEPRECATO, conservato per le run storiche):
 #
 #   ./run.sh area=regionale
 #   ./run.sh area=intercontinentale tbt=5 blocks=300
 #   ./run.sh area=nazionale topology=orig            # solo per 'regionale'
 #   ./run.sh /percorso/a/shadow/bin area=continentale
 #
-# Parametri (tutti key=value, tutti opzionali tranne area):
+# Parametri del modo livelli (tutti key=value, tutti opzionali tranne area):
 #   area=<regionale|nazionale|continentale|intercontinentale>
 #   tbt=<s>        target-block-time            (default 15)
 #   blocks=<n>     blocchi della finestra di misura (default 200)
@@ -26,13 +37,101 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOOLS="$ROOT/tools"
 BINDIR="${BINDIR:-$(cd "$ROOT/../src" && pwd)}"
-. "$ROOT/config/params.overrides"
 
 if [ "$#" -ge 1 ] && [[ "$1" != *=* ]]; then
     echo "Prepending $1 to PATH"
     export PATH="$1:${PATH}"
     shift
 fi
+
+# ===========================================================================
+# MODO DICHIARATIVO — --config=<descrittore>, e nient'altro.
+# ===========================================================================
+CONFIG=""
+for arg in "$@"; do
+    case "$arg" in --config=*) CONFIG="${arg#*=}" ;; esac
+done
+
+if [ -n "$CONFIG" ]; then
+    if [ "$#" -ne 1 ]; then
+        echo "ERRORE: --config non ammette altri argomenti." >&2
+        echo "       Tutto va dichiarato nel descrittore di simulazione: $CONFIG" >&2
+        exit 2
+    fi
+    [ -f "$CONFIG" ] || { echo "ERRORE: descrittore non trovato: $CONFIG" >&2; exit 2; }
+
+    # --- 1. configurazione risolta e validata ------------------------------
+    # Un solo posto decide i valori: il generatore li calcola una volta e li
+    # espone qui, cosi' prepare_params.sh e lo shadow.yaml non possono divergere.
+    ENV_TEXT="$(python3 "$TOOLS/gen_simulation.py" "$CONFIG" --emit-env --bindir "$BINDIR")"
+    eval "$ENV_TEXT"
+
+    echo "════════════════════════════════════════════════════════════════════"
+    echo "  POESIA / wPoA — simulazione: $SIM_NAME"
+    echo "  tbt=${SIM_TBT}s  setup=${SIM_SETUP}  misura=${SIM_MEASURE_BLOCKS} blocchi"
+    echo "  epoca=${SIM_EPOCHLEN}  dumping=${SIM_DUMPFUNCTION}  granularita'=${SIM_GRANULARITY}"
+    echo "════════════════════════════════════════════════════════════════════"
+
+    # --- 2. treasury (una tantum) ------------------------------------------
+    bash "$TOOLS/gen_treasury.sh"
+
+    # --- 3. topologia: riusata cosi' com'e', solo verificata ----------------
+    # I .gml di config/topologies/ sono artefatti versionati: qui non si
+    # rigenerano, si controlla soltanto che siano validi e connessi.
+    python3 "$TOOLS/check_topology.py" "$SIM_TOPOLOGY" --matrix | tail -6
+
+    # --- 4. directory di run ------------------------------------------------
+    rm -rf "$SIM_RUN"
+    mkdir -p "$SIM_RUN/data" "$SIM_RUN/shared" "$SIM_RUN/metrics"
+
+    # --- 5. params.dat (nativo: e' l'unico passo fuori dalla simulazione) ---
+    bash "$TOOLS/prepare_params.sh" --run "$SIM_RUN" --chain "$SIM_CHAIN" \
+         --params-file "$SIM_PARAMS_FILE" --admin "$SIM_ADMIN" \
+         --tbt "$SIM_TBT" --setup "$SIM_SETUP" --epochlen "$SIM_EPOCHLEN" \
+         --hosts "$SIM_HOSTS"
+
+    # --- 6. shadow.yaml -----------------------------------------------------
+    # --effective-params: multichain-util puo' aver alzato setup-first-blocks
+    # al pavimento derivato al genesi; stop_time deve tenerne conto.
+    python3 "$TOOLS/gen_simulation.py" "$CONFIG" --bindir "$BINDIR" \
+        --effective-params "$SIM_RUN/data/$SIM_ADMIN/$SIM_CHAIN/params.dat" \
+        -o "$SIM_RUN/shadow.yaml"
+
+    # --- 7. simulazione -----------------------------------------------------
+    # Nessun flag da riga di comando: --unblocked-vdso-latency e' diventato
+    # experimental.unblocked_vdso_latency dentro lo shadow.yaml generato.
+    echo "[run] avvio Shadow..."
+    START=$(date +%s)
+    set +e
+    shadow -d "$SIM_RUN/shadow.data" "$SIM_RUN/shadow.yaml" \
+           > "$SIM_RUN/shadow.log" 2>&1
+    RC=$?
+    set -e
+    ELAPSED=$(( $(date +%s) - START ))
+    echo "[run] Shadow terminato (rc=$RC) in ${ELAPSED}s di wall clock."
+    [ "$RC" -ne 0 ] && tail -20 "$SIM_RUN/shadow.log"
+
+    # --- 8. metriche --------------------------------------------------------
+    python3 "$TOOLS/collect_metrics.py" --run "$SIM_RUN" --chain "$SIM_CHAIN" \
+            --level "$SIM_NAME" --setup-blocks "$SIM_SETUP" \
+            --epoch-len "$SIM_EPOCHLEN" --delta "$SIM_DELTA" \
+            --tbt "$SIM_TBT" || true
+
+    python3 "$TOOLS/summary_per_epoca.py" --run "$SIM_RUN" --level "$SIM_NAME" \
+            --tbt "$SIM_TBT" || true
+
+    echo "[run] output: $SIM_RUN"
+    exit "$RC"
+fi
+
+# ===========================================================================
+# MODO LIVELLI — DEPRECATO.
+# ===========================================================================
+echo "[run] ATTENZIONE: il lancio con area=<livello> e' DEPRECATO." >&2
+echo "[run] Il modo supportato e' ./run.sh --config=config/simulations/<nome>.json" >&2
+echo "[run] Vedi README.md, sezione 'Migrazione dal modo livelli'." >&2
+
+. "$ROOT/config/params.overrides"
 
 # I default vengono da config/params.overrides: unica fonte di verita.
 AREA=""; TBT="$TARGET_BLOCK_TIME"; BLOCKS=200; SETUP=""
