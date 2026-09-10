@@ -1,41 +1,41 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
 # mcsim — host-side wrapper around `docker run` for the POESIA / wPoA
-# simulation container.
+# emulation container.
 #
-# Its whole reason to exist is the flag set: Shadow needs a container that is
-# *not* sandboxed and *not* throttled, and getting one flag wrong either breaks
-# the simulator or quietly costs a large fraction of the wall-clock speed. Every
-# flag below is justified in docker/README.md.
+# Its reason to exist is the flag set. The container has to be able to create
+# network namespaces and apply tc inside itself, and getting that wrong fails
+# several steps into a run with a message about `ip netns` rather than about
+# the flag that was missing.
 #
-#   ./docker/mcsim build [--no-cache] [--shadow-ref=REF]
-#   ./docker/mcsim shell [--cpuset=LIST] [--runs-tmpfs[=SIZE]]
+#   ./docker/mcsim build [--no-cache]
+#   ./docker/mcsim shell [--cpuset=LIST]
 #   ./docker/mcsim run  <command...>
-#   ./docker/mcsim sim  config/simulations/<name>.json
+#   ./docker/mcsim exp  experiments/configs/experiments/<name>.yaml
 #   ./docker/mcsim preflight
 #   ./docker/mcsim cpus                 physical-core-only CPU list for --cpuset
-#   ./docker/mcsim tune [--apply]       host kernel/CPU settings (needs sudo)
 #
 # Environment overrides:
-#   IMAGE=poesia-sim:22.04     image tag
-#   PROJECT_DIR=/home/mattu/multichain
-#                              mount point inside the container. Keep the
-#                              default: the recorded shadow.yaml files embed
-#                              absolute paths.
-#   SHM_SIZE=1024g             /dev/shm (Shadow's shared memory)
+#   IMAGE=poesia-emu:22.04     image tag
+#   PROJECT_DIR                mount point inside the container
+#                              (default /workspace/multichain)
 #   NOFILE=1048576             --ulimit nofile
+#   RESULTS_DIR                host directory for run output; bind-mounted at
+#                              /results and exported as EXPERIMENT_ROOT
 # ---------------------------------------------------------------------------
-set -euo pipefail
+set -Eeuo pipefail
+trap 'printf "\033[31m[mcsim] failed at line %s\033[0m\n" "$LINENO" >&2' ERR
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 
-IMAGE="${IMAGE:-poesia-sim:22.04}"
-PROJECT_DIR="${PROJECT_DIR:-/home/mattu/multichain}"
-SHM_SIZE="${SHM_SIZE:-1024g}"
+IMAGE="${IMAGE:-poesia-emu:22.04}"
+# No personal path: the default is a neutral mount point, and the host's own
+# checkout is bind-mounted onto it.
+PROJECT_DIR="${PROJECT_DIR:-/workspace/multichain}"
 NOFILE="${NOFILE:-1048576}"
+RESULTS_DIR="${RESULTS_DIR:-}"
 CPUSET=""
-RUNS_TMPFS=""
 
 say()  { printf '\033[1m[mcsim]\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m[mcsim] %s\033[0m\n' "$*" >&2; }
@@ -43,176 +43,109 @@ die()  { printf '\033[31m[mcsim] %s\033[0m\n' "$*" >&2; exit 1; }
 
 command -v docker >/dev/null || die "docker not found on PATH"
 
-# ---------------------------------------------------------------------------
-# Host sanity: a virtualised docker engine (Docker Desktop) puts a VM between
-# the simulation and the CPU, which is exactly what this setup exists to avoid.
-# ---------------------------------------------------------------------------
-check_engine() {
-    local os
-    os="$(docker info --format '{{.OperatingSystem}}' 2>/dev/null || echo unknown)"
-    case "$os" in
-        *"Docker Desktop"*)
-            warn "docker engine: '$os'"
-            warn "Docker Desktop runs containers inside a Linux VM: expect a"
-            warn "measurable slowdown and no CPU-topology fidelity. On Ubuntu use"
-            warn "the native engine (docker.io / docker-ce, systemd service dockerd)." ;;
-        *) say "docker engine: $os" ;;
-    esac
-}
-
-# ---------------------------------------------------------------------------
-# The flag set.
-# ---------------------------------------------------------------------------
 docker_flags() {
-    local -a f=(
-        --rm
-        --hostname poesia-sim
+    local flags=()
 
-        # Shadow keeps one shared-memory block per managed thread in /dev/shm;
-        # Docker's 64 MB default is far too small (shadow/docs/supported_platforms.md).
-        "--shm-size=${SHM_SIZE}"
+    # CAP_NET_ADMIN: creating namespaces, veth pairs and qdiscs. This is the
+    # one flag without which nothing works. Note it is NOT --privileged: the
+    # container needs network administration, not everything.
+    flags+=(--cap-add NET_ADMIN)
 
-        # Docker's default seccomp profile blocks personality(), which Shadow
-        # uses to disable ASLR: determinism is lost and every blocked call
-        # stalls for seconds (shadow/ci/run.sh, moby/moby#43011). It is also a
-        # BPF filter evaluated on *every* syscall of every simulated node — the
-        # single largest source of container overhead for this workload.
-        --security-opt seccomp=unconfined
-        # Same reasoning for the LSM path: no file-access mediation per node I/O.
-        --security-opt apparmor=unconfined
-        # Needed once seccomp is back on: ptrace/process_vm_readv are how the
-        # shim and the simulator talk to each other.
-        --cap-add SYS_PTRACE
-        # CPU pinning and priority for Shadow's worker threads.
-        --cap-add SYS_NICE
-        --cap-add SYS_RESOURCE
+    # The fabric writes namespace handles under /var/run/netns and needs
+    # /sys/fs/cgroup readable for process accounting.
+    flags+=(--tmpfs /run:rw,exec,nosuid,size=64m)
 
-        # File descriptors: Shadow opens them from its own process space for
-        # every managed process (shadow/docs/system_configuration.md).
-        "--ulimit" "nofile=${NOFILE}:${NOFILE}"
-        "--ulimit" "memlock=-1:-1"
-        "--ulimit" "nproc=1048576:1048576"
-        # A crashing node would otherwise drop a multi-GB core into the run dir.
-        "--ulimit" "core=${MCSIM_ULIMIT_CORE:-0}"
-        # One simulation is thousands of threads.
-        "--pids-limit" "-1"
+    # Its own network namespace, so twenty emulated nodes cannot reach the
+    # host's real network. `--network none` would remove lo, which the
+    # management bridge needs, so a private bridge is the right answer.
+    flags+=(--network bridge)
 
-        # No CPU quota, no memory limit, no cpuset by default: Shadow reads its
-        # cgroup cpuset and pins workers inside it, so restricting the container
-        # silently reshapes the simulation's parallelism.
-        --network host
+    # Twenty daemons with their peers exhaust the default soft limit.
+    flags+=(--ulimit "nofile=${NOFILE}:${NOFILE}")
 
-        # The repository is bind-mounted, never copied: native filesystem, no
-        # overlayfs write penalty, results stay on the host.
-        -v "${REPO}:${PROJECT_DIR}"
-        -w "${PROJECT_DIR}/shadow"
-        -e "MULTICHAIN_HOME=${PROJECT_DIR}"
-        -e "SIM_PREFLIGHT=${SIM_PREFLIGHT:-auto}"
-    )
-    [ -n "$CPUSET" ] && f+=("--cpuset-cpus=${CPUSET}")
-    if [ -n "$RUNS_TMPFS" ]; then
-        # Opt-in: simulation output on RAM instead of disk. Fast, and VOLATILE.
-        f+=("--tmpfs" "${PROJECT_DIR}/shadow/runs:rw,exec,nosuid,nodev,size=${RUNS_TMPFS}")
+    # The repository, read-write: the harness writes results and the build
+    # writes into src/.
+    flags+=(-v "${REPO}:${PROJECT_DIR}")
+    flags+=(-w "${PROJECT_DIR}")
+    flags+=(-e "MULTICHAIN_HOME=${PROJECT_DIR}")
+
+    # Run output can be very large; keeping it off the repository volume is
+    # usually what you want.
+    if [ -n "$RESULTS_DIR" ]; then
+        mkdir -p "$RESULTS_DIR"
+        flags+=(-v "${RESULTS_DIR}:/results")
+        flags+=(-e "EXPERIMENT_ROOT=/results")
     fi
-    [ -t 0 ] && f+=(-i -t) || f+=(-i)
-    printf '%s\n' "${f[@]}"
+
+    [ -n "$CPUSET" ] && flags+=(--cpuset-cpus "$CPUSET")
+    [ -t 0 ] && flags+=(-it)
+
+    printf '%s\n' "${flags[@]}"
 }
 
 need_image() {
-    docker image inspect "$IMAGE" >/dev/null 2>&1 \
-        || die "image '$IMAGE' not found — run: ./docker/mcsim build"
+    docker image inspect "$IMAGE" >/dev/null 2>&1 || \
+        die "image $IMAGE is not built. Run: ./docker/mcsim build"
 }
 
 run_in_container() {
     need_image
-    local -a flags
-    mapfile -t flags < <(docker_flags)
-    exec docker run "${flags[@]}" "$IMAGE" "$@"
+    local flags=(); mapfile -t flags < <(docker_flags)
+    docker run --rm "${flags[@]}" "$IMAGE" "$@"
 }
 
-# ---------------------------------------------------------------------------
 cmd_build() {
-    local -a extra=()
-    local ref=""
-    while [ "$#" -gt 0 ]; do
+    local args=(build -t "$IMAGE" -f "$HERE/Dockerfile"
+                --build-arg "PROJECT_DIR=${PROJECT_DIR}")
+    while [ $# -gt 0 ]; do
         case "$1" in
-            --no-cache)     extra+=(--no-cache) ;;
-            --shadow-ref=*) ref="${1#*=}" ;;
-            --pull)         extra+=(--pull) ;;
-            *)              die "build: unknown option $1" ;;
+            --no-cache) args+=(--no-cache); shift ;;
+            *) die "build: unknown argument $1" ;;
         esac
-        shift
     done
-    check_engine
-    say "building ${IMAGE} (this compiles Shadow from source: expect 10-30 min)"
-    local -a args=(
-        build
-        -t "$IMAGE"
-        -f "$HERE/Dockerfile"
-        --build-arg "USER_NAME=$(id -un)"
-        --build-arg "USER_UID=$(id -u)"
-        --build-arg "USER_GID=$(id -g)"
-        --build-arg "PROJECT_DIR=${PROJECT_DIR}"
-    )
-    [ -n "$ref" ] && args+=(--build-arg "SHADOW_REF=${ref}")
-    docker "${args[@]}" "${extra[@]}" "$HERE"
-    say "done. next: ./docker/mcsim run mc-build   (compiles MultiChain)"
+    args+=("$HERE")
+    say "building $IMAGE"
+    docker "${args[@]}"
+    say "done. Next: ./docker/mcsim run mc-build     (compiles MultiChain)"
 }
 
 cmd_shell()     { run_in_container bash; }
 cmd_run()       { [ "$#" -gt 0 ] || die "run: nothing to run"; run_in_container "$@"; }
-cmd_sim()       { [ "$#" -eq 1 ] || die "sim: expected exactly one descriptor path"
-                  run_in_container ./run.sh "--config=$1"; }
-cmd_preflight() { SIM_PREFLIGHT=0 run_in_container mc-preflight --strict; }
+cmd_preflight() { MC_PREFLIGHT=0 run_in_container mc-preflight --strict; }
 
-# One CPU per physical core, first NUMA node first: avoids SMT siblings
-# competing for the same core, which shadow/docs/parallel_sims.md warns about.
+cmd_exp() {
+    [ "$#" -ge 1 ] || die "exp: expected an experiment descriptor path"
+    local descriptor="$1"; shift
+    [ -f "$REPO/$descriptor" ] || [ -f "$descriptor" ] || \
+        die "exp: no such descriptor: $descriptor"
+    run_in_container experiments/scripts/run_experiment.sh \
+        --experiment "$descriptor" "$@"
+}
+
+# Physical cores only: with hyper-threading, pinning to sibling threads costs
+# a large fraction of the throughput and makes block times look like protocol
+# behaviour when they are scheduling.
 cmd_cpus() {
-    command -v lscpu >/dev/null || die "lscpu not found (install util-linux)"
-    lscpu --parse=cpu,core,socket,node 2>/dev/null \
-      | grep -v '^#' \
-      | awk -F, '!seen[$3","$2]++ {print $1}' \
-      | sort -n \
-      | paste -sd,
+    awk -F: '/^processor/{p=$2} /^core id/{c=$2} /^physical id/{s=$2;
+        key=s"-"c; if (!(key in seen)) {seen[key]=1; printf "%s%s", (n++?",":""), p+0}}
+        END{print ""}' /proc/cpuinfo
 }
 
-cmd_tune() {
-    [ -x "$HERE/host-tune.sh" ] || die "docker/host-tune.sh missing"
-    if [ "$(id -u)" -ne 0 ]; then
-        exec sudo "$HERE/host-tune.sh" "$@"
-    fi
-    exec "$HERE/host-tune.sh" "$@"
-}
-
-# print the header comment block, whatever its length
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "${BASH_SOURCE[0]}"; }
 
-# ---------------------------------------------------------------------------
-[ "$#" -ge 1 ] || { usage; exit 2; }
-SUB="$1"; shift
-
-# options shared by the container-starting subcommands
-ARGS=()
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --cpuset=*)    CPUSET="${1#*=}" ;;
-        --runs-tmpfs)  RUNS_TMPFS="32g" ;;
-        --runs-tmpfs=*) RUNS_TMPFS="${1#*=}" ;;
-        --)            shift; ARGS+=("$@"); break ;;
-        *)             ARGS+=("$1") ;;
-    esac
-    shift
+COMMAND="${1:-}"; shift || true
+for arg in "$@"; do
+    case "$arg" in --cpuset=*) CPUSET="${arg#*=}" ;; esac
 done
-set -- ${ARGS[@]+"${ARGS[@]}"}
+set -- "${@/--cpuset=*/}"
 
-case "$SUB" in
+case "$COMMAND" in
     build)     cmd_build "$@" ;;
-    shell|sh)  cmd_shell "$@" ;;
+    shell)     cmd_shell ;;
     run)       cmd_run "$@" ;;
-    sim)       cmd_sim "$@" ;;
-    preflight) cmd_preflight "$@" ;;
+    exp)       cmd_exp "$@" ;;
+    preflight) cmd_preflight ;;
     cpus)      cmd_cpus ;;
-    tune)      cmd_tune "$@" ;;
-    -h|--help|help) usage ;;
-    *)         die "unknown subcommand: $SUB (try --help)" ;;
+    ""|-h|--help|help) usage ;;
+    *) die "unknown command: $COMMAND (try --help)" ;;
 esac

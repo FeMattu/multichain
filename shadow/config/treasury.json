@@ -1,8 +1,0 @@
-{
-  "address": "18QrmhtdHAfw8gknT5hxBStfGY63AhuQZCSDcg",
-  "privkey": "V6kAnzZVTp1hX8tY8nNcmH51hb8pL9ADJvVoEsaWfmFEYYKd24t3ZZr3",
-  "pubkey": "03f2e2274ee8806d32ba454f47104af3463f7084f5f036170b0f48d25598279d9c",
-  "address_pubkeyhash_version": "00cca233",
-  "address_checksum_value": "303257e8",
-  "note": "indirizzo di treasury (riconciliazione R_k). Valido su ogni catena che pinna le stesse versioni di indirizzo. Rigenerare con FORCE=1."
-}

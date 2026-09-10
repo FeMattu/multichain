@@ -1,188 +1,105 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# In-container preflight: does this container actually behave like bare metal?
+# Can this container actually run an experiment?
 #
-# Every check below maps to something that either breaks a Shadow simulation or
-# silently slows it down. Run it once after `mcsim build`, and whenever the
-# host's docker configuration changes.
+#   mc-preflight              report, always exit 0
+#   mc-preflight --strict     exit non-zero when something mandatory is missing
 #
-#   mc-preflight            report, always exits 0
-#   mc-preflight --strict   exit 1 if any check warns (for scripts / CI)
+# The harness has its own, more detailed check
+# (experiments/scripts/check_environment.sh). This one covers what is specific
+# to being inside a container: the capabilities, the namespace, the limits.
 # ---------------------------------------------------------------------------
 set -uo pipefail
 
 STRICT=0
 [ "${1:-}" = "--strict" ] && STRICT=1
+PROBLEMS=0
 
-WARN=0
-ok()   { printf '  \033[32m[ ok ]\033[0m %-26s %s\n' "$1" "$2"; }
-warn() { printf '  \033[33m[warn]\033[0m %-26s %s\n' "$1" "$2"; WARN=$((WARN+1)); }
-info() { printf '  \033[36m[info]\033[0m %-26s %s\n' "$1" "$2"; }
-head2(){ printf '\n\033[1m%s\033[0m\n' "$1"; }
+ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
+bad()  { printf '  \033[31m✗\033[0m %s\n' "$*"; PROBLEMS=$((PROBLEMS + 1)); }
+note() { printf '  \033[33m·\033[0m %s\n' "$*"; }
 
-read_first() { [ -r "$1" ] && head -1 "$1" 2>/dev/null; }
+echo
+echo "container preflight"
+echo "-------------------"
 
-printf '\033[1m═══ POESIA / wPoA — container preflight ═══\033[0m\n'
-
-# ---------------------------------------------------------------------------
-head2 "Toolchain"
-if command -v shadow >/dev/null; then
-    ok "shadow" "$(shadow --version | head -1)"
+# --- capabilities ----------------------------------------------------------
+# Building namespaces and applying tc both need CAP_NET_ADMIN. Without it the
+# harness fails at the first `ip netns add`, several steps in.
+if capsh --print 2>/dev/null | grep -q 'cap_net_admin'; then
+    ok "CAP_NET_ADMIN is granted"
+elif ip link add __probe type dummy 2>/dev/null; then
+    ip link del __probe 2>/dev/null || true
+    ok "network administration works (CAP_NET_ADMIN by effect)"
 else
-    warn "shadow" "not on PATH"
+    bad "CAP_NET_ADMIN is missing — run with --cap-add NET_ADMIN (mcsim does)"
 fi
-if [ -x "${BINDIR:-/nonexistent}/multichaind" ]; then
-    # the first line of `multichaind --version` is blank
-    ok "multichaind" "$("${BINDIR}/multichaind" --version 2>/dev/null | grep -m1 .)"
+
+# --- the container's own network namespace ---------------------------------
+# The fabric builds inside it. Sharing the host's would put twenty emulated
+# nodes on the host's real network, which is not what anyone wants.
+if [ "$(readlink /proc/self/ns/net)" = "$(readlink /proc/1/ns/net 2>/dev/null)" ]; then
+    note "sharing PID 1's network namespace (normal inside a container)"
+fi
+if ip netns list >/dev/null 2>&1; then
+    ok "ip netns is usable"
 else
-    warn "multichaind" "not built yet — run: mc-build"
-fi
-info "gcc / python3" "$(gcc -dumpversion) / $(python3 --version 2>&1 | cut -d' ' -f2)"
-info "awk" "$(awk -W version 2>&1 | head -1 | cut -c1-46)"
-PYVERS=$(python3 - <<'PY' 2>/dev/null
-mods = (("networkx", "nx"), ("numpy", "np"), ("pandas", "pd"),
-        ("scipy", "sp"), ("openpyxl", "xl"), ("jsonschema", "js"))
-out = []
-for mod, short in mods:
-    try:
-        out.append("%s %s" % (short, __import__(mod).__version__))
-    except Exception:
-        out.append("%s MISSING" % mod)
-print("  ".join(out))
-PY
-)
-case "$PYVERS" in
-    *MISSING*) warn "python stack"  "$PYVERS" ;;
-    *)         ok   "python stack"  "$PYVERS" ;;
-esac
-
-# ---------------------------------------------------------------------------
-head2 "Shadow hard requirements"
-# /dev/shm — Shadow keeps its shared-memory blocks here (one per managed
-# thread). Docker's 64 MB default makes any non-trivial simulation die.
-SHM_KB=$(df -k /dev/shm 2>/dev/null | awk 'NR==2{print $2}')
-SHM_GB=$(( ${SHM_KB:-0} / 1024 / 1024 ))
-if   [ "${SHM_KB:-0}" -ge 4194304 ]; then ok   "/dev/shm" "${SHM_GB} GiB"
-elif [ "${SHM_KB:-0}" -ge 1048576 ]; then warn "/dev/shm" "${SHM_GB} GiB — small; docker run --shm-size=1024g"
-else                                      warn "/dev/shm" "$(( ${SHM_KB:-0} / 1024 )) MiB — too small; docker run --shm-size=1024g"
+    bad "ip netns does not work — /var/run/netns may not be writable"
 fi
 
-# seccomp — Docker's default profile blocks personality(), which Shadow uses to
-# disable ASLR: determinism is lost and each blocked call stalls ~3 s.
-# (shadow/ci/run.sh, moby/moby#43011)
-SECCOMP=$(awk '/^Seccomp:/{print $2}' /proc/self/status 2>/dev/null)
-case "${SECCOMP:-?}" in
-    0) ok   "seccomp" "disabled (correct)" ;;
-    *) warn "seccomp" "mode ${SECCOMP} active — add --security-opt seccomp=unconfined" ;;
-esac
+# --- tc and the qdiscs the fabric installs ---------------------------------
+for tool in ip tc; do
+    if command -v "$tool" >/dev/null 2>&1; then
+        ok "$tool: $(command -v "$tool")"
+    else
+        bad "$tool is missing (install iproute2)"
+    fi
+done
 
-# open files
-SOFT=$(ulimit -Sn); HARD=$(ulimit -Hn)
-if [ "$SOFT" = "unlimited" ] || [ "$SOFT" -ge 65536 ] 2>/dev/null; then
-    ok "open files (ulimit -n)" "soft=${SOFT} hard=${HARD}"
+if tc qdisc add dev lo root netem delay 1ms 2>/dev/null; then
+    tc qdisc del dev lo root 2>/dev/null || true
+    ok "netem works"
 else
-    warn "open files (ulimit -n)" "soft=${SOFT} — add --ulimit nofile=1048576:1048576"
+    bad "netem is not usable — the host kernel needs sch_netem (modprobe sch_netem)"
 fi
 
-# ---------------------------------------------------------------------------
-head2 "No hidden throttling (performance parity)"
-CG2=0; [ -r /sys/fs/cgroup/cgroup.controllers ] && CG2=1
-
-if [ "$CG2" = 1 ]; then
-    CPUMAX=$(read_first /sys/fs/cgroup/cpu.max)
-    case "${CPUMAX:-max}" in
-        max*) ok   "cpu quota" "none (${CPUMAX:-unset})" ;;
-        *)    warn "cpu quota" "${CPUMAX} — remove --cpus/--cpu-quota, Shadow needs full cores" ;;
-    esac
-    MEMMAX=$(read_first /sys/fs/cgroup/memory.max)
-    case "${MEMMAX:-max}" in
-        max) ok   "memory limit" "none" ;;
-        *)   warn "memory limit" "$(( MEMMAX / 1024 / 1024 )) MiB — remove --memory unless deliberate" ;;
-    esac
-    # A simulation of this size is a few hundred tasks plus one Shadow worker
-    # per CPU, so anything in the thousands is comfortable. Some engines apply a
-    # default limit that --pids-limit=-1 does not lift.
-    PIDMAX=$(read_first /sys/fs/cgroup/pids.max)
-    case "${PIDMAX:-max}" in
-        max) ok   "pids limit" "none" ;;
-        *)   if [ "${PIDMAX}" -ge 8192 ]; then ok "pids limit" "${PIDMAX} tasks"
-             else warn "pids limit" "${PIDMAX} — add --pids-limit=-1"; fi ;;
-    esac
-    CPUSET=$(read_first /sys/fs/cgroup/cpuset.cpus.effective)
+# --- limits ----------------------------------------------------------------
+SOFT=$(ulimit -Sn 2>/dev/null || echo 0)
+if [ "$SOFT" -ge 8192 ]; then
+    ok "open files: $SOFT"
 else
-    QUOTA=$(read_first /sys/fs/cgroup/cpu/cpu.cfs_quota_us)
-    [ "${QUOTA:--1}" = "-1" ] && ok "cpu quota" "none (cgroup v1)" \
-                              || warn "cpu quota" "${QUOTA} us — remove --cpus"
-    CPUSET=$(read_first /sys/fs/cgroup/cpuset/cpuset.cpus)
+    bad "open files is only $SOFT; twenty daemons and their peers need more (--ulimit nofile=1048576)"
 fi
 
-NPROC=$(nproc)
-# Shadow pins its worker threads and only uses CPUs inside its cgroup cpuset
-# (shadow/docs/parallel_sims.md). All CPUs visible == same layout as bare metal.
-info "usable CPUs" "nproc=${NPROC}  cpuset=${CPUSET:-<all>}"
-info "memory" "$(awk '/MemTotal/{printf "%.1f GiB total", $2/1048576}' /proc/meminfo)"
+CPUS=$(nproc 2>/dev/null || echo 1)
+MEM_KB=$(awk '/MemAvailable/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+note "CPUs visible: $CPUS"
+note "memory available: $((MEM_KB / 1024)) MiB"
+if [ "$CPUS" -lt 5 ]; then
+    note "with $CPUS CPUs, a twenty-node run will report host contention as much"
+    note "as protocol behaviour — the harness warns about this too"
+fi
 
-SWAP=$(awk '/SwapTotal/{print $2}' /proc/meminfo)
-if [ "${SWAP:-0}" -gt 0 ]; then
-    info "swap" "$(( SWAP / 1024 / 1024 )) GiB present — a swapping simulation is a ruined measurement"
+# --- MultiChain ------------------------------------------------------------
+ROOT="${MULTICHAIN_HOME:-$(pwd)}"
+if [ -x "$ROOT/src/multichaind" ]; then
+    ok "multichaind: $ROOT/src/multichaind"
 else
-    ok "swap" "none"
+    note "multichaind not built yet — run 'mc-build'"
 fi
 
-# ---------------------------------------------------------------------------
-head2 "Host kernel settings (change them on the HOST: docker/host-tune.sh)"
-MMC=$(read_first /proc/sys/vm/max_map_count)
-if [ "${MMC:-0}" -ge 262144 ]; then ok   "vm.max_map_count" "${MMC}"
-else                                warn "vm.max_map_count" "${MMC:-?} — raise it for large simulations"
-fi
-NROPEN=$(read_first /proc/sys/fs/nr_open)
-if [ "${NROPEN:-0}" -ge 1048576 ]; then ok   "fs.nr_open" "${NROPEN}"
-else                                    warn "fs.nr_open" "${NROPEN:-?} — caps --ulimit nofile"
-fi
-info "kernel.pid_max" "$(read_first /proc/sys/kernel/pid_max)"
-info "kernel.threads-max" "$(read_first /proc/sys/kernel/threads-max)"
-
-GOV=$(read_first /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)
-if [ -n "${GOV:-}" ]; then
-    [ "$GOV" = performance ] && ok "cpufreq governor" "performance" \
-                             || warn "cpufreq governor" "${GOV} — 'performance' removes wall-clock variance between runs"
+if [ -d "$ROOT/experiments" ]; then
+    ok "the harness is mounted at $ROOT/experiments"
 else
-    info "cpufreq governor" "not exposed to the container"
-fi
-SMT=$(read_first /sys/devices/system/cpu/smt/active)
-[ "${SMT:-0}" = "1" ] && info "SMT / hyperthreading" "on — pin to physical cores only (mcsim shell --cpuset=...)" \
-                      || info "SMT / hyperthreading" "off or not reported"
-
-if grep -qi microsoft /proc/version 2>/dev/null; then
-    warn "virtualisation" "WSL2 kernel — a VM, not bare metal: fine for development, not for the final campaign"
-elif [ -r /sys/class/dmi/id/product_name ] && grep -qiE 'virtual|vmware|kvm|qemu' /sys/class/dmi/id/product_name; then
-    warn "virtualisation" "$(cat /sys/class/dmi/id/product_name) — virtualised host"
-else
-    info "virtualisation" "no VM signature (container namespaces only: native speed)"
+    bad "no experiments/ under $ROOT — is the repository bind-mounted?"
 fi
 
-# ---------------------------------------------------------------------------
-head2 "Filesystem"
-PROJ="${MULTICHAIN_HOME:-/home/mattu/multichain}"
-if [ -d "$PROJ/.git" ]; then
-    FSTYPE=$(df -T "$PROJ" 2>/dev/null | awk 'NR==2{print $2}')
-    case "$FSTYPE" in
-        overlay) warn "project mount" "on overlayfs — bind-mount the repo instead (I/O bound phases get slower)" ;;
-        *)       ok   "project mount" "${PROJ} (${FSTYPE})" ;;
-    esac
-    [ -w "$PROJ/shadow" ] && ok "write access" "shadow/ writable as $(id -un) ($(id -u):$(id -g))" \
-                          || warn "write access" "shadow/ not writable by $(id -u):$(id -g) — rebuild with USER_UID/USER_GID"
+echo
+if [ "$PROBLEMS" -gt 0 ]; then
+    echo "  $PROBLEMS problem(s). See docker/README.md."
+    [ "$STRICT" -eq 1 ] && exit 1
 else
-    warn "project mount" "${PROJ} does not look like the repository — check the bind mount"
+    echo "  ready."
 fi
-[ -d "$PROJ/v8build/v8" ] && ok "v8 prebuilt tree" "present" \
-                          || warn "v8 prebuilt tree" "missing — mc-build downloads it"
-
-printf '\n'
-if [ "$WARN" -eq 0 ]; then
-    printf '\033[32m═══ all checks passed ═══\033[0m\n'
-else
-    printf '\033[33m═══ %d warning(s) ═══\033[0m see docker/README.md\n' "$WARN"
-    [ "$STRICT" = 1 ] && exit 1
-fi
+echo
 exit 0

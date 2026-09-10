@@ -86,6 +86,18 @@ Two differences are expected and are the only ones:
 * `epoch_shares.csv` rows are ordered by address in the current code and were
   not in the version that wrote the archive. The row *contents* are identical.
 
+## A note on the absolute paths inside these files
+
+`sheets/run_index.csv` has a `path` column, and
+`campaign/campaign_manifest.json` and the Monte-Carlo log carry a `script`
+field, all holding absolute paths on the machine that ran the analysis in
+2026 (`/home/mattu/multichain/shadow/...`).
+
+They are left exactly as they were **on purpose**. They are provenance — the
+archive's own record of where it was produced — not configuration, and
+rewriting them would falsify the archive to satisfy a lint rule. Nothing reads
+them; no code in `experiments/` contains a personal path.
+
 ## Recovering the raw data
 
 The ~3 GB of per-run metrics, snapshots and `debug.log` files were not carried

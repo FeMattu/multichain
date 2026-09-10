@@ -1,5 +1,0 @@
-run_id,livello,tbt,height,epoca,host,tipo_controllo,severita,descrizione,valore_atteso,valore_osservato,riferimento_riga_sorgente
-run4-tbt-3s/nazionale,nazionale,3,,,,altro,[I],"8 record di adesione entrano in tau come attivita' confermata, oltre alle pubblicazioni di filiera: e' corretto (sono transazioni in un blocco) ma va tenuto presente leggendo tau come 'traffico'",n/d,8,membership_events.csv
-run4-tbt-3s/nazionale,nazionale,3,,,,altro,[I],"nessun record sul registro dei malus: le Def. 5.17-5.24 (quattro tipi di violazione, decadimento reversibile) non sono esercitate da questa run, e Psi vale 1 in ogni epoca",n/d,0,malus.json
-run4-tbt-3s/nazionale,nazionale,3,,,,altro,[I],"dump-function = none: lo smorzamento anti-whale (Def. 5.9) e' inerte, quindi peso_efficace_epoca coincide con peso_dopo_malus per costruzione",n/d,none,params.dat
-run4-tbt-3s/nazionale,nazionale,3,,,,altro,[I],99 righe (epoca x host) con attesa minima sotto 5: il chi-quadro per epoca non ha campione sufficiente e va letto solo insieme a quello a finestra scorrevole,>= 5,< 5,peso_riconciliazione.csv

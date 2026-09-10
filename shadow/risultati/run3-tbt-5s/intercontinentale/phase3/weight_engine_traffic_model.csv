@@ -1,2 +1,0 @@
-experiment_id,area,replication_id,target_block_time,dumpfunction,malus_enabled,statement
-run3-tbt-5s,intercontinentale,1,5,none,true,"traffic generation is EXOGENOUS: tools/role_company.sh do_traffic() publishes one item every INTERVAL simulated seconds regardless of who mines; the only endogenous feedback channel is rho (reconciliation), as tested above"

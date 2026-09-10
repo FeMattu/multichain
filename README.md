@@ -16,21 +16,43 @@ These compilation instructions have been tested on Ubuntu 16.04 x64 (xenial) and
 
 C++ compilers are memory-hungry, so it is recommended to have at least 1 GB of memory available when compiling MultiChain. With less memory, compilation may take much longer due to swapfile thrashing.
 
+Network experiments (wPoA / POESIA)
+-----------------------------------
+
+This fork carries a harness that runs the real MultiChain binaries on an emulated
+network — CORE Network Emulator, or plain Linux namespaces with `tc`/netem — and
+produces the CSVs, plots and reports the wPoA analysis needs. Twenty nodes by
+default: 7 miners, 10 companies, 3 administrative.
+
+    experiments/scripts/check_environment.sh          # can this machine do it?
+    python3 -m experiments.cli experiment dry-run \
+        --experiment experiments/configs/experiments/regional.yaml
+    sudo -E experiments/scripts/run_experiment.sh \
+        --experiment experiments/configs/experiments/smoke-3n.yaml
+
+Start at [experiments/README.md](experiments/README.md).
+
+It replaces the Shadow simulation suite that used to live in `shadow/`. What moved,
+what was archived and what changed is in
+[experiments/docs/migration-from-shadow.md](experiments/docs/migration-from-shadow.md);
+the archived campaign itself is preserved and labelled in
+[experiments/analysis/historical/](experiments/analysis/historical/).
+
 Reproducible environment (Docker)
 ---------------------------------
 
-If the machine runs a newer Ubuntu than 22.04, or you want the exact toolchain the Shadow
-campaigns under [shadow/](shadow/) were produced with, build the container instead of
+If the machine runs a newer Ubuntu than 22.04, or you want the analysis stack pinned to
+the versions the archived campaign was analysed with, build the container instead of
 installing the dependencies by hand. It supplies a 22.04 userspace on the host kernel —
-no virtualisation, so simulations keep bare-metal performance:
+no virtualisation, so an emulated run keeps bare-metal performance:
 
-    sudo ./docker/host-tune.sh --apply    # host kernel/CPU settings Shadow needs
-    ./docker/mcsim build                  # Ubuntu 22.04 + GCC 11 + Shadow (pinned commit)
+    ./docker/mcsim build                  # Ubuntu 22.04 + GCC 11 + the analysis stack
     ./docker/mcsim run mc-build           # compiles multichaind into src/
-    ./docker/mcsim preflight              # verify nothing is throttled
+    ./docker/mcsim preflight              # can this container build a network?
+    ./docker/mcsim exp experiments/configs/experiments/smoke-3n.yaml
 
-Full rationale — dependency map, the `docker run` flags that matter, host tuning and the
-reproducibility pins — is in [docker/README.md](docker/README.md).
+Full rationale — the `docker run` flags that matter and why, and what is and is not
+containerised — is in [docker/README.md](docker/README.md).
 
 
 Linux Build Notes (on Ubuntu 22.04 x64) with compiler GCC 11

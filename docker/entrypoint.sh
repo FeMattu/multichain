@@ -2,23 +2,23 @@
 # ---------------------------------------------------------------------------
 # Container entrypoint.
 #
-# Does the two things that must happen inside every container, then gets out of
-# the way: raises the soft file-descriptor limit to the hard one granted by
-# `docker run --ulimit`, and reports whether the container is configured to run
-# Shadow at native speed.
+# Two things must happen in every container, then it gets out of the way:
+# raise the soft file-descriptor limit to the hard one granted by
+# `docker run --ulimit`, and report whether this container can actually build
+# an emulated network.
 #
-#   SIM_PREFLIGHT=auto|1|0   run the preflight report (default: auto = only on a TTY)
+#   MC_PREFLIGHT=auto|1|0   run the environment report (default: auto = on a TTY)
 # ---------------------------------------------------------------------------
 set -uo pipefail
 
-# Shadow opens file descriptors from its own process space for every managed
-# process, so the soft limit — not the hard one — is what bites.
+# Twenty multichaind processes, each with its peers, exhaust a default soft
+# limit long before the hard one.
 HARD=$(ulimit -Hn 2>/dev/null || echo "")
 if [ -n "$HARD" ]; then
     ulimit -n "$HARD" 2>/dev/null || true
 fi
 
-case "${SIM_PREFLIGHT:-auto}" in
+case "${MC_PREFLIGHT:-auto}" in
     1)    /usr/local/bin/preflight.sh || true ;;
     auto) [ -t 1 ] && /usr/local/bin/preflight.sh || true ;;
     *)    : ;;
@@ -27,12 +27,16 @@ esac
 if [ -t 1 ]; then
     cat <<'BANNER'
 
-  MultiChain + Shadow — Ubuntu 22.04 userspace on the host kernel.
+  MultiChain + real network emulation — Ubuntu 22.04 userspace, host kernel.
 
-    mc-build                              compile MultiChain (src/multichaind)
-    mc-preflight                          re-run the environment report
-    ./run.sh --config=config/simulations/<name>.json    run a simulation
-    python3 tools/pipeline/run_pipeline.py --help       analyse the output
+    mc-build                                   compile MultiChain into src/
+    mc-preflight                               re-run the environment report
+
+    experiments/scripts/check_environment.sh   can this container do it?
+    experiments/scripts/run_experiment.sh \
+        --experiment experiments/configs/experiments/smoke-3n.yaml
+
+    python3 -m experiments.cli --help          every command
 
 BANNER
 fi

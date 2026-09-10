@@ -1,4 +1,0 @@
-epoch,verified,records,invalid,address,host,published,published_epoch,recomputed,verdict
-53,True,3,0,1CMdrBmxo2wcbEWHTtRHXuKRi6pGt4zPLLdt25,m1,42907,53,42907,ok
-53,True,3,0,1HCscGy3u1Tw99kZsZNhREFhcEUCrPpbkBJBPv,m3,4122,53,4122,ok
-53,True,3,0,1Hfp7q7MU1cqZ39ggatAxed6qU28DdMjLTSgcH,m2,15454,52,0,other-epoch
