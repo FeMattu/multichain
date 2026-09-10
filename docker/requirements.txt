@@ -1,0 +1,12 @@
+# Python packages NOT taken from the Ubuntu 22.04 archive.
+#
+# Everything else in the analysis stack comes from apt on purpose: on 22.04 the
+# apt versions are bit-for-bit the ones that produced the recorded campaigns
+# (networkx 2.4, numpy 1.21.5, pandas 1.3.5, scipy 1.8.0, jsonschema 3.2.0),
+# and networkx in particular is load-bearing — its GML reader/writer changed
+# behaviour after 2.4 and Shadow's GML parser is stricter than documented
+# (shadow/README.md, "Shadow constraints found in the field", point 4).
+#
+# openpyxl: apt ships 3.0.9, the stored .xlsx workbooks under
+# shadow/risultati/ were written with 3.1.5.
+openpyxl==3.1.5

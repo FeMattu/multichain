@@ -16,6 +16,22 @@ These compilation instructions have been tested on Ubuntu 16.04 x64 (xenial) and
 
 C++ compilers are memory-hungry, so it is recommended to have at least 1 GB of memory available when compiling MultiChain. With less memory, compilation may take much longer due to swapfile thrashing.
 
+Reproducible environment (Docker)
+---------------------------------
+
+If the machine runs a newer Ubuntu than 22.04, or you want the exact toolchain the Shadow
+campaigns under [shadow/](shadow/) were produced with, build the container instead of
+installing the dependencies by hand. It supplies a 22.04 userspace on the host kernel —
+no virtualisation, so simulations keep bare-metal performance:
+
+    sudo ./docker/host-tune.sh --apply    # host kernel/CPU settings Shadow needs
+    ./docker/mcsim build                  # Ubuntu 22.04 + GCC 11 + Shadow (pinned commit)
+    ./docker/mcsim run mc-build           # compiles multichaind into src/
+    ./docker/mcsim preflight              # verify nothing is throttled
+
+Full rationale — dependency map, the `docker run` flags that matter, host tuning and the
+reproducibility pins — is in [docker/README.md](docker/README.md).
+
 
 Linux Build Notes (on Ubuntu 22.04 x64) with compiler GCC 11
 =================

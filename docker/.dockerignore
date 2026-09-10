@@ -1,0 +1,7 @@
+# The build context is this directory only: the repository itself is
+# bind-mounted at runtime, never copied into the image.
+.env
+README.md
+docker-compose.yml
+host-tune.sh
+mcsim

@@ -1,0 +1,73 @@
+# ---------------------------------------------------------------------------
+# Equivalent of ./docker/mcsim, for people who prefer compose.
+#
+#   cd docker
+#   cp .env.example .env && sed -i "s/^USER_UID=.*/USER_UID=$(id -u)/;s/^USER_GID=.*/USER_GID=$(id -g)/" .env
+#   docker compose build
+#   docker compose run --rm sim mc-build        # compile MultiChain
+#   docker compose run --rm sim                 # interactive shell
+#   docker compose run --rm sim ./run.sh --config=config/simulations/tbt10s-cont-sqrt-5n.json
+#
+# Every option here exists for a reason; docker/README.md ("Performance
+# contract") explains each one. Do NOT add `cpus:`, `mem_limit:` or a narrow
+# `cpuset:`: Shadow pins its worker threads inside the cgroup cpuset it is
+# given, so throttling the container reshapes the simulation.
+# ---------------------------------------------------------------------------
+name: poesia-sim
+
+services:
+  sim:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USER_NAME: ${USER_NAME:-mattu}
+        USER_UID: ${USER_UID:-1000}
+        USER_GID: ${USER_GID:-1000}
+        PROJECT_DIR: ${PROJECT_DIR:-/home/mattu/multichain}
+        SHADOW_REF: ${SHADOW_REF:-93d3c32cc}
+        RUST_VERSION: ${RUST_VERSION:-1.98.0}
+    image: ${IMAGE:-poesia-sim:22.04}
+    hostname: poesia-sim
+
+    # Shadow's shared memory (one block per managed thread).
+    shm_size: "${SHM_SIZE:-1024gb}"
+
+    # Docker's default seccomp profile blocks personality(), which Shadow uses
+    # to disable ASLR: non-determinism plus multi-second stalls. The filter is
+    # also evaluated on every syscall of every simulated node.
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+    cap_add:
+      - SYS_PTRACE      # shim <-> simulator
+      - SYS_NICE        # CPU pinning / priorities
+      - SYS_RESOURCE
+
+    ulimits:
+      nofile:
+        soft: ${NOFILE:-1048576}
+        hard: ${NOFILE:-1048576}
+      memlock: -1
+      nproc: 1048576
+      core: 0           # no multi-GB core dumps from a crashed node
+    pids_limit: -1      # one simulation is thousands of threads
+
+    network_mode: host  # the simulated network is internal to Shadow
+
+    volumes:
+      # Bind mount, not a copy: native filesystem speed, results stay on the host.
+      - ..:${PROJECT_DIR:-/home/mattu/multichain}
+    working_dir: ${PROJECT_DIR:-/home/mattu/multichain}/shadow
+    environment:
+      MULTICHAIN_HOME: ${PROJECT_DIR:-/home/mattu/multichain}
+      SIM_PREFLIGHT: ${SIM_PREFLIGHT:-auto}
+
+    # Opt-in: simulation output in RAM. Fast and VOLATILE — copy runs/ out
+    # before the container exits.
+    # tmpfs:
+    #   - ${PROJECT_DIR:-/home/mattu/multichain}/shadow/runs:rw,exec,nosuid,nodev,size=32g
+
+    stdin_open: true
+    tty: true
+    command: ["bash"]

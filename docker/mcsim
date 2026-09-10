@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+# mcsim — host-side wrapper around `docker run` for the POESIA / wPoA
+# simulation container.
+#
+# Its whole reason to exist is the flag set: Shadow needs a container that is
+# *not* sandboxed and *not* throttled, and getting one flag wrong either breaks
+# the simulator or quietly costs a large fraction of the wall-clock speed. Every
+# flag below is justified in docker/README.md.
+#
+#   ./docker/mcsim build [--no-cache] [--shadow-ref=REF]
+#   ./docker/mcsim shell [--cpuset=LIST] [--runs-tmpfs[=SIZE]]
+#   ./docker/mcsim run  <command...>
+#   ./docker/mcsim sim  config/simulations/<name>.json
+#   ./docker/mcsim preflight
+#   ./docker/mcsim cpus                 physical-core-only CPU list for --cpuset
+#   ./docker/mcsim tune [--apply]       host kernel/CPU settings (needs sudo)
+#
+# Environment overrides:
+#   IMAGE=poesia-sim:22.04     image tag
+#   PROJECT_DIR=/home/mattu/multichain
+#                              mount point inside the container. Keep the
+#                              default: the recorded shadow.yaml files embed
+#                              absolute paths.
+#   SHM_SIZE=1024g             /dev/shm (Shadow's shared memory)
+#   NOFILE=1048576             --ulimit nofile
+# ---------------------------------------------------------------------------
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(cd "$HERE/.." && pwd)"
+
+IMAGE="${IMAGE:-poesia-sim:22.04}"
+PROJECT_DIR="${PROJECT_DIR:-/home/mattu/multichain}"
+SHM_SIZE="${SHM_SIZE:-1024g}"
+NOFILE="${NOFILE:-1048576}"
+CPUSET=""
+RUNS_TMPFS=""
+
+say()  { printf '\033[1m[mcsim]\033[0m %s\n' "$*"; }
+warn() { printf '\033[33m[mcsim] %s\033[0m\n' "$*" >&2; }
+die()  { printf '\033[31m[mcsim] %s\033[0m\n' "$*" >&2; exit 1; }
+
+command -v docker >/dev/null || die "docker not found on PATH"
+
+# ---------------------------------------------------------------------------
+# Host sanity: a virtualised docker engine (Docker Desktop) puts a VM between
+# the simulation and the CPU, which is exactly what this setup exists to avoid.
+# ---------------------------------------------------------------------------
+check_engine() {
+    local os
+    os="$(docker info --format '{{.OperatingSystem}}' 2>/dev/null || echo unknown)"
+    case "$os" in
+        *"Docker Desktop"*)
+            warn "docker engine: '$os'"
+            warn "Docker Desktop runs containers inside a Linux VM: expect a"
+            warn "measurable slowdown and no CPU-topology fidelity. On Ubuntu use"
+            warn "the native engine (docker.io / docker-ce, systemd service dockerd)." ;;
+        *) say "docker engine: $os" ;;
+    esac
+}
+
+# ---------------------------------------------------------------------------
+# The flag set.
+# ---------------------------------------------------------------------------
+docker_flags() {
+    local -a f=(
+        --rm
+        --hostname poesia-sim
+
+        # Shadow keeps one shared-memory block per managed thread in /dev/shm;
+        # Docker's 64 MB default is far too small (shadow/docs/supported_platforms.md).
+        "--shm-size=${SHM_SIZE}"
+
+        # Docker's default seccomp profile blocks personality(), which Shadow
+        # uses to disable ASLR: determinism is lost and every blocked call
+        # stalls for seconds (shadow/ci/run.sh, moby/moby#43011). It is also a
+        # BPF filter evaluated on *every* syscall of every simulated node — the
+        # single largest source of container overhead for this workload.
+        --security-opt seccomp=unconfined
+        # Same reasoning for the LSM path: no file-access mediation per node I/O.
+        --security-opt apparmor=unconfined
+        # Needed once seccomp is back on: ptrace/process_vm_readv are how the
+        # shim and the simulator talk to each other.
+        --cap-add SYS_PTRACE
+        # CPU pinning and priority for Shadow's worker threads.
+        --cap-add SYS_NICE
+        --cap-add SYS_RESOURCE
+
+        # File descriptors: Shadow opens them from its own process space for
+        # every managed process (shadow/docs/system_configuration.md).
+        "--ulimit" "nofile=${NOFILE}:${NOFILE}"
+        "--ulimit" "memlock=-1:-1"
+        "--ulimit" "nproc=1048576:1048576"
+        # A crashing node would otherwise drop a multi-GB core into the run dir.
+        "--ulimit" "core=${MCSIM_ULIMIT_CORE:-0}"
+        # One simulation is thousands of threads.
+        "--pids-limit" "-1"
+
+        # No CPU quota, no memory limit, no cpuset by default: Shadow reads its
+        # cgroup cpuset and pins workers inside it, so restricting the container
+        # silently reshapes the simulation's parallelism.
+        --network host
+
+        # The repository is bind-mounted, never copied: native filesystem, no
+        # overlayfs write penalty, results stay on the host.
+        -v "${REPO}:${PROJECT_DIR}"
+        -w "${PROJECT_DIR}/shadow"
+        -e "MULTICHAIN_HOME=${PROJECT_DIR}"
+        -e "SIM_PREFLIGHT=${SIM_PREFLIGHT:-auto}"
+    )
+    [ -n "$CPUSET" ] && f+=("--cpuset-cpus=${CPUSET}")
+    if [ -n "$RUNS_TMPFS" ]; then
+        # Opt-in: simulation output on RAM instead of disk. Fast, and VOLATILE.
+        f+=("--tmpfs" "${PROJECT_DIR}/shadow/runs:rw,exec,nosuid,nodev,size=${RUNS_TMPFS}")
+    fi
+    [ -t 0 ] && f+=(-i -t) || f+=(-i)
+    printf '%s\n' "${f[@]}"
+}
+
+need_image() {
+    docker image inspect "$IMAGE" >/dev/null 2>&1 \
+        || die "image '$IMAGE' not found — run: ./docker/mcsim build"
+}
+
+run_in_container() {
+    need_image
+    local -a flags
+    mapfile -t flags < <(docker_flags)
+    exec docker run "${flags[@]}" "$IMAGE" "$@"
+}
+
+# ---------------------------------------------------------------------------
+cmd_build() {
+    local -a extra=()
+    local ref=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --no-cache)     extra+=(--no-cache) ;;
+            --shadow-ref=*) ref="${1#*=}" ;;
+            --pull)         extra+=(--pull) ;;
+            *)              die "build: unknown option $1" ;;
+        esac
+        shift
+    done
+    check_engine
+    say "building ${IMAGE} (this compiles Shadow from source: expect 10-30 min)"
+    local -a args=(
+        build
+        -t "$IMAGE"
+        -f "$HERE/Dockerfile"
+        --build-arg "USER_NAME=$(id -un)"
+        --build-arg "USER_UID=$(id -u)"
+        --build-arg "USER_GID=$(id -g)"
+        --build-arg "PROJECT_DIR=${PROJECT_DIR}"
+    )
+    [ -n "$ref" ] && args+=(--build-arg "SHADOW_REF=${ref}")
+    docker "${args[@]}" "${extra[@]}" "$HERE"
+    say "done. next: ./docker/mcsim run mc-build   (compiles MultiChain)"
+}
+
+cmd_shell()     { run_in_container bash; }
+cmd_run()       { [ "$#" -gt 0 ] || die "run: nothing to run"; run_in_container "$@"; }
+cmd_sim()       { [ "$#" -eq 1 ] || die "sim: expected exactly one descriptor path"
+                  run_in_container ./run.sh "--config=$1"; }
+cmd_preflight() { SIM_PREFLIGHT=0 run_in_container mc-preflight --strict; }
+
+# One CPU per physical core, first NUMA node first: avoids SMT siblings
+# competing for the same core, which shadow/docs/parallel_sims.md warns about.
+cmd_cpus() {
+    command -v lscpu >/dev/null || die "lscpu not found (install util-linux)"
+    lscpu --parse=cpu,core,socket,node 2>/dev/null \
+      | grep -v '^#' \
+      | awk -F, '!seen[$3","$2]++ {print $1}' \
+      | sort -n \
+      | paste -sd,
+}
+
+cmd_tune() {
+    [ -x "$HERE/host-tune.sh" ] || die "docker/host-tune.sh missing"
+    if [ "$(id -u)" -ne 0 ]; then
+        exec sudo "$HERE/host-tune.sh" "$@"
+    fi
+    exec "$HERE/host-tune.sh" "$@"
+}
+
+# print the header comment block, whatever its length
+usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "${BASH_SOURCE[0]}"; }
+
+# ---------------------------------------------------------------------------
+[ "$#" -ge 1 ] || { usage; exit 2; }
+SUB="$1"; shift
+
+# options shared by the container-starting subcommands
+ARGS=()
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --cpuset=*)    CPUSET="${1#*=}" ;;
+        --runs-tmpfs)  RUNS_TMPFS="32g" ;;
+        --runs-tmpfs=*) RUNS_TMPFS="${1#*=}" ;;
+        --)            shift; ARGS+=("$@"); break ;;
+        *)             ARGS+=("$1") ;;
+    esac
+    shift
+done
+set -- ${ARGS[@]+"${ARGS[@]}"}
+
+case "$SUB" in
+    build)     cmd_build "$@" ;;
+    shell|sh)  cmd_shell "$@" ;;
+    run)       cmd_run "$@" ;;
+    sim)       cmd_sim "$@" ;;
+    preflight) cmd_preflight "$@" ;;
+    cpus)      cmd_cpus ;;
+    tune)      cmd_tune "$@" ;;
+    -h|--help|help) usage ;;
+    *)         die "unknown subcommand: $SUB (try --help)" ;;
+esac
