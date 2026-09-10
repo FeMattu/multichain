@@ -32,10 +32,24 @@ pytestmark = pytest.mark.slow
 
 
 def _require_archive():
-    if not (EXPERIMENTS.is_dir() and RESULTS.is_dir() and CONFIG.is_dir()):
+    """Skip unless the archive's own FILES are present.
+
+    Checking that the directories exist is not enough: `git rm -r shadow`
+    leaves the ~3 GB of never-tracked run output behind, so the directories
+    survive while everything the pipeline reads is gone. The guard therefore
+    names files the campaign cannot be re-analysed without.
+    """
+    needed = [
+        EXPERIMENTS / "run1-tbt-15s" / "regionale" / "run" / "metrics" / "blocks.json",
+        CONFIG / "levels" / "regionale.json",
+        RESULTS / SAMPLE / "phase1" / "blocks.csv",
+    ]
+    missing = [path for path in needed if not path.is_file()]
+    if missing:
         pytest.skip(
-            "the archived Shadow campaign is not in this checkout; recover it with "
-            "'git checkout 6278274 -- shadow/esperimenti shadow/config shadow/risultati'"
+            "the archived Shadow campaign is not in this checkout (%s missing); "
+            "recover it with 'git checkout 6278274 -- shadow/esperimenti "
+            "shadow/config shadow/risultati'" % missing[0].name
         )
 
 
@@ -83,14 +97,21 @@ def test_campaign_sheets_reproduce_every_archived_row(tmp_path):
     if not sheets.is_dir():
         pytest.skip("the archived sheets were not migrated into this checkout")
 
+    # The archived sheets are a campaign-level view of exactly twenty runs.
+    # A partial restore would produce fewer rows and fail for a reason that
+    # has nothing to do with the migration, so require all five directories.
+    wanted = ["run1-tbt-15s", "run2-tbt-10s", "run3-tbt-5s",
+              "run4-tbt-3s", "run5-tbt-2s"]
+    absent = [name for name in wanted if not (EXPERIMENTS / name).is_dir()]
+    if absent:
+        pytest.skip(
+            "the archived sheets cover twenty runs and %s is not restored; recover "
+            "the whole campaign with 'git checkout 6278274 -- shadow/'" % absent[0])
+
     subset = tmp_path / "esperimenti"
     subset.mkdir()
-    for directory in sorted(EXPERIMENTS.iterdir()):
-        if directory.is_dir() and directory.name.startswith(("run1", "run2", "run3",
-                                                             "run4", "run5")):
-            (subset / directory.name).symlink_to(directory.resolve())
-    if not any(subset.iterdir()):
-        pytest.skip("no runN-tbt-Ts directory in the archive")
+    for name in wanted:
+        (subset / name).symlink_to((EXPERIMENTS / name).resolve())
 
     out = tmp_path / "analisi"
     import sys
