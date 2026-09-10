@@ -19,8 +19,18 @@
 # run directory, not the network. See experiments/docs/architecture.md,
 # "Why native first".
 #
-# The container needs CAP_NET_ADMIN and its own network namespace, which mcsim
-# supplies. It does not need --privileged.
+# WHAT THE CONTAINER NEEDS FROM THE HOST
+# -------------------------------------
+# CAP_NET_ADMIN for veth pairs, addresses, routes and qdiscs; CAP_SYS_ADMIN
+# and an unconfined AppArmor profile because `ip netns add` mounts
+# /run/netns and unshares a namespace, which no network capability covers;
+# a writable /proc/sys, which the entrypoint arranges, so the routers can
+# turn on IPv4 forwarding. mcsim and docker-compose.yml supply all of it.
+# It does not need --privileged.
+#
+# Resources are not capped anywhere in this image or its launchers: a run
+# started without resource flags gets the whole machine, because a throttled
+# run measures the throttle rather than the protocol.
 # ===========================================================================
 ARG UBUNTU_VERSION=22.04
 
@@ -32,6 +42,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Versions come from the top-level README; -march=native is deliberately NOT
 # used, because changing codegen changes the CPU time the emulated nodes
 # consume and therefore the block times they produce.
+#
+# libevent is not optional: configure.ac stops with an error without it
+# (libevent >= 2.0.21 and libevent_pthreads), and multichaind links against
+# both at run time.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         autoconf \
         automake \
@@ -46,6 +60,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libboost-system-dev \
         libboost-test-dev \
         libboost-thread-dev \
+        libevent-dev \
         libssl-dev \
         libtool \
         pkg-config \

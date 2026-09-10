@@ -3,17 +3,27 @@
 # mcsim — host-side wrapper around `docker run` for the POESIA / wPoA
 # emulation container.
 #
-# Its reason to exist is the flag set. The container has to be able to create
-# network namespaces and apply tc inside itself, and getting that wrong fails
-# several steps into a run with a message about `ip netns` rather than about
-# the flag that was missing.
+# Its reason to exist is the flag set. The container has to build MultiChain
+# against an Ubuntu 22.04 userspace AND create network namespaces, veth pairs
+# and qdiscs inside itself; getting one flag wrong fails several steps into a
+# run with a message about `ip netns` rather than about the flag that was
+# missing.
 #
 #   ./docker/mcsim build [--no-cache]
-#   ./docker/mcsim shell [--cpuset=LIST]
+#   ./docker/mcsim shell [resource flags]
 #   ./docker/mcsim run  <command...>
 #   ./docker/mcsim exp  experiments/configs/experiments/<name>.yaml
 #   ./docker/mcsim preflight
 #   ./docker/mcsim cpus                 physical-core-only CPU list for --cpuset
+#
+# Resources. With no resource flag the container is UNCONSTRAINED: every CPU
+# and all the memory the host has. That is the default on purpose — a run whose
+# nodes are throttled measures the throttle, not the protocol. The flags below
+# exist for the case where you deliberately want less:
+#
+#   --cpus=N            fractional CPU quota      (default: no quota)
+#   --cpuset=LIST       pin to these CPUs         (default: every CPU)
+#   --memory=SIZE       memory ceiling, e.g. 16g  (default: no ceiling)
 #
 # Environment overrides:
 #   IMAGE=poesia-emu:22.04     image tag
@@ -36,6 +46,8 @@ PROJECT_DIR="${PROJECT_DIR:-/workspace/multichain}"
 NOFILE="${NOFILE:-1048576}"
 RESULTS_DIR="${RESULTS_DIR:-}"
 CPUSET=""
+CPUS=""
+MEMORY=""
 
 say()  { printf '\033[1m[mcsim]\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m[mcsim] %s\033[0m\n' "$*" >&2; }
@@ -46,13 +58,23 @@ command -v docker >/dev/null || die "docker not found on PATH"
 docker_flags() {
     local flags=()
 
-    # CAP_NET_ADMIN: creating namespaces, veth pairs and qdiscs. This is the
-    # one flag without which nothing works. Note it is NOT --privileged: the
-    # container needs network administration, not everything.
+    # CAP_NET_ADMIN: veth pairs, addresses, routes and qdiscs.
     flags+=(--cap-add NET_ADMIN)
 
-    # The fabric writes namespace handles under /var/run/netns and needs
-    # /sys/fs/cgroup readable for process accounting.
+    # CAP_SYS_ADMIN: `ip netns add` is not only a network operation. It creates
+    # /run/netns, turns it into a shared bind mount and calls unshare(CLONE_NEWNET) —
+    # all three are mount/namespace operations that CAP_NET_ADMIN does not cover.
+    # Without this the run dies at "mount --make-shared /run/netns failed".
+    flags+=(--cap-add SYS_ADMIN)
+
+    # Docker's default AppArmor profile denies mount() outright, whatever the
+    # capabilities say, so CAP_SYS_ADMIN alone still fails — with "Permission
+    # denied" rather than "Operation not permitted", which is the only clue.
+    # Still not --privileged: the device cgroup and the rest stay in force.
+    flags+=(--security-opt apparmor=unconfined)
+
+    # `ip netns` writes its handles under /var/run/netns, which must be
+    # writable and must allow mounts.
     flags+=(--tmpfs /run:rw,exec,nosuid,size=64m)
 
     # Its own network namespace, so twenty emulated nodes cannot reach the
@@ -77,7 +99,13 @@ docker_flags() {
         flags+=(-e "EXPERIMENT_ROOT=/results")
     fi
 
+    # Resources. Nothing is passed unless it was asked for: an absent --cpus,
+    # --cpuset-cpus and --memory is how docker expresses "all of it", and that
+    # is the intended default for an emulation run.
     [ -n "$CPUSET" ] && flags+=(--cpuset-cpus "$CPUSET")
+    [ -n "$CPUS" ]   && flags+=(--cpus "$CPUS")
+    [ -n "$MEMORY" ] && flags+=(--memory "$MEMORY")
+
     [ -t 0 ] && flags+=(-it)
 
     printf '%s\n' "${flags[@]}"
@@ -88,8 +116,23 @@ need_image() {
         die "image $IMAGE is not built. Run: ./docker/mcsim build"
 }
 
+# What the container was actually given, said out loud: an accidentally
+# throttled run is otherwise indistinguishable from a slow protocol.
+report_resources() {
+    local cpus mem
+    cpus="$(nproc 2>/dev/null || echo '?')"
+    mem="$(awk '/MemTotal/ {printf "%.0f", $2 / 1048576}' /proc/meminfo 2>/dev/null || echo '?')"
+    if [ -z "$CPUSET$CPUS$MEMORY" ]; then
+        say "resources: unconstrained — all ${cpus} host CPUs, all ${mem} GiB"
+    else
+        say "resources: cpus=${CPUS:-all} cpuset=${CPUSET:-all} memory=${MEMORY:-all}" \
+            "(host has ${cpus} CPUs, ${mem} GiB)"
+    fi
+}
+
 run_in_container() {
     need_image
+    report_resources
     local flags=(); mapfile -t flags < <(docker_flags)
     docker run --rm "${flags[@]}" "$IMAGE" "$@"
 }
@@ -134,10 +177,21 @@ cmd_cpus() {
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "${BASH_SOURCE[0]}"; }
 
 COMMAND="${1:-}"; shift || true
+
+# The resource flags are mcsim's own and must not reach the container's command
+# line. Filtering rebuilds the argument list rather than blanking elements in
+# place: a blanked element stays as an empty argument and `docker run` then
+# tries to execute it.
+ARGS=()
 for arg in "$@"; do
-    case "$arg" in --cpuset=*) CPUSET="${arg#*=}" ;; esac
+    case "$arg" in
+        --cpuset=*) CPUSET="${arg#*=}" ;;
+        --cpus=*)   CPUS="${arg#*=}" ;;
+        --memory=*) MEMORY="${arg#*=}" ;;
+        *)          ARGS+=("$arg") ;;
+    esac
 done
-set -- "${@/--cpuset=*/}"
+set -- ${ARGS[@]+"${ARGS[@]}"}
 
 case "$COMMAND" in
     build)     cmd_build "$@" ;;

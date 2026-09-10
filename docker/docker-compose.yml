@@ -9,8 +9,13 @@
 #           --experiment experiments/configs/experiments/smoke-3n.yaml
 #
 # The flags below are the same ones mcsim passes, and for the same reasons -
-# docker/README.md explains each. cap_add NET_ADMIN is the one without which
-# nothing works.
+# docker/README.md explains each. NET_ADMIN, SYS_ADMIN and the unconfined
+# AppArmor profile are the three without which nothing works.
+#
+# Resources are UNCONSTRAINED by default: with CPUS, CPUSET and MEMORY unset
+# the container gets every CPU and all the memory the host has, which is what
+# an emulation run wants - a throttled run measures the throttle. Set them in
+# .env only when you deliberately want less.
 # ---------------------------------------------------------------------------
 services:
   emu:
@@ -22,10 +27,18 @@ services:
         PROJECT_DIR: ${PROJECT_DIR:-/workspace/multichain}
     image: ${IMAGE:-poesia-emu:22.04}
 
-    # Creating namespaces, veth pairs and qdiscs. Deliberately NOT privileged:
-    # the container needs network administration, not everything.
+    # NET_ADMIN creates veth pairs, addresses, routes and qdiscs. SYS_ADMIN is
+    # for `ip netns add`, which mounts /run/netns and unshares a namespace -
+    # neither is a network operation, and NET_ADMIN alone fails at
+    # "mount --make-shared /run/netns failed". Deliberately NOT privileged.
     cap_add:
       - NET_ADMIN
+      - SYS_ADMIN
+
+    # Docker's default AppArmor profile denies mount() whatever the
+    # capabilities say, so SYS_ADMIN without this still cannot make a namespace.
+    security_opt:
+      - apparmor=unconfined
 
     # Its own network namespace, so the emulated nodes cannot reach the host's
     # real network. `network_mode: none` would remove lo, which the management
@@ -57,9 +70,12 @@ services:
       EXPERIMENT_ROOT: /results
       MC_PREFLIGHT: ${MC_PREFLIGHT:-auto}
 
-    # Physical-core-only list from `./docker/mcsim cpus`. Empty lets the
-    # scheduler choose.
+    # All three empty by default = no limit. CPUSET takes a physical-core-only
+    # list from `./docker/mcsim cpus`; CPUS a fractional quota; MEMORY a
+    # ceiling such as 16g.
     cpuset: ${CPUSET:-}
+    cpus: ${CPUS:-0}
+    mem_limit: ${MEMORY:-0}
 
     stdin_open: true
     tty: true

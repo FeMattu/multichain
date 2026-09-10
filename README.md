@@ -41,15 +41,20 @@ the archived campaign itself is preserved and labelled in
 Reproducible environment (Docker)
 ---------------------------------
 
-If the machine runs a newer Ubuntu than 22.04, or you want the analysis stack pinned to
-the versions the archived campaign was analysed with, build the container instead of
-installing the dependencies by hand. It supplies a 22.04 userspace on the host kernel —
-no virtualisation, so an emulated run keeps bare-metal performance:
+MultiChain wants GCC 11 / Boost 1.74 / libevent 2.1 — the Ubuntu 22.04 archive — and on
+a newer Ubuntu it either fails to build or produces daemons that will not start. The
+container supplies that 22.04 userspace on the host's own kernel, so there is no
+virtualisation and an emulated run keeps bare-metal performance. Everything below runs
+MultiChain itself; the whole emulated network is built inside the container:
 
     ./docker/mcsim build                  # Ubuntu 22.04 + GCC 11 + the analysis stack
     ./docker/mcsim run mc-build           # compiles multichaind into src/
     ./docker/mcsim preflight              # can this container build a network?
     ./docker/mcsim exp experiments/configs/experiments/smoke-3n.yaml
+
+An experiment started this way is given **the whole machine** — every CPU, all the
+memory, no quota of any kind. Pass `--cpus=`, `--cpuset=` or `--memory=` only when you
+deliberately want less than that.
 
 Full rationale — the `docker run` flags that matter and why, and what is and is not
 containerised — is in [docker/README.md](docker/README.md).
