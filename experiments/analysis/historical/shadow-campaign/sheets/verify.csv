@@ -1,0 +1,21 @@
+run_id,livello,tbt,epoca,verificato,record,non_validi,verdetti
+run1-tbt-15s/continentale,continentale,15,12,1,3,0,ok ok ok
+run1-tbt-15s/intercontinentale,intercontinentale,15,12,1,3,0,ok ok ok
+run1-tbt-15s/nazionale,nazionale,15,13,1,3,0,ok ok ok
+run1-tbt-15s/regionale,regionale,15,12,1,3,0,ok ok ok
+run2-tbt-10s/continentale,continentale,10,25,1,3,0,ok ok ok
+run2-tbt-10s/intercontinentale,intercontinentale,10,25,1,3,0,ok ok ok
+run2-tbt-10s/nazionale,nazionale,10,26,1,3,0,ok other-epoch ok
+run2-tbt-10s/regionale,regionale,10,25,1,3,0,ok ok ok
+run3-tbt-5s/continentale,continentale,5,33,1,3,0,ok ok ok
+run3-tbt-5s/intercontinentale,intercontinentale,5,33,1,3,0,ok ok ok
+run3-tbt-5s/nazionale,nazionale,5,33,1,3,0,ok ok ok
+run3-tbt-5s/regionale,regionale,5,33,1,3,0,ok ok ok
+run4-tbt-3s/continentale,continentale,3,43,1,3,0,ok ok ok
+run4-tbt-3s/intercontinentale,intercontinentale,3,43,1,3,0,ok other-epoch ok
+run4-tbt-3s/nazionale,nazionale,3,42,1,3,0,other-epoch ok ok
+run4-tbt-3s/regionale,regionale,3,42,1,3,0,other-epoch ok ok
+run5-tbt-2s/continentale,continentale,2,52,1,3,0,ok other-epoch other-epoch
+run5-tbt-2s/intercontinentale,intercontinentale,2,53,1,3,0,ok ok other-epoch
+run5-tbt-2s/nazionale,nazionale,2,53,1,3,0,ok other-epoch ok
+run5-tbt-2s/regionale,regionale,2,53,1,3,0,other-epoch ok ok
