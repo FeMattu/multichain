@@ -1,0 +1,6 @@
+{
+  "address": "18QrmhtdHAfw8gknT5hxBStfGY63AhuQZCSDcg",
+  "address_pubkeyhash_version": "00cca233",
+  "address_checksum_value": "303257e8",
+  "note": "Reconciliation treasury address (R_k), migrated from shadow/config/treasury.json @ 6278274 so that new runs keep the treasury address every archived run_index.csv records. Valid on any chain pinning the same address-space constants. The private key that shipped in the historical file is deliberately NOT carried over: the admin imports this address watch-only and nothing in the harness ever spends from it, so the key has no runtime purpose. Regenerate a full pair with 'experiments.cli multichain treasury --force --with-key'; the key file it writes is excluded by .gitignore."
+}
