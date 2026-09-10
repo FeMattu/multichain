@@ -1,14 +1,25 @@
 # Where the MultiChain binaries live, and the RPC contract used to talk to them.
 #
-# No absolute personal path is versioned here. Resolution order, first hit wins:
+# No absolute personal path is versioned here.
+#
+# EXPLICIT REQUESTS are honoured or refused, never quietly replaced:
 #
 #   1. the experiment descriptor's multichain.executable / .cli / .util
 #   2. the environment: MULTICHAIN_BIN, MULTICHAIN_CLI, MULTICHAIN_UTIL
+#
+# If either names a path that is not an executable file, resolution STOPS
+# with that as the reason. Falling through to whatever happens to be in src/
+# would run a different binary than the one asked for, and the manifest would
+# faithfully record the substitution nobody noticed.
+#
+# DEFAULTS are search locations and do fall through, first hit wins:
+#
 #   3. MULTICHAIN_BASE_DIR / <name>
 #   4. the bindir below, resolved against the repository root
 #   5. the first match on PATH
 #
-# `experiments.cli env check` prints which rule fired for each binary.
+# `experiments.cli env check` prints which rule fired for each binary, and the
+# manifest records the resolved path, its SHA-256 and its reported version.
 
 version: 1
 

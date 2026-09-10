@@ -75,13 +75,31 @@ def _version(path: Path, name: str) -> str:
 
 
 def resolve_binary(name: str, settings: MultiChainSettings, explicit: str | None) -> BinaryInfo:
-    """Resolve one binary, reporting which rule matched."""
-    candidates: list[tuple[str, Path]] = []
-    if explicit:
-        candidates.append(("descriptor", Path(explicit).expanduser()))
+    """Resolve one binary, reporting which rule matched.
+
+    An EXPLICIT request - the descriptor's own field, or the binary's
+    environment variable - is honoured or refused, never quietly replaced.
+    Falling through from a wrong MULTICHAIN_BIN to whatever happens to be in
+    src/ would run a different binary than the one asked for, and the manifest
+    would faithfully record the substitution nobody noticed.
+
+    The remaining sources are searched in order and may fall through, because
+    they are defaults rather than requests.
+    """
     env_var = ENV_VARS[name]
-    if os.environ.get(env_var):
-        candidates.append((env_var, Path(os.environ[env_var]).expanduser()))
+    for origin, raw in (("descriptor", explicit), (env_var, os.environ.get(env_var))):
+        if not raw:
+            continue
+        path = Path(raw).expanduser()
+        if path.is_file() and os.access(path, os.X_OK):
+            return BinaryInfo(name=name, path=str(path), found=True, origin=origin,
+                              sha256=_sha256(path), version=_version(path, name))
+        reason = "is not a file" if not path.exists() else "is not executable"
+        return BinaryInfo(
+            name=name, path="", found=False,
+            origin="%s explicitly requested %s, which %s" % (origin, path, reason))
+
+    candidates: list[tuple[str, Path]] = []
     base = os.environ.get("MULTICHAIN_BASE_DIR")
     if base:
         candidates.append(("MULTICHAIN_BASE_DIR", Path(base).expanduser() / name))

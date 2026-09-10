@@ -140,6 +140,8 @@ class Schedule:
 class MultiChainSettings:
     chain: str
     bindir: Path | None
+    # What the descriptor declared, or "" - NOT a resolved path. Resolution
+    # is runtime.multichain.install's job.
     daemon: str
     cli: str
     util: str
@@ -257,19 +259,17 @@ class ExperimentPlan:
 # ---------------------------------------------------------------------------
 
 
-def _env_binary(name: str, env_var: str, bindir: Path | None, explicit: str | None) -> str:
-    """Resolve one binary. Order documented in configs/multichain.yaml."""
-    if explicit:
-        return str(Path(explicit).expanduser())
-    from_env = os.environ.get(env_var)
-    if from_env:
-        return str(Path(from_env).expanduser())
-    base = os.environ.get("MULTICHAIN_BASE_DIR")
-    if base:
-        return str(Path(base).expanduser() / name)
-    if bindir is not None:
-        return str(bindir / name)
-    return name
+def _declared_binary(explicit: str | None) -> str:
+    """What the DESCRIPTOR says about a binary, and nothing else.
+
+    Resolution belongs to runtime.multichain.install, which is the only place
+    that knows the full order and can report which rule matched. Resolving
+    here as well produced a subtle bug: the pre-resolved path was handed to
+    install as if the descriptor had asked for it, so a wrong
+    MULTICHAIN_BASE_DIR turned into a hard failure instead of falling through
+    to the configured bindir.
+    """
+    return str(Path(explicit).expanduser()) if explicit else ""
 
 
 def _allocate_ips(nodes: list[dict], subnet: str, roles_config: dict) -> dict[str, str]:
@@ -390,9 +390,9 @@ def build_plan(descriptor_path: Path | str, *, seed_override: int | None = None,
     multichain = MultiChainSettings(
         chain=chain,
         bindir=bindir,
-        daemon=_env_binary("multichaind", "MULTICHAIN_BIN", bindir, mc_doc.get("executable")),
-        cli=_env_binary("multichain-cli", "MULTICHAIN_CLI", bindir, mc_doc.get("cli")),
-        util=_env_binary("multichain-util", "MULTICHAIN_UTIL", bindir, mc_doc.get("util")),
+        daemon=_declared_binary(mc_doc.get("executable")),
+        cli=_declared_binary(mc_doc.get("cli")),
+        util=_declared_binary(mc_doc.get("util")),
         rpc_user=mc_doc.get("rpc_user", "poesia"),
         rpc_password=mc_doc.get("rpc_password", "poesiarpc"),
         rpc_port=int(mc_doc.get("rpc_port", 27000)),

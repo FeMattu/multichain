@@ -42,8 +42,15 @@ Without privileges you still get `validate`, `topology`, `experiment dry-run`,
 
 ### `the MultiChain binaries are required and were not found`
 
-The message lists every path that was tried, in resolution order. Either
-build them:
+The message lists every path that was tried, in resolution order.
+
+If it says *"MULTICHAIN_BIN explicitly requested … which is not a file"*, the
+variable is wrong and the harness refused to substitute something else — an
+explicit request is honoured or refused, never quietly replaced.
+`MULTICHAIN_BASE_DIR` is a search location rather than a request, so a wrong
+one falls through to `src/`.
+
+Either build them:
 
 ```bash
 ./autogen.sh && ./configure && make -j$(nproc)     # writes into src/
