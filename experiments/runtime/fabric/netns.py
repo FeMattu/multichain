@@ -43,7 +43,6 @@ import re
 from pathlib import Path
 
 from ...exit_codes import EnvironmentError_, RuntimeFailure
-from ...plan import NodePlan
 from ...topology.models import Impairment
 from ...topology.validator import next_hops
 from ..netem.profiles import clear_commands, qdisc_commands, spec_from_impairment

@@ -15,7 +15,6 @@ path a real run does.
 from __future__ import annotations
 
 import ipaddress
-import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,7 +23,7 @@ from .chain_params import ChainParams
 from .config import load_document, resolve_path, validate
 from .exit_codes import ConfigError
 from .paths import CONFIG_ROOT, REPO_ROOT
-from .seeds import derive, derive_node
+from .seeds import derive_node
 from .topology.generator import build_topology
 from .topology.models import Topology
 

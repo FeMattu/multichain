@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from experiments.metrics import catalogue, validators
+from experiments.metrics import catalogue
 from experiments.runtime.collectors.process import PROCESS_COLUMNS
 from experiments.runtime.collectors.rpc import BLOCK_SIGHTING_COLUMNS, OBSERVATION_COLUMNS
 from experiments.metrics.extractors import (

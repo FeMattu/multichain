@@ -33,13 +33,16 @@ EPOCH = datetime(2026, 9, 10, 12, 0, 0, tzinfo=timezone.utc)
 
 
 def build_synthetic_run(destination: Path, *, descriptor: Path | None = None,
-                        run_id: str = "run-fixture", ticks: int = 40,
+                        run_id: str = "", ticks: int = 40,
                         interval_s: float = 2.0, seed: int = 20260910,
                         with_fork: bool = True) -> dict:
     """Write a complete run directory and return its plan and paths."""
     descriptor = Path(descriptor or DEFAULT_DESCRIPTOR)
     plan = build_plan(descriptor, seed_override=seed)
     root = Path(destination)
+    # Default to the directory name: a manifest whose run_id disagrees with
+    # the directory it sits in makes `results list` lie about what is there.
+    run_id = run_id or root.name
     if root.exists():
         shutil.rmtree(root)
     for relative in ("config", "runtime", "logs", "raw/metrics", "raw/observations",

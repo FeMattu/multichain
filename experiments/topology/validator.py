@@ -19,7 +19,7 @@ import heapq
 from dataclasses import dataclass
 from typing import Iterable
 
-from .models import Link, Topology
+from .models import Topology
 
 
 @dataclass
