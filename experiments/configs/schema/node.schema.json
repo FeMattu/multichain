@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://poesia.invalid/schema/node.schema.json",
+  "title": "Experiment node",
+  "description": "One participant of the emulated network. Everything the runtime needs to create the namespace, start multichaind and address it over RPC.",
+  "type": "object",
+  "required": ["id", "role"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}$",
+      "description": "Stable host name. Also the directory name under logs/ and data/, and the 'host' column of every historical CSV."
+    },
+    "hostname": {
+      "type": "string",
+      "description": "Name used inside the emulated network. Defaults to id."
+    },
+    "role": {
+      "type": "string",
+      "enum": ["miner", "company", "admin", "ca"],
+      "description": "miner = wPoA validator and cluster head; company = client publishing supply-chain items; admin = governance (genesis, permissions, GAS); ca = Certification Authority (publishes ESG, holds the high1 permission). admin and ca are both administrative nodes."
+    },
+    "organization": {"type": "string", "description": "Owning organisation; free text, reported in the metrics."},
+    "geography": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "region": {"type": "string"},
+        "country": {"type": "string"},
+        "continent": {"type": "string"},
+        "scope": {"type": "string", "enum": ["regional", "national", "continental", "intercontinental"]},
+        "lat": {"type": "number", "minimum": -90, "maximum": 90},
+        "lon": {"type": "number", "minimum": -180, "maximum": 180}
+      }
+    },
+    "location": {"type": "string", "description": "Topology location id this node is attached to (topology.nodes[].id)."},
+    "cluster": {"type": "string", "description": "For a company: id of the miner whose cluster it joins. Ignored for other roles."},
+    "ip": {"type": "string", "description": "Node address inside the emulated network. Allocated from experiment.network.subnet when omitted."},
+    "p2p_port": {"type": "integer", "minimum": 1, "maximum": 65535},
+    "rpc_port": {"type": "integer", "minimum": 1, "maximum": 65535},
+    "datadir": {"type": "string", "description": "Absolute path override; defaults to <run>/runtime/data/<id>."},
+    "logdir": {"type": "string", "description": "Absolute path override; defaults to <run>/logs/<id>."},
+    "miner": {"type": "boolean", "description": "Whether the node receives the 'mine' permission. Defaults to role == miner."},
+    "weight": {"type": "number", "minimum": 0, "description": "Static fallback weight (-weight). Only honoured when the weight engine is off; see docs/metrics.md."},
+    "seed": {"type": "integer", "description": "Per-node seed for the workload generators. Derived from the experiment seed when omitted."},
+    "expected_state": {"type": "string", "enum": ["running", "exited", "absent"], "default": "running", "description": "State the lifecycle asserts at the end of the run. 'absent' declares a node that must never start (offline peer)."},
+    "peers": {"type": "array", "items": {"type": "string"}, "description": "Explicit -addnode peer list. Derived from the topology when omitted."},
+    "enabled": {"type": "boolean", "default": true},
+    "tx_interval_s": {"type": "number", "exclusiveMinimum": 0, "description": "Company only: seconds between two supply-chain publications (drives tau_i)."},
+    "reconcile_rate": {"type": "number", "minimum": 0, "maximum": 1, "description": "Miner only: fraction of the GAS balance returned to the treasury each epoch (drives rho_k)."}
+  }
+}

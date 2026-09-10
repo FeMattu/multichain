@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://poesia.invalid/schema/topology.schema.json",
+  "title": "Emulated topology",
+  "description": "Locations and links of the emulated network. It says nothing about which MultiChain node runs where: that is the experiment's node list, which references a location by id.",
+  "type": "object",
+  "required": ["name", "nodes", "links"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+    "description": {"type": "string"},
+    "source": {"type": "string", "description": "Provenance of the coordinates and of the link set (which historical file, which commit)."},
+    "latency_model": {
+      "type": "object",
+      "description": "Parameters of the physical delay model used to derive link delays from great-circle distance. Omitted when every link carries an explicit profile.",
+      "additionalProperties": false,
+      "properties": {
+        "propagation_ms_per_km": {"type": "number", "exclusiveMinimum": 0},
+        "routing_factor": {"type": "number", "minimum": 1},
+        "overhead_backbone_ms": {"type": "number", "minimum": 0},
+        "overhead_access_ms": {"type": "number", "minimum": 0},
+        "loopback_ms": {"type": "number", "minimum": 0},
+        "loss_access": {"type": "number", "minimum": 0, "maximum": 1},
+        "loss_backbone_base": {"type": "number", "minimum": 0, "maximum": 1},
+        "loss_backbone_per_km": {"type": "number", "minimum": 0}
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "backbone_profile": {"type": "string"},
+        "access_profile": {"type": "string"},
+        "bandwidth_hub_mbps": {"type": "number", "exclusiveMinimum": 0},
+        "bandwidth_leaf_mbps": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$", "description": "Location id, e.g. 'milan-it'. Referenced by experiment nodes through their 'location'."},
+          "label": {"type": "string", "description": "Human label preserved from the historical .gml (e.g. HUB_IT_Milano)."},
+          "kind": {"type": "string", "enum": ["hub", "leaf"], "default": "leaf", "description": "hub = backbone point of presence (1 Gbit by default); leaf = access site."},
+          "scope": {"type": "string", "enum": ["regional", "national", "continental", "intercontinental"]},
+          "region": {"type": "string"},
+          "country": {"type": "string"},
+          "continent": {"type": "string"},
+          "lat": {"type": "number", "minimum": -90, "maximum": 90},
+          "lon": {"type": "number", "minimum": -180, "maximum": 180},
+          "legacy_gml_id": {"type": "integer", "minimum": 0, "description": "Node id this location had in the historical .gml, so old and new artefacts can be cross-referenced."},
+          "bandwidth_down_mbps": {"type": "number", "exclusiveMinimum": 0},
+          "bandwidth_up_mbps": {"type": "number", "exclusiveMinimum": 0}
+        }
+      }
+    },
+    "links": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["source", "target"],
+        "additionalProperties": false,
+        "properties": {
+          "source": {"type": "string"},
+          "target": {"type": "string"},
+          "kind": {"type": "string", "enum": ["backbone", "access"], "default": "backbone"},
+          "profile": {"type": "string", "description": "Name of a file in configs/network-profiles/. When absent the delay is derived from the latency model and the two endpoints' coordinates."},
+          "profile_overrides": {"type": "object", "description": "Per-link overrides merged on top of the named profile. Same shape as a network profile, minus 'name'."},
+          "enabled": {"type": "boolean", "default": true, "description": "false keeps the link declared but never creates it: a permanent partition that stays visible in the topology."}
+        }
+      }
+    }
+  }
+}

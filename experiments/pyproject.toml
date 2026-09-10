@@ -1,0 +1,68 @@
+# Packaging metadata for the emulation harness.
+#
+# The harness is normally run in place, from the repository root, as
+# `python3 -m experiments.cli ...`. This file exists so that the same tree can
+# be installed into a virtualenv or a container image, and so that ruff and
+# mypy have one place to read their configuration from.
+
+[build-system]
+requires = ["setuptools>=45"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "poesia-experiments"
+version = "1.0.0"
+description = "Real-network emulation harness for the POESIA / wPoA MultiChain fork"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "GPL-3.0-or-later"}
+dependencies = [
+    "PyYAML>=5.3",
+    "jsonschema>=3.2",
+]
+
+[project.optional-dependencies]
+analysis = [
+    "numpy>=1.17",
+    "scipy>=1.3",
+    "pandas>=1.0",
+    "matplotlib>=3.1",
+    "networkx>=2.4",
+    "openpyxl>=3.0",
+]
+
+[project.scripts]
+poesia-experiments = "experiments.cli:main"
+
+[tool.setuptools.packages.find]
+where = [".."]
+include = ["experiments*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501",   # long lines are reported by the formatter, not the linter
+    "UP006",  # builtin generics: the harness must import on Python 3.8
+    "UP007",  # X | Y annotations likewise, guarded by __future__ imports
+]
+
+[tool.mypy]
+python_version = "3.8"
+ignore_missing_imports = true
+warn_unused_ignores = false
+# The analysis pipeline is migrated code with its own conventions; it is
+# checked for syntax by compileall and by its tests, not by mypy.
+exclude = "experiments/analysis/(pipeline|legacy)/"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "requires_root: needs CAP_NET_ADMIN to create namespaces and apply tc",
+    "requires_multichain: needs the MultiChain binaries",
+    "requires_core: needs a reachable CORE Network Emulator daemon",
+    "slow: takes more than a few seconds",
+]

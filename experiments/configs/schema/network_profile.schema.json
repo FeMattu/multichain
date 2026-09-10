@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://poesia.invalid/schema/network_profile.schema.json",
+  "title": "Network profile",
+  "description": "Impairment applied to one link, per direction. Values are declared, never universal: every profile carries the source that justifies them.",
+  "type": "object",
+  "required": ["name", "direction"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+    "description": {"type": "string"},
+    "source": {"type": "string", "description": "Where the numbers come from: a measurement, a model, or an explicit assumption. Mandatory in practice; docs/network-model.md explains why."},
+    "direction": {
+      "type": "string",
+      "enum": ["bidirectional", "asymmetric"],
+      "description": "bidirectional: 'delay'/'loss'/'bandwidth'/'queue' apply to both directions. asymmetric: 'forward' and 'reverse' carry their own impairment."
+    },
+    "seed": {"type": "integer", "description": "Seed for any stochastic component of the impairment. Derived from the experiment seed when omitted."},
+    "delay": {"$ref": "#/definitions/delay"},
+    "loss": {"$ref": "#/definitions/loss"},
+    "bandwidth": {"$ref": "#/definitions/bandwidth"},
+    "queue": {"$ref": "#/definitions/queue"},
+    "partition": {"type": "boolean", "default": false, "description": "true drops every packet on the link. Models a hard partition without deleting the link, so the topology stays comparable."},
+    "forward": {"$ref": "#/definitions/oneway"},
+    "reverse": {"$ref": "#/definitions/oneway"}
+  },
+  "definitions": {
+    "delay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mean_ms"],
+      "properties": {
+        "mean_ms": {"type": "number", "minimum": 0, "description": "One-way mean delay in milliseconds."},
+        "jitter_ms": {"type": "number", "minimum": 0, "default": 0},
+        "correlation_percent": {"type": "number", "minimum": 0, "maximum": 100, "default": 0},
+        "distribution": {"type": "string", "enum": ["uniform", "normal", "pareto", "paretonormal"], "default": "normal"}
+      }
+    },
+    "loss": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["percent"],
+      "properties": {
+        "percent": {"type": "number", "minimum": 0, "maximum": 100},
+        "correlation_percent": {"type": "number", "minimum": 0, "maximum": 100, "default": 0}
+      }
+    },
+    "bandwidth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mbps"],
+      "properties": {
+        "mbps": {"type": "number", "exclusiveMinimum": 0},
+        "burst_bytes": {"type": "integer", "minimum": 0}
+      }
+    },
+    "queue": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {"limit_packets": {"type": "integer", "minimum": 1, "default": 1000}}
+    },
+    "oneway": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "delay": {"$ref": "#/definitions/delay"},
+        "loss": {"$ref": "#/definitions/loss"},
+        "bandwidth": {"$ref": "#/definitions/bandwidth"},
+        "queue": {"$ref": "#/definitions/queue"},
+        "partition": {"type": "boolean", "default": false}
+      }
+    }
+  }
+}
