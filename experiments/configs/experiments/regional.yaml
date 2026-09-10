@@ -1,0 +1,262 @@
+# Level 1 - regional. Twenty real MultiChain nodes on a Tuscany/Liguria/Emilia-Romagna map.
+#
+# The geography is the ONLY independent variable across the four level
+# descriptors: node list, roles, clusters, chain parameters, seed and schedule
+# are identical on purpose, so a difference in the results is a difference in
+# the network.
+#
+#   diff configs/experiments/regional.yaml configs/experiments/national.yaml
+#
+# differs by name, scenario, topology and the 'location' of each node - and by
+# nothing else.
+name: regional
+description: Level 1 - regional. Twenty real MultiChain nodes on a Tuscany/Liguria/Emilia-Romagna map.
+scenario: regional
+seed: 20260910
+topology: experiments/configs/topologies/regional.yaml
+chain_params: experiments/configs/chain-params/tbt10s-sqrt.dat
+mode: native
+fabric:
+  backend: auto
+  subnet: 11.0.0.0/24
+  link_subnet: 10.99.0.0/16
+  host_uplink: true
+multichain:
+  rpc_port: 27000
+  p2p_port: 27001
+  debug: wpoa
+schedule:
+  duration_s: auto
+  measure_epochs: 16
+expected:
+  min_blocks: 1
+  min_peers: 2
+  require_all_nodes_synced: true
+nodes:
+- id: m1
+  role: miner
+  organization: cluster-1
+  location: firenze
+  geography:
+    region: tuscany
+    country: italy
+    continent: europe
+    scope: regional
+  reconcile_rate: 0.95
+  enabled: true
+- id: m2
+  role: miner
+  organization: cluster-2
+  location: genova
+  geography:
+    region: liguria
+    country: italy
+    continent: europe
+    scope: regional
+  reconcile_rate: 0.8
+  enabled: true
+- id: m3
+  role: miner
+  organization: cluster-3
+  location: bologna
+  geography:
+    region: emilia-romagna
+    country: italy
+    continent: europe
+    scope: regional
+  reconcile_rate: 0.6
+  enabled: true
+- id: m4
+  role: miner
+  organization: cluster-4
+  location: livorno
+  geography:
+    region: tuscany
+    country: italy
+    continent: europe
+    scope: regional
+  reconcile_rate: 0.45
+  enabled: true
+- id: m5
+  role: miner
+  organization: cluster-5
+  location: lucca
+  geography:
+    region: tuscany
+    country: italy
+    continent: europe
+    scope: regional
+  reconcile_rate: 0.35
+  enabled: true
+- id: m6
+  role: miner
+  organization: cluster-6
+  location: reggio-emilia
+  geography:
+    region: emilia-romagna
+    country: italy
+    continent: europe
+    scope: regional
+  reconcile_rate: 0.25
+  enabled: true
+- id: m7
+  role: miner
+  organization: cluster-7
+  location: imperia
+  geography:
+    region: liguria
+    country: italy
+    continent: europe
+    scope: regional
+  reconcile_rate: 0.2
+  enabled: true
+- id: c1
+  role: company
+  organization: supplier-01
+  location: pisa
+  geography:
+    region: tuscany
+    country: italy
+    continent: europe
+    scope: regional
+  cluster: m1
+  tx_interval_s: 8
+  enabled: true
+- id: c2
+  role: company
+  organization: supplier-02
+  location: siena
+  geography:
+    region: tuscany
+    country: italy
+    continent: europe
+    scope: regional
+  cluster: m2
+  tx_interval_s: 10
+  enabled: true
+- id: c3
+  role: company
+  organization: supplier-03
+  location: la-spezia
+  geography:
+    region: liguria
+    country: italy
+    continent: europe
+    scope: regional
+  cluster: m3
+  tx_interval_s: 12
+  enabled: true
+- id: c4
+  role: company
+  organization: supplier-04
+  location: savona
+  geography:
+    region: liguria
+    country: italy
+    continent: europe
+    scope: regional
+  cluster: m4
+  tx_interval_s: 14
+  enabled: true
+- id: c5
+  role: company
+  organization: supplier-05
+  location: ravenna
+  geography:
+    region: emilia-romagna
+    country: italy
+    continent: europe
+    scope: regional
+  cluster: m5
+  tx_interval_s: 16
+  enabled: true
+- id: c6
+  role: company
+  organization: supplier-06
+  location: arezzo
+  geography:
+    region: tuscany
+    country: italy
+    continent: europe
+    scope: regional
+  cluster: m6
+  tx_interval_s: 18
+  enabled: true
+- id: c7
+  role: company
+  organization: supplier-07
+  location: prato
+  geography:
+    region: tuscany
+    country: italy
+    continent: europe
+    scope: regional
+  cluster: m7
+  tx_interval_s: 20
+  enabled: true
+- id: c8
+  role: company
+  organization: supplier-08
+  location: grosseto
+  geography:
+    region: tuscany
+    country: italy
+    continent: europe
+    scope: regional
+  cluster: m1
+  tx_interval_s: 22
+  enabled: true
+- id: c9
+  role: company
+  organization: supplier-09
+  location: ferrara
+  geography:
+    region: emilia-romagna
+    country: italy
+    continent: europe
+    scope: regional
+  cluster: m2
+  tx_interval_s: 24
+  enabled: true
+- id: c10
+  role: company
+  organization: supplier-10
+  location: rimini
+  geography:
+    region: emilia-romagna
+    country: italy
+    continent: europe
+    scope: regional
+  cluster: m3
+  tx_interval_s: 25
+  enabled: true
+- id: admin
+  role: admin
+  organization: apuana-sb
+  location: modena
+  geography:
+    region: emilia-romagna
+    country: italy
+    continent: europe
+    scope: regional
+  enabled: true
+- id: ca1
+  role: ca
+  organization: certification-authority-1
+  location: parma
+  geography:
+    region: emilia-romagna
+    country: italy
+    continent: europe
+    scope: regional
+  enabled: true
+- id: ca2
+  role: ca
+  organization: certification-authority-2
+  location: forli
+  geography:
+    region: emilia-romagna
+    country: italy
+    continent: europe
+    scope: regional
+  enabled: true

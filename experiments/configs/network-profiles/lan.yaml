@@ -1,0 +1,18 @@
+name: lan
+description: Same datacentre or campus. The floor of the geographic axis.
+source: >-
+  Switching overhead only, no propagation term. 0.1 ms one-way is the access
+  overhead of the physical model of docs/network-model.md rounded down to a
+  single switch hop; loss is set to the access constant 0.04% used by the
+  historical Shadow topologies (tools/gen_topology.py, LOSS_ACCESS = 0.0004).
+direction: bidirectional
+delay:
+  mean_ms: 0.1
+  jitter_ms: 0.02
+  distribution: normal
+loss:
+  percent: 0.04
+bandwidth:
+  mbps: 1000
+queue:
+  limit_packets: 1000

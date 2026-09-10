@@ -1,0 +1,83 @@
+# Role catalogue and the default composition of a 20-node network.
+#
+# Nothing here is hardcoded in the code: experiment descriptors list their
+# nodes explicitly, and `experiments.cli topology plan` uses this file to
+# generate that list when you ask it to.
+#
+# Four roles exist, and they map onto the three the brief asks for as follows:
+#
+#   miner    -> 7   wPoA validators, cluster heads, the only nodes that mine
+#   company  -> 10  clients: publish supply-chain items, no mine permission
+#   admin    -> 3   administrative nodes, made of two specialisations:
+#                     * governance (1): genesis, permissions, GAS treasury
+#                     * ca         (2): Certification Authorities, hold high1
+#                                       and are the only writers of ESG scores
+#
+# The split matters because 'admin' and 'ca' are different *on chain*: being an
+# administrator does not grant the right to certify. See
+# src/wpoa/docs/weight-engine.md 6.4 and docs/architecture.md.
+
+version: 1
+
+roles:
+  miner:
+    description: wPoA validator and cluster head. Receives connect,send,receive,mine.
+    permissions: [connect, send, receive, mine]
+    stream_writes: [wpoa-weights, weight-engine-membership]
+    mines: true
+    carries_weight: true
+    administrative: false
+
+  company:
+    description: >-
+      Client of the supply chain. Publishes items on the application stream,
+      which both pays a fee to the including miner and increments the activity
+      counter tau_i its cluster's weight depends on.
+    permissions: [connect, send, receive]
+    stream_writes: [wpoa-weights, weight-engine-membership]
+    mines: false
+    carries_weight: false
+    administrative: false
+
+  admin:
+    description: >-
+      Governance node. Seals the genesis, grants every permission, creates the
+      closed wpoa-weights stream and the application stream, funds the network
+      and takes the final snapshot. Structurally ineligible under wPoA (null
+      weight -> score +inf, Cor. 5.4), so it needs no mine revocation - but it
+      does need 'mine' during setup, when it is the only miner.
+    permissions: [connect, send, receive, mine, admin, activate, issue, create]
+    stream_writes: []
+    mines: true
+    carries_weight: false
+    administrative: true
+
+  ca:
+    description: >-
+      Certification Authority. Holds the custom high1 permission and is the
+      only role allowed to write weight-engine-esg. An ESG score is an
+      attestation, not something a third party can verify cryptographically:
+      restricting who may assert it is the only defence.
+    permissions: [connect, send, receive, high1]
+    stream_writes: [weight-engine-esg]
+    mines: false
+    carries_weight: false
+    administrative: true
+
+# Default composition. `count` is what `topology plan` uses; an experiment
+# descriptor may declare any other composition.
+composition:
+  miner:   {count: 7,  id_prefix: m,     ip_offset: 21}
+  company: {count: 10, id_prefix: c,     ip_offset: 31}
+  admin:   {count: 1,  id_prefix: admin, ip_offset: 10, single: true}
+  ca:      {count: 2,  id_prefix: ca,    ip_offset: 11}
+
+# Deliberate heterogeneity. Without it the three W_k would be structurally
+# identical and weighted selection would be indistinguishable from a uniform
+# draw, which is the one outcome that proves nothing.
+#
+# tx_interval_s   seconds between two supply-chain publications -> tau_i
+# reconcile_rate  fraction of the GAS balance returned to the treasury -> rho_k
+heterogeneity:
+  company_tx_interval_s: [8, 10, 12, 14, 16, 18, 20, 22, 24, 25]
+  miner_reconcile_rate:  [0.95, 0.80, 0.60, 0.45, 0.35, 0.25, 0.20]

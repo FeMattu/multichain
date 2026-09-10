@@ -1,0 +1,34 @@
+# Seed derivation.
+#
+# One master seed per experiment; everything else is a pure function of it, so
+# a run is replayable from the descriptor alone. The derivation is
+# deterministic and documented rather than clever: see
+# experiments/runtime/seeds.py and docs/reproducibility.md.
+#
+#   derived(purpose) = master XOR fnv1a32(purpose)   (masked to 31 bits)
+#
+# Two sources of non-determinism survive and are declared, not hidden:
+#   * MultiChain's own RNG seeds itself from the OS, so wallet addresses differ
+#     between runs. Every artefact keys on the host name, never on an address.
+#   * netem's random generators are seeded per interface by the kernel; the
+#     'seed' field of a profile is recorded in the manifest but the kernel
+#     does not accept it. Loss and jitter are therefore reproducible in
+#     distribution, not sample by sample.
+
+version: 1
+
+master_default: 20260910
+
+purposes:
+  - esg              # the CA's uniform draw over (0, 100)
+  - workload         # jitter of the traffic generators' first tick
+  - netem            # recorded per link; see the caveat above
+  - node_seed        # per-node seed handed to the role scripts
+  - placement        # tie-breaks when the planner assigns nodes to locations
+
+# Seeds of the historical Shadow campaign, kept so a comparison run can reuse
+# them. shadow/config/simulations/*.json used 42; run.sh's level mode 20260827.
+historical:
+  shadow_declarative: 42
+  shadow_levels: 20260827
+  pipeline_montecarlo: 20260905

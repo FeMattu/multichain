@@ -1,0 +1,92 @@
+# ---------------------------------------------------------------------------
+# CHAIN parameters - log damping, 100-block epochs, lambda 0.3
+#
+# Format: KEY=VALUE, sourceable from bash. runtime/multichain/initialize.py
+# turns these into `multichain-util create` flags and into sed edits on
+# params.dat.
+#
+# These are CHAIN values: they reach params.dat, they are HASH-ENFORCED and
+# every node that joins inherits them (protocol 20014). A node overriding one
+# locally forks. Reference: src/wpoa/docs/protocol-parameters.md.
+#
+# This file is one INDEPENDENT AXIS of the configuration: an experiment
+# descriptor references it by path and reuses it with any topology and any node
+# count. The clean one-axis variants differ by exactly one line:
+#
+#   diff tbt10s-sqrt.dat tbt10s-none.dat   -> WPOA_DUMPFUNCTION only
+#   diff tbt10s-sqrt.dat tbt10s-log.dat    -> WPOA_DUMPFUNCTION only
+#   diff tbt10s-sqrt.dat tbt30s-sqrt.dat   -> TARGET_BLOCK_TIME only
+#
+# Migrated unchanged from shadow/config/blockchain/params-tbt10s-log.dat @ 6278274,
+# the descriptor behind the historical run6 campaign. It is NOT a one-axis variant
+# of tbt10s-sqrt: it also raises weight-epoch-length to 100 (which makes the
+# per-epoch chi-square valid on its own, minimum expectation above 5), measure-epochs
+# to 100 and wpoa-sortition-lambda to 0.3. Use tbt10s-log.dat for the clean
+# dump-function axis.
+# ---------------------------------------------------------------------------
+
+# --- PINNED address space ---------------------------------------------------
+# Normally random per chain. Pinning it makes the treasury address reusable
+# across experiments, which is what breaks the circularity documented in
+# runtime/multichain/treasury.py: weight-treasury-address is hash-enforced and
+# must be in params.dat before the genesis, but the admin's own address is only
+# born with the genesis.
+ADDRESS_PUBKEYHASH_VERSION=00cca233
+ADDRESS_SCRIPTHASH_VERSION=05202c86
+PRIVATE_KEY_VERSION=80840860
+ADDRESS_CHECKSUM_VALUE=303257e8
+
+# --- wPoA consensus ---------------------------------------------------------
+WPOA_SORTITION_DELTA=0.5      # Delta_max = delta * target-block-time
+WPOA_SORTITION_LAMBDA=0.3     # gain of the global Phi feedback
+WPOA_RANDAO_LOOKBACK=1        # k in the seed H(R_tot[n-k] || h[n] || n+1)
+# DUMP FUNCTION (anti-whale compression). Node flag -dumpfunction, key
+# 'dump-function' in params.dat, values none | sqrt | log. It is the f(w)
+# applied to the weight BEFORE the Efraimidis-Spirakis draw, so it changes the
+# effective proposer distribution and is CONSENSUS-CRITICAL: a validator with a
+# different value would reject the others' blocks.
+#   none : w         no compression, the weight enters as it is
+#   sqrt : sqrt(w)   a 10x weight gap buys ~3.2x the probability
+#   log  : log(1+w)  more aggressive compression of the upper tail
+# References: src/wpoa/docs/wpoa-selector.md 2.2, protocol-parameters.md:133
+WPOA_DUMPFUNCTION=log
+ENABLE_WPOA_MALUS=1           # inert (Psi=1) while no violation is proven
+
+# --- weight engine ----------------------------------------------------------
+WEIGHT_EPOCH_LENGTH=100        # epoch length in blocks
+WEIGHT_KAPPA=100              # c_i = ESG_i * tau_i / kappa
+WEIGHT_ALPHA=0.2              # A_k = alpha * Theta * W_k / W_tot
+WEIGHT_LAMBDA=0.5             # w_k = W_k * [rho_{k,e-1}*lambda + (1-lambda)]
+
+# --- chain ------------------------------------------------------------------
+TARGET_BLOCK_TIME=10
+# 'auto' applies the setup constraint documented in docs/architecture.md: the
+# native PoA phase must last long enough for membership and ESG to confirm, for
+# the epoch containing them to be buried and for the weights to be published on
+# wpoa-weights - otherwise wPoA takes over on an empty map and the chain stops
+# with "cannot score". An explicit integer is honoured provided it is not below
+# that minimum.
+SETUP_FIRST_BLOCKS=auto
+MINE_EMPTY_ROUNDS=1000        # blocks even without traffic: the sampler needs them
+# Native Spacing is ceil(d*(N-1)) blocks between two blocks of the same signer.
+# The thesis (5.12.3) expects it to be removed under wPoA, but measurement shows
+# it stays binding: with d=0.3 and N=4 the spacing is exactly 1, no miner can
+# sign two blocks in a row, and the observed distribution collapses onto a round
+# robin whatever the published weights are (0 consecutive blocks out of 380
+# measured across the four historical levels, against ~34 expected per level).
+# d=0 makes it inert by construction (ceil(0) = 0) and leaves only the weighted
+# selection to measure. Raising it again is itself a valid experiment: it
+# measures how much residual spacing interferes with wPoA.
+MINING_DIVERSITY=0
+
+# --- GAS economy (thesis 4.2.1 / 4.3.1) -------------------------------------
+NATIVE_CURRENCY_MULTIPLE=100000000    # 1 GAS = 1e8 raw units
+FIRST_BLOCK_REWARD=100000000000000    # premine: 1e6 GAS to the admin (Apuana SB)
+INITIAL_BLOCK_REWARD=0                # no minting after the genesis
+MINIMUM_RELAY_FEE=20000000            # 0.2 GAS per 1000 byte ~= 0.2 GAS/tx
+
+# --- measurement window (used only by the automatic duration) ---------------
+# NOT a chain parameter: it never reaches params.dat. It says how many epochs
+# the run must cover AFTER setup ends. See docs/architecture.md, "How long a
+# run lasts".
+MEASURE_EPOCHS=100

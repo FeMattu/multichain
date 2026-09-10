@@ -1,0 +1,22 @@
+name: regional
+description: Sites inside one region (Tuscany / Liguria / Emilia-Romagna).
+source: >-
+  Physical model of docs/network-model.md applied to the worst backbone hop of
+  the historical 'regionale' level (Florence-Genoa, ~230 km):
+  0.005 ms/km * 230 km * 1.4 + 0.5 ms = 2.1 ms one-way, RTT ~4.2 ms. The
+  measured worst end-to-end RTT of that level was 10.0 ms across two hops.
+  Jitter is NOT from the historical files, which carried jitter 0 because
+  Shadow never implemented the field (shadow/shadow#3601); the values here are
+  a declared assumption, applied for the first time by the tc/netem backend.
+direction: bidirectional
+delay:
+  mean_ms: 2.1
+  jitter_ms: 0.3
+  correlation_percent: 25
+  distribution: normal
+loss:
+  percent: 0.025
+bandwidth:
+  mbps: 1000
+queue:
+  limit_packets: 1000

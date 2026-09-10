@@ -1,0 +1,22 @@
+name: intercontinental
+description: Backbone hops crossing an ocean.
+source: >-
+  Physical model applied to the transatlantic hop of the historical
+  'intercontinentale' level (Milan-New York, 6464 km):
+  0.005 * 6464 * 1.4 + 0.5 = 45.75 ms one-way, RTT 91.5 ms against ~90 ms
+  measured on the real route. The global variant of the historical suite
+  (intercontinental-global) reaches 407 ms RTT on Tokyo-Johannesburg; that
+  regime is expressed by the derived model on the topology, not by this
+  profile.
+direction: bidirectional
+delay:
+  mean_ms: 45.8
+  jitter_ms: 8.0
+  correlation_percent: 25
+  distribution: normal
+loss:
+  percent: 0.15
+bandwidth:
+  mbps: 1000
+queue:
+  limit_packets: 2000

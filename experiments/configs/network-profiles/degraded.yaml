@@ -1,0 +1,37 @@
+name: degraded
+description: >-
+  A peer on a poor, asymmetric access link: a consumer uplink behind a
+  congested aggregation point. Models the 'node with degraded connectivity'
+  case without removing it from the topology.
+source: >-
+  Not a measurement. A deliberately hostile operating point chosen so that the
+  uplink is the bottleneck: reverse delay 1.4x the forward one, twice the loss
+  and a tenth of the capacity. Use it to see which invariants survive; do not
+  read its numbers as typical of any real network.
+direction: asymmetric
+forward:
+  delay:
+    mean_ms: 120
+    jitter_ms: 20
+    correlation_percent: 40
+    distribution: normal
+  loss:
+    percent: 0.5
+    correlation_percent: 25
+  bandwidth:
+    mbps: 100
+  queue:
+    limit_packets: 1000
+reverse:
+  delay:
+    mean_ms: 160
+    jitter_ms: 35
+    correlation_percent: 40
+    distribution: normal
+  loss:
+    percent: 1.0
+    correlation_percent: 25
+  bandwidth:
+    mbps: 10
+  queue:
+    limit_packets: 500

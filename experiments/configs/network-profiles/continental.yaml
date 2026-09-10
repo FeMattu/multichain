@@ -1,0 +1,19 @@
+name: continental
+description: Sites inside one continent (European backbone Milan / Frankfurt / Madrid).
+source: >-
+  Physical model applied to the worst backbone hop of the historical
+  'continentale' level (Frankfurt-Madrid, ~1420 km): 0.005 * 1420 * 1.4 + 0.5
+  = 10.4 ms one-way. Measured worst end-to-end RTT of that level: 44.7 ms.
+  Reference point: Milan-Madrid 1188 km, 17.6 ms model vs ~20 ms real.
+direction: bidirectional
+delay:
+  mean_ms: 10.4
+  jitter_ms: 2.0
+  correlation_percent: 25
+  distribution: normal
+loss:
+  percent: 0.048
+bandwidth:
+  mbps: 1000
+queue:
+  limit_packets: 1000

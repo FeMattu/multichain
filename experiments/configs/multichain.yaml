@@ -1,0 +1,57 @@
+# Where the MultiChain binaries live, and the RPC contract used to talk to them.
+#
+# No absolute personal path is versioned here. Resolution order, first hit wins:
+#
+#   1. the experiment descriptor's multichain.executable / .cli / .util
+#   2. the environment: MULTICHAIN_BIN, MULTICHAIN_CLI, MULTICHAIN_UTIL
+#   3. MULTICHAIN_BASE_DIR / <name>
+#   4. the bindir below, resolved against the repository root
+#   5. the first match on PATH
+#
+# `experiments.cli env check` prints which rule fired for each binary.
+
+version: 1
+
+bindir: src            # this fork builds its binaries into <repo>/src
+binaries:
+  daemon: multichaind
+  cli: multichain-cli
+  util: multichain-util
+
+chain:
+  # Chain name. An experiment overrides it; the default is poesia<name>.
+  name_prefix: poesia
+  env_override: MULTICHAIN_CHAIN
+
+rpc:
+  # Credentials of an isolated emulated network that never touches a real
+  # chain. They are versioned on purpose so a run is reproducible from the
+  # repository alone; see docs/reproducibility.md, "why this is not a secret".
+  user: poesia
+  password: poesiarpc
+  port: 27000
+  allow_ip: 0.0.0.0/0
+  timeout_s: 60
+  # The wallet caps a single transaction's fee at 0.1 native units by default
+  # (DEFAULT_TRANSACTION_MAXFEE). With minimum-relay-fee = 0.2 GAS/1000 byte
+  # every publish above ~500 bytes exceeds it and CreateTransaction refuses it
+  # with "Transaction too large for fee policy" - a network that looks healthy
+  # while no record is ever published. Raise it with the fee.
+  max_tx_fee: 10.0
+
+p2p:
+  port: 27001
+
+streams:
+  # Created by the admin during the grant phase, in this order.
+  weights: wpoa-weights                       # CLOSED: only granted writers publish
+  esg: weight-engine-esg
+  membership: weight-engine-membership
+  malus: wpoa-weights-malus
+  application: poesia-supplychain             # OPEN: the supply-chain traffic
+
+health:
+  rpc_ready_timeout_s: 300
+  peer_ready_timeout_s: 300
+  stream_ready_timeout_s: 600
+  block_progress_timeout_s: 900

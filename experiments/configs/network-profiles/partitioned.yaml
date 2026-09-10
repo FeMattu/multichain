@@ -1,0 +1,17 @@
+name: partitioned
+description: >-
+  A link that exists in the map and drops every packet. The topology keeps its
+  shape, so a partitioned run and a healthy run stay comparable link by link.
+source: >-
+  Not a measurement: an operating mode. 100% loss in both directions, applied
+  by netem as a drop rather than by deleting the interface, so the partition
+  can be lifted at run time with 'network apply-profile' without rebuilding
+  the fabric.
+direction: bidirectional
+partition: true
+delay:
+  mean_ms: 0
+loss:
+  percent: 100
+queue:
+  limit_packets: 1

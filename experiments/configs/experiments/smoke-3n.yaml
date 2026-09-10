@@ -1,0 +1,65 @@
+# Smallest end-to-end experiment: three real MultiChain nodes.
+#
+# It is the integration test's fixture and the first thing to run on a new
+# machine. One miner is enough to produce blocks, one company to generate
+# traffic and one Certification Authority to publish the ESG scores without
+# which every weight would stay zero - so the whole chain of causation the
+# larger runs measure is present, just at minimum size.
+#
+#   experiments/scripts/run_experiment.sh --experiment experiments/configs/experiments/smoke-3n.yaml
+name: smoke-3n
+description: Three-node smoke test - one miner, one company, one administrative node.
+scenario: smoke
+seed: 20260910
+topology: experiments/configs/topologies/smoke-3n.yaml
+chain_params: experiments/configs/chain-params/smoke.dat
+mode: native
+fabric:
+  backend: auto
+  subnet: 11.0.0.0/24
+  link_subnet: 10.99.0.0/16
+  host_uplink: true
+multichain:
+  rpc_port: 27000
+  p2p_port: 27001
+  debug: wpoa
+schedule:
+  first_launch_s: 10
+  grant_s: 25
+  join_s: 45
+  register_s: 70
+  traffic_s: 90
+  snapshot_before_stop_s: 30
+  duration_s: 600
+  measure_epochs: 2
+expected:
+  min_blocks: 1
+  min_peers: 1
+  require_all_nodes_synced: true
+nodes:
+  - id: m1
+    role: miner
+    organization: cluster-1
+    location: firenze
+    geography: {region: tuscany, country: italy, continent: europe, scope: regional}
+    reconcile_rate: 0.6
+  - id: c1
+    role: company
+    organization: supplier-01
+    location: pisa
+    geography: {region: tuscany, country: italy, continent: europe, scope: regional}
+    cluster: m1
+    tx_interval_s: 8
+  # One administrative node carrying both jobs: it seals the genesis AND holds
+  # high1, because with a single miner there is nothing to gain from splitting
+  # governance from certification. The larger levels do split them.
+  - id: admin
+    role: admin
+    organization: apuana-sb
+    location: bologna
+    geography: {region: emilia-romagna, country: italy, continent: europe, scope: regional}
+  - id: ca1
+    role: ca
+    organization: certification-authority-1
+    location: bologna
+    geography: {region: emilia-romagna, country: italy, continent: europe, scope: regional}

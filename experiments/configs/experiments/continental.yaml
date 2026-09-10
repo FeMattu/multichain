@@ -1,0 +1,262 @@
+# Level 3 - continental. The same twenty nodes, European geography.
+#
+# The geography is the ONLY independent variable across the four level
+# descriptors: node list, roles, clusters, chain parameters, seed and schedule
+# are identical on purpose, so a difference in the results is a difference in
+# the network.
+#
+#   diff configs/experiments/regional.yaml configs/experiments/national.yaml
+#
+# differs by name, scenario, topology and the 'location' of each node - and by
+# nothing else.
+name: continental
+description: Level 3 - continental. The same twenty nodes, European geography.
+scenario: continental
+seed: 20260910
+topology: experiments/configs/topologies/continental.yaml
+chain_params: experiments/configs/chain-params/tbt10s-sqrt.dat
+mode: native
+fabric:
+  backend: auto
+  subnet: 11.0.0.0/24
+  link_subnet: 10.99.0.0/16
+  host_uplink: true
+multichain:
+  rpc_port: 27000
+  p2p_port: 27001
+  debug: wpoa
+schedule:
+  duration_s: auto
+  measure_epochs: 16
+expected:
+  min_blocks: 1
+  min_peers: 2
+  require_all_nodes_synced: true
+nodes:
+- id: m1
+  role: miner
+  organization: cluster-1
+  location: milano-c
+  geography:
+    region: lombardy
+    country: italy
+    continent: europe
+    scope: continental
+  reconcile_rate: 0.95
+  enabled: true
+- id: m2
+  role: miner
+  organization: cluster-2
+  location: frankfurt
+  geography:
+    region: hesse
+    country: germany
+    continent: europe
+    scope: continental
+  reconcile_rate: 0.8
+  enabled: true
+- id: m3
+  role: miner
+  organization: cluster-3
+  location: madrid
+  geography:
+    region: madrid
+    country: spain
+    continent: europe
+    scope: continental
+  reconcile_rate: 0.6
+  enabled: true
+- id: m4
+  role: miner
+  organization: cluster-4
+  location: wien
+  geography:
+    region: vienna
+    country: austria
+    continent: europe
+    scope: continental
+  reconcile_rate: 0.45
+  enabled: true
+- id: m5
+  role: miner
+  organization: cluster-5
+  location: stockholm
+  geography:
+    region: stockholm
+    country: sweden
+    continent: europe
+    scope: continental
+  reconcile_rate: 0.35
+  enabled: true
+- id: m6
+  role: miner
+  organization: cluster-6
+  location: dublin
+  geography:
+    region: leinster
+    country: ireland
+    continent: europe
+    scope: continental
+  reconcile_rate: 0.25
+  enabled: true
+- id: m7
+  role: miner
+  organization: cluster-7
+  location: bucuresti
+  geography:
+    region: bucharest
+    country: romania
+    continent: europe
+    scope: continental
+  reconcile_rate: 0.2
+  enabled: true
+- id: c1
+  role: company
+  organization: supplier-01
+  location: zurich
+  geography:
+    region: zurich
+    country: switzerland
+    continent: europe
+    scope: continental
+  cluster: m1
+  tx_interval_s: 8
+  enabled: true
+- id: c2
+  role: company
+  organization: supplier-02
+  location: marseille
+  geography:
+    region: provence
+    country: france
+    continent: europe
+    scope: continental
+  cluster: m2
+  tx_interval_s: 10
+  enabled: true
+- id: c3
+  role: company
+  organization: supplier-03
+  location: amsterdam
+  geography:
+    region: north-holland
+    country: netherlands
+    continent: europe
+    scope: continental
+  cluster: m3
+  tx_interval_s: 12
+  enabled: true
+- id: c4
+  role: company
+  organization: supplier-04
+  location: warszawa
+  geography:
+    region: masovia
+    country: poland
+    continent: europe
+    scope: continental
+  cluster: m4
+  tx_interval_s: 14
+  enabled: true
+- id: c5
+  role: company
+  organization: supplier-05
+  location: lisboa
+  geography:
+    region: lisbon
+    country: portugal
+    continent: europe
+    scope: continental
+  cluster: m5
+  tx_interval_s: 16
+  enabled: true
+- id: c6
+  role: company
+  organization: supplier-06
+  location: praha
+  geography:
+    region: prague
+    country: czechia
+    continent: europe
+    scope: continental
+  cluster: m6
+  tx_interval_s: 18
+  enabled: true
+- id: c7
+  role: company
+  organization: supplier-07
+  location: kobenhavn
+  geography:
+    region: capital
+    country: denmark
+    continent: europe
+    scope: continental
+  cluster: m7
+  tx_interval_s: 20
+  enabled: true
+- id: c8
+  role: company
+  organization: supplier-08
+  location: budapest
+  geography:
+    region: budapest
+    country: hungary
+    continent: europe
+    scope: continental
+  cluster: m1
+  tx_interval_s: 22
+  enabled: true
+- id: c9
+  role: company
+  organization: supplier-09
+  location: barcelona
+  geography:
+    region: catalonia
+    country: spain
+    continent: europe
+    scope: continental
+  cluster: m2
+  tx_interval_s: 24
+  enabled: true
+- id: c10
+  role: company
+  organization: supplier-10
+  location: oslo
+  geography:
+    region: oslo
+    country: norway
+    continent: europe
+    scope: continental
+  cluster: m3
+  tx_interval_s: 25
+  enabled: true
+- id: admin
+  role: admin
+  organization: apuana-sb
+  location: paris
+  geography:
+    region: ile-de-france
+    country: france
+    continent: europe
+    scope: continental
+  enabled: true
+- id: ca1
+  role: ca
+  organization: certification-authority-1
+  location: london
+  geography:
+    region: england
+    country: united-kingdom
+    continent: europe
+    scope: continental
+  enabled: true
+- id: ca2
+  role: ca
+  organization: certification-authority-2
+  location: bruxelles
+  geography:
+    region: brussels
+    country: belgium
+    continent: europe
+    scope: continental
+  enabled: true

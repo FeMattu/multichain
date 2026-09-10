@@ -1,0 +1,20 @@
+name: national
+description: Sites inside one country (Italy, Milan / Rome / Naples backbone).
+source: >-
+  Physical model applied to the worst backbone hop of the historical
+  'nazionale' level (Milan-Naples, ~660 km): 0.005 * 660 * 1.4 + 0.5 = 5.1 ms
+  one-way. Measured worst end-to-end RTT of that level: 22.0 ms.
+  Reference points used to sanity-check the model: Milan-Rome 477 km,
+  7.7 ms model vs ~9 ms real.
+direction: bidirectional
+delay:
+  mean_ms: 5.1
+  jitter_ms: 0.8
+  correlation_percent: 25
+  distribution: normal
+loss:
+  percent: 0.033
+bandwidth:
+  mbps: 1000
+queue:
+  limit_packets: 1000
