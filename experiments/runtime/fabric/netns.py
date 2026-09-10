@@ -272,18 +272,16 @@ class NetnsFabric(Fabric):
                                              "%s/%d" % (router_addr, subnet.prefixlen),
                                              "dev", router_iface])
             self.runner.in_netns(router_ns, ["ip", "link", "set", router_iface, "up"])
-            # The node reaches the whole experiment subnet through its router.
-            #
-            # `src` is load-bearing, not decoration. Without it the kernel picks
-            # the interface address - the /30 link address - as the source of
-            # every outgoing packet, because that is the address on the
-            # outgoing device. No other node has a route back to a /30, so the
-            # SYN arrives and the SYN-ACK is undeliverable: the symptom is
-            # "Couldn't connect to the seed node", several minutes into a run,
-            # with both daemons apparently healthy. Pinning src to the node's
-            # identity /32 makes every packet come from an address the whole
-            # fabric can route.
+            # The node reaches the whole experiment subnet through its router,
+            # sourced from its identity address. The `src` is not decoration:
+            # without it the kernel picks eth0's /30 access address as the
+            # source, and no router carries a route back to a point-to-point
+            # link, so every packet a daemon originates leaves and nothing
+            # comes back - multichaind reports "couldn't connect to the seed
+            # node" while ping -I <identity> succeeds.
             self.runner.in_netns(node_ns, ["ip", "route", "add", self.plan.fabric.subnet,
+                                           "via", str(router_addr), "dev", "eth0",
+                                           "src", node.ip])
                                            "via", str(router_addr), "dev", "eth0",
                                            "src", node.ip])
             # The router reaches this node's /32 directly on the access link.
