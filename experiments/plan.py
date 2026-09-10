@@ -160,6 +160,7 @@ class FabricSettings:
     session_name: str
     subnet: str
     link_subnet: str
+    mgmt_subnet: str
     namespace_prefix: str
     host_uplink: bool
 
@@ -411,6 +412,7 @@ def build_plan(descriptor_path: Path | str, *, seed_override: int | None = None,
         session_name=fab_doc.get("session_name") or "poesia-%s" % name,
         subnet=fab_doc.get("subnet", "11.0.0.0/24"),
         link_subnet=fab_doc.get("link_subnet", "10.99.0.0/16"),
+        mgmt_subnet=fab_doc.get("mgmt_subnet", "172.30.0.0/24"),
         namespace_prefix=fab_doc.get("namespace_prefix", "poesia"),
         host_uplink=bool(fab_doc.get("host_uplink", True)),
     )

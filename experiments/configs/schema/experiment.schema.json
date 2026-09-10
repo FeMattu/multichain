@@ -4,63 +4,201 @@
   "title": "Experiment descriptor",
   "description": "The single file passed to the CLI. It references the reusable axes by path (topology, chain parameters, network profiles) and declares the nodes, so that changing one axis is changing one line.",
   "type": "object",
-  "required": ["name", "topology", "multichain", "nodes"],
+  "required": [
+    "name",
+    "topology",
+    "multichain",
+    "nodes"
+  ],
   "additionalProperties": false,
   "properties": {
-    "name": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$", "description": "Names the run directory and, with the dashes removed, the chain (poesia<name>)."},
-    "description": {"type": "string"},
-    "scenario": {"type": "string", "description": "Label carried into every metric row. Defaults to name."},
-    "seed": {"type": "integer", "default": 20260910, "description": "Master seed. Every derived seed (ESG draw, netem, workload) is a pure function of this one; see docs/reproducibility.md."},
-    "topology": {"type": "string", "description": "Path to a configs/topologies/*.yaml file, relative to the repository root or absolute."},
-    "chain_params": {"type": "string", "description": "Path to a configs/chain-params/*.dat file. These are hash-enforced chain parameters (protocol 20014)."},
-    "network_profile_dir": {"type": "string", "description": "Directory holding the named network profiles. Defaults to configs/network-profiles."},
-    "mode": {"type": "string", "enum": ["native", "docker"], "default": "native", "description": "native: multichaind runs directly in the emulated namespaces. docker: one container per node (see docs/architecture.md)."},
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Names the run directory and, with the dashes removed, the chain (poesia<name>)."
+    },
+    "description": {
+      "type": "string"
+    },
+    "scenario": {
+      "type": "string",
+      "description": "Label carried into every metric row. Defaults to name."
+    },
+    "seed": {
+      "type": "integer",
+      "default": 20260910,
+      "description": "Master seed. Every derived seed (ESG draw, netem, workload) is a pure function of this one; see docs/reproducibility.md."
+    },
+    "topology": {
+      "type": "string",
+      "description": "Path to a configs/topologies/*.yaml file, relative to the repository root or absolute."
+    },
+    "chain_params": {
+      "type": "string",
+      "description": "Path to a configs/chain-params/*.dat file. These are hash-enforced chain parameters (protocol 20014)."
+    },
+    "network_profile_dir": {
+      "type": "string",
+      "description": "Directory holding the named network profiles. Defaults to configs/network-profiles."
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "native",
+        "docker"
+      ],
+      "default": "native",
+      "description": "native: multichaind runs directly in the emulated namespaces. docker: one container per node (see docs/architecture.md)."
+    },
     "fabric": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "backend": {"type": "string", "enum": ["core", "netns", "auto"], "default": "auto", "description": "core = CORE Network Emulator through its gRPC API; netns = plain ip-netns/veth/tc fabric; auto = core when reachable, netns otherwise."},
-        "core_address": {"type": "string", "default": "127.0.0.1:50051"},
-        "session_name": {"type": "string"},
-        "subnet": {"type": "string", "default": "11.0.0.0/24", "description": "Address space of the node loopbacks. Must be large enough for every enabled node."},
-        "link_subnet": {"type": "string", "default": "10.99.0.0/16", "description": "Address space carved into /30s, one per emulated link."},
-        "namespace_prefix": {"type": "string", "default": "poesia"},
-        "host_uplink": {"type": "boolean", "default": true, "description": "Attach the controlling host to the emulated network so collectors can reach every RPC endpoint."}
+        "backend": {
+          "type": "string",
+          "enum": [
+            "core",
+            "netns",
+            "auto"
+          ],
+          "default": "auto",
+          "description": "core = CORE Network Emulator through its gRPC API; netns = plain ip-netns/veth/tc fabric; auto = core when reachable, netns otherwise."
+        },
+        "core_address": {
+          "type": "string",
+          "default": "127.0.0.1:50051"
+        },
+        "session_name": {
+          "type": "string"
+        },
+        "subnet": {
+          "type": "string",
+          "default": "11.0.0.0/24",
+          "description": "Address space of the node loopbacks. Must be large enough for every enabled node."
+        },
+        "link_subnet": {
+          "type": "string",
+          "default": "10.99.0.0/16",
+          "description": "Address space carved into /30s, one per emulated link. Never carries user traffic destinations, only next hops."
+        },
+        "namespace_prefix": {
+          "type": "string",
+          "default": "poesia"
+        },
+        "host_uplink": {
+          "type": "boolean",
+          "default": true,
+          "description": "Attach the controlling host to the emulated network so collectors can reach every RPC endpoint."
+        },
+        "mgmt_subnet": {
+          "type": "string",
+          "default": "172.30.0.0/24",
+          "description": "Out-of-band management network joining the controlling host to every node, with no impairment. The harness's own collectors use it so that polling does not travel - and perturb - the paths being measured. Node-to-node traffic never uses it."
+        }
       }
     },
     "multichain": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "chain": {"type": "string", "description": "Chain name. Defaults to 'poesia' + name without dashes."},
-        "bindir": {"type": "string", "description": "Directory holding multichaind/multichain-cli/multichain-util. Overridden by MULTICHAIN_BIN and friends."},
-        "executable": {"type": "string"},
-        "cli": {"type": "string"},
-        "util": {"type": "string"},
-        "rpc_user": {"type": "string", "default": "poesia"},
-        "rpc_password": {"type": "string", "default": "poesiarpc", "description": "Test credential of an isolated emulated network. Never a real secret; docs/reproducibility.md says why it is versioned."},
-        "rpc_port": {"type": "integer", "default": 27000},
-        "p2p_port": {"type": "integer", "default": 27001},
-        "max_tx_fee": {"type": "number", "default": 10.0, "description": "Wallet cap. Must exceed minimum-relay-fee x transaction size or stream publications silently fail."},
-        "debug": {"type": "string", "default": "wpoa", "description": "-debug category passed to multichaind."},
-        "stream": {"type": "string", "default": "poesia-supplychain"},
-        "treasury_file": {"type": "string", "description": "Path to the treasury key pair. Defaults to configs/treasury.json, generated on first use."}
+        "chain": {
+          "type": "string",
+          "description": "Chain name. Defaults to 'poesia' + name without dashes."
+        },
+        "bindir": {
+          "type": "string",
+          "description": "Directory holding multichaind/multichain-cli/multichain-util. Overridden by MULTICHAIN_BIN and friends."
+        },
+        "executable": {
+          "type": "string"
+        },
+        "cli": {
+          "type": "string"
+        },
+        "util": {
+          "type": "string"
+        },
+        "rpc_user": {
+          "type": "string",
+          "default": "poesia"
+        },
+        "rpc_password": {
+          "type": "string",
+          "default": "poesiarpc",
+          "description": "Test credential of an isolated emulated network. Never a real secret; docs/reproducibility.md says why it is versioned."
+        },
+        "rpc_port": {
+          "type": "integer",
+          "default": 27000
+        },
+        "p2p_port": {
+          "type": "integer",
+          "default": 27001
+        },
+        "max_tx_fee": {
+          "type": "number",
+          "default": 10.0,
+          "description": "Wallet cap. Must exceed minimum-relay-fee x transaction size or stream publications silently fail."
+        },
+        "debug": {
+          "type": "string",
+          "default": "wpoa",
+          "description": "-debug category passed to multichaind."
+        },
+        "stream": {
+          "type": "string",
+          "default": "poesia-supplychain"
+        },
+        "treasury_file": {
+          "type": "string",
+          "description": "Path to the treasury key pair. Defaults to configs/treasury.json, generated on first use."
+        }
       }
     },
     "workload": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "gas_company": {"type": "number", "default": 100},
-        "gas_miner": {"type": "number", "default": 50},
-        "gas_threshold": {"type": "number", "default": 20},
-        "gas_topup": {"type": "number", "default": 100},
-        "refill_every_s": {"type": "number", "default": 30},
-        "epoch_poll_s": {"type": "number", "default": 10},
-        "epoch_margin_blocks": {"type": "integer", "default": 8},
-        "default_tx_interval_s": {"type": "number", "default": 15},
-        "default_reconcile_rate": {"type": "number", "default": 0.6},
-        "reconcile_reserve_gas": {"type": "number", "default": 2}
+        "gas_company": {
+          "type": "number",
+          "default": 100
+        },
+        "gas_miner": {
+          "type": "number",
+          "default": 50
+        },
+        "gas_threshold": {
+          "type": "number",
+          "default": 20
+        },
+        "gas_topup": {
+          "type": "number",
+          "default": 100
+        },
+        "refill_every_s": {
+          "type": "number",
+          "default": 30
+        },
+        "epoch_poll_s": {
+          "type": "number",
+          "default": 10
+        },
+        "epoch_margin_blocks": {
+          "type": "integer",
+          "default": 8
+        },
+        "default_tx_interval_s": {
+          "type": "number",
+          "default": 15
+        },
+        "default_reconcile_rate": {
+          "type": "number",
+          "default": 0.6
+        },
+        "reconcile_reserve_gas": {
+          "type": "number",
+          "default": 2
+        }
       }
     },
     "schedule": {
@@ -68,30 +206,81 @@
       "description": "Bootstrap timeline in wall-clock seconds from the start of the run. The order is not arbitrary: without confirmed membership and ESG records the weight engine has no cluster to score and the chain stalls at setup-first-blocks.",
       "additionalProperties": false,
       "properties": {
-        "first_launch_s": {"type": "number", "default": 30},
-        "grant_s": {"type": "number", "default": 60},
-        "join_s": {"type": "number", "default": 150},
-        "register_s": {"type": "number", "default": 260},
-        "traffic_s": {"type": "number", "default": 340},
-        "snapshot_before_stop_s": {"type": "number", "default": 120},
-        "duration_s": {"description": "Total run length. 'auto' derives it from the measurement window; an explicit number wins.", "oneOf": [{"type": "number", "exclusiveMinimum": 0}, {"type": "string", "enum": ["auto"]}]},
-        "measure_epochs": {"type": "integer", "minimum": 1, "default": 16, "description": "Epochs to cover after setup. Not a chain parameter: it only feeds the automatic duration."}
+        "first_launch_s": {
+          "type": "number",
+          "default": 30
+        },
+        "grant_s": {
+          "type": "number",
+          "default": 60
+        },
+        "join_s": {
+          "type": "number",
+          "default": 150
+        },
+        "register_s": {
+          "type": "number",
+          "default": 260
+        },
+        "traffic_s": {
+          "type": "number",
+          "default": 340
+        },
+        "snapshot_before_stop_s": {
+          "type": "number",
+          "default": 120
+        },
+        "duration_s": {
+          "description": "Total run length. 'auto' derives it from the measurement window; an explicit number wins.",
+          "oneOf": [
+            {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            {
+              "type": "string",
+              "enum": [
+                "auto"
+              ]
+            }
+          ]
+        },
+        "measure_epochs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 16,
+          "description": "Epochs to cover after setup. Not a chain parameter: it only feeds the automatic duration."
+        }
       }
     },
     "nodes": {
       "type": "array",
       "minItems": 2,
-      "items": {"$ref": "node.schema.json"}
+      "items": {
+        "$ref": "node.schema.json"
+      }
     },
     "expected": {
       "type": "object",
       "description": "Assertions the lifecycle checks before declaring the run complete.",
       "additionalProperties": false,
       "properties": {
-        "min_blocks": {"type": "integer", "minimum": 0},
-        "min_peers": {"type": "integer", "minimum": 0},
-        "max_forks": {"type": "integer", "minimum": 0},
-        "require_all_nodes_synced": {"type": "boolean", "default": true}
+        "min_blocks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "min_peers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_forks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "require_all_nodes_synced": {
+          "type": "boolean",
+          "default": true
+        }
       }
     }
   }
