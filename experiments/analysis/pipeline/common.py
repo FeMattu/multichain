@@ -374,9 +374,20 @@ def extract_meta(run):
     params = {}
     if run["data"].is_dir():
         for host_dir in sorted(p for p in run["data"].iterdir() if p.is_dir()):
-            params = parse_params_dat(host_dir / "params.dat")
+            # Shadow kept a copy of params.dat at the host level; a native run
+            # leaves it where multichaind writes it, one directory down in the
+            # chain directory. The host level is tried first, so an archived
+            # run is read exactly as it always was - without the second
+            # candidate every native run reported "params.dat assente" and
+            # silently fell back to the directory name for the target block
+            # time and to getinfo for setup-first-blocks.
+            for candidate in [host_dir / "params.dat",
+                              *sorted(host_dir.glob("*/params.dat"))]:
+                params = parse_params_dat(candidate)
+                if params:
+                    meta["params_da_host"] = host_dir.name
+                    break
             if params:
-                meta["params_da_host"] = host_dir.name
                 break
     meta["params_trovato"] = bool(params)
     for key in PARAM_KEYS:
