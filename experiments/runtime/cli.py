@@ -169,6 +169,9 @@ def cmd_validate(args) -> int:
     summary["duration_is_explicit"] = plan.schedule.duration_is_explicit
     summary["auto_duration_s"] = plan.schedule.auto_duration_s
     _print(summary, as_json=True)
+    too_short = plan.duration_warning()
+    if too_short:
+        LOG.warning("schedule: %s", too_short)
     for warning in report.warnings:
         LOG.warning("topology: %s", warning)
     if report.errors:
@@ -522,6 +525,7 @@ def cmd_experiment_run(args) -> int:
                 interval_s=args.sample_interval,
                 run_root=root, explorer_node=plan.admin.id,
                 explorer_interval_s=args.explorer_interval,
+                target_block_time_s=plan.target_block_time,
             )
             sampler.start()
 

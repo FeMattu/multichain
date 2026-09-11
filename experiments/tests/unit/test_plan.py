@@ -161,3 +161,28 @@ def test_setup_below_the_derived_minimum_is_refused(tmp_path):
     with pytest.raises(ConfigError) as caught:
         ChainParams.load(params).setup_first_blocks(traffic_start_s=340)
     assert "stall" in caught.value.hint
+
+
+@pytest.mark.parametrize("path", DESCRIPTORS, ids=lambda p: p.stem)
+def test_every_shipped_descriptor_can_measure_something(path):
+    """A descriptor whose own duration ends inside setup measures nothing."""
+    plan = build_plan(path)
+    assert plan.measurable_blocks() > 0, plan.duration_warning()
+    assert plan.duration_warning() is None
+
+
+def test_a_run_too_short_to_leave_the_setup_phase_says_so_up_front():
+    """Otherwise the only evidence is an analyser note, after the fact.
+
+    A 180s smoke run produced 44 blocks against setup-first-blocks=60: every
+    artefact was written, well formed and empty, and nothing said why until
+    run_index.csv was read afterwards.
+    """
+    plan = build_plan(CONFIG_ROOT / "experiments" / "smoke-3n.yaml",
+                      duration_override=180)
+    assert plan.measurable_blocks() < 0
+    warning = plan.duration_warning()
+    assert warning is not None
+    assert "setup-first-blocks=60" in warning
+    assert str(int(plan.schedule.auto_duration_s)) in warning, \
+        "the warning must say how long the run needs to be"

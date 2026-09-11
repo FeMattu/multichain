@@ -183,6 +183,9 @@ class Session:
             links=len(self.plan.topology.links),
             max_rtt_ms=report.max_rtt_ms,
         ))
+        too_short = self.plan.duration_warning()
+        if too_short:
+            LOG.warning("schedule: %s", too_short)
 
     def resolve_binaries(self) -> None:
         self.binaries = install.require_all(self.plan.multichain)

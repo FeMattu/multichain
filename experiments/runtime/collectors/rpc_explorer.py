@@ -103,6 +103,13 @@ class ExplorerState:
     #: reading it at the end reported "0 blocks" for a run that had collected
     #: forty.
     heights: set = field(default_factory=set)
+    #: When the tip last moved, and the longest it ever stood still. A chain
+    #: that stops advancing produces artefacts that are complete and empty;
+    #: without this the only evidence is "blocchi insufficienti" in
+    #: run_index.csv, days later.
+    tip_moved_monotonic: float = 0.0
+    longest_stall_s: float = 0.0
+    stalled_at_height: int = 0
 
 
 class RpcExplorer:
@@ -218,6 +225,12 @@ class RpcExplorer:
                 produced["blocks"] += 1
                 produced["transactions"] += row.pop("_transactions", 0)
             self.state.last_height = tip
+            self.state.tip_moved_monotonic = time.monotonic()
+        elif self.state.tip_moved_monotonic:
+            stalled = time.monotonic() - self.state.tip_moved_monotonic
+            if stalled > self.state.longest_stall_s:
+                self.state.longest_stall_s = stalled
+                self.state.stalled_at_height = self.state.last_height
 
         if self.state.samples % self.raw_every == 0:
             for method, params in EXPLORER_SNAPSHOT_CALLS:
@@ -377,3 +390,15 @@ class RpcExplorer:
         return {"ok": not missing, "checked": len(heights),
                 "from": heights[0], "to": heights[-1], "missing": missing[:50],
                 "missing_count": len(missing)}
+
+    def longest_stall(self) -> dict:
+        """The longest the tip stood still, and where.
+
+        Gap-free heights say the explorer missed nothing; they say nothing
+        about whether the chain kept moving. A run whose tip froze at the
+        setup boundary collects every block up to that height, contiguously,
+        and measures none of them.
+        """
+        return {"seconds": round(self.state.longest_stall_s, 1),
+                "height": self.state.stalled_at_height,
+                "tip": self.state.last_height}

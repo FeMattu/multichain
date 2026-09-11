@@ -63,8 +63,10 @@ class Sampler:
     def __init__(self, *, run_id: str, scenario: str, seed: int, nodes, clients,
                  registry, out_dir: Path, interval_s: float = 10.0,
                  run_root: Path | None = None, explorer_node: str = "",
-                 explorer_interval_s: float = 2.0) -> None:
+                 explorer_interval_s: float = 2.0,
+                 target_block_time_s: float = 0.0) -> None:
         self.interval_s = max(1.0, float(interval_s))
+        self.target_block_time_s = float(target_block_time_s)
         self.out_dir = Path(out_dir)
         self.rpc = RpcCollector(run_id=run_id, scenario=scenario, seed=seed,
                                 nodes=list(nodes), clients=dict(clients))
@@ -142,6 +144,17 @@ class Sampler:
                 LOG.info("explorer: %d blocks, heights %s-%s, no gaps",
                          contiguity["checked"], contiguity.get("from"),
                          contiguity.get("to"))
+            stall = self.explorer.longest_stall()
+            # Ten target block times without a block is not jitter. Saying so
+            # here is the difference between an empty metric and a known
+            # cause: the chain stopped, and this is the height it stopped at.
+            if stall["seconds"] > 10 * max(1, self.target_block_time_s):
+                LOG.warning(
+                    "the chain stopped advancing: tip stood at height %d for "
+                    "%gs (target block time %gs). Every metric that needs "
+                    "measured blocks will be empty; check the miner's "
+                    "debug.log around that height.",
+                    stall["height"], stall["seconds"], self.target_block_time_s)
         LOG.info("sampler stopped: %d ticks, %d observation rows, %d sightings",
                  self.ticks, self._observations.written, self._sightings.written)
 

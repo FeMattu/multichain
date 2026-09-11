@@ -231,6 +231,33 @@ class ExperimentPlan:
     def measure_blocks(self) -> int:
         return self.schedule.measure_epochs * self.epoch_length
 
+    def measurable_blocks(self) -> int:
+        """Blocks this run can produce AFTER the setup phase.
+
+        `setup-first-blocks` is a chain parameter: until that height the chain
+        is still in setup and nothing it produces belongs in a measurement.
+        A run that ends before it clears that height is not broken and looks
+        broken - every artefact is written, well formed and empty, and the
+        analyser can only say "blocchi insufficienti" afterwards. Computing
+        it up front turns a post-mortem into a warning.
+        """
+        tbt = max(1, self.target_block_time)
+        produced = (self.schedule.duration_s - self.schedule.first_launch_s) / tbt
+        return int(produced) - self.setup_first_blocks
+
+    def duration_warning(self) -> str | None:
+        """Why this run will measure nothing, when it will measure nothing."""
+        blocks = self.measurable_blocks()
+        if blocks > 0:
+            return None
+        return ("duration_s=%g leaves %d blocks after setup-first-blocks=%d at "
+                "%gs per block: the run ends inside the chain's setup phase, so "
+                "every metric derived from measured blocks will be written, well "
+                "formed and empty. Raise duration_s to at least %g (the schedule's "
+                "auto_duration_s) or lower setup-first-blocks in the chain params."
+                % (self.schedule.duration_s, blocks, self.setup_first_blocks,
+                   self.target_block_time, self.schedule.auto_duration_s))
+
     def summary(self) -> dict:
         return {
             "name": self.name,
@@ -249,6 +276,7 @@ class ExperimentPlan:
             "dump_function": self.chain_params.dump_function,
             "setup_first_blocks": self.setup_first_blocks,
             "measure_blocks": self.measure_blocks(),
+            "measurable_blocks": self.measurable_blocks(),
             "duration_s": self.schedule.duration_s,
         }
 
