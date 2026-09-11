@@ -114,8 +114,38 @@ def generate_reports(run_root: Path, plan, *, with_plots: bool = True) -> dict:
         reports_dir / "metrics_schema_report.md", metrics_dir=run_root / "metrics")))
 
     if with_plots:
-        produced["plots"] = _plots(run_root, context)
+        from .plots import generate as generate_plots
+
+        figures = generate_plots(run_root, plan)
+        produced["plots"] = figures["produced"]
+        produced["plots_skipped"] = figures["skipped"]
+        context["plots"] = figures
+        # The figure inventory goes into the general report, so a reader sees
+        # what was drawn AND what was not, with the reason.
+        path = reports_dir / "report_generale.md"
+        path.write_text(path.read_text(encoding="utf-8")
+                        + "\n".join(_figures_section(figures)) + "\n",
+                        encoding="utf-8")
     return produced
+
+
+def _figures_section(figures: dict) -> list:
+    from .plots import FIGURES
+
+    lines = ["", "## Figures", ""]
+    if figures["produced"]:
+        lines += ["Written to `plots/`:", ""]
+        for path in figures["produced"]:
+            name = Path(path).name
+            lines.append("* `%s` - %s" % (name, FIGURES.get(name, "")))
+        lines.append("")
+    if figures["skipped"]:
+        lines += ["Not drawn, and why - a figure is never omitted silently:", "",
+                  "| figure | shows | why not |", "|---|---|---|"]
+        for name, reason in sorted(figures["skipped"].items()):
+            lines.append("| `%s` | %s | %s |" % (name, FIGURES.get(name, ""), reason))
+        lines.append("")
+    return lines
 
 
 def _load_manifest(run_root: Path) -> dict:
@@ -128,6 +158,11 @@ def _load_manifest(run_root: Path) -> dict:
         return {}
 
 
+def _sheet(metrics: Path, name: str) -> list:
+    """One historical table, or an empty list if it was not produced."""
+    return _read_csv(metrics / ("%s.csv" % name))
+
+
 def _gather(run_root: Path, plan, manifest: dict) -> dict:
     metrics = run_root / "metrics"
     observations = _read_csv(metrics / "node_observations.csv")
@@ -137,6 +172,7 @@ def _gather(run_root: Path, plan, manifest: dict) -> dict:
     processes = _read_csv(metrics / "process_samples.csv")
     return {
         "run_root": run_root,
+        "metrics": metrics,
         "plan": plan,
         "manifest": manifest,
         "backend": manifest.get("fabric_backend", "unknown"),
@@ -145,6 +181,22 @@ def _gather(run_root: Path, plan, manifest: dict) -> dict:
         "forks": forks,
         "netem": netem,
         "processes": processes,
+        # The historical tables. Each may legitimately be absent - a run that
+        # never reached the wPoA window has no epoch_shares - and every
+        # section that uses one says so rather than disappearing.
+        "run_index": _sheet(metrics, "run_index"),
+        "proposers": _sheet(metrics, "proposers"),
+        "chisq": _sheet(metrics, "chisq"),
+        "block_times": _sheet(metrics, "block_times"),
+        "epoch_shares": _sheet(metrics, "epoch_shares"),
+        "weights_trajectory": _sheet(metrics, "weights_trajectory"),
+        "alternanze": _sheet(metrics, "alternanze"),
+        "sortition_margins": _sheet(metrics, "sortition_margins"),
+        "forks_sheet": _sheet(metrics, "forks"),
+        "verify": _sheet(metrics, "verify"),
+        "esg": _sheet(metrics, "esg"),
+        "gas": _sheet(metrics, "gas"),
+        "plots": {},
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 
@@ -213,6 +265,12 @@ def _report_generale(context: dict) -> list:
             ", ".join("`%s`" % n for n in isolated) if isolated else "none"), ""]
     else:
         lines += _no_data("No peer count was recorded.", "")
+
+    lines += ["## Inter-block interval (wPoA window)", ""]
+    lines += _block_time_section(context)
+
+    lines += ["## Independent verification of the weights", ""]
+    lines += _verify_section(context)
 
     lines += ["## Block propagation", ""]
     times = _numbers(context["propagation"], "propagation_time")
@@ -311,6 +369,64 @@ def _report_generale(context: dict) -> list:
     return lines
 
 
+def _block_time_section(context: dict) -> list:
+    rows = context["block_times"]
+    if not rows:
+        return _no_data(
+            "`block_times.csv` was not produced.",
+            "It needs the admin's final snapshot; see the run log for whether the "
+            "snapshot happened.")
+    row = rows[0]
+    out = _table(["quantity", "value"], [
+        ("blocks measured (wPoA window)", row.get("blocchi_misurati", "")),
+        ("setup blocks (native PoA, excluded)", row.get("setup_blocks", "")),
+        ("mean", "%s s" % row.get("dt_medio_s", "")),
+        ("median", "%s s" % row.get("dt_mediana_s", "")),
+        ("standard deviation", "%s s" % row.get("dt_sd_s", "")),
+        ("min / max", "%s / %s s" % (row.get("dt_min_s", ""), row.get("dt_max_s", ""))),
+        ("target", "%s s" % row.get("target_s", "")),
+        ("gap", "%s s (%s%%)" % (row.get("scarto_s", ""), row.get("scarto_pct", ""))),
+    ])
+    out += [
+        "",
+        "*Derived* from the block header timestamps of the measurement window only.",
+        "Under real execution this figure carries no simulator artefact - unlike the",
+        "archived Shadow runs, whose interval included the vDSO latency the simulator",
+        "charged to every clock call. It does carry **host contention**: check the",
+        "load figures below before attributing a gap to the protocol's own feedback.",
+        "",
+    ]
+    return out
+
+
+def _verify_section(context: dict) -> list:
+    rows = context["verify"]
+    if not rows:
+        return _no_data(
+            "`verify.csv` was not produced.",
+            "It comes from weightverifyweights, which needs the admin to be "
+            "subscribed to wpoa-weights.")
+    row = rows[0]
+    invalid = row.get("non_validi", "")
+    out = _table(["quantity", "value"], [
+        ("epoch verified", row.get("epoca", "")),
+        ("verification ran", row.get("verificato", "")),
+        ("records checked", row.get("record", "")),
+        ("records INVALID", invalid),
+        ("verdicts", row.get("verdetti", "")),
+    ])
+    out.append("")
+    if str(invalid) not in ("", "0"):
+        out += ["> **%s record(s) failed independent recomputation.** Every input of"
+                % invalid,
+                "> the weight pipeline is public, so any node can check any record; a",
+                "> failure here means a published weight does not follow from its",
+                "> inputs. This is the most serious finding a run can produce.", ""]
+    else:
+        out += ["Every published weight was independently recomputed and matched.", ""]
+    return out
+
+
 def _report_confronto(context: dict) -> list:
     lines = _header(context, "Comparison report")
     lines += [
@@ -324,29 +440,151 @@ def _report_confronto(context: dict) -> list:
         "## Observed against expected",
         "",
     ]
-    historical = context["run_root"] / "analysis"
-    proposers = _find_first(historical, "proposers.csv")
-    if proposers:
-        rows = _read_csv(proposers)
+    rows = context["proposers"]
+    if rows:
         table_rows = [
             (r.get("host", ""), r.get("blocchi", ""), r.get("quota_osservata", ""),
              r.get("peso_ultimo", ""), r.get("quota_attesa", ""),
-             _delta(r.get("quota_osservata"), r.get("quota_attesa")))
+             _delta(r.get("quota_osservata"), r.get("quota_attesa")),
+             _relative(r.get("quota_osservata"), r.get("quota_attesa")))
             for r in rows
         ]
         lines += _table(
             ["host", "blocks", "observed share", "last weight", "expected share",
-             "absolute difference"], table_rows)
-        lines += ["", "*Derived.* Expected share is `w_i / W_tot` from the last published",
-                  "weight; see `metrics_schema_report.md` for the exact source of each",
-                  "column.", ""]
+             "abs. difference", "rel. difference"], table_rows)
+        lines += ["", "*Derived.* The expected share is `w_i / W_tot` from the last",
+                  "published weight. Where the weights moved between epochs, the",
+                  "per-epoch comparison below is the one that counts.", ""]
     else:
         lines += _no_data(
             "The historical `proposers.csv` was not produced.",
-            "It comes from the migrated pipeline, which needs the admin's final "
-            "snapshot (`raw/metrics/blocks.json`).")
+            "It comes from the migrated campaign analyser, which needs the admin's "
+            "final snapshot (`raw/metrics/blocks.json`).")
+
+    lines += ["## The proportionality test", ""]
+    lines += _chisq_section(context)
+
+    lines += ["## Per epoch, against the weight in force then", ""]
+    lines += _epoch_section(context)
+
+    lines += ["## Alternation: is the native Spacing still binding?", ""]
+    lines += _alternation_section(context)
+
     lines += _footer(context["plan"])
     return lines
+
+
+def _relative(observed, expected) -> str:
+    try:
+        observed, expected = float(observed), float(expected)
+    except (TypeError, ValueError):
+        return ""
+    if expected == 0:
+        return "n/a (expected 0)"
+    return "%+.1f%%" % (100.0 * (observed - expected) / expected)
+
+
+def _chisq_section(context: dict) -> list:
+    rows = context["chisq"]
+    if not rows:
+        return _no_data("`chisq.csv` was not produced.",
+                        "It is written by the migrated campaign analyser.")
+    row = rows[0]
+    sufficient = row.get("campione_sufficiente") in ("1", 1, "True", True)
+    compatible = row.get("compatibile_ricalcolato") in ("1", 1, "True", True)
+    out = _table(["quantity", "value"], [
+        ("chi-square (recomputed)", row.get("chi2_ricalcolato", "")),
+        ("degrees of freedom", row.get("df", "")),
+        ("critical value at 5%", row.get("critico_5pct", "")),
+        ("p-value", row.get("p_value", "") or "not available: scipy was absent"),
+        ("minimum expected count", row.get("min_attesa", "")),
+        ("sample sufficient", "yes" if sufficient else "**no**"),
+        ("compatible with the weights", "yes" if compatible else "no"),
+    ])
+    out.append("")
+    if not sufficient:
+        out += [
+            "> **The test is not applicable to this run.** The chi-square needs at",
+            "> least 5 expected blocks per validator; here the minimum expectation is",
+            "> `%s`. The verdict above must not be read as evidence either way - a" % row.get("min_attesa", "?"),
+            "> longer measurement window is what would settle it.",
+            "",
+        ]
+    elif compatible:
+        out += ["The observed distribution is compatible with the published weights "
+                "at the 5% level.", ""]
+    else:
+        out += ["The observed distribution is **not** compatible with the published "
+                "weights at the 5% level. Check the alternation section below "
+                "before concluding: a residual Spacing constraint produces exactly "
+                "this.", ""]
+    return out
+
+
+def _epoch_section(context: dict) -> list:
+    rows = context["epoch_shares"]
+    if not rows:
+        return _no_data(
+            "`epoch_shares.csv` is empty.",
+            "No epoch closed inside the wPoA measurement window - the run ended "
+            "before the weights had governed a full epoch.")
+    by_epoch = {}
+    for row in rows:
+        by_epoch.setdefault(row.get("epoca", ""), []).append(row)
+    shown = sorted(by_epoch)[-8:]
+    table_rows = []
+    for epoch in shown:
+        for row in sorted(by_epoch[epoch], key=lambda r: r.get("host", "")):
+            table_rows.append((
+                epoch, row.get("host", ""), row.get("blocchi_epoca", ""),
+                row.get("quota_osservata_epoca", ""), row.get("peso_epoca", ""),
+                row.get("quota_peso_epoca", ""),
+                _delta(row.get("quota_osservata_epoca"), row.get("quota_peso_epoca"))))
+    out = _table(["epoch", "host", "blocks", "observed", "weight", "expected",
+                  "difference"], table_rows)
+    out += ["", "*This is the comparison that counts* when the weights move between",
+            "epochs: each epoch's blocks are compared with the weight that was",
+            "readable at the chain tip while they were proposed, not with the last",
+            "weight of the run. Showing the last %d of %d epochs."
+            % (len(shown), len(by_epoch)), ""]
+    return out
+
+
+def _alternation_section(context: dict) -> list:
+    rows = context["alternanze"]
+    if not rows:
+        return _no_data("`alternanze.csv` was not produced.", "")
+    row = rows[0]
+    observed = _number(row.get("consecutivi_osservati"))
+    expected = _number(row.get("consecutivi_attesi"))
+    out = _table(["quantity", "value"], [
+        ("blocks measured", row.get("blocchi_misurati", "")),
+        ("consecutive same-proposer pairs, observed", row.get("consecutivi_osservati", "")),
+        ("consecutive same-proposer pairs, expected", row.get("consecutivi_attesi", "")),
+    ])
+    out.append("")
+    if observed == 0 and (expected or 0) > 1:
+        out += [
+            "> **Zero is not a statistical outcome.** Under weighted selection the",
+            "> probability that two consecutive blocks share a proposer is the sum of",
+            "> the squared shares, so %.1f pairs were expected. Observing none is the" % (expected or 0),
+            "> signature of an active alternation constraint - the native Spacing of",
+            "> `mining-diversity`, which is `ceil(d*(N-1))` blocks. With it in force",
+            "> the observed distribution is a round robin and **says nothing about the",
+            "> weights**. Check `mining_diversity` in `run_index.csv`: it must be 0.",
+            "",
+        ]
+    else:
+        out += ["Consistent with weighted selection: no residual alternation "
+                "constraint is visible.", ""]
+    return out
+
+
+def _number(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _delta(observed, expected) -> str:
@@ -426,7 +664,14 @@ def _report_asse_tbt(context: dict) -> list:
          ("epoch duration at target", "%.0f s" % (plan.epoch_length * plan.target_block_time)),
          ("measurement window", "%d blocks" % plan.measure_blocks())])
 
+    lines += ["", "## The timer race (Prop. 5.18)", ""]
+    lines += _margin_section(context)
+
     lines += ["", "## Observed inter-block interval", ""]
+    if context["block_times"]:
+        lines += _block_time_section(context)
+        lines += _footer(plan)
+        return lines
     intervals = _block_intervals(context["observations"])
     if intervals:
         stats = _stats(intervals)
@@ -452,6 +697,36 @@ def _report_asse_tbt(context: dict) -> list:
             "The run may not have reached the wPoA window.")
     lines += _footer(plan)
     return lines
+
+
+def _margin_section(context: dict) -> list:
+    rows = context["sortition_margins"]
+    if not rows:
+        return _no_data(
+            "`sortition_margins.csv` was not produced.",
+            "The sortition delays are parsed from each node's debug.log, so the "
+            "nodes must run with -debug=wpoa and the logs must have been archived.")
+    row = rows[0]
+    fraction = row.get("frazione_G_sotto_100ms", "")
+    out = _table(["quantity", "value"], [
+        ("rounds observed", row.get("round", "")),
+        ("band Dmax = delta x tbt", "%s s" % row.get("banda_dmax_s", "")),
+        ("worst RTT of the topology", "%s ms" % row.get("rtt_max_ms", "")),
+        ("margin G, mean", "%s s" % row.get("G_medio_s", "")),
+        ("margin G, median", "%s s" % row.get("G_mediano_s", "")),
+        ("margin G, minimum", "%s s" % row.get("G_min_s", "")),
+        ("rounds with G under 100 ms", "%s (%s of the total)"
+         % (row.get("round_G_sotto_100ms", ""), fraction)),
+    ])
+    out += [
+        "",
+        "`G` is the distance between the two best delays of a round. When it falls",
+        "below the network's own variance, the winner of the timer race is decided",
+        "by latency rather than by score - the regime of Prop. 5.18. The fraction",
+        "above is the direct measure of how often that happened.",
+        "",
+    ]
+    return out
 
 
 def _block_intervals(observations: list) -> list:
