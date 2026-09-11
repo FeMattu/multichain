@@ -1,20 +1,29 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
 # mcsim — host-side wrapper around `docker run` for the POESIA / wPoA
-# emulation container.
+# emulation container: ONE Ubuntu 22.04 environment holding MultiChain, CORE
+# and the harness.
 #
 # Its reason to exist is the flag set. The container has to build MultiChain
-# against an Ubuntu 22.04 userspace AND create network namespaces, veth pairs
-# and qdiscs inside itself; getting one flag wrong fails several steps into a
-# run with a message about `ip netns` rather than about the flag that was
-# missing.
+# against an Ubuntu 22.04 userspace AND let CORE create network namespaces,
+# veth pairs and qdiscs inside itself; getting one flag wrong fails several
+# steps into a run with a message about `ip netns` rather than about the flag
+# that was missing.
 #
-#   ./docker/mcsim build [--no-cache]
+#   ./docker/mcsim build [--no-cache] [--with-emane] [--no-ospf]
 #   ./docker/mcsim shell [resource flags]
 #   ./docker/mcsim run  <command...>
 #   ./docker/mcsim exp  experiments/configs/experiments/<name>.yaml
 #   ./docker/mcsim preflight
 #   ./docker/mcsim cpus                 physical-core-only CPU list for --cpuset
+#
+# Build options:
+#   --with-emane        also build EMANE and its Python bindings. Off by
+#                       default: EMANE models wireless channels and every
+#                       topology here is wired, so it is a long from-source
+#                       build nothing loads.
+#   --no-ospf           skip OSPF-MDR. Faster rebuild; only CORE's zebra and
+#                       OSPFv3 services need it, and these experiments do not.
 #
 # Resources. With no resource flag the container is UNCONSTRAINED: every CPU
 # and all the memory the host has. That is the default on purpose — a run whose
@@ -27,11 +36,13 @@
 #
 # Environment overrides:
 #   IMAGE=poesia-emu:22.04     image tag
+#   CORE_VERSION=9.2.1         CORE release to install at build time
 #   PROJECT_DIR                mount point inside the container
 #                              (default /workspace/multichain)
 #   NOFILE=1048576             --ulimit nofile
 #   RESULTS_DIR                host directory for run output; bind-mounted at
 #                              /results and exported as EXPERIMENT_ROOT
+#   MC_CORE=auto|1|0           start core-daemon in the container (default auto)
 # ---------------------------------------------------------------------------
 set -Eeuo pipefail
 trap 'printf "\033[31m[mcsim] failed at line %s\033[0m\n" "$LINENO" >&2' ERR
@@ -40,6 +51,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 
 IMAGE="${IMAGE:-poesia-emu:22.04}"
+# Pinned rather than "latest": an image that silently changes emulator version
+# between two builds makes two campaigns incomparable for no visible reason.
+CORE_VERSION="${CORE_VERSION:-9.2.1}"
 # No personal path: the default is a neutral mount point, and the host's own
 # checkout is bind-mounted onto it.
 PROJECT_DIR="${PROJECT_DIR:-/workspace/multichain}"
@@ -74,8 +88,14 @@ docker_flags() {
     flags+=(--security-opt apparmor=unconfined)
 
     # `ip netns` writes its handles under /var/run/netns, which must be
-    # writable and must allow mounts.
-    flags+=(--tmpfs /run:rw,exec,nosuid,size=64m)
+    # writable and must allow mounts. CORE keeps its daemon pid and its node
+    # handles there too, so this is a little larger than netns alone needs.
+    flags+=(--tmpfs /run:rw,exec,nosuid,size=128m)
+
+    # CORE creates TAP interfaces for some node types. The device is harmless
+    # when unused, but passing --device for a path the host does not have
+    # fails the whole `docker run`, so it is conditional.
+    [ -c /dev/net/tun ] && flags+=(--device /dev/net/tun)
 
     # Its own network namespace, so twenty emulated nodes cannot reach the
     # host's real network. `--network none` would remove lo, which the
@@ -90,6 +110,12 @@ docker_flags() {
     flags+=(-v "${REPO}:${PROJECT_DIR}")
     flags+=(-w "${PROJECT_DIR}")
     flags+=(-e "MULTICHAIN_HOME=${PROJECT_DIR}")
+
+    # Only forwarded when the caller set them: an unset variable passed as
+    # `-e MC_CORE` would arrive inside as an empty string and read as "not
+    # auto", which is exactly the opposite of the default.
+    [ -n "${MC_CORE:-}" ] && flags+=(-e "MC_CORE=${MC_CORE}")
+    [ -n "${MC_CORE_WAIT:-}" ] && flags+=(-e "MC_CORE_WAIT=${MC_CORE_WAIT}")
 
     # Run output can be very large; keeping it off the repository volume is
     # usually what you want.
@@ -139,15 +165,21 @@ run_in_container() {
 
 cmd_build() {
     local args=(build -t "$IMAGE" -f "$HERE/Dockerfile"
-                --build-arg "PROJECT_DIR=${PROJECT_DIR}")
+                --build-arg "PROJECT_DIR=${PROJECT_DIR}"
+                --build-arg "CORE_VERSION=${CORE_VERSION}")
+    local emane=0 ospf=1
     while [ $# -gt 0 ]; do
         case "$1" in
-            --no-cache) args+=(--no-cache); shift ;;
+            --no-cache)   args+=(--no-cache); shift ;;
+            --with-emane) emane=1; shift ;;
+            --no-ospf)    ospf=0; shift ;;
             *) die "build: unknown argument $1" ;;
         esac
     done
+    args+=(--build-arg "WITH_EMANE=${emane}" --build-arg "WITH_OSPF_MDR=${ospf}")
     args+=("$HERE")
-    say "building $IMAGE"
+    say "building $IMAGE — MultiChain toolchain + CORE ${CORE_VERSION}" \
+        "(emane=${emane} ospf-mdr=${ospf})"
     docker "${args[@]}"
     say "done. Next: ./docker/mcsim run mc-build     (compiles MultiChain)"
 }

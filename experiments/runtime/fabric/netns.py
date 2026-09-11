@@ -282,8 +282,6 @@ class NetnsFabric(Fabric):
             self.runner.in_netns(node_ns, ["ip", "route", "add", self.plan.fabric.subnet,
                                            "via", str(router_addr), "dev", "eth0",
                                            "src", node.ip])
-                                           "via", str(router_addr), "dev", "eth0",
-                                           "src", node.ip])
             # The router reaches this node's /32 directly on the access link.
             self.runner.in_netns(router_ns, ["ip", "route", "add", "%s/32" % node.ip,
                                              "via", str(node_addr), "dev", router_iface])

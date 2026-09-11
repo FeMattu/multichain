@@ -25,6 +25,11 @@ services:
       args:
         UBUNTU_VERSION: "22.04"
         PROJECT_DIR: ${PROJECT_DIR:-/workspace/multichain}
+        CORE_VERSION: ${CORE_VERSION:-9.2.1}
+        # EMANE models wireless channels and every topology here is wired, so
+        # it is off: turning it on adds a long from-source build nothing loads.
+        WITH_EMANE: ${WITH_EMANE:-0}
+        WITH_OSPF_MDR: ${WITH_OSPF_MDR:-1}
     image: ${IMAGE:-poesia-emu:22.04}
 
     # NET_ADMIN creates veth pairs, addresses, routes and qdiscs. SYS_ADMIN is
@@ -46,9 +51,16 @@ services:
     networks:
       - emulation
 
-    # /var/run/netns must be writable for `ip netns`.
+    # /var/run/netns must be writable for `ip netns`, and CORE keeps its
+    # daemon pid and node handles there too.
     tmpfs:
-      - /run:rw,exec,nosuid,size=64m
+      - /run:rw,exec,nosuid,size=128m
+
+    # CORE creates TAP interfaces for some node types. Unlike mcsim, compose
+    # cannot make this conditional: comment it out on a host without
+    # /dev/net/tun.
+    devices:
+      - /dev/net/tun:/dev/net/tun
 
     # Twenty daemons with their peers exhaust the default soft limit.
     ulimits:
@@ -69,6 +81,12 @@ services:
       MULTICHAIN_HOME: ${PROJECT_DIR:-/workspace/multichain}
       EXPERIMENT_ROOT: /results
       MC_PREFLIGHT: ${MC_PREFLIGHT:-auto}
+      # The entrypoint starts core-daemon and waits for its gRPC API, because
+      # nothing else does: the fabric connects to a daemon, it does not start
+      # one, and with `backend: auto` a daemon that is not answering means the
+      # run stops to ask whether netns is acceptable instead.
+      MC_CORE: ${MC_CORE:-auto}
+      MC_CORE_WAIT: ${MC_CORE_WAIT:-30}
 
     # All three empty by default = no limit. CPUSET takes a physical-core-only
     # list from `./docker/mcsim cpus`; CPUS a fractional quota; MEMORY a

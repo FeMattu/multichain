@@ -41,16 +41,22 @@ the archived campaign itself is preserved and labelled in
 Reproducible environment (Docker)
 ---------------------------------
 
-MultiChain wants GCC 11 / Boost 1.74 / libevent 2.1 — the Ubuntu 22.04 archive — and on
-a newer Ubuntu it either fails to build or produces daemons that will not start. The
-container supplies that 22.04 userspace on the host's own kernel, so there is no
-virtualisation and an emulated run keeps bare-metal performance. Everything below runs
-MultiChain itself; the whole emulated network is built inside the container:
+One Ubuntu 22.04 image holds all of it: the MultiChain toolchain, the CORE Network
+Emulator and the analysis stack. MultiChain wants GCC 11 / Boost 1.74 / libevent 2.1 —
+the Ubuntu 22.04 archive — and on a newer Ubuntu it either fails to build or produces
+daemons that will not start, and CORE ships a `.deb` for the same release. The container
+supplies that 22.04 userspace on the host's own kernel, so there is no virtualisation
+and an emulated run keeps bare-metal performance. The whole emulated network is built
+inside the container, by CORE:
 
-    ./docker/mcsim build                  # Ubuntu 22.04 + GCC 11 + the analysis stack
+    ./docker/mcsim build                  # 22.04 + GCC 11 + CORE + the analysis stack
     ./docker/mcsim run mc-build           # compiles multichaind into src/
     ./docker/mcsim preflight              # can this container build a network?
     ./docker/mcsim exp experiments/configs/experiments/smoke-3n.yaml
+
+The entrypoint starts `core-daemon` and waits for its gRPC API, so a descriptor asking
+for `fabric.backend: auto` resolves to CORE inside the container rather than dropping to
+the namespace fallback.
 
 An experiment started this way is given **the whole machine** — every CPU, all the
 memory, no quota of any kind. Pass `--cpus=`, `--cpuset=` or `--memory=` only when you

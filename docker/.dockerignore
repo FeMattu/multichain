@@ -5,3 +5,7 @@ README.md
 docker-compose.yml
 host-tune.sh
 mcsim
+
+# Host-install reference for CORE, not part of the image: the Dockerfile
+# installs CORE itself.
+CORE_sim/

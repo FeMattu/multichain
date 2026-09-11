@@ -22,6 +22,19 @@ the same thing from `ip`/veth/`tc` so the harness runs without CORE; `docker`
 is declared and fails at configuration time with the reason. `auto` prefers
 CORE and logs what was missing when it falls back.
 
+Two things about the CORE backend are worth knowing before reading it:
+
+* **It registers CORE's namespaces itself.** CORE keeps a node's namespace
+  open in `vnoded` and reaches it over a control socket in the session
+  directory, so `ip netns list` is empty during a CORE session. Everything
+  else here addresses a node as `nsenter --net=/var/run/netns/<name>`, so
+  after `start_session` the backend runs `ip netns attach` for each node,
+  using the pid `vnoded` recorded. It binds only the *net* namespace on
+  purpose — the nodes must keep sharing the run directory.
+* **Asymmetric links need `netns`.** CORE's link options are per link, not per
+  direction, so the CORE backend refuses an asymmetric topology instead of
+  applying half of it and reporting the whole.
+
 **Two planes.** The emulated plane carries P2P and node-to-node RPC through
 routers with per-link netem. The management plane is an unimpaired bridge used
 only by the harness's collectors — polling twenty nodes over the paths under

@@ -5,11 +5,10 @@
 #   ./docker/host-tune.sh            report what is set and what it should be
 #   sudo ./docker/host-tune.sh --apply
 #
-# Far shorter than it used to be. The previous version tuned the host for
-# Shadow, which had to be given a very large /dev/shm and an unthrottled CPU
-# governor because it was doing the scheduling itself. Emulation runs on the
-# host's own scheduler at native speed, so what is left is the handful of
-# limits that twenty real daemons on one machine genuinely exhaust.
+# Short, because emulation needs little from the host. CORE and the netns
+# fabric both drive kernel primitives and run on the host's own scheduler at
+# native speed, so what is left is the handful of limits that twenty real
+# daemons on one machine genuinely exhaust.
 #
 # Nothing here is persistent: everything resets at reboot. That is deliberate
 # - a benchmark harness should not silently reconfigure someone's machine.

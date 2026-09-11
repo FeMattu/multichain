@@ -78,6 +78,9 @@ Three ways forward, all explicit:
 ```bash
 # 1. give it the CORE it asked for
 sudo core-daemon
+#    In the container CORE is already installed and the entrypoint starts it:
+#    `core-status` says whether it answers, `core-up` starts it and prints the
+#    daemon log when it will not. See docker/README.md.
 
 # 2. authorise the fallback deliberately, for this run
 sudo -E experiments/scripts/run_experiment.sh \

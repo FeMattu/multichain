@@ -8,7 +8,7 @@
 # The harness has its own, more detailed check
 # (experiments/scripts/check_environment.sh). This one covers what is specific
 # to being inside a container: the userspace version, the capabilities, the
-# namespace, the limits, the resources.
+# namespace, CORE, the limits, the resources.
 #
 # Every check here does the real operation rather than probing for the tool
 # that performs it. `ip netns list` succeeds in a container that cannot create
@@ -126,6 +126,46 @@ fi
 if [ "$CPUS" -lt 5 ]; then
     note "with $CPUS CPUs, a twenty-node run will report host contention as much"
     note "as protocol behaviour — the harness warns about this too"
+fi
+
+# --- CORE ------------------------------------------------------------------
+# The three things the CORE fabric needs, checked separately because they fail
+# for different reasons: the binaries (is CORE in this image at all), the
+# Python API reachable from the SYSTEM interpreter (the .pth bridge out of
+# /opt/core/venv), and a daemon actually answering.
+#
+# The middle one is the one that breaks quietly. The harness imports
+# `core.api.grpc` with python3, not with the venv's interpreter, so CORE can
+# be perfectly installed and still be invisible to the fabric.
+CORE_ADDRESS="${CORE_GRPC_ADDRESS:-127.0.0.1:50051}"
+if command -v core-daemon >/dev/null 2>&1; then
+    ok "core-daemon: $(command -v core-daemon)"
+
+    if python3 -c 'from core.api.grpc import client' 2>/dev/null; then
+        ok "CORE's Python API is importable by python3 (the harness's interpreter)"
+    else
+        bad "CORE is installed but python3 cannot import core.api.grpc, so the
+      fabric will report CORE as unavailable. The image bridges /opt/core/venv
+      into the system interpreter with a .pth file; that bridge is missing or
+      broken here. Rebuild: ./docker/mcsim build"
+    fi
+
+    if python3 - "$CORE_ADDRESS" <<'PY' 2>/dev/null
+import sys
+from core.api.grpc import client
+handle = client.CoreGrpcClient(sys.argv[1])
+handle.connect(); handle.get_sessions(); handle.close()
+PY
+    then
+        ok "CORE daemon answering at $CORE_ADDRESS"
+    else
+        bad "no CORE daemon answering at $CORE_ADDRESS. The entrypoint starts it;
+      run 'core-up' to see why it did not come up. Without it an experiment with
+      fabric.backend: auto stops and asks whether to use netns instead."
+    fi
+else
+    bad "core-daemon is not in this image, so the CORE fabric cannot run.
+      Rebuild it: ./docker/mcsim build"
 fi
 
 # --- MultiChain ------------------------------------------------------------

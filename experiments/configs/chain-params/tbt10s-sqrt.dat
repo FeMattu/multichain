@@ -33,8 +33,8 @@ ADDRESS_CHECKSUM_VALUE=303257e8
 
 # --- wPoA consensus ---------------------------------------------------------
 WPOA_SORTITION_DELTA=0.5      # Delta_max = delta * target-block-time
-WPOA_SORTITION_LAMBDA=0.2     # gain of the global Phi feedback
-WPOA_RANDAO_LOOKBACK=1        # k in the seed H(R_tot[n-k] || h[n] || n+1)
+WPOA_SORTITION_LAMBDA=0.3     # gain of the global Phi feedback
+WPOA_RANDAO_LOOKBACK=110        # k in the seed H(R_tot[n-k] || h[n] || n+1)
 # DUMP FUNCTION (anti-whale compression). Node flag -dumpfunction, key
 # 'dump-function' in params.dat, values none | sqrt | log. It is the f(w)
 # applied to the weight BEFORE the Efraimidis-Spirakis draw, so it changes the
@@ -48,7 +48,7 @@ WPOA_DUMPFUNCTION=sqrt
 ENABLE_WPOA_MALUS=1           # inert (Psi=1) while no violation is proven
 
 # --- weight engine ----------------------------------------------------------
-WEIGHT_EPOCH_LENGTH=12        # epoch length in blocks
+WEIGHT_EPOCH_LENGTH=100        # epoch length in blocks
 WEIGHT_KAPPA=100              # c_i = ESG_i * tau_i / kappa
 WEIGHT_ALPHA=0.2              # A_k = alpha * Theta * W_k / W_tot
 WEIGHT_LAMBDA=0.5             # w_k = W_k * [rho_{k,e-1}*lambda + (1-lambda)]
@@ -84,4 +84,4 @@ MINIMUM_RELAY_FEE=20000000            # 0.2 GAS per 1000 byte ~= 0.2 GAS/tx
 # NOT a chain parameter: it never reaches params.dat. It says how many epochs
 # the run must cover AFTER setup ends. See docs/architecture.md, "How long a
 # run lasts".
-MEASURE_EPOCHS=16
+MEASURE_EPOCHS=10
