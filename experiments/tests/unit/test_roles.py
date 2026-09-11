@@ -145,3 +145,49 @@ def test_the_ca_score_is_strictly_inside_zero_and_one_hundred(tmp_path):
     for position in range(1, 200):
         score = controller._score(position)
         assert 0 < score < 100
+
+
+def test_the_admin_creates_every_weight_stream_itself(tmp_path):
+    """Waiting for the node's engine to create them is not enough.
+
+    `weight_reader.cpp EnsureOneStream` sets `create_attempted` before the
+    try and never clears it, so a create that fails is never retried for the
+    life of the process. On a fresh chain that happened: `weight-engine-esg`
+    was created, `weight-engine-membership` was not, and no membership record
+    could be published for the rest of the run. The admin holds create
+    permission, so it does not depend on that one attempt.
+    """
+    from experiments.runtime.roles.admin import WEIGHT_STREAMS
+
+    controller = controller_for(
+        "admin", _context(tmp_path, node_id="admin", role="admin"))
+    calls = []
+
+    def record(method, params=None, *, node_id=None, quiet=False):
+        calls.append((method, list(params or [])))
+        return "ok"   # every stream answers as present once asked for
+
+    controller.call = record
+    controller._create_streams()
+
+    created = [params for method, params in calls if method == "create"]
+    for stream in WEIGHT_STREAMS:
+        assert ["stream", stream, False] in created, \
+            "the admin never creates %s, and it must be CLOSED" % stream
+    assert ["stream", controller.ctx.stream, True] in created, \
+        "the application stream is open by design"
+
+
+def test_no_wait_outlasts_the_run_it_belongs_to(tmp_path):
+    """A 900s wait inside a 120s run eats the whole measurement window.
+
+    It did: the admin waited for a stream that could no longer appear, so the
+    grants and the GAS landed at teardown and no node could publish anything
+    while the run was being measured.
+    """
+    controller = controller_for("miner", _context(tmp_path, duration_s=120))
+    assert controller._budget(900) <= 120
+    assert controller._budget(30) == 30, "a short wait is left alone"
+
+    unbounded = controller_for("miner", _context(tmp_path, duration_s=0))
+    assert unbounded._budget(900) == 900, "no duration, no budget to enforce"

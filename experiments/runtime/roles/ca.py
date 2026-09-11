@@ -60,13 +60,21 @@ class CaController(RoleController):
                 self.log.warning("no address for %s: ESG skipped", node)
                 continue
             score = self._score(position)
-            for attempt in range(1, 6):
-                if self.call("weightsetesg", [address, score], quiet=True) is not None:
+            attempts = 5
+            for attempt in range(1, attempts + 1):
+                # The last attempt is not quiet: "attempt 5 failed for m1"
+                # says nothing, and the RPC error is the whole diagnosis -
+                # a missing stream, a missing high1, or no GAS to pay the
+                # relay fee all look identical from here.
+                quiet = attempt < attempts
+                if self.call("weightsetesg", [address, score],
+                             quiet=quiet) is not None:
                     self.log.info("ESG certified: %s (%s) = %.2f", node, address, score)
                     self.csv_append("esg_scores.csv", [node, address, score])
                     self.published[node] = score
                     break
-                self.log.warning("attempt %d failed for %s", attempt, node)
+                self.log.warning("attempt %d of %d failed for %s",
+                                 attempt, attempts, node)
                 self._sleep(10.0)
             else:
                 self.log.error("ESG NOT published for %s", node)

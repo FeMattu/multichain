@@ -208,7 +208,23 @@ class RoleController(abc.ABC):
                 self.log.warning("%s failed: %s", method, exc)
             return None
 
+    def _budget(self, asked_s: float) -> float:
+        """No wait may outlast the run it is part of.
+
+        A 900s wait inside a 120s run does not fail cleanly: it eats the whole
+        measurement window, and the controller then reports "setup complete"
+        on a chain it never finished configuring. Observed exactly that way -
+        the admin waited for a stream that a lost create race meant would
+        never appear, so the grants and the GAS arrived at teardown and no
+        node could publish anything in between.
+        """
+        if self.ctx.duration_s <= 0:
+            return asked_s
+        left = (self.started_monotonic + self.ctx.duration_s) - time.monotonic()
+        return max(5.0, min(asked_s, left))
+
     def wait_rpc(self, timeout_s: float = 600.0, node_id: str | None = None) -> bool:
+        timeout_s = self._budget(timeout_s)
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline and not self._stop.is_set():
             if self.call("getblockcount", node_id=node_id, quiet=True) is not None:
@@ -218,6 +234,7 @@ class RoleController(abc.ABC):
         return False
 
     def wait_stream(self, name: str, timeout_s: float = 600.0) -> bool:
+        timeout_s = self._budget(timeout_s)
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline and not self._stop.is_set():
             if self.call("liststreams", [name], quiet=True) is not None:

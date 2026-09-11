@@ -22,6 +22,10 @@ from .base import RoleController
 SUBSCRIBE = ["wpoa-weights", "weight-engine-esg", "weight-engine-membership",
              "wpoa-weights-malus"]
 
+#: Streams the weight chain cannot work without, all CLOSED (write permission
+#: required). The admin creates them itself - see `_create_streams`.
+WEIGHT_STREAMS = ["wpoa-weights", "weight-engine-membership", "weight-engine-esg"]
+
 
 class AdminController(RoleController):
     role = "admin"
@@ -84,19 +88,32 @@ class AdminController(RoleController):
             self._grant(self.address_of(node), "connect,send,receive")
 
     def _create_streams(self) -> None:
-        # wpoa-weights MUST be created explicitly and CLOSED. With the weight
-        # engine on, the registry does not create it until it has a weight to
-        # publish, and it has no weight until membership and ESG records
-        # exist: without this the chain stalls at setup-first-blocks with
-        # "cannot score (unsynced or unweighted)".
-        if self.call("create", ["stream", "wpoa-weights", False]) is not None:
-            self.log.info("stream wpoa-weights created (closed)")
-        else:
-            self.log.info("stream wpoa-weights already present")
-        self.wait_stream("wpoa-weights", 900)
-        self.wait_stream("weight-engine-membership", 900)
-        self.wait_stream("weight-engine-esg", 900)
-        if self.call("create", ["stream", self.ctx.stream, True]) is not None:
+        # All three MUST exist before anyone can publish, and none of them can
+        # be left to create itself.
+        #
+        # wpoa-weights: with the weight engine on, the registry does not create
+        # it until it has a weight to publish, and it has no weight until
+        # membership and ESG records exist - the chain stalls at
+        # setup-first-blocks with "cannot score (unsynced or unweighted)".
+        #
+        # The two weight-engine input streams ARE created by the node's own
+        # engine (weight_reader.cpp EnsureOneStream), but that attempt is
+        # one-shot: `create_attempted` is set before the try and never cleared,
+        # so a create that fails is never retried for the life of the process.
+        # Seen on a fresh chain, both attempted in the same pass: esg created,
+        # membership "ERROR creating stream (create permission required?)".
+        # Every node then waited for a stream that could no longer appear, no
+        # membership record was ever published, and the run produced 59 blocks
+        # and not one weight. The admin holds create permission, so it creates
+        # them here as well - whichever create lands first wins, and the loser
+        # is a harmless "already exists".
+        for name in WEIGHT_STREAMS:
+            if self.call("create", ["stream", name, False], quiet=True) is not None:
+                self.log.info("stream %s created (closed)", name)
+        for name in WEIGHT_STREAMS:
+            if self.wait_stream(name, 900):
+                self.log.info("stream %s present", name)
+        if self.call("create", ["stream", self.ctx.stream, True], quiet=True) is not None:
             self.log.info("application stream created: %s (open)", self.ctx.stream)
 
     def _grant_stream_writes(self) -> None:
