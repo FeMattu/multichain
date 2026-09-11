@@ -64,9 +64,15 @@ class Sampler:
                  registry, out_dir: Path, interval_s: float = 10.0,
                  run_root: Path | None = None, explorer_node: str = "",
                  explorer_interval_s: float = 2.0,
-                 target_block_time_s: float = 0.0) -> None:
+                 target_block_time_s: float = 0.0,
+                 explorer_mode: str = "backfill") -> None:
         self.interval_s = max(1.0, float(interval_s))
         self.target_block_time_s = float(target_block_time_s)
+        self.explorer_mode = explorer_mode
+        self.registry = registry
+        #: Set by the session once the controllers exist; until then the
+        #: column is empty, which is the truth - there is no controller yet.
+        self.controller_probe = None
         self.out_dir = Path(out_dir)
         self.rpc = RpcCollector(run_id=run_id, scenario=scenario, seed=seed,
                                 nodes=list(nodes), clients=dict(clients))
@@ -87,6 +93,7 @@ class Sampler:
             self.explorer = RpcExplorer(
                 run_id=run_id, scenario=scenario, run_root=Path(run_root),
                 explorer_node=explorer_node, clients=dict(clients),
+                mode=explorer_mode,
             )
             self._blocks = _AppendCsv(self.out_dir / "explorer_blocks.csv", BLOCK_COLUMNS)
             self._transactions = _AppendCsv(self.out_dir / "explorer_transactions.csv",
@@ -165,6 +172,7 @@ class Sampler:
             before_obs = len(self.rpc.observations)
             before_sight = len(self.rpc.sightings)
             self.rpc.sample()
+            self._annotate_liveness(self.rpc.observations[before_obs:])
             self._observations.extend(self.rpc.observations[before_obs:])
             self._sightings.extend(self.rpc.sightings[before_sight:])
             before_proc = len(self.process.rows)
@@ -186,6 +194,22 @@ class Sampler:
         except Exception as exc:  # noqa: BLE001
             self.errors += 1
             LOG.warning("explorer tick failed: %s", exc)
+
+    def _annotate_liveness(self, rows) -> None:
+        """Whether each node's daemon and controller were alive at this sample.
+
+        A node can answer RPC while its controller is dead: the chain keeps
+        moving and that node simply stops doing anything. Recorded per sample
+        so the moment it happened is in the data, not only in a log.
+        """
+        for row in rows:
+            node_id = row.get("node_id", "")
+            daemons = [p for p in self.registry.for_node(node_id)
+                       if p.kind == "daemon"] if self.registry else []
+            row["process_alive"] = (1 if any(p.alive() for p in daemons)
+                                    else (0 if daemons else ""))
+            if self.controller_probe is not None:
+                row["controller_alive"] = self.controller_probe(node_id)
 
     def _flush_explorer(self) -> None:
         """Move whatever the explorer accumulated onto disk.

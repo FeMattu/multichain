@@ -214,6 +214,22 @@ NATIVE_TABLES = [
                           "without a schema change."),
               Column("reachable", OBSERVED, "Whether the node answered this tick.",
                      "the collector"),
+              Column("pending_transaction_count", OBSERVED,
+                     "Transactions this node holds unconfirmed.",
+                     "getmempoolinfo.size", "count"),
+              Column("process_alive", OBSERVED,
+                     "Whether this node's daemon was running at the sample.",
+                     "the process registry", "0/1",
+                     note="Empty when the harness did not start that node's "
+                          "daemon itself."),
+              Column("controller_alive", OBSERVED,
+                     "Whether its role controller was running at the sample.",
+                     "the scheduler", "0/1",
+                     note="Empty before the controllers start, which is the "
+                          "truth rather than a zero: there is none yet. A node "
+                          "whose daemon answers while its controller is dead "
+                          "stops generating traffic, and the two failures are "
+                          "indistinguishable in the chain data."),
           ]),
     Table("block_sightings",
           "First time each node reported each block hash. Differences across "
@@ -319,6 +335,22 @@ NATIVE_TABLES = [
                      note="Resolving it needs the previous output of every input, "
                           "one RPC per input per transaction. Left empty rather "
                           "than filled from the wallet, which only knows its own."),
+              Column("first_seen_mempool_wallclock", OBSERVED,
+                     "First time the explorer saw it waiting, UTC.",
+                     "getrawmempool", "ISO-8601",
+                     note="Empty when the transaction was mined between two "
+                          "polls and never observed pending."),
+              Column("included_wallclock", OBSERVED,
+                     "When the explorer saw the block carrying it.",
+                     "getblock", "ISO-8601"),
+              Column("inclusion_latency_s", DERIVED,
+                     "Wall-clock seconds from first mempool sighting to "
+                     "inclusion.",
+                     "included - first_seen, both monotonic", "s",
+                     note="Empty, never zero, when the first sighting is "
+                          "missing: zero would read as instant inclusion."),
+              Column("status", DERIVED, "confirmed, once in a block.",
+                     "presence in a block"),
           ]),
     Table("explorer_chain_state",
           "Every node's own view, every tick: the half a single explorer "

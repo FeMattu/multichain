@@ -32,6 +32,9 @@ OBSERVATION_COLUMNS = [
     "peer_count", "peer_connectivity", "transaction_count",
     "confirmed_transaction_count", "mempool_size", "sync_lag",
     "rpc_errors", "p2p_errors", "reachable",
+    # Appended, never inserted: a reader that indexes by position must keep
+    # working across a change. tests/golden/test_csv_contract.py enforces it.
+    "pending_transaction_count", "process_alive", "controller_alive",
 ]
 
 BLOCK_SIGHTING_COLUMNS = [
@@ -119,6 +122,9 @@ class RpcCollector:
             mempool, mempool_error = client.try_call("getmempoolinfo")
             if mempool_error is None and isinstance(mempool, dict):
                 row["mempool_size"] = mempool.get("size", "")
+                # The same quantity under the name the analysis asks for: the
+                # transactions this node is holding but has not yet seen mined.
+                row["pending_transaction_count"] = mempool.get("size", "")
             row["confirmed_transaction_count"] = _total_confirmed(info)
             row["rpc_errors"] = counters.rpc_errors
             row["p2p_errors"] = counters.p2p_errors
@@ -161,7 +167,9 @@ def _empty_row(collector: "RpcCollector", node, wallclock: str, monotonic: float
         "sample_index": collector._index,
         "block_height": "", "block_hash": "", "previous_block_hash": "", "block_time": "",
         "peer_count": "", "peer_connectivity": "", "transaction_count": "",
-        "confirmed_transaction_count": "", "mempool_size": "", "sync_lag": "",
+        "confirmed_transaction_count": "", "mempool_size": "",
+        "pending_transaction_count": "", "sync_lag": "",
+        "process_alive": "", "controller_alive": "",
         "rpc_errors": collector.counters[node.id].rpc_errors,
         "p2p_errors": collector.counters[node.id].p2p_errors,
         "reachable": 0,

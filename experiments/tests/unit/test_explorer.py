@@ -24,10 +24,10 @@ class FakeClient:
         return {}
 
 
-def _explorer(tmp_path, tips):
+def _explorer(tmp_path, tips, mode="backfill"):
     return RpcExplorer(run_id="r", scenario="s", run_root=tmp_path,
                        explorer_node="admin", clients={"admin": FakeClient(tips)},
-                       keep_raw=False)
+                       keep_raw=False, mode=mode)
 
 
 def test_a_tip_that_never_moves_is_reported(tmp_path, monkeypatch):
@@ -62,3 +62,31 @@ def test_a_moving_tip_reports_no_stall(tmp_path, monkeypatch):
         clock[0] += 5.0
         explorer.poll()
     assert explorer.longest_stall()["seconds"] == 0
+
+
+def test_a_live_collector_joins_at_the_tip(tmp_path):
+    """`live` observes from now on; it does not invent a first sighting.
+
+    A block mined before the collector existed has no first_seen to measure,
+    so live mode records the tip and starts from there. `backfill` is the
+    harness's own default, because a run owns the chain it created and wants
+    every height of it.
+    """
+    explorer = _explorer(tmp_path, [40, 41], mode="live")
+    explorer.poll()
+    assert explorer.state.last_height == 40
+    assert explorer.contiguity()["checked"] == 0, "history was not invented"
+
+
+def test_a_restarted_collector_resumes_instead_of_replaying(tmp_path):
+    """The index is the reason a restart neither duplicates nor skips."""
+    first = _explorer(tmp_path, [3])
+    first.poll()
+    assert first.state.last_height == 3
+    assert first.index_path.is_file()
+
+    second = _explorer(tmp_path, [3])
+    assert second.state.last_height == 3, "the index was not read back"
+    assert second.resumed_from == 3
+    produced = second.poll()
+    assert produced["blocks"] == 0, "a resumed collector re-walked the chain"
