@@ -13,6 +13,7 @@ databases, and a datadir killed mid-write comes back as
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import signal
@@ -145,7 +146,38 @@ def role_environment(plan: ExperimentPlan, node: NodePlan, run_root: Path, *,
         index = [c.id for c in plan.cas].index(node.id) + 1
         env["POESIA_CA_INDEX"] = index
         env["POESIA_CA_COUNT"] = len(plan.cas)
+    # The controller reads its whole workload from one JSON blob rather than a
+    # dozen variables: it keeps the per-role knobs together and lets a
+    # descriptor add one without touching this function.
+    env["POESIA_WORKLOAD_JSON"] = json.dumps(workload_for(plan, node))
     return {k: str(v) for k, v in env.items()}
+
+
+def workload_for(plan: ExperimentPlan, node: NodePlan) -> dict:
+    """The workload settings that apply to one node.
+
+    Global defaults from ``workload:`` in the descriptor, then the per-role
+    block, then the node's own fields - so a node can differ from its role
+    without the role having to know.
+    """
+    workload = dict(plan.workload)
+    per_role = (workload.get("roles") or {}).get(node.role) or {}
+    resolved = {**workload, **per_role}
+    resolved.pop("roles", None)
+    if node.role == "company":
+        if node.tx_interval_s is not None:
+            resolved["tx_interval_seconds"] = node.tx_interval_s
+        resolved.setdefault("tx_interval_seconds",
+                            workload.get("default_tx_interval_s", 15))
+    if node.role == "miner":
+        if node.reconcile_rate is not None:
+            resolved["reconcile_rate"] = node.reconcile_rate
+        resolved.setdefault("reconcile_rate",
+                            workload.get("default_reconcile_rate", 0.6))
+    if node.role == "ca":
+        resolved["ca_index"] = [c.id for c in plan.cas].index(node.id) + 1
+        resolved["ca_count"] = len(plan.cas)
+    return resolved
 
 
 def start_daemon(fabric, plan: ExperimentPlan, node: NodePlan, argv: list[str],
@@ -197,34 +229,46 @@ def stop_daemon_gracefully(client: RpcClient, node_id: str) -> bool:
     return False
 
 
-def terminate(process: ManagedProcess, *, sigterm_wait_s: float = SIGTERM_WAIT_S) -> str:
-    """SIGTERM, then SIGKILL. Returns what it took."""
-    if process.handle is None or not process.alive():
+def terminate_popen(popen, *, sigterm_wait_s: float = SIGTERM_WAIT_S) -> str:
+    """SIGTERM the process group, then SIGKILL. Returns what it took.
+
+    The group, not the process: a controller or a role script may have
+    children (a curl, a multichaind), and signalling only the parent leaves
+    them holding the node's data directory.
+    """
+    if popen is None or popen.poll() is not None:
         return "already stopped"
     try:
-        os.killpg(os.getpgid(process.handle.pid), signal.SIGTERM)
-    except (ProcessLookupError, PermissionError):
+        os.killpg(os.getpgid(popen.pid), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError, OSError):
         try:
-            process.handle.terminate()
+            popen.terminate()
         except Exception:  # noqa: BLE001 - best effort
             return "unreachable"
     try:
-        process.handle.wait(timeout=sigterm_wait_s)
+        popen.wait(timeout=sigterm_wait_s)
         return "SIGTERM"
     except subprocess.TimeoutExpired:
         pass
     try:
-        os.killpg(os.getpgid(process.handle.pid), signal.SIGKILL)
-    except (ProcessLookupError, PermissionError):
+        os.killpg(os.getpgid(popen.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
         try:
-            process.handle.kill()
+            popen.kill()
         except Exception:  # noqa: BLE001
             return "unreachable"
     try:
-        process.handle.wait(timeout=5)
+        popen.wait(timeout=5)
     except subprocess.TimeoutExpired:
         return "SIGKILL (still running)"
     return "SIGKILL"
+
+
+def terminate(process: ManagedProcess, *, sigterm_wait_s: float = SIGTERM_WAIT_S) -> str:
+    """SIGTERM, then SIGKILL, on a registered process."""
+    if process.handle is None or not process.alive():
+        return "already stopped"
+    return terminate_popen(process.handle, sigterm_wait_s=sigterm_wait_s)
 
 
 def stop_all(registry: ProcessRegistry, clients: dict[str, RpcClient]) -> dict:

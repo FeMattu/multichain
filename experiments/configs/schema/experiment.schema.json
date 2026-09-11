@@ -198,8 +198,81 @@
         "reconcile_reserve_gas": {
           "type": "number",
           "default": 2
+        },
+        "roles": {
+          "type": "object",
+          "description": "Per-role overrides. Every key of the top level is accepted here too.",
+          "additionalProperties": false,
+          "properties": {
+            "miner": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "Workload of every miner node unless the node overrides it."
+            },
+            "company": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "Workload of every company node unless the node overrides it."
+            },
+            "admin": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "Workload of every admin node unless the node overrides it."
+            },
+            "ca": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "Workload of every ca node unless the node overrides it."
+            }
+          }
+        },
+        "tx_interval_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Company: seconds between two publications."
+        },
+        "tx_interval_jitter_seconds": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Company: +/- uniform jitter on the interval."
+        },
+        "tx_type": {
+          "type": "string",
+          "description": "Company: the transaction kind. 'publish' is the supply-chain item."
+        },
+        "tx_amount_range": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Company: amount range, for send-type workloads."
+        },
+        "burst_probability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Company: chance that a tick publishes a burst instead of one item."
+        },
+        "burst_size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Company: items in a burst."
+        },
+        "reconcile_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Miner: fraction of the balance returned to the treasury each epoch."
+        },
+        "reconcile_min_gas": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Miner: below this a transfer is not worth its own fee."
         }
-      }
+      },
+      "description": "Workload settings. The top level holds defaults; 'roles' overrides them per role; a node's own tx_interval_s / reconcile_rate override both. Resolution is runtime.multichain.lifecycle.workload_for."
     },
     "schedule": {
       "type": "object",
