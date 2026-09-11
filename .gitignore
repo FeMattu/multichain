@@ -186,6 +186,11 @@ experiments/**/__pycache__/
 experiments/.pytest_cache/
 experiments/**/*.pyc
 
+# The autotools rule `conftest.*` further up is meant for configure's probe
+# files; it also swallows pytest's conftest.py, which is real source here.
+!experiments/conftest.py
+!experiments/tests/conftest.py
+
 # The legacy Shadow tree. Its tracked content was migrated or archived in git
 # history at 6278274; what may still sit here on a developer's machine is the
 # ~3 GB of raw run output that was never tracked. Ignored so it cannot be

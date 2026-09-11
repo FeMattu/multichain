@@ -18,7 +18,7 @@ import json
 import logging
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 LOG = logging.getLogger("experiments.runtime.roles.scheduler")
