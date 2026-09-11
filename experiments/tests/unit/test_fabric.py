@@ -146,14 +146,44 @@ def test_factory_knows_the_three_backends():
     assert set(BACKENDS) == {"core", "netns", "docker"}
 
 
-def test_auto_falls_back_to_netns_when_core_is_absent():
+def test_auto_refuses_to_fall_back_without_consent():
+    """The regression this guards: a run must never change backend on its own.
+
+    A silent fallback produces a run that looks, is labelled and is compared
+    exactly like a CORE run, with one log line as the only record.
+    """
+    from experiments.runtime.core.environment_check import FallbackRefused
+    from experiments.runtime.fabric.core_emulator import import_core
+
+    modules, _ = import_core()
+    if modules is not None:
+        pytest.skip("CORE is installed here, so the gate does not trigger")
+    plan = build_plan(CONFIG_ROOT / "experiments" / "smoke-3n.yaml")
+    with pytest.raises(FallbackRefused) as caught:
+        make_fabric(plan, Runner(dry_run=True), run_root="/tmp/x", backend="auto")
+    assert caught.value.exit_code == 2
+    assert "not interactive" in str(caught.value)
+
+
+def test_auto_falls_back_when_the_fallback_is_authorised():
     from experiments.runtime.fabric.core_emulator import import_core
 
     modules, _ = import_core()
     if modules is not None:
         pytest.skip("CORE is installed here, so there is nothing to fall back from")
     plan = build_plan(CONFIG_ROOT / "experiments" / "smoke-3n.yaml")
-    fabric = make_fabric(plan, Runner(dry_run=True), run_root="/tmp/x", backend="auto")
+    fabric = make_fabric(plan, Runner(dry_run=True), run_root="/tmp/x",
+                         backend="auto", allow_fallback=True)
+    assert fabric.name == "netns"
+    # The probe is kept, so the run can always say why it is on this backend.
+    assert fabric.core_status is not None
+    assert not fabric.core_status.usable
+
+
+def test_an_explicit_netns_backend_does_not_consult_core():
+    """Someone who asked for netns has already made the choice."""
+    plan = build_plan(CONFIG_ROOT / "experiments" / "smoke-3n.yaml")
+    fabric = make_fabric(plan, Runner(dry_run=True), run_root="/tmp/x", backend="netns")
     assert fabric.name == "netns"
 
 

@@ -58,6 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-v", "--verbose", action="store_true", help="debug logging")
     parser.add_argument("--dry-run", action="store_true",
                         help="print privileged commands instead of running them")
+    parser.add_argument(
+        "--allow-fallback-without-core", dest="allow_fallback", action="store_true",
+        help="authorise the netns fabric when CORE is unavailable. Without it, "
+             "an 'auto' backend asks interactively and refuses to start when "
+             "nobody can answer - a run must never change backend on its own.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # -- env ---------------------------------------------------------------
@@ -153,7 +158,14 @@ def build_parser() -> argparse.ArgumentParser:
         sub.add_argument("--backend", choices=("core", "netns", "docker", "auto"))
         if name == "run":
             sub.add_argument("--sample-interval", type=float, default=10.0,
-                             help="seconds between two collector samples")
+                             help="seconds between two per-node collector samples")
+            sub.add_argument("--explorer-interval", type=float, default=2.0,
+                             help="seconds between two explorer polls of the admin "
+                                  "node. Keep it well below target-block-time: the "
+                                  "explorer walks every intermediate height, but a "
+                                  "long interval makes every batch a gap fill.")
+            sub.add_argument("--controller-tick", type=float, default=5.0,
+                             help="seconds between two node-controller ticks")
             sub.add_argument("--force", action="store_true",
                              help="delete a previous attempt with the same run id")
         else:

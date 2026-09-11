@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ...exit_codes import ConfigError, EnvironmentError_
 from ...plan import ExperimentPlan
+from ..core.environment_check import require_core_or_consent
 from .base import Fabric
 from .core_emulator import CoreFabric
 from .docker_backend import DockerFabric
@@ -29,45 +30,44 @@ def available_backends(plan: ExperimentPlan, runner, *, run_root: Path) -> dict[
 
 
 def make_fabric(plan: ExperimentPlan, runner, *, run_root: Path,
-                backend: str | None = None) -> Fabric:
-    """Instantiate the requested backend, or resolve ``auto``.
+                backend: str | None = None, allow_fallback: bool = False,
+                assume_yes: bool = False) -> Fabric:
+    """Instantiate the requested backend, resolving ``auto`` through consent.
 
-    ``auto`` prefers CORE, because it is the primary backend, and falls back to
-    ``netns`` with an explicit log line saying what CORE was missing. It never
-    falls back silently: a run whose backend was chosen for it must be able to
-    say so from its own log and manifest.
+    There is deliberately NO silent path from CORE to netns. A run that
+    quietly changed backend would look, be labelled and be compared exactly
+    like one that did not, and the only record would be a log line. When CORE
+    is unavailable and the backend is ``auto``, the decision goes to the user:
+    an interactive prompt, or ``--allow-fallback-without-core``. Neither, and
+    nothing starts. See runtime/core/environment_check.py.
     """
     if plan.mode == "docker" and (backend or plan.fabric.backend) != "docker":
         LOG.info("mode: docker selects the docker backend regardless of fabric.backend")
         backend = "docker"
     choice = backend or plan.fabric.backend or "auto"
-
-    if choice != "auto":
-        if choice not in BACKENDS:
-            raise ConfigError(
-                "unknown fabric backend %r; known: %s" % (choice, ", ".join(sorted(BACKENDS)))
-            )
-        fabric = BACKENDS[choice](plan, runner, run_root=run_root)
-        problems = fabric.preflight()
-        if problems:
-            raise EnvironmentError_(
-                "fabric.backend is %r but it cannot run here:\n  - %s"
-                % (choice, "\n  - ".join(problems))
-            )
-        LOG.info("fabric backend: %s (explicitly requested)", choice)
-        return fabric
-
-    core = CoreFabric(plan, runner, run_root=run_root)
-    core_problems = core.preflight()
-    if not core_problems:
-        LOG.info("fabric backend: core (auto)")
-        return core
-    netns = NetnsFabric(plan, runner, run_root=run_root)
-    netns_problems = netns.preflight()
-    if netns_problems:
-        raise EnvironmentError_(
-            "no usable fabric backend.\n  core:\n    - %s\n  netns:\n    - %s"
-            % ("\n    - ".join(core_problems), "\n    - ".join(netns_problems))
+    if choice not in BACKENDS and choice != "auto":
+        raise ConfigError(
+            "unknown fabric backend %r; known: %s" % (choice, ", ".join(sorted(BACKENDS)))
         )
-    LOG.info("fabric backend: netns (auto; CORE unavailable: %s)", core_problems[0])
-    return netns
+
+    # The consent gate. It returns a concrete backend or raises; for an
+    # explicit choice it simply echoes it back without consulting CORE.
+    resolved, status = require_core_or_consent(
+        requested_backend=choice,
+        address=plan.fabric.core_address,
+        allow_fallback=allow_fallback,
+        assume_yes=assume_yes,
+    )
+
+    fabric = BACKENDS[resolved](plan, runner, run_root=run_root)
+    problems = fabric.preflight()
+    if problems:
+        raise EnvironmentError_(
+            "the %s fabric cannot run here:\n  - %s" % (resolved, "\n  - ".join(problems)),
+            hint="run experiments/scripts/check_environment.sh for the full report",
+        )
+    how = "explicitly requested" if choice != "auto" else (
+        "auto: CORE available" if resolved == "core" else "auto: fallback authorised")
+    LOG.info("fabric backend: %s (%s)", resolved, how)
+    fabric.core_status = status
+    return fabric
