@@ -1,0 +1,37 @@
+# ---------------------------------------------------------------------------
+# CHAIN parameters - end-to-end test: 4 s blocks, 4-block epochs.
+#
+# Same shape as every other file here; only the pace differs, so that a test
+# reaches the wPoA window, publishes weights and closes several epochs in a
+# few minutes instead of an hour. Everything consensus-relevant - the dump
+# function, delta, lambda, mining-diversity, the GAS economy - is identical to
+# tbt10s-sqrt.dat, so a test run and a campaign run differ in pace and in
+# nothing else.
+# ---------------------------------------------------------------------------
+ADDRESS_PUBKEYHASH_VERSION=00cca233
+ADDRESS_SCRIPTHASH_VERSION=05202c86
+PRIVATE_KEY_VERSION=80840860
+ADDRESS_CHECKSUM_VALUE=303257e8
+
+WPOA_SORTITION_DELTA=0.5
+WPOA_SORTITION_LAMBDA=0.2
+WPOA_RANDAO_LOOKBACK=1
+WPOA_DUMPFUNCTION=sqrt
+ENABLE_WPOA_MALUS=1
+
+WEIGHT_EPOCH_LENGTH=4
+WEIGHT_KAPPA=100
+WEIGHT_ALPHA=0.2
+WEIGHT_LAMBDA=0.5
+
+TARGET_BLOCK_TIME=4
+SETUP_FIRST_BLOCKS=auto
+MINE_EMPTY_ROUNDS=1000
+MINING_DIVERSITY=0
+
+NATIVE_CURRENCY_MULTIPLE=100000000
+FIRST_BLOCK_REWARD=100000000000000
+INITIAL_BLOCK_REWARD=0
+MINIMUM_RELAY_FEE=20000000
+
+MEASURE_EPOCHS=6

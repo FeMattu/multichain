@@ -1,0 +1,35 @@
+name: e2e-5n
+description: Four Tuscan/Emilian sites on two hubs - the end-to-end test map.
+source: >-
+  Written for the verification run, not migrated. The coordinates are the real
+  Florence / Bologna / Pisa / Modena ones, so the derived delays are exactly
+  what the regional level gives those four sites.
+latency_model:
+  propagation_ms_per_km: 0.005
+  routing_factor: 1.4
+  overhead_backbone_ms: 0.5
+  overhead_access_ms: 1.0
+  loopback_ms: 0.2
+  loss_access: 0.0004
+  loss_backbone_base: 0.0002
+  loss_backbone_per_km: 2.0e-07
+defaults:
+  bandwidth_hub_mbps: 1000.0
+  bandwidth_leaf_mbps: 200.0
+nodes:
+  - {id: firenze, label: HUB_TOSCANA_Firenze, kind: hub, scope: regional,
+     region: tuscany, country: italy, continent: europe, lat: 43.7696, lon: 11.2558,
+     legacy_gml_id: 0}
+  - {id: bologna, label: HUB_EMILIAROMAGNA_Bologna, kind: hub, scope: regional,
+     region: emilia-romagna, country: italy, continent: europe, lat: 44.4949, lon: 11.3426,
+     legacy_gml_id: 2}
+  - {id: pisa, label: Pisa, kind: leaf, scope: regional,
+     region: tuscany, country: italy, continent: europe, lat: 43.7228, lon: 10.4017,
+     legacy_gml_id: 3}
+  - {id: modena, label: Modena, kind: leaf, scope: regional,
+     region: emilia-romagna, country: italy, continent: europe, lat: 44.6471, lon: 10.9252,
+     legacy_gml_id: 7}
+links:
+  - {source: firenze, target: bologna, kind: backbone}
+  - {source: pisa, target: firenze, kind: access}
+  - {source: modena, target: bologna, kind: access}

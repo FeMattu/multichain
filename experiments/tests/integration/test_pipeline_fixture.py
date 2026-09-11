@@ -26,6 +26,8 @@ def test_extractors_produce_every_table(synthetic_run):
     for name in ("node_observations.csv", "block_sightings.csv", "process_samples.csv",
                  "netem_conditions.csv", "block_propagation.csv", "fork_events.csv"):
         assert (root / "metrics" / name).is_file(), name
+    # Only schema violations fail. An empty historical table is a fact about a
+    # synthetic fixture that mined nothing, not a broken schema.
     assert produced["validation"]["problems"] == []
 
 
@@ -118,7 +120,34 @@ def test_reports_state_the_mandatory_facts(synthetic_run):
         assert required in text, required
 
 
-def test_plots_are_produced_when_matplotlib_is_present(synthetic_run):
+def test_every_figure_is_either_drawn_or_explained(synthetic_run):
+    """A figure is never omitted silently.
+
+    The synthetic fixture has no weights, no ESG and no sortition lines, so
+    most figures cannot be drawn - which is the interesting case: each one
+    must appear in `skipped` with a reason a reader can act on.
+    """
+    import importlib.util
+
+    if importlib.util.find_spec("matplotlib") is None:
+        import pytest
+
+        pytest.skip("matplotlib is not installed")
+    from experiments.analysis.plots import FIGURES
+
+    root, plan = synthetic_run["run_root"], synthetic_run["plan"]
+    extract_all(root, plan)
+    produced = generate_reports(root, plan, with_plots=True)
+    drawn = {p.split("/")[-1] for p in produced["plots"]}
+    skipped = set(produced["plots_skipped"])
+    assert drawn | skipped == set(FIGURES), "a figure is neither drawn nor explained"
+    for name, reason in produced["plots_skipped"].items():
+        assert len(reason) > 15, "%s was skipped without a usable reason" % name
+    for path in produced["plots"]:
+        assert path.endswith(".png")
+
+
+def test_the_figure_inventory_reaches_the_report(synthetic_run):
     import importlib.util
 
     if importlib.util.find_spec("matplotlib") is None:
@@ -127,10 +156,10 @@ def test_plots_are_produced_when_matplotlib_is_present(synthetic_run):
         pytest.skip("matplotlib is not installed")
     root, plan = synthetic_run["run_root"], synthetic_run["plan"]
     extract_all(root, plan)
-    produced = generate_reports(root, plan, with_plots=True)
-    assert produced["plots"]
-    for path in produced["plots"]:
-        assert path.endswith(".png")
+    generate_reports(root, plan, with_plots=True)
+    text = (root / "reports" / "report_generale.md").read_text(encoding="utf-8")
+    assert "## Figures" in text
+    assert "why not" in text
 
 
 def test_the_fixture_declares_that_it_is_synthetic(synthetic_run):
