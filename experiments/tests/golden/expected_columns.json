@@ -326,5 +326,54 @@
       "peso",
       "height"
     ]
-  }
+  },
+  "explorer_blocks": [
+    "run_id",
+    "scenario",
+    "height",
+    "hash",
+    "previous_block_hash",
+    "block_time",
+    "observed_wallclock",
+    "observed_monotonic",
+    "miner",
+    "miner_host",
+    "proposer_weight",
+    "total_weight",
+    "validators",
+    "size_bytes",
+    "transaction_count",
+    "confirmations",
+    "source_node",
+    "gap_filled"
+  ],
+  "explorer_transactions": [
+    "run_id",
+    "scenario",
+    "height",
+    "block_hash",
+    "txid",
+    "index_in_block",
+    "size_bytes",
+    "fee",
+    "kind",
+    "from_address",
+    "observed_wallclock"
+  ],
+  "explorer_chain_state": [
+    "run_id",
+    "scenario",
+    "node_id",
+    "observed_wallclock",
+    "observed_monotonic",
+    "sample_index",
+    "block_height",
+    "best_hash",
+    "peer_count",
+    "mempool_size",
+    "difficulty",
+    "chain_name",
+    "reachable",
+    "rpc_errors"
+  ]
 }

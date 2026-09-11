@@ -35,8 +35,23 @@ class Table:
     name: str
     description: str
     produced_by: str
+    #: A historical table, produced by the migrated campaign analyser.
     historical: bool = False
     columns: list = field(default_factory=list)
+
+    @property
+    def enforced(self) -> bool:
+        """Whether the validator may fail a run over this table's header.
+
+        Only the tables THIS harness writes. The historical ones come from
+        migrated code whose writer emits the union of the keys the data
+        actually produced, so their header legitimately narrows when a run has
+        no sortition lines or no recomputed chi-square. Their real contract is
+        the archive, and tests/golden/test_csv_contract.py holds them to it.
+        Enforcing a fixed list here would fail honest runs and teach everyone
+        to ignore the validator.
+        """
+        return not self.historical
 
     @property
     def column_names(self) -> list:
@@ -261,6 +276,61 @@ NATIVE_TABLES = [
                      note="Would need a probe on every link, whose own traffic would "
                           "perturb the run. Configured values are reported as "
                           "configured, never as measured."),
+          ]),
+    Table("explorer_blocks",
+          "One row per block, collected by polling the admin as a block "
+          "explorer. Gap-free: every intermediate height is walked.",
+          "runtime.collectors.rpc_explorer", columns=[
+              Column("height", OBSERVED, "Block height.", "getblockhash walk"),
+              Column("hash", OBSERVED, "Block hash.", "getblock"),
+              Column("previous_block_hash", OBSERVED, "Parent hash.", "getblock"),
+              Column("block_time", OBSERVED, "Header timestamp.", "getblock", "unix s"),
+              Column("observed_wallclock", OBSERVED, "When the explorer saw it.",
+                     "the collector", "ISO-8601",
+                     note="Bounded by the polling interval: an upper bound on "
+                          "when the block appeared, not when it was produced."),
+              Column("miner", OBSERVED, "Proposer address.", "getblock.miner"),
+              Column("miner_host", DERIVED, "Proposer host name.",
+                     "runtime/shared/*.addr"),
+              Column("proposer_weight", OBSERVED,
+                     "The proposer's weight in the registry at that moment.",
+                     "getallweights",
+                     note="Empty for a node with no weight - the admin during "
+                          "the setup phase - which is correct, not missing."),
+              Column("total_weight", OBSERVED, "Sum of all weights then.",
+                     "getallweights"),
+              Column("size_bytes", OBSERVED, "Block size.", "getblock.size", "B"),
+              Column("transaction_count", OBSERVED, "Transactions in the block.",
+                     "getblock.tx"),
+              Column("gap_filled", DERIVED,
+                     "1 when the block was recovered by walking a gap rather "
+                     "than seen at the tip.", "the collector"),
+          ]),
+    Table("explorer_transactions", "One row per transaction of every block.",
+          "runtime.collectors.rpc_explorer", columns=[
+              Column("txid", OBSERVED, "Transaction id.", "getblock.tx"),
+              Column("index_in_block", OBSERVED, "Position in the block.", "getblock.tx"),
+              Column("size_bytes", OBSERVED, "Transaction size.", "getblock", "B",
+                     note="Empty when the build returns tx as bare txids."),
+              Column("fee", OBSERVED, "Fee paid.", "getblock", "GAS",
+                     note="Empty unless the node returns the verbose form."),
+              Column("kind", DERIVED, "coinbase or tx.", "position and vin"),
+              Column("from_address", UNAVAILABLE, "Sender.",
+                     note="Resolving it needs the previous output of every input, "
+                          "one RPC per input per transaction. Left empty rather "
+                          "than filled from the wallet, which only knows its own."),
+          ]),
+    Table("explorer_chain_state",
+          "Every node's own view, every tick: the half a single explorer "
+          "cannot provide.",
+          "runtime.collectors.rpc_explorer", columns=[
+              Column("node_id", OBSERVED, "The node reporting.", "the plan"),
+              Column("block_height", OBSERVED, "Its own height.", "getinfo.blocks"),
+              Column("best_hash", OBSERVED, "Its own tip.", "getbestblockhash"),
+              Column("peer_count", OBSERVED, "Its peers.", "getinfo.connections"),
+              Column("mempool_size", OBSERVED, "Its unconfirmed pool.",
+                     "getmempoolinfo"),
+              Column("reachable", OBSERVED, "Whether it answered.", "the collector"),
           ]),
     Table("fork_events", "Divergence between nodes, observed over time.",
           "metrics.extractors.forks", columns=[

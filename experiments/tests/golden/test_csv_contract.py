@@ -22,6 +22,11 @@ from experiments.metrics.extractors import (
     NETEM_COLUMNS,
     PROPAGATION_COLUMNS,
 )
+from experiments.runtime.collectors.rpc_explorer import (
+    BLOCK_COLUMNS,
+    CHAIN_STATE_COLUMNS,
+    TRANSACTION_COLUMNS,
+)
 from experiments.topology.exporters import EDGE_COLUMNS
 
 EXPECTED = Path(__file__).parent / "expected_columns.json"
@@ -34,6 +39,9 @@ CONTRACTS = {
     "block_propagation": PROPAGATION_COLUMNS,
     "fork_events": FORK_COLUMNS,
     "topology_edges": EDGE_COLUMNS,
+    "explorer_blocks": BLOCK_COLUMNS,
+    "explorer_transactions": TRANSACTION_COLUMNS,
+    "explorer_chain_state": CHAIN_STATE_COLUMNS,
 }
 
 

@@ -19,6 +19,13 @@ from pathlib import Path
 
 from .process import PROCESS_COLUMNS, ProcessCollector
 from .rpc import BLOCK_SIGHTING_COLUMNS, OBSERVATION_COLUMNS, RpcCollector
+from .rpc_explorer import (
+    BLOCK_COLUMNS,
+    CHAIN_STATE_COLUMNS,
+    GAP_COLUMNS,
+    TRANSACTION_COLUMNS,
+    RpcExplorer,
+)
 
 LOG = logging.getLogger("experiments.runtime.collectors.sampler")
 
@@ -54,7 +61,9 @@ class Sampler:
     """Periodic observation of a live run."""
 
     def __init__(self, *, run_id: str, scenario: str, seed: int, nodes, clients,
-                 registry, out_dir: Path, interval_s: float = 10.0) -> None:
+                 registry, out_dir: Path, interval_s: float = 10.0,
+                 run_root: Path | None = None, explorer_node: str = "",
+                 explorer_interval_s: float = 2.0) -> None:
         self.interval_s = max(1.0, float(interval_s))
         self.out_dir = Path(out_dir)
         self.rpc = RpcCollector(run_id=run_id, scenario=scenario, seed=seed,
@@ -66,9 +75,27 @@ class Sampler:
                                      BLOCK_SIGHTING_COLUMNS)
         self._processes = _AppendCsv(self.out_dir / "process_samples.csv",
                                      PROCESS_COLUMNS)
+        # The explorer polls faster than the per-node sampler, because its job
+        # is to miss no block: at a 5 s target block time a 10 s sample would
+        # walk gaps constantly. It runs on its own thread for the same reason.
+        self.explorer = None
+        self._explorer_thread: threading.Thread | None = None
+        self.explorer_interval_s = max(0.5, float(explorer_interval_s))
+        if explorer_node and run_root is not None:
+            self.explorer = RpcExplorer(
+                run_id=run_id, scenario=scenario, run_root=Path(run_root),
+                explorer_node=explorer_node, clients=dict(clients),
+            )
+            self._blocks = _AppendCsv(self.out_dir / "explorer_blocks.csv", BLOCK_COLUMNS)
+            self._transactions = _AppendCsv(self.out_dir / "explorer_transactions.csv",
+                                            TRANSACTION_COLUMNS)
+            self._chain_state = _AppendCsv(self.out_dir / "explorer_chain_state.csv",
+                                           CHAIN_STATE_COLUMNS)
+            self._gaps = _AppendCsv(self.out_dir / "explorer_gaps.csv", GAP_COLUMNS)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.ticks = 0
+        self.explorer_ticks = 0
         self.errors = 0
 
     # -- control ------------------------------------------------------------
@@ -78,6 +105,12 @@ class Sampler:
         self._thread = threading.Thread(target=self._loop, name="sampler", daemon=True)
         self._thread.start()
         LOG.info("sampler started: every %.0fs into %s", self.interval_s, self.out_dir)
+        if self.explorer is not None:
+            self._explorer_thread = threading.Thread(
+                target=self._explorer_loop, name="explorer", daemon=True)
+            self._explorer_thread.start()
+            LOG.info("rpc explorer started on %s: every %.1fs",
+                     self.explorer.explorer_node, self.explorer_interval_s)
 
     def stop(self, *, timeout_s: float = 30.0) -> None:
         if self._thread is None:
@@ -88,7 +121,27 @@ class Sampler:
             LOG.warning("the sampler did not stop within %gs; its last tick may be partial",
                         timeout_s)
         self._thread = None
+        if self._explorer_thread is not None:
+            self._explorer_thread.join(timeout=timeout_s)
+            self._explorer_thread = None
         self.tick()          # one final observation, after everything settled
+        if self.explorer is not None:
+            # One last walk plus the end-of-run calls, while the daemons are
+            # still up: a block produced after the previous tick would
+            # otherwise never be recorded.
+            try:
+                self.explorer.final_snapshot()
+            except Exception as exc:  # noqa: BLE001
+                LOG.warning("the explorer's final snapshot failed: %s", exc)
+            self._flush_explorer()
+            contiguity = self.explorer.contiguity()
+            if not contiguity["ok"]:
+                LOG.warning("the explorer missed %d height(s): %s",
+                            contiguity["missing_count"], contiguity["missing"][:10])
+            else:
+                LOG.info("explorer: %d blocks, heights %s-%s, no gaps",
+                         contiguity["checked"], contiguity.get("from"),
+                         contiguity.get("to"))
         LOG.info("sampler stopped: %d ticks, %d observation rows, %d sightings",
                  self.ticks, self._observations.written, self._sightings.written)
 
@@ -109,6 +162,45 @@ class Sampler:
             self.errors += 1
             LOG.warning("sampler tick failed (%d so far): %s", self.errors, exc)
 
+    def explorer_tick(self) -> None:
+        """One explorer pass. Never raises: it must not kill the run."""
+        if self.explorer is None:
+            return
+        try:
+            self.explorer.poll()
+            self._flush_explorer()
+            self.explorer_ticks += 1
+        except Exception as exc:  # noqa: BLE001
+            self.errors += 1
+            LOG.warning("explorer tick failed: %s", exc)
+
+    def _flush_explorer(self) -> None:
+        """Move whatever the explorer accumulated onto disk.
+
+        Flushing every tick rather than at the end is the difference between
+        a killed run that keeps its blocks and one that keeps nothing.
+        """
+        explorer = self.explorer
+        if explorer is None:
+            return
+        if explorer.blocks:
+            self._blocks.extend(explorer.blocks)
+            explorer.blocks = []
+        if explorer.transactions:
+            explorer.state.transactions_seen += len(explorer.transactions)
+            self._transactions.extend(explorer.transactions)
+            explorer.transactions = []
+        if explorer.chain_state:
+            self._chain_state.extend(explorer.chain_state)
+            explorer.chain_state = []
+        if explorer.state.gaps:
+            self._gaps.extend([
+                {"run_id": explorer.run_id, "height_from": g["height_from"],
+                 "height_to": g["height_to"], "reason": "block not retrievable",
+                 "observed_wallclock": ""}
+                for g in explorer.state.gaps])
+            explorer.state.gaps = []
+
     def _loop(self) -> None:
         while not self._stop.is_set():
             started = time.monotonic()
@@ -116,8 +208,15 @@ class Sampler:
             elapsed = time.monotonic() - started
             self._stop.wait(max(0.5, self.interval_s - elapsed))
 
+    def _explorer_loop(self) -> None:
+        while not self._stop.is_set():
+            started = time.monotonic()
+            self.explorer_tick()
+            elapsed = time.monotonic() - started
+            self._stop.wait(max(0.2, self.explorer_interval_s - elapsed))
+
     def summary(self) -> dict:
-        return {
+        out = {
             "ticks": self.ticks,
             "errors": self.errors,
             "interval_s": self.interval_s,
@@ -130,3 +229,13 @@ class Sampler:
                 "process_samples": str(self._processes.path),
             },
         }
+        if self.explorer is not None:
+            out["explorer"] = {
+                **self.explorer.summary(),
+                "ticks": self.explorer_ticks,
+                "interval_s": self.explorer_interval_s,
+                "block_rows": self._blocks.written,
+                "transaction_rows": self._transactions.written,
+                "chain_state_rows": self._chain_state.written,
+            }
+        return out

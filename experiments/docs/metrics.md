@@ -103,6 +103,62 @@ simulation cost simulated time.
   invisible here; the epoch sampler's `raw/metrics/epochs/node_state_epochs.csv`
   covers the coarser case.
 
+## What one node can see, and what needs several
+
+This distinction is not pedantry: deriving a multi-node quantity from a single
+node is inventing it, and the result looks exactly like a measurement.
+
+### From the explorer alone (the admin node)
+
+The admin is subscribed to every stream and its `listblocks` reports the
+proposer of each height directly, so everything about **the chain as a
+sequence** comes from it:
+
+| quantity | RPC |
+|---|---|
+| height, hash, previous hash, block time | `getblockcount`, `getblockhash`, `getblock` |
+| proposer, and its weight at that moment | `getblock` + `getallweights` |
+| block size, transaction count, the transactions | `getblock` |
+| the published weight map | `getallweights` |
+| mining permissions | `listpermissions ["mine"]` |
+| mempool depth at the explorer | `getrawmempool`, `getmempoolinfo` |
+| the streams: weights, ESG, membership, malus | `liststreamitems` |
+| independent recomputation of the weights | `weightverifyweights` |
+
+`metrics/explorer_blocks.csv` and `metrics/explorer_transactions.csv` are
+built from exactly these, and every raw answer is kept under `raw/rpc/`.
+
+### Only from aggregating several nodes
+
+| quantity | why one node cannot answer |
+|---|---|
+| **fork detection** | a fork is two nodes holding different hashes at one height. One node sees one hash and calls it the chain. |
+| **sync lag** | "behind" is relative to the others. |
+| **block propagation** | the difference between the first and last node to report a hash. |
+| **peer connectivity of the network** | each node reports its own peers; the graph is the union. |
+| **partition detection** | a node inside a partition sees a healthy, smaller network. |
+
+These come from `metrics/explorer_chain_state.csv` (every node, every tick)
+and `metrics/node_observations.csv`, and are reduced into
+`block_propagation.csv` and `fork_events.csv`.
+
+**The corollary for reading a report:** any claim about forks, lag or
+propagation that cites only the admin is wrong, however plausible the number.
+
+### Two RPCs the brief named that do not exist
+
+`getvalidatorinfo` and `getweight` are **not** in this fork — checked against
+`src/rpc/rpclist.cpp`, not assumed. The weight registry is:
+
+```
+getlocalweight            this node's own weight
+getnodeweight <address>   one validator's weight
+getallweights             {validators, total, weights: {address: weight}}
+getallmalus / getnodemalus            the behavioural malus registry
+weightverifyweights       independent recomputation
+weightsetesg / weightregistermembership   the two write paths
+```
+
 ## Where each number comes from
 
 ```

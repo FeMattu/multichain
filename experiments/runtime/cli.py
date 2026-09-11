@@ -55,6 +55,12 @@ def _runner(args) -> Runner:
     return Runner(dry_run=getattr(args, "dry_run", False))
 
 
+def _fabric_kwargs(args) -> dict:
+    """Consent settings every fabric-building command shares."""
+    return {"allow_fallback": getattr(args, "allow_fallback", False),
+            "assume_yes": getattr(args, "assume_yes", False)}
+
+
 def _default_run_id(name: str) -> str:
     """``run-<name>-<UTC timestamp>``: sortable, unique, self-describing."""
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -246,13 +252,19 @@ def cmd_network_start(args) -> int:
     binaries = install.resolve_all(plan.multichain)
     manifest = Manifest.create(run_id, root, plan, backend=plan.fabric.backend,
                                binaries=binaries)
-    fabric = make_fabric(plan, runner, run_root=root, backend=args.backend)
+    fabric = make_fabric(plan, runner, run_root=root, backend=args.backend,
+                         **_fabric_kwargs(args))
     fabric.build()
+    report = fabric.verify_connectivity()
+    if not report["ok"]:
+        LOG.warning("%d of %d node pairs cannot reach each other",
+                    len(report["failures"]), report["checked"])
     exporters.write_realized_json(
         plan.topology, root / "runtime" / "topology-realized.json",
         extra={"fabric": fabric.realized()},
     )
-    manifest.set(fabric_backend=fabric.name, status="network-up")
+    manifest.set(fabric_backend=fabric.name, status="network-up",
+                 connectivity=report)
     manifest.phase("network-start", "ok", nodes=len(fabric.nodes), links=len(fabric.links))
     print("run id: %s" % run_id)
     print("network up: %d nodes, %d links, backend %s" % (
@@ -291,7 +303,8 @@ def cmd_network_apply_profile(args) -> int:
     setup_logging(args.verbose, root / "run.log")
     plan = build_plan(root / "config" / "experiment.yaml")
     runner = _runner(args)
-    fabric = make_fabric(plan, runner, run_root=root, backend=args.backend)
+    fabric = make_fabric(plan, runner, run_root=root, backend=args.backend,
+                         **_fabric_kwargs(args))
     realized = root / "runtime" / "topology-realized.json"
     if not realized.is_file():
         raise RuntimeFailure(
@@ -483,7 +496,8 @@ def cmd_experiment_run(args) -> int:
     exit_code = SUCCESS
     sampler = None
     with Session(plan=plan, run_id=run_id, run_root=root, runner=runner,
-                 roles_dir=ROLES_ROOT, binaries=binaries) as session:
+                 roles_dir=ROLES_ROOT, binaries=binaries,
+                 controller_tick_s=getattr(args, "controller_tick", 5.0)) as session:
         session.prepare_directories()
         session.snapshot_config()
         session.manifest = Manifest.create(
@@ -493,7 +507,7 @@ def cmd_experiment_run(args) -> int:
         try:
             session.validate()
             session.manifest.phase("validate", "ok")
-            session.build_network(backend=args.backend)
+            session.build_network(backend=args.backend, **_fabric_kwargs(args))
             session.manifest.set(fabric_backend=session.fabric.name)
             session.manifest.phase("network", "ok",
                                    nodes=len(session.fabric.nodes),
@@ -506,6 +520,8 @@ def cmd_experiment_run(args) -> int:
                 nodes=plan.enabled_nodes, clients=session.clients,
                 registry=session.registry, out_dir=root / "raw" / "observations",
                 interval_s=args.sample_interval,
+                run_root=root, explorer_node=plan.admin.id,
+                explorer_interval_s=args.explorer_interval,
             )
             sampler.start()
 
