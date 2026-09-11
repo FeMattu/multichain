@@ -63,13 +63,20 @@ def check_run(metrics_dir: Path) -> dict:
     construction - see Table.enforced.
     """
     metrics_dir = Path(metrics_dir)
+    # The collectors write into raw/observations and the analysers into
+    # metrics; looking in one tree only reported healthy tables as absent.
+    observations = metrics_dir.parent / "raw" / "observations"
     report = {"checked": [], "problems": [], "absent": [], "empty": [],
               "reported_only": []}
     for entry in ALL_TABLES:
         path = metrics_dir / ("%s.csv" % entry.name)
         if not path.is_file():
-            report["absent"].append(entry.name)
-            continue
+            alternative = observations / ("%s.csv" % entry.name)
+            if alternative.is_file():
+                path = alternative
+            else:
+                report["absent"].append(entry.name)
+                continue
         if path.stat().st_size == 0:
             report["empty"].append(entry.name)
             continue
