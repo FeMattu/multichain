@@ -76,10 +76,21 @@ only record would be a log line.
 Three ways forward, all explicit:
 
 ```bash
-sudo core-daemon                       # 1. give it the CORE it asked for
-... --allow-fallback-without-core      # 2. authorise the fallback deliberately
-... --backend netns                    # 3. say netns is what you want
+# 1. give it the CORE it asked for
+sudo core-daemon
+
+# 2. authorise the fallback deliberately, for this run
+sudo -E experiments/scripts/run_experiment.sh \
+    --experiment experiments/configs/experiments/smoke-3n.yaml \
+    --allow-fallback-without-core
+
+# 3. say that netns is what you want, for every run
+#    (--backend netns on the command line, or fabric.backend: netns in the
+#     descriptor; an explicit backend never consults the gate)
 ```
+
+The flag belongs to the CLI rather than to a subcommand, so the wrapper
+forwards it ahead of `experiment run`; `--yes` is the blanket form.
 
 Interactively it asks instead, and the prompt lists exactly what the netns
 fabric keeps and gives up. Non-interactively it refuses, because a cron job
@@ -206,6 +217,50 @@ and records do not.
 
 The harness writes `maxtxfee=10.0` into every `multichain.conf`. If you
 changed the relay fee, raise it to match.
+
+### `weight-engine-membership never appeared`, and no weight is ever published
+
+The controller logs say the stream was never confirmed, `getallweights`
+returns `{"validators": 0}`, and every weight-derived sheet is empty on a run
+whose blocks and transactions look perfectly healthy.
+
+The two weight-engine input streams are created by the node's own engine
+(`weight_reader.cpp EnsureOneStream`), and that attempt is **one-shot**:
+`create_attempted` is set before the try and never cleared, so a create that
+fails is never retried for the life of the process. Both are attempted in the
+same pass, and on a fresh chain one can lose the race:
+
+```
+[WeightEngine] ERROR creating stream 'weight-engine-membership' (create permission required?)
+[WeightEngine] Input stream 'weight-engine-esg' created (closed): acfa294b...
+```
+
+The permission was not the problem - the same node created the other stream
+one line later. The admin controller now creates all three weight streams
+itself, so whichever create lands first wins and the loser is a harmless
+"already exists". If you see this on a node that is **not** the admin, it is
+expected: only the admin holds create permission.
+
+### Every derived CSV is empty on a run that clearly worked
+
+Check `metrics/run_index.csv`: `note` says `blocchi insufficienti` and
+`blocchi_misurati` is 0.
+
+`setup-first-blocks` is a chain parameter (60 in the shipped params). Until
+that height the chain is in its setup phase and nothing it produces belongs
+in a measurement, so a run that ends before clearing it writes every artefact
+well formed and empty. At 5 s per block that is 300 s of blocks before the
+first measurable one.
+
+The harness now says so before the run instead of after:
+
+```
+WARNING schedule: duration_s=180 leaves -26 blocks after setup-first-blocks=60
+at 5s per block: the run ends inside the chain's setup phase ...
+```
+
+`experiments.cli validate` reports the same figure as `measurable_blocks`, and
+`schedule.duration_s: auto` always sizes the run correctly.
 
 ### `Not subscribed to this stream` in the final snapshot
 
