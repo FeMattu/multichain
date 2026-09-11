@@ -22,6 +22,7 @@ import logging
 import sys
 from pathlib import Path
 
+from . import summary_per_epoca
 from .layout import resolve as resolve_layout
 
 LOG = logging.getLogger("experiments.analysis.summaries")
@@ -143,4 +144,16 @@ def write_all(run_root: Path, plan, *, setup_blocks: int | None = None) -> dict:
         "summary_per_epoch": str(write_epoch_summary(run_root, plan) or ""),
     }
     produced["reports"] = [str(p) for p in publish_to_reports(run_root)]
+    # The emulation-native per-epoch view, alongside the migrated one. It is a
+    # separate file on purpose: the historical sheet keeps the schema the
+    # archived reports key on, this one carries wall-clock fields that did not
+    # exist under a simulator.
+    try:
+        native = summary_per_epoca.write(run_root)
+        produced["epoch_summary"] = str(native["files"]["epoch_summary"])
+        produced["epoch_validators"] = str(native["files"]["epoch_validators"])
+        produced["epoch_report"] = str(native["files"]["report"])
+    except Exception as exc:  # noqa: BLE001 - one view failing must not lose the other
+        LOG.warning("the emulation-native epoch summary failed: %s", exc)
+        produced["epoch_summary_error"] = str(exc)
     return produced
