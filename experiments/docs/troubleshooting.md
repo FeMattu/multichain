@@ -66,11 +66,48 @@ export MULTICHAIN_UTIL=/opt/multichain/multichain-util
 export MULTICHAIN_BASE_DIR=/opt/multichain
 ```
 
-### `no CORE daemon answering at 127.0.0.1:50051`
+### `CORE is not available ... and the fallback was declined` (exit 2)
 
-Either start it (`sudo core-daemon`) or use `--backend netns`, which needs no
-daemon. With `backend: auto` the harness falls back on its own and logs what
-CORE was missing.
+Deliberate. With `fabric.backend: auto` and CORE missing, the harness does
+**not** quietly switch to the netns fabric: a run that changed backend on its
+own would look, be labelled and be compared exactly like a CORE run, and the
+only record would be a log line.
+
+Three ways forward, all explicit:
+
+```bash
+sudo core-daemon                       # 1. give it the CORE it asked for
+... --allow-fallback-without-core      # 2. authorise the fallback deliberately
+... --backend netns                    # 3. say netns is what you want
+```
+
+Interactively it asks instead, and the prompt lists exactly what the netns
+fabric keeps and gives up. Non-interactively it refuses, because a cron job
+must never make that choice for you.
+
+### Nodes start, then `Couldn't connect to the seed node`
+
+The daemons are healthy and the network is not. The most likely cause is the
+route: a node's route to the experiment subnet must carry `src <node ip>`.
+
+```bash
+sudo ip netns exec poesia-h-m1 ip route
+# 11.0.0.0/24 via 10.99.0.10 dev eth0 src 11.0.0.21    <- src must be there
+```
+
+Without `src` the kernel sources packets from the interface address, which is
+the `/30` link address; no other node has a route back to a `/30`, so the SYN
+arrives and the reply is undeliverable. The harness now pins it and verifies
+connectivity before starting any daemon, so this should surface as:
+
+```
+the fabric was built but does not carry traffic: N of M node pairs cannot
+reach each other
+```
+
+If it does, check in order: the `src` above, `net.ipv4.ip_forward` on the
+routers, and `rp_filter` (the harness sets it to 0, because a mesh of hubs
+makes return paths asymmetric and strict mode drops them silently).
 
 ### `sch_netem cannot be confirmed from userspace`
 
@@ -205,6 +242,23 @@ round robin whatever the weights say. Every shipped chain-parameter file pins
 `MINING_DIVERSITY=0`. Check `metrics/…/run_index.csv`.
 
 ## The run
+
+### A node's `role_controller.log` stops early, or is missing
+
+Each node is driven by a Python controller for the whole run, and it logs a
+heartbeat every ten ticks. A log that ends at start-up means the controller
+died; the scheduler restarts it up to five times and records each restart in
+`runtime/role-controllers.json` and in `process_restarts`.
+
+```bash
+python3 -c "import json;d=json.load(open('<run>/runtime/role-controllers.json'));
+print(d['restarts_total'], d['gave_up'])"
+```
+
+A node the scheduler gave up on stops contributing from that moment: a
+company stops generating the traffic that drives `tau_i`, a miner stops
+reconciling and its `rho_k` silently becomes 1. Check this before reading the
+weights as a protocol result.
 
 ### It exits with code 4, "incomplete data"
 

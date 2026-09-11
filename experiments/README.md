@@ -62,6 +62,21 @@ diff experiments/configs/experiments/regional.yaml \
      experiments/configs/experiments/intercontinental.yaml
 ```
 
+## Without root
+
+`sudo` is the normal way, but not the only one:
+
+```bash
+experiments/scripts/run_unprivileged.sh \
+    --experiment experiments/configs/experiments/e2e-5n.yaml
+```
+
+`unshare -Urnm` gives the harness a user namespace in which it is uid 0, with
+real `CAP_NET_ADMIN` over its own network namespace — `ip netns`, veth and
+`tc`/netem all work, and every file is created as you. It is how the
+verification run in this tree was produced. It cannot reach a CORE daemon
+(that runs as root, outside), so the backend is always `netns`.
+
 ## What comes out
 
 ```
@@ -84,6 +99,7 @@ Each stage is a command, and each is runnable on its own.
 | stage | command |
 |---|---|
 | check the machine | `cli env check --experiment <descriptor>` |
+| check CORE specifically | `cli env check` reports it; the run refuses to fall back without consent |
 | validate | `cli validate --experiment <descriptor>` |
 | generate a topology | `cli topology generate --topology <file> --format gml` |
 | start the network | `cli network start --experiment <descriptor>` |
@@ -135,6 +151,41 @@ configs/
 ├── network-profiles/*.yaml  what a link does to a packet
 └── chain-params/*.dat       hash-enforced chain values (protocol 20014)
 ```
+
+## How a run is driven
+
+Every node runs a **controller** for the whole experiment — not a script that
+fires once and exits:
+
+```
+setup()    admin grants and funds; a miner registers as cluster head; a
+           company joins its cluster; the CA publishes the ESG scores
+loop(tick) the company generates its workload, the miner reconciles each
+           epoch, the admin refills GAS and samples each buried epoch
+teardown() the admin takes the final chain snapshot
+```
+
+They are supervised: a controller that dies is restarted, and the restart is
+recorded in `runtime/role-controllers.json` and in the `process_restarts`
+metric. Each writes `logs/<node>/role_controller.log` with a heartbeat, so a
+node that stopped working is visible rather than inferred.
+
+Meanwhile the harness polls the admin like a **block explorer**, every two
+seconds by default: it walks every intermediate height rather than reading the
+tip, keeps every raw answer under `raw/rpc/`, and separately polls all nodes
+for the quantities that are relations *between* nodes — fork detection, sync
+lag, propagation. `docs/metrics.md` says which is which.
+
+## CORE, and the absence of a silent fallback
+
+`fabric.backend: auto` prefers CORE. When CORE is missing it does **not**
+switch to the netns fabric on its own: it asks, and the prompt lists what that
+costs. Non-interactively it refuses with exit code 2 unless you pass
+`--allow-fallback-without-core`.
+
+The reason is not purity. A run that changed backend by itself would look, be
+labelled and be compared exactly like a CORE run, and the only record would be
+one line of log nobody reads.
 
 ## Nodes and roles
 

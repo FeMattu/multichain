@@ -122,6 +122,49 @@ writes the level JSON and GML it expects into the run's own
 mean re-deriving every metric definition, and the point of migrating is that
 they must not change.
 
+## The role scripts became Python controllers
+
+`role_admin.sh`, `role_miner.sh`, `role_company.sh` and `role_ca.sh` were
+first migrated as bash, then **ported to Python** under `runtime/roles/`. The
+on-chain sequence is unchanged - the same grants, the same CLOSED
+`wpoa-weights`, the same explicit `subscribe`, the same burial margin - and
+three things are new:
+
+* a life cycle (`setup` / `loop` / `teardown`), so a node is driven for the
+  whole run instead of being started and abandoned;
+* a supervisor that restarts a controller that dies and records it, because a
+  company that stopped publishing at minute three changes every weight in the
+  run and nothing used to say so;
+* configuration instead of constants: the workload of a company, the rate of a
+  miner and the admin's GAS thresholds come from the descriptor.
+
+`first_launch.sh`, `_common.sh` and `rpc.sh` remain bash. The first wraps one
+`multichaind` invocation and is not protocol logic; the other two are manual
+debugging helpers.
+
+The four ported scripts were removed rather than kept, because two
+implementations of the same on-chain sequence drift, and the drift is silent.
+They remain in git history at `6278274`.
+
+## The figures
+
+Historical names are kept where the content is the same:
+
+| historical | now | note |
+|---|---|---|
+| `01_traiettoria_peso.png` | `01_traiettoria_pesi.png` | same |
+| `02_quota_osservata_vs_attesa.png` | `02_quota_per_epoca.png` | now per epoch, which is the honest comparison (§ the vigency rule) |
+| `03_chi2_finestra_vs_tbt.png` | `03_chi2_vs_tbt.png` | **campaign-level**: one run is one point, so it is drawn only by `analysis campaign` |
+| `04_fit_prop518.png` | `04_margine_prop518.png` | the margin G itself, rather than the campaign-wide regression |
+| `05_scarto_block_time.png` | `05_block_time.png` | same |
+| `06_gini_entropia.png` | `06_eccesso_miner_pesante.png` | the heaviest validator's excess over its weight: the same question, one number |
+| `07_bias_e_persistenza.png` | — | campaign-level; produced by `analysis campaign` |
+| `08_rho_e_riconciliazione.png` | — | campaign-level; produced by `analysis campaign` |
+
+A figure that cannot be drawn from a single run is **never silently
+omitted**: it appears in the "Figures" section of `report_generale.md` with
+the reason.
+
 ## The three changes that are not byte-identical
 
 Every one is deliberate, and none changes a value.
