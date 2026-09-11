@@ -158,6 +158,7 @@ class NetnsFabric(Fabric):
                 namespace, ["sysctl", "-q", "-w", "net.ipv4.ip_forward=1"],
                 what="enable forwarding on %s" % namespace,
             )
+            self._relax_rp_filter(namespace)
         for node in self.plan.enabled_nodes:
             if node.expected_state == "absent":
                 LOG.info("node %s is declared absent: no namespace created", node.id)
@@ -170,6 +171,22 @@ class NetnsFabric(Fabric):
                 namespace, ["ip", "addr", "add", "%s/32" % node.ip, "dev", "lo"],
                 what="address node %s" % node.id,
             )
+            self._relax_rp_filter(namespace)
+
+
+    def _relax_rp_filter(self, namespace: str) -> None:
+        """Turn off strict reverse-path filtering in a namespace.
+
+        With a mesh of hubs a packet's return path need not be the interface it
+        arrived on, and strict rp_filter (the default on many distributions)
+        silently drops such packets. Silently is the problem: there is no log,
+        no ICMP, just a connection that never establishes. Loose mode would
+        also do; off is chosen because the fabric is a closed emulated network
+        with no untrusted source to protect against.
+        """
+        for key in ("net.ipv4.conf.all.rp_filter", "net.ipv4.conf.default.rp_filter"):
+            self.runner.in_netns(namespace, ["sysctl", "-q", "-w", "%s=0" % key],
+                                 check=False)
 
     def _next_link_subnet(self) -> ipaddress.IPv4Network:
         try:
@@ -256,8 +273,19 @@ class NetnsFabric(Fabric):
                                              "dev", router_iface])
             self.runner.in_netns(router_ns, ["ip", "link", "set", router_iface, "up"])
             # The node reaches the whole experiment subnet through its router.
+            #
+            # `src` is load-bearing, not decoration. Without it the kernel picks
+            # the interface address - the /30 link address - as the source of
+            # every outgoing packet, because that is the address on the
+            # outgoing device. No other node has a route back to a /30, so the
+            # SYN arrives and the SYN-ACK is undeliverable: the symptom is
+            # "Couldn't connect to the seed node", several minutes into a run,
+            # with both daemons apparently healthy. Pinning src to the node's
+            # identity /32 makes every packet come from an address the whole
+            # fabric can route.
             self.runner.in_netns(node_ns, ["ip", "route", "add", self.plan.fabric.subnet,
-                                           "via", str(router_addr), "dev", "eth0"])
+                                           "via", str(router_addr), "dev", "eth0",
+                                           "src", node.ip])
             # The router reaches this node's /32 directly on the access link.
             self.runner.in_netns(router_ns, ["ip", "route", "add", "%s/32" % node.ip,
                                              "via", str(node_addr), "dev", router_iface])

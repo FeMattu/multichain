@@ -14,6 +14,7 @@ the reason it failed.
 from __future__ import annotations
 
 import logging
+import os
 import signal
 import time
 from dataclasses import dataclass, field
@@ -35,19 +36,19 @@ from .multichain.lifecycle import (
     start_daemon,
     start_role,
     stop_all,
+    terminate,
 )
+from .roles.scheduler import RoleScheduler
 from .multichain.rpc import RpcClient
 from .shell import Runner
 
 LOG = logging.getLogger("experiments.runtime.session")
 
-ROLE_SCRIPTS = {
-    "first_launch": "first_launch.sh",
-    "admin": "admin.sh",
-    "miner": "miner.sh",
-    "company": "company.sh",
-    "ca": "ca.sh",
-}
+#: The only bash left in the run path. It wraps ONE multichaind invocation -
+#: phase one of the permissioned join, which prints the wallet address and
+#: exits - and is not protocol logic. Everything a node does afterwards is a
+#: Python controller under runtime/roles/.
+FIRST_LAUNCH_SCRIPT = "first_launch.sh"
 
 
 class Interrupted(RuntimeFailure):
@@ -70,6 +71,9 @@ class Session:
     binaries: dict = field(default_factory=dict)
     treasury: object | None = None
     init_result: object | None = None
+    connectivity: dict = field(default_factory=dict)
+    scheduler: object | None = None
+    controller_tick_s: float = 5.0
     interrupted: bool = False
     _previous_handlers: dict = field(default_factory=dict)
 
@@ -91,11 +95,17 @@ class Session:
     def _install_signal_handlers(self) -> None:
         def handler(signum: int, frame: FrameType | None) -> None:
             del frame
-            if self.interrupted:      # a second Ctrl+C means "now"
-                LOG.warning("second signal %d: aborting cleanup", signum)
+            if self.interrupted:
+                # A second Ctrl+C means "stop waiting for the graceful path".
+                # It must NOT mean "leave twenty namespaces and twenty daemons
+                # behind": that is what the next run would inherit. Tear the
+                # fabric down hard, then re-raise.
+                LOG.warning("second signal %d: skipping the graceful stop", signum)
+                self._emergency_teardown()
                 raise KeyboardInterrupt
             self.interrupted = True
-            LOG.warning("signal %d received: stopping the run and cleaning up", signum)
+            LOG.warning("signal %d received: stopping the run and cleaning up "
+                        "(a second Ctrl+C skips the graceful stop)", signum)
             raise Interrupted("interrupted by signal %d" % signum)
 
         for signum in (signal.SIGINT, signal.SIGTERM):
@@ -103,6 +113,28 @@ class Session:
                 self._previous_handlers[signum] = signal.signal(signum, handler)
             except ValueError:      # not the main thread
                 pass
+
+    def _emergency_teardown(self) -> None:
+        """Last-resort removal of the fabric. Best effort, never raises."""
+        try:
+            for process in self.registry.processes:
+                if process.alive():
+                    terminate(process, sigterm_wait_s=0.5)
+        except BaseException:  # noqa: BLE001
+            pass
+        try:
+            if self.fabric is not None:
+                self.fabric.teardown()
+                LOG.warning("fabric destroyed by the emergency path")
+        except BaseException:  # noqa: BLE001
+            LOG.error("the emergency teardown could not remove the fabric; "
+                      "run experiments/scripts/clean_experiment.sh")
+        try:
+            if self.manifest is not None:
+                self.manifest.finish("interrupted",
+                                     cleanup={"status": "emergency teardown"})
+        except BaseException:  # noqa: BLE001
+            pass
 
     def _restore_signal_handlers(self) -> None:
         for signum, previous in self._previous_handlers.items():
@@ -155,10 +187,13 @@ class Session:
     def resolve_binaries(self) -> None:
         self.binaries = install.require_all(self.plan.multichain)
 
-    def build_network(self, *, backend: str | None = None) -> None:
+    def build_network(self, *, backend: str | None = None,
+                      allow_fallback: bool = False, assume_yes: bool = False) -> None:
         self.fabric = make_fabric(self.plan, self.runner, run_root=self.run_root,
-                                  backend=backend)
+                                  backend=backend, allow_fallback=allow_fallback,
+                                  assume_yes=assume_yes)
         self.fabric.build()
+        self._verify_connectivity()
         exporters.write_realized_json(
             self.plan.topology,
             self.run_root / "runtime" / "topology-realized.json",
@@ -173,6 +208,46 @@ class Session:
             for node in self.plan.enabled_nodes
             if node.expected_state != "absent"
         }
+
+    def _verify_connectivity(self) -> None:
+        """Prove the fabric carries packets before a single daemon starts.
+
+        A partition the topology declares is expected and is not a failure;
+        anything else is, and it is far cheaper to learn here than from a
+        daemon log two minutes later.
+        """
+        if self.runner.dry_run:
+            return
+        declared_partitions = any(
+            link.impairment_forward.partition or link.impairment_reverse.partition
+            or not link.enabled
+            for link in self.plan.topology.links
+        )
+        report = self.fabric.verify_connectivity()
+        self.connectivity = report
+        if report["ok"]:
+            LOG.info("connectivity verified: %s", kv(pairs=report["checked"]))
+            return
+        summary = ", ".join(
+            "%s->%s" % (f["from"], f["to"]) for f in report["failures"][:8]
+        )
+        if declared_partitions:
+            LOG.warning(
+                "%d of %d node pairs cannot reach each other (%s); the topology "
+                "declares a partition, so this may be intended",
+                len(report["failures"]), report["checked"], summary)
+            return
+        raise RuntimeFailure(
+            "the fabric was built but does not carry traffic: %d of %d node pairs "
+            "cannot reach each other (%s).\n"
+            "No daemon was started, because on this network none of them could "
+            "join the chain.\n"
+            "First things to check: 'ip netns exec %s ip route' (the route to the "
+            "experiment subnet must carry 'src <node ip>'), then rp_filter and "
+            "ip_forward on the routers."
+            % (len(report["failures"]), report["checked"], summary,
+               self.fabric.nodes[report["failures"][0]["from"]].namespace),
+        )
 
     def initialize_chain(self) -> None:
         self.treasury = treasury_mod.load(self.plan.multichain.treasury_file)
@@ -234,13 +309,20 @@ class Session:
         for node in self.plan.enabled_nodes:
             if node.id == admin.id or node.expected_state == "absent":
                 continue
-            start_role(self.fabric, node, self.roles_dir / ROLE_SCRIPTS["first_launch"],
+            start_role(self.fabric, node, self.roles_dir / FIRST_LAUNCH_SCRIPT,
                        "", self.run_root, self.registry, {**env_for(node), "POESIA_SEED": seed})
 
-        # t=grant - permissions, streams, the CA role and the initial GAS.
+        # t=grant - the admin controller takes over: its setup() grants every
+        # permission, creates the streams and funds the network, and then it
+        # keeps running for the rest of the experiment, refilling GAS and
+        # sampling each buried epoch.
         wait_until(schedule.grant_s, "grant")
-        start_role(self.fabric, admin, self.roles_dir / ROLE_SCRIPTS["admin"], "grant",
-                   self.run_root, self.registry, env_for(admin))
+        remaining = max(60.0, schedule.duration_s - (time.monotonic() - started))
+        self.scheduler = RoleScheduler(
+            self.fabric, self.plan, self.run_root,
+            environment_for=env_for, poll_s=5.0,
+        )
+        self.scheduler.start(admin, duration_s=remaining, tick_s=self.controller_tick_s)
 
         # t=join - the real daemons join and sync.
         wait_until(schedule.join_s, "join")
@@ -258,30 +340,21 @@ class Session:
         report.add(health.wait_peers(self.clients, minimum_peers, timeout_s=180))
         self._record_health(report, "join")
 
-        # t=register - ESG certificates and cluster membership.
+        # t=register - every other node's controller starts. Its setup()
+        # registers membership or publishes the ESG scores; its loop() then
+        # generates the workload and reconciles for the rest of the run.
+        # There is no separate "traffic" phase any more: a controller that is
+        # alive is working, which is exactly the property that was missing.
         wait_until(schedule.register_s, "register")
-        for node in self.plan.cas:
-            start_role(self.fabric, node, self.roles_dir / ROLE_SCRIPTS["ca"], "",
-                       self.run_root, self.registry, env_for(node))
-        for node in self.plan.miners:
-            start_role(self.fabric, node, self.roles_dir / ROLE_SCRIPTS["miner"], "register",
-                       self.run_root, self.registry, env_for(node))
-        for node in self.plan.companies:
-            start_role(self.fabric, node, self.roles_dir / ROLE_SCRIPTS["company"], "register",
-                       self.run_root, self.registry, env_for(node))
-
-        # t=traffic - workload, reconciliation, GAS refill and epoch sampling.
-        wait_until(schedule.traffic_s, "traffic")
-        for node in self.plan.companies:
-            start_role(self.fabric, node, self.roles_dir / ROLE_SCRIPTS["company"], "traffic",
-                       self.run_root, self.registry, env_for(node))
-        for node in self.plan.miners:
-            start_role(self.fabric, node, self.roles_dir / ROLE_SCRIPTS["miner"], "reconcile",
-                       self.run_root, self.registry, env_for(node))
-        start_role(self.fabric, admin, self.roles_dir / ROLE_SCRIPTS["admin"], "refill",
-                   self.run_root, self.registry, env_for(admin))
-        start_role(self.fabric, admin, self.roles_dir / ROLE_SCRIPTS["admin"], "epoch_watch",
-                   self.run_root, self.registry, env_for(admin))
+        remaining = max(60.0, schedule.duration_s - (time.monotonic() - started))
+        for node in self.plan.cas + self.plan.miners + self.plan.companies:
+            if node.expected_state == "absent":
+                continue
+            self.scheduler.start(node, duration_s=remaining,
+                                 tick_s=self.controller_tick_s)
+        self.scheduler.supervise_in_background()
+        LOG.info("%d node controllers running under supervision",
+                 len(self.scheduler.handles))
 
         # The gate that decides whether wPoA can take over at all.
         report.add(health.wait_weights_published(
@@ -290,13 +363,28 @@ class Session:
         ))
         self._record_health(report, "weights")
 
-        # Measurement window.
-        self._supervise(until=schedule.snapshot_s, started=started)
-
-        # Final snapshot, well before the daemons stop.
-        start_role(self.fabric, admin, self.roles_dir / ROLE_SCRIPTS["admin"], "snapshot",
-                   self.run_root, self.registry, env_for(admin))
+        # Measurement window. The controllers work; this only watches for
+        # daemons that die and for controllers the scheduler had to restart.
         self._supervise(until=schedule.duration_s, started=started)
+
+        # Stopping the controllers is what produces the final snapshot: the
+        # admin's teardown() writes blocks.json and the rest. It must happen
+        # while the daemons are still up, which is why it is here and not in
+        # cleanup().
+        LOG.info("stopping the node controllers (the admin takes its final snapshot)")
+        self.scheduler.stop_all(timeout_s=90.0)
+        self.scheduler.write_summary()
+        summary = self.scheduler.summary()
+        if summary["restarts_total"]:
+            LOG.warning("%d controller restart(s) during the run: %s",
+                        summary["restarts_total"],
+                        ", ".join("%s x%d" % (d["node_id"], d["restarts"])
+                                  for d in summary["detail"] if d["restarts"]))
+        report.add(health.Check(
+            "node controllers", not summary["gave_up"],
+            detail="" if not summary["gave_up"]
+            else "gave up on: " + ", ".join(summary["gave_up"]),
+            values=summary))
 
         report.add(health.check_consistency(self.clients))
         self._record_health(report, "final")
@@ -337,35 +425,83 @@ class Session:
 
     # -- cleanup ------------------------------------------------------------
     def cleanup(self, *, status: str, error: str = "") -> dict:
-        """Stop everything and record the outcome. Never raises, never deletes."""
+        """Stop everything and record the outcome. Never raises, never deletes.
+
+        Every step is individually guarded and the manifest is finalised from a
+        ``finally``. That ordering was learned from a real interrupted run: a
+        second Ctrl+C arriving while the daemons were being stopped propagated
+        out of here, so the manifest was left saying ``status: running`` with
+        no ``cleanup`` section at all - the one record that had to survive was
+        the one that did not.
+        """
         summary: dict = {"status": status}
         try:
-            summary["processes"] = stop_all(self.registry, self.clients)
-        except Exception as exc:  # noqa: BLE001 - cleanup must finish
-            LOG.error("stopping processes reported %s", exc)
-            summary["processes_error"] = str(exc)
-        if self.fabric is not None:
+            if self.scheduler is not None:
+                try:
+                    summary["controllers"] = self.scheduler.stop_all(timeout_s=45.0)
+                    summary["controller_summary"] = self.scheduler.summary()
+                    self.scheduler.write_summary()
+                except BaseException as exc:  # noqa: BLE001
+                    LOG.error("stopping the controllers reported %s", exc)
+                    summary["controllers_error"] = str(exc)
             try:
-                summary["impairment_cleared"] = self.fabric.clear_impairment()
-            except Exception as exc:  # noqa: BLE001
-                LOG.error("clearing impairment reported %s", exc)
-                summary["impairment_error"] = str(exc)
-            try:
-                self.fabric.teardown()
-                summary["fabric"] = "destroyed"
-            except Exception as exc:  # noqa: BLE001
-                LOG.error("fabric teardown reported %s", exc)
-                summary["fabric_error"] = str(exc)
-        if self.manifest is not None:
-            if error:
-                self.manifest.error(error, phase="cleanup")
-            self.manifest.finish(
-                status,
-                processes=self.registry.as_dict(),
-                cleanup=summary,
-            )
-        LOG.info("run %s finished: %s", self.run_id, status)
+                summary["processes"] = stop_all(self.registry, self.clients)
+            except BaseException as exc:  # noqa: BLE001 - including KeyboardInterrupt
+                LOG.error("stopping processes reported %s", exc)
+                summary["processes_error"] = str(exc)
+            if self.fabric is not None:
+                try:
+                    summary["impairment_cleared"] = self.fabric.clear_impairment()
+                except BaseException as exc:  # noqa: BLE001
+                    LOG.error("clearing impairment reported %s", exc)
+                    summary["impairment_error"] = str(exc)
+                try:
+                    self.fabric.teardown()
+                    summary["fabric"] = "destroyed"
+                except BaseException as exc:  # noqa: BLE001
+                    LOG.error("fabric teardown reported %s", exc)
+                    summary["fabric_error"] = str(exc)
+            summary["results_owner"] = self._restore_ownership()
+        finally:
+            if self.manifest is not None:
+                try:
+                    if error:
+                        self.manifest.error(error, phase="cleanup")
+                    self.manifest.finish(
+                        status,
+                        processes=self.registry.as_dict(),
+                        cleanup=summary,
+                        connectivity=self.connectivity,
+                    )
+                except BaseException as exc:  # noqa: BLE001
+                    LOG.error("could not finalise the manifest: %s", exc)
+            LOG.info("run %s finished: %s", self.run_id, status)
         return summary
+
+    def _restore_ownership(self) -> str:
+        """Give the run directory back to the user who invoked sudo.
+
+        A run started with `sudo -E` leaves a root-owned results tree, and the
+        analysis - which needs no privileges and should not have them - then
+        cannot write into it. Chowning back is the difference between a run
+        that can be analysed and one that can only be read.
+        """
+        uid, gid = os.environ.get("SUDO_UID"), os.environ.get("SUDO_GID")
+        if not uid or os.geteuid() != 0:
+            return "unchanged"
+        try:
+            target_uid, target_gid = int(uid), int(gid or uid)
+        except ValueError:
+            return "unchanged"
+        changed = 0
+        for path in [self.run_root, *self.run_root.rglob("*")]:
+            try:
+                os.chown(path, target_uid, target_gid)
+                changed += 1
+            except OSError:
+                continue
+        LOG.info("results handed back to uid %s (%d paths)", target_uid, changed)
+        return "chown %s:%s on %d paths" % (target_uid, target_gid, changed)
 
     # -- verification -------------------------------------------------------
     def verify_artefacts(self) -> None:

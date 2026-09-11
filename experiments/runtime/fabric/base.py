@@ -99,6 +99,9 @@ class Fabric(abc.ABC):
         self.run_root = Path(run_root)
         self.nodes: dict[str, RealizedNode] = {}
         self.links: list[RealizedLink] = []
+        #: What the CORE probe found, recorded even when netns was used, so a
+        #: run can always say why it is on the backend it is on.
+        self.core_status = None
 
     # -- lifecycle ----------------------------------------------------------
     @abc.abstractmethod
@@ -150,6 +153,43 @@ class Fabric(abc.ABC):
     def clear_impairment(self) -> int:
         """Remove every qdisc the fabric installed. Returns interfaces touched."""
 
+    # -- verification -------------------------------------------------------
+    def verify_connectivity(self, *, targets: list[str] | None = None,
+                            timeout_s: float = 5.0) -> dict:
+        """Check that every node can reach the others over the emulated plane.
+
+        Run immediately after build, before any daemon starts. A fabric that
+        looks built but does not carry packets otherwise surfaces minutes
+        later as "Couldn't connect to the seed node", with both daemons
+        apparently healthy and nothing in either log pointing at the network.
+
+        Returns ``{"ok": bool, "checked": n, "failures": [...]}``; it never
+        raises, so the caller decides whether a partition is expected.
+        """
+        node_ids = list(self.nodes)
+        if len(node_ids) < 2:
+            return {"ok": True, "checked": 0, "failures": [],
+                    "note": "fewer than two nodes: nothing to verify"}
+        destinations = targets if targets is not None else node_ids
+        failures = []
+        checked = 0
+        for source in node_ids:
+            for destination in destinations:
+                if source == destination:
+                    continue
+                address = self.nodes[destination].ip
+                checked += 1
+                result = self.runner.run(
+                    self.exec_argv(source, ["ping", "-c", "1", "-W",
+                                            str(int(max(1, timeout_s))), address]),
+                    check=False, timeout_s=timeout_s + 5,
+                )
+                if not result.ok:
+                    failures.append({"from": source, "to": destination,
+                                     "address": address,
+                                     "detail": (result.stdout + result.stderr).strip()[:200]})
+        return {"ok": not failures, "checked": checked, "failures": failures}
+
     # -- reporting ----------------------------------------------------------
     def status(self) -> FabricStatus:
         return FabricStatus(
@@ -165,6 +205,7 @@ class Fabric(abc.ABC):
         return {
             "backend": self.name,
             "session": self.plan.fabric.session_name,
+            "core_probe": self.core_status.as_dict() if self.core_status else None,
             "nodes": [n.as_dict() for n in self.nodes.values()],
             "links": [link.as_dict() for link in self.links],
         }
