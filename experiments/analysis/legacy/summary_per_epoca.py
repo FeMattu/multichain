@@ -39,8 +39,8 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import analizza_esperimenti as az           # noqa: E402  (dopo il sys.path)
+from . import analizza_esperimenti as az     # noqa: E402
+from ..layout import resolve as resolve_layout  # noqa: E402
 
 W_HEAD = 66        # larghezza delle cornici ═, come in summary.txt
 W_SEC = 63         # larghezza delle righe di sezione ─
@@ -205,7 +205,8 @@ def verify_per_epoca(run):
     archiviate prima di quella modifica il file non esiste: le sezioni relative
     lo dichiarano invece di inventare un verdetto.
     """
-    path = run["metrics"] / "epoche" / "verify_epoche.jsonl"
+    path = resolve_layout(run["path"]).epoch_file(
+        "verify_epochs.jsonl", "verify_epoche.jsonl")
     out = {}
     if not path.is_file():
         return out
@@ -233,7 +234,8 @@ def node_state_per_epoca(run):
     istantanea di fine run, quindi un fork riassorbito a metà simulazione non
     lascerebbe traccia. Scritto dal sorvegliante di epoca.
     """
-    path = run["metrics"] / "epoche" / "node_state_epoche.csv"
+    path = resolve_layout(run["path"]).epoch_file(
+        "node_state_epochs.csv", "node_state_epoche.csv")
     out = defaultdict(list)
     if not path.is_file():
         return out
@@ -251,7 +253,8 @@ def node_state_per_epoca(run):
 
 
 def treasury_per_epoca(run):
-    path = run["metrics"] / "epoche" / "treasury_epoche.csv"
+    path = resolve_layout(run["path"]).epoch_file(
+        "treasury_epochs.csv", "treasury_epoche.csv")
     out = {}
     if not path.is_file():
         return out
@@ -733,14 +736,17 @@ def build(run, args):
 
 
 def make_run(path, livello, tbt_dirname, run_dir, run_index):
+    """A discovery record for one run directory, in either layout."""
     path = Path(path)
+    if (path / "run").is_dir():          # the deprecated per-level tree
+        metrics, data = path / "run" / "metrics", path / "run" / "data"
+    else:
+        layout = resolve_layout(path)
+        metrics, data = layout.metrics, layout.data
     return {"run_id": "{}/{}".format(run_dir, livello) if run_dir else livello,
             "run_dir": run_dir or livello, "run_index": run_index,
             "tbt_dirname": tbt_dirname, "livello": livello, "path": path,
-            "metrics": path / "run" / "metrics" if (path / "run").is_dir()
-                       else path / "metrics",
-            "data": path / "run" / "data" if (path / "run").is_dir()
-                    else path / "data"}
+            "metrics": metrics, "data": data}
 
 
 def main():

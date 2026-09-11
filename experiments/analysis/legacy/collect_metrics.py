@@ -27,6 +27,9 @@ import re
 import statistics
 import sys
 from collections import Counter, defaultdict
+from pathlib import Path
+
+from ..layout import resolve as resolve_layout
 
 
 def load_result(path):
@@ -192,7 +195,7 @@ def analyse_weights(weights_items, host_by_addr, out):
 def analyse_consistency(run, out):
     out.append("")
     out.append("── Consistenza fra nodi a fine run ────────────────────────────")
-    path = os.path.join(run, "metrics", "node_state.csv")
+    path = str(resolve_layout(run).metrics / "node_state.csv")
     if not os.path.exists(path):
         out.append("  node_state.csv assente (snapshot non eseguito).")
         return
@@ -345,7 +348,7 @@ def analyse_delays(run, chain, setup_blocks, tbt, delta, out):
 
 
 def tail_csv(run, name, out, title, limit=12):
-    path = os.path.join(run, "metrics", name)
+    path = str(resolve_layout(run).metrics / name)
     if not os.path.exists(path):
         return
     lines = [l.rstrip() for l in open(path) if l.strip()]
@@ -372,7 +375,8 @@ def main():
                     help="wpoa-sortition-delta usato nella run")
     args = ap.parse_args()
 
-    m = os.path.join(args.run, "metrics")
+    layout = resolve_layout(args.run)
+    m = str(layout.metrics)
     out = ["",
            "══════════════════════════════════════════════════════════════════",
            "  POESIA / wPoA — riepilogo run: livello {}".format(args.level),
@@ -380,7 +384,7 @@ def main():
 
     # indirizzo -> host, dai file depositati durante il bootstrap
     host_by_addr = {}
-    shared = os.path.join(args.run, "shared")
+    shared = str(layout.shared)
     if os.path.isdir(shared):
         for fn in sorted(os.listdir(shared)):
             if fn.endswith(".addr"):
@@ -395,7 +399,7 @@ def main():
         out.append("")
         out.append("  NESSUN BLOCCO nello snapshot: la simulazione non ha prodotto")
         out.append("  catena, oppure lo snapshot finale non e' stato eseguito.")
-        out.append("  Controlla {}/shadow.log e i debug.log dei nodi.".format(args.run))
+        out.append("  Controlla {}/run.log e i debug.log dei nodi.".format(args.run))
     else:
         measured = analyse_blocks(blocks, args.setup_blocks, args.tbt, out)
         latest_w = analyse_weights(weights_items, host_by_addr, out)

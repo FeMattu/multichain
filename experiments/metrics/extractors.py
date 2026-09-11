@@ -202,6 +202,83 @@ def copy_observations(run_root: Path) -> dict:
     return produced
 
 
+HISTORICAL_SHEETS = [
+    "alternanze", "block_times", "chisq", "epoch_shares", "esg", "forks", "gas",
+    "proposers", "run_index", "sortition_margins", "verify", "weights_trajectory",
+]
+
+
+def run_campaign_sheets(run_root: Path, plan) -> dict:
+    """Produce the twelve historical CSVs for this one run.
+
+    They come from `analizza_esperimenti.py`, the migrated campaign analyser,
+    which works over a ROOT of runs rather than over one. Pointing it at the
+    whole results tree would recompute every archived run on every extraction,
+    so it is given a directory containing a single symlink to this run - the
+    same trick the golden test uses to restrict the archive to twenty runs.
+
+    Without this step the twelve sheets are simply never written, which is the
+    largest part of "the CSVs are empty or missing".
+    """
+    import shutil
+    import sys
+    import tempfile
+
+    from ..analysis.legacy import analizza_esperimenti
+
+    run_root = Path(run_root)
+    workdir = Path(tempfile.mkdtemp(prefix="poesia-sheets-"))
+    farm, out = workdir / "runs", workdir / "analisi"
+    farm.mkdir(parents=True)
+    (farm / run_root.name).symlink_to(run_root.resolve())
+
+    argv = sys.argv
+    sys.argv = ["analizza_esperimenti", "--root", str(farm), "--out", str(out),
+                "--force", "--recompute-chisq"]
+    try:
+        analizza_esperimenti.main()
+    except SystemExit as exc:
+        if exc.code not in (0, None):
+            LOG.warning("analizza_esperimenti exited with %s", exc.code)
+    finally:
+        sys.argv = argv
+
+    produced, empty = {}, []
+    sheets = out / "fogli-di-analisi"
+    target = run_root / "metrics"
+    target.mkdir(parents=True, exist_ok=True)
+    if sheets.is_dir():
+        for path in sorted(sheets.glob("*.csv")):
+            rows = max(0, sum(1 for _ in path.open(encoding="utf-8")) - 1)
+            shutil.copy2(path, target / path.name)
+            produced[path.name] = rows
+            if rows == 0 and path.stem in HISTORICAL_SHEETS:
+                empty.append(path.name)
+        for extra in ("metrics_schema_report.md", "estrazione.log"):
+            source = sheets / extra
+            if source.is_file():
+                shutil.copy2(source, run_root / "reports" / extra
+                             if extra.endswith(".md") else target / extra)
+    # The per-run mirror: weight chain, ledger, integrity, inequality.
+    mirror = out / "esperimenti"
+    if mirror.is_dir():
+        destination = run_root / "metrics" / "per-run"
+        if destination.exists():
+            shutil.rmtree(destination)
+        shutil.copytree(mirror, destination)
+    shutil.rmtree(workdir, ignore_errors=True)
+
+    missing = [name for name in HISTORICAL_SHEETS
+               if "%s.csv" % name not in produced]
+    if missing:
+        LOG.warning("historical sheets not produced: %s", ", ".join(missing))
+    if empty:
+        LOG.warning("historical sheets produced but EMPTY: %s", ", ".join(empty))
+    LOG.info("campaign sheets: %d written, %d rows in total",
+             len(produced), sum(produced.values()))
+    return {"sheets": produced, "missing": missing, "empty": empty}
+
+
 def run_historical_pipeline(run_root: Path, plan) -> dict:
     """Produce the historical tables through the migrated pipeline.
 
@@ -229,11 +306,28 @@ def extract_all(run_root: Path, plan) -> dict:
     produced["tables"]["netem_conditions.csv"] = extract_netem(run_root, plan)
     produced["tables"]["block_propagation.csv"] = extract_propagation(run_root, plan)
     produced["tables"]["fork_events.csv"] = extract_forks(run_root, plan)
+    # The two textual summaries come FIRST: the campaign-level chisq.csv takes
+    # its authoritative chi-square by parsing summary.txt, so a pipeline run
+    # before it exists produces a chisq.csv with an empty chi2_summary column.
+    try:
+        from ..analysis.summaries import write_all as write_summaries
+
+        produced["summaries"] = write_summaries(run_root, plan)
+    except Exception as exc:  # noqa: BLE001
+        LOG.error("the summaries could not be produced: %s", exc)
+        produced["summaries"] = {"error": str(exc)}
+
     try:
         produced["historical"] = run_historical_pipeline(run_root, plan)
     except Exception as exc:  # noqa: BLE001 - a run with no snapshot still has observations
         LOG.error("the historical pipeline could not run: %s", exc)
         produced["historical"] = {"error": str(exc)}
+
+    try:
+        produced["campaign_sheets"] = run_campaign_sheets(run_root, plan)
+    except Exception as exc:  # noqa: BLE001
+        LOG.error("the campaign sheets could not be produced: %s", exc)
+        produced["campaign_sheets"] = {"error": str(exc)}
 
     from .schema_report import write as write_schema
 

@@ -55,13 +55,26 @@ def check_table(path: Path, table_name: str) -> list:
 
 
 def check_run(metrics_dir: Path) -> dict:
-    """Check every catalogued table a run directory contains."""
+    """Check every catalogued table a run directory contains.
+
+    ``problems`` fails a run; ``empty`` and ``absent`` do not. An empty table
+    with a correct header is a fact about the run ("nothing happened"), not a
+    schema violation, and a historical table's header is data-dependent by
+    construction - see Table.enforced.
+    """
     metrics_dir = Path(metrics_dir)
-    report = {"checked": [], "problems": [], "absent": []}
+    report = {"checked": [], "problems": [], "absent": [], "empty": [],
+              "reported_only": []}
     for entry in ALL_TABLES:
         path = metrics_dir / ("%s.csv" % entry.name)
         if not path.is_file():
             report["absent"].append(entry.name)
+            continue
+        if path.stat().st_size == 0:
+            report["empty"].append(entry.name)
+            continue
+        if not entry.enforced:
+            report["reported_only"].append(entry.name)
             continue
         report["checked"].append(entry.name)
         report["problems"].extend(check_table(path, entry.name))
