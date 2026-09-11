@@ -38,6 +38,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ..multichain.rpc import RpcClient, RpcError
@@ -69,6 +70,7 @@ class RoleContext:
     companies: list = field(default_factory=list)
     cas: list = field(default_factory=list)
     ip_by_node: dict = field(default_factory=dict)
+    run_id: str = ""
     cluster: str = ""
     treasury: str = ""
     stream: str = "poesia-supplychain"
@@ -88,8 +90,24 @@ class RoleContext:
         return self.run_root / "runtime" / "shared"
 
     @property
+    def log_dir(self) -> Path:
+        return self.run_root / "logs" / self.node_id
+
+    @property
     def log_path(self) -> Path:
-        return self.run_root / "logs" / self.node_id / "role_controller.log"
+        return self.log_dir / "role_controller.log"
+
+    @property
+    def rpc_log_path(self) -> Path:
+        return self.log_dir / "rpc.log"
+
+    @property
+    def process_log_path(self) -> Path:
+        return self.log_dir / "process.log"
+
+    @property
+    def events_path(self) -> Path:
+        return self.log_dir / "events.jsonl"
 
     def all_nodes(self) -> list:
         return [self.admin_id] + list(self.miners) + list(self.companies) + list(self.cas)
@@ -129,6 +147,9 @@ def context_from_env() -> RoleContext:
         companies=_env_list("POESIA_COMPANIES"),
         cas=_env_list("POESIA_CAS"),
         ip_by_node=ip_by_node,
+        # The run directory is named after the run, so the id is available
+        # even when the environment does not carry it explicitly.
+        run_id=os.environ.get("POESIA_RUN_ID", "") or Path(need("POESIA_RUN")).name,
         cluster=os.environ.get("POESIA_CLUSTER", ""),
         treasury=os.environ.get("POESIA_TREASURY", ""),
         stream=os.environ.get("POESIA_STREAM", "poesia-supplychain"),
@@ -155,6 +176,14 @@ class RoleController(abc.ABC):
     def __init__(self, context: RoleContext) -> None:
         self.ctx = context
         self.log = self._make_logger()
+        # Three separate streams, because they answer three questions and one
+        # file cannot answer all of them: what the controller decided
+        # (role_controller.log), what it asked the node (rpc.log, every call
+        # with its latency), and what its daemon was doing (process.log).
+        # events.jsonl is the machine-readable form of the first, for the
+        # analysis - a log line is for a human, a JSON line is for a query.
+        self.rpc_log = self._make_file_logger("rpc", self.ctx.rpc_log_path)
+        self.process_log = self._make_file_logger("proc", self.ctx.process_log_path)
         self.rng = random.Random(context.seed ^ hash(context.node_id) & 0x7FFFFFFF)
         self._stop = threading.Event()
         self.started_monotonic = time.monotonic()
@@ -178,6 +207,55 @@ class RoleController(abc.ABC):
         logger.addHandler(stream)
         return logger
 
+    def _make_file_logger(self, suffix: str, path: Path) -> logging.Logger:
+        """A logger that writes only to its own file, never to stderr.
+
+        The controller's stdout is already captured per node; duplicating the
+        RPC trace into it would bury the decisions in the traffic.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        logger = logging.getLogger("role.%s.%s" % (self.ctx.node_id, suffix))
+        logger.setLevel(logging.INFO)
+        logger.handlers.clear()
+        logger.propagate = False
+        handler = logging.FileHandler(path, encoding="utf-8")
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(message)s", "%Y-%m-%dT%H:%M:%S%z"))
+        logger.addHandler(handler)
+        return logger
+
+    @staticmethod
+    def _params_digest(params) -> str:
+        """Params, short enough to read. A published payload can be huge."""
+        if not params:
+            return ""
+        text = json.dumps(params, default=str)
+        return text if len(text) <= 120 else text[:117] + "..."
+
+    # -- events -------------------------------------------------------------
+    def event(self, kind: str, **fields) -> None:
+        """Append one structured event.
+
+        Every event carries both clocks on purpose: the wall clock so it can
+        be joined with the chain's own timestamps, and the monotonic elapsed
+        seconds so a duration stays correct across an NTP step. There is no
+        simulated time to record - these runs have none.
+        """
+        record = {
+            "wall_clock_time": datetime.now(timezone.utc).isoformat(),
+            "monotonic_time": round(time.monotonic(), 6),
+            "elapsed_wallclock": round(time.monotonic() - self.started_monotonic, 3),
+            "run_id": self.ctx.run_id,
+            "node_id": self.ctx.node_id,
+            "role": self.role,
+            "event": kind,
+        }
+        record.update(fields)
+        path = self.ctx.events_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, default=str) + "\n")
+
     # -- RPC ----------------------------------------------------------------
     def client(self, node_id: str | None = None) -> RpcClient:
         """RPC client for a node, by its EMULATED address.
@@ -199,10 +277,24 @@ class RoleController(abc.ABC):
 
     def call(self, method: str, params: list | None = None, *,
              node_id: str | None = None, quiet: bool = False):
-        """One RPC. Returns None on failure and counts it, never raises."""
+        """One RPC. Returns None on failure and counts it, never raises.
+
+        Every call is traced to rpc.log with its latency, including the ones
+        that succeed: an RPC that slowed down is invisible in a log that only
+        records failures, and slow is how a node fails first.
+        """
+        started = time.monotonic()
+        target = node_id or self.ctx.node_id
         try:
-            return self.client(node_id).call(method, params)
+            result = self.client(node_id).call(method, params)
+            self.rpc_log.info("ok    %-24s %-6s %7.1fms %s", method, target,
+                              (time.monotonic() - started) * 1000.0,
+                              self._params_digest(params))
+            return result
         except (RpcError, KeyError) as exc:
+            self.rpc_log.info("FAIL  %-24s %-6s %7.1fms %s: %s", method, target,
+                              (time.monotonic() - started) * 1000.0,
+                              self._params_digest(params), exc)
             self.errors += 1
             if not quiet:
                 self.log.warning("%s failed: %s", method, exc)
@@ -303,7 +395,24 @@ class RoleController(abc.ABC):
 
     @abc.abstractmethod
     def loop(self, tick: int) -> None:
-        """Every tick_s until the deadline. Must return promptly."""
+        """Every tick_s until the deadline. Must return promptly.
+
+        Prefer overriding :meth:`tick`, which also receives the elapsed
+        wall-clock seconds. `loop` is what the controllers were written
+        against and stays the one a subclass must implement.
+        """
+
+    def tick(self, tick_index: int, elapsed_wallclock_seconds: float) -> None:
+        """One iteration, with the run's elapsed wall-clock time.
+
+        The second argument comes from `time.monotonic()`, not from the system
+        clock and not from any simulated clock: these runs have none, and a
+        duration measured across an NTP step would be wrong. A controller that
+        needs to know how far into the run it is overrides this; one that does
+        not overrides `loop` and ignores the time.
+        """
+        del elapsed_wallclock_seconds
+        self.loop(tick_index)
 
     def teardown(self) -> None:
         """Once, at the end. Runs even if the loop raised."""
@@ -313,25 +422,35 @@ class RoleController(abc.ABC):
         self.log.info("controller start: role=%s node=%s ip=%s duration=%gs tick=%gs",
                       self.role, self.ctx.node_id, self.ctx.ip,
                       self.ctx.duration_s, self.ctx.tick_s)
+        self.event("controller_start", ip=self.ctx.ip,
+                   duration_s=self.ctx.duration_s, tick_s=self.ctx.tick_s,
+                   temporal_model="wall_clock_emulation")
         status = 0
         try:
             self.setup()
             self.log.info("setup complete")
+            self.event("setup_complete")
             deadline = (self.started_monotonic + self.ctx.duration_s
                         if self.ctx.duration_s > 0 else float("inf"))
             while not self._stop.is_set() and time.monotonic() < deadline:
                 self.tick_count += 1
                 started = time.monotonic()
+                elapsed = started - self.started_monotonic
                 try:
-                    self.loop(self.tick_count)
+                    self.tick(self.tick_count, elapsed)
                 except Exception as exc:  # noqa: BLE001 - one bad tick is not the run
                     self.errors += 1
                     self.log.warning("tick %d failed: %s", self.tick_count, exc)
+                    self.event("tick_failed", tick=self.tick_count, error=str(exc))
                 # A heartbeat every tenth tick: a log that only shows start-up
                 # cannot be distinguished from a controller that died silently.
                 if self.tick_count % 10 == 0:
+                    height = self.block_count()
                     self.log.info("heartbeat tick=%d height=%d errors=%d",
-                                  self.tick_count, self.block_count(), self.errors)
+                                  self.tick_count, height, self.errors)
+                    self.event("heartbeat", tick=self.tick_count, height=height,
+                               errors=self.errors)
+                    self._log_process_state(height)
                 self._sleep(max(0.0, self.ctx.tick_s - (time.monotonic() - started)))
         except SystemExit:
             raise
@@ -344,16 +463,35 @@ class RoleController(abc.ABC):
                 self.log.info("teardown complete")
             except Exception as exc:  # noqa: BLE001
                 self.log.warning("teardown failed: %s", exc)
+            elapsed = time.monotonic() - self.started_monotonic
             self.log.info("controller stop: ticks=%d errors=%d elapsed=%.0fs",
-                          self.tick_count, self.errors,
-                          time.monotonic() - self.started_monotonic)
+                          self.tick_count, self.errors, elapsed)
+            self.event("controller_stop", ticks=self.tick_count,
+                       errors=self.errors, elapsed_wallclock=round(elapsed, 3),
+                       status=status)
             logging.shutdown()
         return status
+
+    def _log_process_state(self, height: int) -> None:
+        """The controller's view of its own daemon, in its own file.
+
+        The harness samples every process centrally, but that file is written
+        on the host and says nothing about what the node could see of itself.
+        When a daemon dies, this is the record that shows the controller
+        noticed.
+        """
+        info = self.call("getinfo", quiet=True) or {}
+        peers = self.call("getpeerinfo", quiet=True)
+        self.process_log.info(
+            "height=%s peers=%s version=%s errors=%d",
+            height, len(peers) if isinstance(peers, list) else "n/d",
+            info.get("version", "n/d"), self.errors)
 
     def _install_signals(self) -> None:
         def handler(signum, frame):
             del frame
             self.log.info("signal %d: stopping", signum)
+            self.event("signal", signal=signum)
             self._stop.set()
 
         for signum in (signal.SIGINT, signal.SIGTERM):

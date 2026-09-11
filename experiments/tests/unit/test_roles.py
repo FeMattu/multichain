@@ -191,3 +191,68 @@ def test_no_wait_outlasts_the_run_it_belongs_to(tmp_path):
 
     unbounded = controller_for("miner", _context(tmp_path, duration_s=0))
     assert unbounded._budget(900) == 900, "no duration, no budget to enforce"
+
+
+def test_a_controller_leaves_four_kinds_of_evidence(tmp_path):
+    """One log cannot answer three questions.
+
+    role_controller.log says what the controller decided, rpc.log what it
+    asked the node and how long each answer took, process.log what its daemon
+    looked like from inside, and events.jsonl is the machine-readable form the
+    analysis can query. The diagnostic inventory checks for all four.
+    """
+    from experiments.runtime.roles.base import RoleController
+
+    class Quiet(RoleController):
+        role = "miner"
+
+        def setup(self):
+            self.rpc_log.info("ok    %-24s stub", "getinfo")
+            self.process_log.info("height=1 peers=0")
+
+        def loop(self, tick):
+            del tick
+
+    controller = Quiet(_context(tmp_path, duration_s=0.01, tick_s=0.01))
+    controller.run()
+
+    node_dir = tmp_path / "logs" / "m1"
+    for name in ("role_controller.log", "rpc.log", "process.log", "events.jsonl"):
+        path = node_dir / name
+        assert path.is_file() and path.stat().st_size > 0, "%s is missing" % name
+
+    events = [json.loads(line) for line in
+              (node_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    kinds = [event["event"] for event in events]
+    assert "controller_start" in kinds and "controller_stop" in kinds
+    start = events[kinds.index("controller_start")]
+    assert start["temporal_model"] == "wall_clock_emulation"
+    for event in events:
+        assert {"wall_clock_time", "monotonic_time", "elapsed_wallclock"} <= set(event)
+        assert "simulation_time" not in event, "these runs have no simulated clock"
+
+
+def test_tick_receives_the_elapsed_wall_clock_time(tmp_path):
+    """`tick` is given monotonic elapsed seconds, never a simulated clock."""
+    from experiments.runtime.roles.base import RoleController
+
+    seen = []
+
+    class Timed(RoleController):
+        role = "miner"
+
+        def setup(self):
+            pass
+
+        def loop(self, tick):
+            del tick
+
+        def tick(self, tick_index, elapsed_wallclock_seconds):
+            seen.append((tick_index, elapsed_wallclock_seconds))
+
+    controller = Timed(_context(tmp_path, duration_s=0.05, tick_s=0.01))
+    controller.run()
+    assert seen, "tick was never called"
+    assert seen[0][0] == 1
+    assert all(elapsed >= 0 for _, elapsed in seen)
+    assert seen == sorted(seen), "elapsed time must not go backwards"

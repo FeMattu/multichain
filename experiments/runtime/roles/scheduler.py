@@ -21,6 +21,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..events import EventLog
+
 LOG = logging.getLogger("experiments.runtime.roles.scheduler")
 
 #: Give up after this many restarts of the same node. A controller failing in
@@ -69,6 +71,10 @@ class RoleScheduler:
         self.handles: dict = {}
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        # A restart is the one thing a run's artefacts cannot show afterwards:
+        # the replacement controller writes the same log, to the same file, as
+        # if nothing had happened.
+        self.events = EventLog(self.run_root, "scheduler")
 
     # -- start --------------------------------------------------------------
     def start_all(self, *, duration_s: float, tick_s: float = 5.0) -> None:
@@ -100,6 +106,10 @@ class RoleScheduler:
             handle.node_id, handle.argv, stdout=handle.log_path,
             env=handle.env, cwd=self._repo_root(),
         )
+        self.events.emit("controller_started", node_id=handle.node_id,
+                         role=handle.role,
+                         pid=getattr(handle.handle, "pid", "dry-run"),
+                         restart=handle.restarts)
         LOG.info("controller for %s (%s) started: pid %s", handle.node_id,
                  handle.role, getattr(handle.handle, "pid", "dry-run"))
 
@@ -135,20 +145,39 @@ class RoleScheduler:
             if code == 0:
                 handle.given_up = True
                 LOG.info("controller for %s finished cleanly", handle.node_id)
+                self.events.emit("controller_finished", node_id=handle.node_id,
+                                 returncode=code, restarts=handle.restarts)
                 continue
             if handle.restarts >= MAX_RESTARTS:
                 handle.given_up = True
                 LOG.error("controller for %s died %d times (last rc=%s); giving up. "
                           "That node stops contributing from now on - see %s",
                           handle.node_id, handle.restarts, code, handle.log_path)
+                self.events.emit("controller_abandoned", node_id=handle.node_id,
+                                 returncode=code, restarts=handle.restarts)
                 continue
             handle.restarts += 1
             LOG.warning("controller for %s exited with %s: restart %d of %d",
                         handle.node_id, code, handle.restarts, MAX_RESTARTS)
+            self.events.emit("controller_restarted", node_id=handle.node_id,
+                             returncode=code, restart=handle.restarts,
+                             limit=MAX_RESTARTS)
             time.sleep(RESTART_BACKOFF_S)
             self._spawn(handle)
             restarted += 1
         return restarted
+
+    def controller_alive(self, node_id: str) -> int:
+        """Is this node's controller running right now?
+
+        Asked by the sampler on every tick: a node whose daemon is healthy and
+        whose controller died stops generating traffic, and the two failures
+        look identical in the chain data.
+        """
+        handle = self.handles.get(node_id)
+        if handle is None:
+            return ""
+        return 1 if handle.alive() else 0
 
     # -- stop ---------------------------------------------------------------
     def stop_all(self, *, timeout_s: float = 30.0) -> dict:
