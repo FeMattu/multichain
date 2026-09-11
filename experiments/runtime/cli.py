@@ -154,8 +154,50 @@ def _module_report() -> dict:
 # validate
 # ---------------------------------------------------------------------------
 
+def _validate_every_descriptor(args) -> int:
+    """Every shipped descriptor, so one broken config fails the whole check.
+
+    Validating them one at a time is how a descriptor that nobody runs drifts
+    until the day somebody runs it.
+    """
+    from ..paths import CONFIG_ROOT
+
+    descriptors = sorted((CONFIG_ROOT / "experiments").glob("*.yaml"))
+    if not descriptors:
+        LOG.error("no descriptor found under %s", CONFIG_ROOT / "experiments")
+        return ConfigError.exit_code
+    results, failed = [], 0
+    for path in descriptors:
+        try:
+            plan = build_plan(path, seed_override=args.seed)
+        except Exception as exc:  # noqa: BLE001 - the point is to report, not to stop
+            failed += 1
+            LOG.error("%s does not resolve: %s", path.name, exc)
+            results.append({"descriptor": path.name, "ok": False, "error": str(exc)})
+            continue
+        report = validate_topology(plan.topology)
+        warning = plan.duration_warning()
+        if warning:
+            LOG.warning("%s schedule: %s", path.name, warning)
+        if report.errors:
+            failed += 1
+            for error in report.errors:
+                LOG.error("%s topology: %s", path.name, error)
+        results.append({
+            "descriptor": path.name, "ok": not report.errors,
+            "nodes": len(plan.enabled_nodes), "backend": plan.fabric.backend,
+            "measurable_blocks": plan.measurable_blocks(),
+            "warnings": report.warnings + ([warning] if warning else []),
+        })
+    _print({"descriptors": len(descriptors), "failed": failed,
+            "results": results}, as_json=True)
+    return ConfigError.exit_code if failed else 0
+
+
 def cmd_validate(args) -> int:
     """Resolve a descriptor end to end without touching the system."""
+    if getattr(args, "all", False):
+        return _validate_every_descriptor(args)
     plan = build_plan(args.experiment, seed_override=args.seed)
     report = validate_topology(plan.topology)
     summary = plan.summary()
@@ -526,8 +568,11 @@ def cmd_experiment_run(args) -> int:
                 run_root=root, explorer_node=plan.admin.id,
                 explorer_interval_s=args.explorer_interval,
                 target_block_time_s=plan.target_block_time,
+                explorer_mode=getattr(args, "explorer_mode", "backfill"),
             )
             sampler.start()
+            session.sampler = sampler
+            session.manifest.set(rpc_collector_mode=sampler.explorer_mode)
 
             health_report = session.run_schedule()
             session.manifest.set(health=health_report)

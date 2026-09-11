@@ -78,7 +78,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     # -- validate ----------------------------------------------------------
     validate = subparsers.add_parser("validate", help="validate an experiment descriptor")
-    validate.add_argument("--experiment", required=True)
+    group = validate.add_mutually_exclusive_group(required=True)
+    group.add_argument("--experiment")
+    group.add_argument("--all", action="store_true",
+                       help="validate every descriptor in configs/experiments/, "
+                            "and fail if any one of them does not resolve")
     validate.add_argument("--seed", type=int)
     validate.set_defaults(handler="runtime:cmd_validate")
 
@@ -168,6 +172,11 @@ def build_parser() -> argparse.ArgumentParser:
                                   "node. Keep it well below target-block-time: the "
                                   "explorer walks every intermediate height, but a "
                                   "long interval makes every batch a gap fill.")
+            sub.add_argument("--explorer-mode", choices=("backfill", "live"),
+                             default="backfill",
+                             help="backfill walks the chain from its first height; "
+                                  "live observes only blocks mined from now on. "
+                                  "Recorded in the manifest as rpc_collector_mode.")
             sub.add_argument("--controller-tick", type=float, default=5.0,
                              help="seconds between two node-controller ticks")
             sub.add_argument("--force", action="store_true",
