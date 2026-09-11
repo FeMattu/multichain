@@ -63,6 +63,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="authorise the netns fabric when CORE is unavailable. Without it, "
              "an 'auto' backend asks interactively and refuses to start when "
              "nobody can answer - a run must never change backend on its own.")
+    parser.add_argument(
+        "--yes", dest="assume_yes", action="store_true",
+        help="answer yes to every question, the CORE fallback included. The "
+             "blanket form of --allow-fallback-without-core, for scripts.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # -- env ---------------------------------------------------------------
