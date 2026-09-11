@@ -262,3 +262,75 @@ You can, and you must say what you are doing. See
   shares, chi-square, Gini, epoch trajectories and the timer-race margin are
   dimensionless or in blocks, and mean the same thing in both.
 * **Jitter is new.** The archive has none anywhere.
+
+## The two analysis prompts, and which rule wins
+
+Shadow carried **two** analysis lineages, not one, and they were never
+reconciled with each other:
+
+| | reads | writes | prompt |
+|---|---|---|---|
+| **phase pipeline** | `phase1/` → `phase2/` → `phase3/*.csv` | one `report.md` per experiment, 24 of them | `docs/pipeline/PROMPT_REPORT_ESPERIMENTI.md` |
+| **campaign analyser** | `analisi/fogli-di-analisi/*.csv` | `report_generale.md` and the per-family reports | `shadow/analisi/PROMPT_ANALISI.md` |
+
+The first prompt says so itself: *"Do not confuse the reports you write with
+`shadow/analisi/report_*.md`: those belong to an older, separate analysis
+pipeline and are unrelated to this task."*
+
+Both are migrated and both still run — `experiments/analysis/pipeline/` and
+`experiments/analysis/legacy/` — and both are verified against the archive.
+`docs/pipeline/PROMPT_ANALISI_ESPERIMENTO.md` merges them for the case neither
+covered: **one emulated run**, analysed on its own.
+
+Where the two sources disagree, the merged prompt states the resolution
+explicitly. The six conflicts and what wins:
+
+1. **Which sheets.** Neither set, exactly: a single run has its own `metrics/`
+   and `raw/observations/`. The campaign view across runs stays with the phase
+   pipeline and its own prompt.
+2. **Report format.** Five fixed sections (pipeline prompt) versus a general
+   report plus per-family ones (campaign prompt). Neither: the merged prompt
+   fixes twelve sections for the analyst's output, and the generated reports
+   become inputs rather than templates.
+3. **Provenance marks.** `[M]`/`[I]` (measured/inferred) becomes four
+   statuses — `observed`, `derived`, `estimated`, `not applicable` — because
+   the emulation adds a case neither source had: a metric that exists but
+   cannot be measured here. `[M]` maps to observed, `[I]` to derived.
+4. **Recomputation.** The pipeline prompt forbids recomputing any statistic;
+   the campaign prompt is itself an analysis. The prohibition wins for
+   anything already computed: quote `chisq.csv`, never recompute it from
+   `proposers.csv`.
+5. **Time.** Both assume simulated time. Overridden everywhere — see
+   [metrics.md](metrics.md), "Three clocks".
+6. **Language.** English reports (pipeline prompt) versus Italian (campaign
+   prompt). The analyst writes in the language asked for; file, column and
+   field names never change.
+
+The schema section of the merged prompt is **generated** from
+`experiments/metrics/catalogue.py`, and `tests/golden/test_prompt_schema.py`
+regenerates it and fails on any drift. A hand-maintained schema in a prompt
+fails silently in both directions: a column described but no longer written
+makes the analyst report a gap that does not exist, and one that is written
+but undescribed is never read.
+
+## Two per-epoch tables, not one rewritten
+
+`metrics/epoch_shares.csv` keeps the archived campaign's own schema, with its
+Italian column names: every archived report and every comparison keys on them,
+and the golden byte comparison against `shadow/risultati` is what proves the
+migration faithful. Extending it would break that proof.
+
+So the emulation-native view is written beside it by
+`experiments/analysis/summary_per_epoca.py`:
+
+| file | schema | clock |
+|---|---|---|
+| `metrics/epoch_shares.csv` | archived campaign, Italian names | Shadow-era definitions, reproduced |
+| `metrics/epoch_summary.csv` | one row per epoch, English names | wall clock |
+| `metrics/epoch_validators.csv` | one row per (epoch, validator) | wall clock |
+
+The same reasoning applies to `reports/summary_per_epoca.md` (migrated) and
+`reports/summary_per_epoca_emulation.md` (native). Neither replaces the other:
+one is comparable with the archive, the other carries fields that did not
+exist under a simulator — wall-clock epoch boundaries, transaction counts and
+inclusion latency.

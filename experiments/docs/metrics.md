@@ -43,6 +43,24 @@ it does not jump when the host's clock is adjusted — and `wallclock` for
 alignment with anything outside the run. Neither is comparable with simulated
 time; they are different quantities, not the same quantity measured twice.
 
+### The names the analysis prompt uses
+
+`docs/pipeline/PROMPT_ANALISI_ESPERIMENTO.md` fixes the vocabulary an external
+analyst is given. It maps onto the columns like this:
+
+| prompt name | column | meaning |
+|---|---|---|
+| `wall_clock_time` | `timestamp_wallclock`, `observed_wallclock` | UTC of the observation |
+| `monotonic_time` | `timestamp_monotonic`, `observed_monotonic` | local monotonic reading |
+| `elapsed_wallclock` | in `events.jsonl` | seconds since the controller started |
+| `block_timestamp` | `block_time` | the header timestamp the miner wrote |
+| `first_seen_wallclock` | `first_seen_wallclock` | first sighting, per node |
+| `last_seen_wallclock` | `last_seen_monotonic` + the sighting table | last sighting across nodes |
+
+Every manifest declares `temporal_model: wall_clock_emulation`. A run without
+that field predates this contract, and its timestamps must not be read with
+these rules.
+
 ### What can and cannot be compared with the archive
 
 **Can be.** Proposer shares, chi-square statistics, Gini and entropy, epoch
@@ -158,6 +176,47 @@ getallmalus / getnodemalus            the behavioural malus registry
 weightverifyweights       independent recomputation
 weightsetesg / weightregistermembership   the two write paths
 ```
+
+## What each node leaves behind
+
+Four files per node, because they answer four questions and one file answers
+none of them well:
+
+| file | question |
+|---|---|
+| `logs/<node>/role_controller.log` | what the controller decided |
+| `logs/<node>/rpc.log` | every call it made, and how long each took |
+| `logs/<node>/process.log` | what its daemon looked like from inside |
+| `logs/<node>/events.jsonl` | the same decisions, machine-readable |
+
+`rpc.log` records successes as well as failures on purpose: an RPC that got
+slow is invisible in a log that keeps only errors, and slow is how a node
+fails first.
+
+`raw/events/scheduler.jsonl` carries what no per-node file can — a controller
+that died and was restarted. The replacement writes to the same path as if
+nothing had happened, so without this the restart leaves no trace at all.
+
+`runtime/node-status.json` is the last known state of every node, written
+**before** anything is stopped: daemon up, controller up, height, peers. A run
+that ended badly is the one where that state matters and the one where it is
+about to be destroyed.
+
+## Backfill and live
+
+The explorer runs in one of two modes, declared in the manifest as
+`rpc_collector_mode`:
+
+* **`backfill`** (the default) walks the chain from its first height. A run
+  owns the chain it created and wants every height of it.
+* **`live`** joins at the tip and follows it. A block mined before the
+  collector existed has no first sighting to measure, and inventing one would
+  be a measurement of nothing.
+
+The mode decides what "no block before height N" means, which is why it is
+recorded rather than inferred. `runtime/explorer-state.json` holds the last
+processed height, written atomically, so a restarted collector resumes instead
+of replaying or skipping.
 
 ## Where each number comes from
 
