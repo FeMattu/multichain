@@ -24,6 +24,11 @@ from ..paths import REPO_ROOT
 
 LOG = logging.getLogger("experiments.runtime.manifest")
 
+#: The only temporal model these runs have. Written into every manifest so a
+#: reader never has to infer it, and so a Shadow-era column and an emulated one
+#: can never be compared by accident.
+TEMPORAL_MODEL = "wall_clock_emulation"
+
 SCHEMA_VERSION = 1
 
 
@@ -88,13 +93,30 @@ class Manifest:
             "descriptor": str(plan.descriptor_path),
             "seed": plan.seed,
             "mode": plan.mode,
+            # The temporal model is declared, not inferred. Every earlier
+            # campaign ran under Shadow, where time was simulated; a reader
+            # who assumes the same of these runs will compare a simulated
+            # duration with a wall-clock one and call the difference a result.
+            "temporal_model": TEMPORAL_MODEL,
+            # `fabric_backend` is what the harness has always called it and
+            # what the reports key on. The three `network_backend_*` keys are
+            # the interface the brief fixes: what was asked for, what was
+            # used, and whether a human authorised the difference.
             "fabric_backend": backend,
+            "network_backend_requested": backend,
+            "network_backend_used": backend,
+            "fallback_confirmed": False,
+            "fallback_reason": None,
+            "rpc_collector_mode": "",
             "git_commit": _git("rev-parse", "HEAD"),
             "git_commit_short": _git("rev-parse", "--short", "HEAD"),
             "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
             "git_dirty": bool(_git("status", "--porcelain")),
             "multichain_binaries": {name: info.as_dict() for name, info in binaries.items()},
             "multichain_binary": binaries.get("multichaind").path if binaries.get("multichaind") else "",
+            "multichain_binary_hash": (
+                binaries.get("multichaind").sha256 if binaries.get("multichaind") else ""
+            ),
             "multichain_version": (
                 binaries.get("multichaind").version if binaries.get("multichaind") else ""
             ),
@@ -108,9 +130,12 @@ class Manifest:
             "hostname": platform.node(),
             "cpu_count": os.cpu_count(),
             "started_at": _utc_now(),
+            "started_at_wallclock": _utc_now(),
             "started_at_monotonic": time.monotonic(),
             "ended_at": "",
+            "ended_at_wallclock": "",
             "duration_wallclock_s": None,
+            "duration_wallclock_seconds": None,
             "node_count": summary["node_count"],
             "miner_count": summary["miner_count"],
             "company_count": summary["company_count"],
@@ -164,8 +189,10 @@ class Manifest:
         started = self.data.get("started_at_monotonic")
         self.data["status"] = status
         self.data["ended_at"] = _utc_now()
+        self.data["ended_at_wallclock"] = self.data["ended_at"]
         if isinstance(started, (int, float)):
             self.data["duration_wallclock_s"] = round(time.monotonic() - started, 3)
+            self.data["duration_wallclock_seconds"] = self.data["duration_wallclock_s"]
         self.data.update(fields)
         self.write()
 

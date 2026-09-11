@@ -13,10 +13,12 @@ the reason it failed.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import signal
 import time
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import FrameType
@@ -73,6 +75,9 @@ class Session:
     init_result: object | None = None
     connectivity: dict = field(default_factory=dict)
     scheduler: object | None = None
+    #: The running sampler, when there is one. Set by the caller so the
+    #: collectors can ask the scheduler whether each controller is alive.
+    sampler: object | None = None
     controller_tick_s: float = 5.0
     interrupted: bool = False
     _previous_handlers: dict = field(default_factory=dict)
@@ -196,6 +201,9 @@ class Session:
                                   backend=backend, allow_fallback=allow_fallback,
                                   assume_yes=assume_yes)
         self.fabric.build()
+        self._record_backend_choice(requested=backend or self.plan.fabric.backend,
+                                    allow_fallback=allow_fallback,
+                                    assume_yes=assume_yes)
         self._verify_connectivity()
         exporters.write_realized_json(
             self.plan.topology,
@@ -211,6 +219,27 @@ class Session:
             for node in self.plan.enabled_nodes
             if node.expected_state != "absent"
         }
+
+    def _record_backend_choice(self, *, requested: str, allow_fallback: bool,
+                               assume_yes: bool) -> None:
+        """What was asked for, what runs, and who authorised the difference.
+
+        A run that changed backend is comparable with one that did not only if
+        the manifest says so. The gate already refuses to make the choice on
+        its own; this records the choice it was given.
+        """
+        used = getattr(self.fabric, "name", "") or requested
+        status = getattr(self.fabric, "core_status", None)
+        fell_back = requested == "auto" and used != "core"
+        self.manifest.set(
+            network_backend_requested=requested,
+            network_backend_used=used,
+            fabric_backend=used,
+            fallback_confirmed=bool(fell_back and (allow_fallback or assume_yes)),
+            fallback_reason=("; ".join(status.problems)
+                             if fell_back and status is not None and status.problems
+                             else None),
+        )
 
     def _verify_connectivity(self) -> None:
         """Prove the fabric carries packets before a single daemon starts.
@@ -325,6 +354,8 @@ class Session:
             self.fabric, self.plan, self.run_root,
             environment_for=env_for, poll_s=5.0,
         )
+        if self.sampler is not None:
+            self.sampler.controller_probe = self.scheduler.controller_alive
         self.scheduler.start(admin, duration_s=remaining, tick_s=self.controller_tick_s)
 
         # t=join - the real daemons join and sync.
@@ -447,6 +478,13 @@ class Session:
                 except BaseException as exc:  # noqa: BLE001
                     LOG.error("stopping the controllers reported %s", exc)
                     summary["controllers_error"] = str(exc)
+            # Before anything is stopped: once the daemons are down, nobody can
+            # say what state they were in, and a run that ended badly is
+            # exactly the one where that matters.
+            try:
+                self._write_node_status()
+            except BaseException as exc:  # noqa: BLE001
+                LOG.error("recording the node status reported %s", exc)
             try:
                 summary["processes"] = stop_all(self.registry, self.clients)
             except BaseException as exc:  # noqa: BLE001 - including KeyboardInterrupt
@@ -480,6 +518,53 @@ class Session:
                     LOG.error("could not finalise the manifest: %s", exc)
             LOG.info("run %s finished: %s", self.run_id, status)
         return summary
+
+    def _write_node_status(self) -> Path:
+        """The last known state of every node, as one file.
+
+        `role-controllers.json` says what the scheduler saw and the manifest
+        says what the harness started; neither answers "what was node m1 doing
+        when this ended". This does, per node, in the order a reader asks:
+        was its daemon up, was its controller up, and how far had its chain
+        got.
+        """
+        status = {}
+        for node in self.plan.enabled_nodes:
+            daemons = [p for p in self.registry.for_node(node.id)
+                       if p.kind == "daemon"]
+            entry = {
+                "node_id": node.id,
+                "role": node.role,
+                "expected_state": node.expected_state,
+                "daemon_alive": bool(any(p.alive() for p in daemons)),
+                "daemon_returncode": daemons[-1].returncode if daemons else None,
+                "daemon_restarts": sum(p.restarts for p in daemons),
+                "controller_alive": (self.scheduler.controller_alive(node.id)
+                                     if self.scheduler is not None else ""),
+                "block_height": None,
+                "peer_count": None,
+                "rpc_reachable": False,
+            }
+            client = self.clients.get(node.id)
+            if client is not None:
+                try:
+                    entry["block_height"] = int(client.call("getblockcount"))
+                    entry["rpc_reachable"] = True
+                    peers = client.call("getpeerinfo")
+                    entry["peer_count"] = len(peers) if isinstance(peers, list) else None
+                except Exception as exc:  # noqa: BLE001 - an unreachable node is a fact
+                    entry["rpc_error"] = str(exc)
+            status[node.id] = entry
+        path = self.run_root / "runtime" / "node-status.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "run_id": self.run_id,
+            "recorded_at_wallclock": datetime.now(timezone.utc).isoformat(),
+            "temporal_model": "wall_clock_emulation",
+            "nodes": status,
+        }, indent=2, default=str), encoding="utf-8")
+        LOG.info("node status recorded for %d nodes: %s", len(status), path)
+        return path
 
     def _restore_ownership(self) -> str:
         """Give the run directory back to the user who invoked sudo.
