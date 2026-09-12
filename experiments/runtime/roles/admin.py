@@ -238,15 +238,34 @@ class AdminController(RoleController):
                             header=["epoch", "height", "treasury_balance_gas"])
 
     # -- teardown -----------------------------------------------------------
+    #: Written next to the snapshot when it could not be taken. Its presence
+    #: is what turns "these files are missing" into "these files are missing
+    #: because the daemon was dead, at this time, and no re-analysis will
+    #: bring them back". `analysis/summaries.py` and the diagnostics read it.
+    SNAPSHOT_FAILURE = "snapshot_failed.json"
+
     def teardown(self) -> None:
         """The final snapshot: the primary source of every metric.
 
         Far more reliable than parsing debug.log, because listblocks reports
         the proposer of each height directly.
+
+        When the daemon is gone this used to log one line and return, leaving
+        a run that had lost `blocks.json`, `weights.json` and everything
+        derived from them recorded as `status: completed`. It now records the
+        failure as an artefact, so the absence is self-explaining.
         """
         height = self.block_count()
         if height < 0:
-            self.log.error("no RPC at teardown: the final snapshot was not taken")
+            self.log.error(
+                "no RPC at teardown: the final snapshot was NOT taken. "
+                "blocks.json, weights.json, esg.json, membership.json, "
+                "malus.json, verify.json and node_state.csv will be absent, "
+                "and every metric derived from them cannot be recovered by "
+                "re-running the analysis - only by re-running the experiment.")
+            self._record_snapshot_failure(
+                "the admin's RPC did not answer at teardown (getblockcount "
+                "returned nothing); the daemon had most likely already exited")
             return
         self.log.info("final snapshot at height=%d", height)
         (self.ctx.metrics_dir).mkdir(parents=True, exist_ok=True)
@@ -271,6 +290,30 @@ class AdminController(RoleController):
             self.write_json("treasury_balance.json",
                             self.call("getaddressbalances", [self.ctx.treasury]) or [])
         self._node_state(height)
+
+    def _record_snapshot_failure(self, reason: str) -> None:
+        """Leave the reason on disk, in wall-clock terms, next to the gap."""
+        import json
+        from datetime import datetime, timezone
+
+        try:
+            self.ctx.metrics_dir.mkdir(parents=True, exist_ok=True)
+            (self.ctx.metrics_dir / self.SNAPSHOT_FAILURE).write_text(
+                json.dumps({
+                    "taken": False,
+                    "reason": reason,
+                    "wallclock": datetime.now(timezone.utc).isoformat(
+                        timespec="seconds"),
+                    "node_id": self.ctx.node_id,
+                    "absent": ["blocks.json", "weights.json", "esg.json",
+                               "membership.json", "malus.json", "verify.json",
+                               "admin_getinfo.json", "permissions_mine.json",
+                               "final_height.txt", "node_state.csv"],
+                    "recoverable_by_reanalysis": False,
+                }, indent=2) + "\n",
+                encoding="utf-8")
+        except OSError as exc:
+            self.log.error("could not even record the snapshot failure: %s", exc)
 
     def _node_state(self, height: int) -> None:
         """Per-node height and hash at a COMMON buried height.

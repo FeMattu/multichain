@@ -70,6 +70,12 @@ def cmd_analysis_run(args) -> int:
     problems = produced.get("validation", {}).get("problems", [])
     for problem in problems:
         LOG.error("schema: %s", problem)
+    # A stage that raised is not a property of the run: the analysis is
+    # broken, and saying SUCCESS while a third of the tables are absent is
+    # what let three runs finish with different artefacts and no complaint.
+    failures = produced.get("stage_failures", {})
+    for stage, error in failures.items():
+        LOG.error("stage %r failed and its output is missing: %s", stage, error)
 
     summary = {
         "run_id": args.run_id,
@@ -77,13 +83,27 @@ def cmd_analysis_run(args) -> int:
         "historical": produced.get("historical", {}),
         "schema_report": produced.get("schema_report", ""),
         "schema_problems": problems,
+        "stage_failures": failures,
     }
     print(json.dumps(summary, indent=2, default=str))
 
-    if problems:
+    if failures or problems:
         return AnalysisFailed.exit_code
-    if not produced.get("tables"):
+    tables = produced.get("tables", {})
+    if not tables:
         raise IncompleteData("no metric table could be produced from %s" % root)
+    # Every table written and every one of them empty is not a successful
+    # analysis of a quiet run - it is a run that measured nothing. The
+    # extractors write a header even when there are no rows (deliberately, so
+    # an absent file stays distinguishable from an empty one), which meant a
+    # run whose fabric never carried a packet still exited 0 here.
+    if not any(int(count or 0) > 0 for count in tables.values()):
+        raise IncompleteData(
+            "every metric table of %s is empty (%s): the run produced no "
+            "observations at all" % (root.name, ", ".join(sorted(tables))),
+            hint="check run.log for the fabric and daemon start-up; this is "
+                 "not recoverable by re-running the analysis",
+        )
     return SUCCESS
 
 

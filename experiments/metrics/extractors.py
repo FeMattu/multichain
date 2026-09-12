@@ -244,29 +244,39 @@ def run_campaign_sheets(run_root: Path, plan) -> dict:
         sys.argv = argv
 
     produced, empty = {}, []
-    sheets = out / "fogli-di-analisi"
-    target = run_root / "metrics"
-    target.mkdir(parents=True, exist_ok=True)
-    if sheets.is_dir():
-        for path in sorted(sheets.glob("*.csv")):
-            rows = max(0, sum(1 for _ in path.open(encoding="utf-8")) - 1)
-            shutil.copy2(path, target / path.name)
-            produced[path.name] = rows
-            if rows == 0 and path.stem in HISTORICAL_SHEETS:
-                empty.append(path.name)
-        for extra in ("metrics_schema_report.md", "estrazione.log"):
-            source = sheets / extra
-            if source.is_file():
-                shutil.copy2(source, run_root / "reports" / extra
-                             if extra.endswith(".md") else target / extra)
-    # The per-run mirror: weight chain, ledger, integrity, inequality.
-    mirror = out / "esperimenti"
-    if mirror.is_dir():
-        destination = run_root / "metrics" / "per-run"
-        if destination.exists():
-            shutil.rmtree(destination)
-        shutil.copytree(mirror, destination)
-    shutil.rmtree(workdir, ignore_errors=True)
+    # `finally`, because everything below reads a directory under /tmp: an
+    # exception while copying the sheets out used to leak the whole working
+    # tree, once per attempt.
+    try:
+        sheets = out / "fogli-di-analisi"
+        target = run_root / "metrics"
+        target.mkdir(parents=True, exist_ok=True)
+        (run_root / "reports").mkdir(parents=True, exist_ok=True)
+        if sheets.is_dir():
+            for path in sorted(sheets.glob("*.csv")):
+                rows = max(0, sum(1 for _ in path.open(encoding="utf-8")) - 1)
+                shutil.copy2(path, target / path.name)
+                produced[path.name] = rows
+                if rows == 0 and path.stem in HISTORICAL_SHEETS:
+                    empty.append(path.name)
+            for extra in ("metrics_schema_report.md", "estrazione.log"):
+                source = sheets / extra
+                if source.is_file():
+                    shutil.copy2(source, (run_root / "reports" / extra)
+                                 if extra.endswith(".md") else (target / extra))
+        else:
+            LOG.error("analizza_esperimenti wrote no %s: none of the twelve "
+                      "historical sheets could be copied into %s",
+                      sheets, target)
+        # The per-run mirror: weight chain, ledger, integrity, inequality.
+        mirror = out / "esperimenti"
+        if mirror.is_dir():
+            destination = run_root / "metrics" / "per-run"
+            if destination.exists():
+                shutil.rmtree(destination)
+            shutil.copytree(mirror, destination)
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
 
     missing = [name for name in HISTORICAL_SHEETS
                if "%s.csv" % name not in produced]
@@ -277,6 +287,12 @@ def run_campaign_sheets(run_root: Path, plan) -> dict:
     LOG.info("campaign sheets: %d written, %d rows in total",
              len(produced), sum(produced.values()))
     return {"sheets": produced, "missing": missing, "empty": empty}
+
+
+def _summaries(run_root: Path, plan) -> dict:
+    from ..analysis.summaries import write_all as write_summaries
+
+    return write_summaries(run_root, plan)
 
 
 def run_historical_pipeline(run_root: Path, plan) -> dict:
@@ -306,28 +322,28 @@ def extract_all(run_root: Path, plan) -> dict:
     produced["tables"]["netem_conditions.csv"] = extract_netem(run_root, plan)
     produced["tables"]["block_propagation.csv"] = extract_propagation(run_root, plan)
     produced["tables"]["fork_events.csv"] = extract_forks(run_root, plan)
+    # Each stage is guarded so one failure does not cost the others, but the
+    # failure is COLLECTED, not just logged: `produced["stage_failures"]` is
+    # what makes the CLI exit non-zero. Logging an exception and returning a
+    # dict that looks like success is how a run ends up with a third of its
+    # tables and a green exit code.
+    failures: dict = {}
+
     # The two textual summaries come FIRST: the campaign-level chisq.csv takes
     # its authoritative chi-square by parsing summary.txt, so a pipeline run
     # before it exists produces a chisq.csv with an empty chi2_summary column.
-    try:
-        from ..analysis.summaries import write_all as write_summaries
-
-        produced["summaries"] = write_summaries(run_root, plan)
-    except Exception as exc:  # noqa: BLE001
-        LOG.error("the summaries could not be produced: %s", exc)
-        produced["summaries"] = {"error": str(exc)}
-
-    try:
-        produced["historical"] = run_historical_pipeline(run_root, plan)
-    except Exception as exc:  # noqa: BLE001 - a run with no snapshot still has observations
-        LOG.error("the historical pipeline could not run: %s", exc)
-        produced["historical"] = {"error": str(exc)}
-
-    try:
-        produced["campaign_sheets"] = run_campaign_sheets(run_root, plan)
-    except Exception as exc:  # noqa: BLE001
-        LOG.error("the campaign sheets could not be produced: %s", exc)
-        produced["campaign_sheets"] = {"error": str(exc)}
+    for stage, call in (
+        ("summaries", lambda: _summaries(run_root, plan)),
+        ("historical", lambda: run_historical_pipeline(run_root, plan)),
+        ("campaign_sheets", lambda: run_campaign_sheets(run_root, plan)),
+    ):
+        try:
+            produced[stage] = call()
+        except Exception as exc:  # noqa: BLE001 - one stage must not cost the rest
+            LOG.exception("stage %r FAILED: %s: %s", stage, type(exc).__name__, exc)
+            produced[stage] = {"error": "%s: %s" % (type(exc).__name__, exc)}
+            failures[stage] = "%s: %s" % (type(exc).__name__, exc)
+    produced["stage_failures"] = failures
 
     from .schema_report import write as write_schema
 
