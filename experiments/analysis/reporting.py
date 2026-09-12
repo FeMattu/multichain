@@ -119,6 +119,7 @@ def generate_reports(run_root: Path, plan, *, with_plots: bool = True) -> dict:
         figures = generate_plots(run_root, plan)
         produced["plots"] = figures["produced"]
         produced["plots_skipped"] = figures["skipped"]
+        produced["plots_failed"] = figures.get("failed", {})
         context["plots"] = figures
         # The figure inventory goes into the general report, so a reader sees
         # what was drawn AND what was not, with the reason.
@@ -144,6 +145,17 @@ def _figures_section(figures: dict) -> list:
                   "| figure | shows | why not |", "|---|---|---|"]
         for name, reason in sorted(figures["skipped"].items()):
             lines.append("| `%s` | %s | %s |" % (name, FIGURES.get(name, ""), reason))
+        lines.append("")
+    # A drawer that raised is a defect in this repository, not a property of
+    # the run, and must not be read as "there was no data".
+    failed = figures.get("failed") or {}
+    if failed:
+        lines += ["> **%d figure(s) failed to draw.** The data was there and the "
+                  "code raised: this is a bug in `analysis/plots.py`, not a gap "
+                  "in the run." % len(failed), "",
+                  "| figure | shows | exception |", "|---|---|---|"]
+        for name, error in sorted(failed.items()):
+            lines.append("| `%s` | %s | `%s` |" % (name, FIGURES.get(name, ""), error))
         lines.append("")
     return lines
 
@@ -772,74 +784,3 @@ def _footer(plan) -> list:
     ]
 
 
-def _plots(run_root: Path, context: dict) -> list:
-    """Plots, when matplotlib is present. Absence is reported, never fatal."""
-    try:
-        import matplotlib
-
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-    except ImportError:
-        LOG.warning("matplotlib is not installed: no plot was produced")
-        return []
-
-    plots_dir = Path(run_root) / "plots"
-    plots_dir.mkdir(parents=True, exist_ok=True)
-    produced = []
-
-    by_node: dict = {}
-    for row in context["observations"]:
-        height, monotonic = row.get("block_height"), row.get("timestamp_monotonic")
-        if not height or not monotonic:
-            continue
-        try:
-            by_node.setdefault(row["node_id"], []).append((float(monotonic), float(height)))
-        except (TypeError, ValueError):
-            continue
-    if by_node:
-        figure, axes = plt.subplots(figsize=(10, 5))
-        for node, series in sorted(by_node.items()):
-            series.sort()
-            axes.plot([p[0] for p in series], [p[1] for p in series], label=node, linewidth=1)
-        axes.set_xlabel("monotonic time (s)")
-        axes.set_ylabel("block height")
-        axes.set_title("Chain height per node - %s" % context["plan"].scenario)
-        if len(by_node) <= 12:
-            axes.legend(fontsize=7, ncol=2)
-        axes.grid(alpha=0.3)
-        path = plots_dir / "01_height_per_node.png"
-        figure.tight_layout()
-        figure.savefig(path, dpi=120)
-        plt.close(figure)
-        produced.append(str(path))
-
-    times = _numbers(context["propagation"], "propagation_time")
-    if times:
-        figure, axes = plt.subplots(figsize=(8, 4.5))
-        axes.hist(times, bins=min(40, max(5, len(times) // 4)), color="#4477aa")
-        axes.set_xlabel("propagation time (s, upper bound)")
-        axes.set_ylabel("blocks")
-        axes.set_title("Block propagation across nodes")
-        axes.grid(alpha=0.3)
-        path = plots_dir / "02_block_propagation.png"
-        figure.tight_layout()
-        figure.savefig(path, dpi=120)
-        plt.close(figure)
-        produced.append(str(path))
-
-    delays = _numbers(context["netem"], "netem_delay_ms")
-    if delays:
-        figure, axes = plt.subplots(figsize=(8, 4.5))
-        axes.hist(delays, bins=min(30, max(5, len(delays) // 2)), color="#aa7744")
-        axes.set_xlabel("configured one-way delay (ms)")
-        axes.set_ylabel("directed links")
-        axes.set_title("Emulated link delays - %s" % context["plan"].topology.name)
-        axes.grid(alpha=0.3)
-        path = plots_dir / "03_link_delays.png"
-        figure.tight_layout()
-        figure.savefig(path, dpi=120)
-        plt.close(figure)
-        produced.append(str(path))
-
-    LOG.info("wrote %d plots to %s", len(produced), plots_dir)
-    return produced

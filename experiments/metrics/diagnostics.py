@@ -35,16 +35,25 @@ REQUIRED_MANIFEST_KEYS = [
 #: One controller's worth of evidence, per node.
 REQUIRED_NODE_LOGS = ["role_controller.log", "rpc.log", "process.log", "events.jsonl"]
 
+#: `summary.md` was missing from this list, so a run that never produced the
+#: run-level summary - which is every run whose admin snapshot failed - passed
+#: the inventory with the one absence that matters most unreported.
 REQUIRED_REPORTS = [
-    "summary_per_epoca.md", "summary_per_epoca_emulation.md",
+    "summary.md", "summary_per_epoca.md", "summary_per_epoca_emulation.md",
     "report_generale.md", "report_confronto.md",
     "report_asse_livello.md", "report_asse_tbt.md", "metrics_schema_report.md",
 ]
 
-REQUIRED_PLOTS = [
-    "01_traiettoria_pesi.png", "02_quota_per_epoca.png", "03_chi2_vs_tbt.png",
-    "04_margine_prop518.png", "05_block_time.png", "06_eccesso_miner_pesante.png",
-]
+#: Taken from the figure catalogue rather than restated, so the two cannot
+#: drift: the emulation figures (10-12) were absent from this list while the
+#: only module that drew them had been left uncalled, and nothing noticed.
+def _required_plots() -> list:
+    from ..analysis.plots import FIGURES
+
+    return list(FIGURES)
+
+
+REQUIRED_PLOTS = _required_plots()
 
 
 @dataclass
