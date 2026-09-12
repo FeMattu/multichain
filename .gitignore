@@ -168,6 +168,9 @@ confdefs.*
 experiments/results/*
 !experiments/results/.gitkeep
 !experiments/results/README.md
+# The diagnosis of the runs is a document about them, not a run artefact:
+# it is written by hand and reviewed, so it belongs in the history.
+!experiments/results/DIAGNOSI.md
 
 # Topology exports: every file here is reproducible from the YAML.
 experiments/topology/generated/*
