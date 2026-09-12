@@ -17,4 +17,11 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ -n "$RUN_ID" ] || die "$EXIT_CONFIG_ERROR" "--run-id is required"
+
+# Barrier before reading: multichaind keeps its data directory and debug.log
+# open, and an extractor that reads them mid-flush sees a truncated tail and
+# reports it as "no data". This waits on the processes themselves.
+CHAIN="$(chain_of_run "$RUN_ID")"
+[ -n "$CHAIN" ] && wait_for_daemons_to_exit "$CHAIN" 120 || true
+
 cli metrics collect --run-id "$RUN_ID"

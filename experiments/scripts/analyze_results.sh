@@ -20,6 +20,10 @@ done
 
 for run_id in "${RUN_IDS[@]}"; do
     say "analysing $run_id"
+    # Same barrier as collect_results.sh: `analysis run` re-reads raw/ and
+    # runtime/, both of which a surviving daemon still holds open.
+    CHAIN="$(chain_of_run "$run_id")"
+    [ -n "$CHAIN" ] && wait_for_daemons_to_exit "$CHAIN" 120 || true
     cli analysis run --run-id "$run_id" >/dev/null \
         || die "$EXIT_ANALYSIS_FAILED" "the analysis of $run_id failed"
     if [ "$NO_PLOTS" -eq 1 ]; then

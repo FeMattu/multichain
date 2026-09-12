@@ -61,3 +61,51 @@ confirm() {
     local answer; read -r answer
     case "$answer" in [yY]*) return 0 ;; *) return 1 ;; esac
 }
+
+# ---------------------------------------------------------------------------
+# wait_for_daemons_to_exit <chain-name> [timeout-seconds]
+#
+# A barrier on real process state, not a sleep. `collect_results.sh` and
+# `analyze_results.sh` read files that multichaind still has open: its wallet,
+# its debug.log and the JSON the admin's teardown writes. Reading them while
+# the daemon is alive gives a truncated tail, and the analysis then reports
+# "0 blocks" over a run that produced hundreds.
+#
+# It polls for the processes themselves - `pgrep` against the chain name - so
+# it returns as soon as the last one is gone rather than after a fixed wait,
+# and it says so when it gives up instead of proceeding silently.
+# ---------------------------------------------------------------------------
+wait_for_daemons_to_exit() {
+    local chain="$1" timeout="${2:-120}" waited=0
+    command -v pgrep >/dev/null 2>&1 || return 0
+    if ! pgrep -f "multichaind .*${chain}" >/dev/null 2>&1; then
+        return 0
+    fi
+    say "waiting for the daemons of '$chain' to exit before reading their files"
+    while pgrep -f "multichaind .*${chain}" >/dev/null 2>&1; do
+        if [ "$waited" -ge "$timeout" ]; then
+            warn "multichaind is STILL running for '$chain' after ${timeout}s:"
+            pgrep -af "multichaind .*${chain}" >&2 || true
+            warn "collecting anyway; files the daemons hold open may be truncated"
+            return 1
+        fi
+        sleep 2                      # a polling interval, not a simulated tick
+        waited=$((waited + 2))
+    done
+    say "the daemons exited after ${waited}s"
+    return 0
+}
+
+# chain_of_run <run-id>: the chain name a run used, from its own manifest.
+chain_of_run() {
+    (cd "$REPO_DIR" && "$PYTHON" - "$1" <<'PYEOF' 2>/dev/null || true
+import json, sys
+from experiments.paths import run_dir
+try:
+    path = run_dir(sys.argv[1]) / "manifest.json"
+    print(json.loads(path.read_text(encoding="utf-8")).get("chain", "") or "")
+except Exception:
+    pass
+PYEOF
+)
+}

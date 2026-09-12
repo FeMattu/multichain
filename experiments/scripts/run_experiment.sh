@@ -115,13 +115,35 @@ fi
 # the root namespace, which would impair the next run for no visible reason.
 cli results clean --prefix poesia >/dev/null 2>&1 || true
 
+# The analysis runs only after `cli experiment run` has RETURNED - it is a
+# blocking command substitution above, so there is no race with the harness's
+# own children and no `sleep` standing in for one. What was wrong here is the
+# reporting of it: both steps were `|| warn`, so a run whose analysis produced
+# a third of its tables still exited 0 and looked complete.
+ANALYSIS_RC=0
 if [ "$SKIP_ANALYSIS" -eq 0 ] && [ -n "$RESOLVED_RUN_ID" ]; then
     say "analysing $RESOLVED_RUN_ID"
-    cli analysis run --run-id "$RESOLVED_RUN_ID" >/dev/null || \
-        warn "the analysis did not complete; the raw artefacts are intact"
-    cli report generate --run-id "$RESOLVED_RUN_ID" >/dev/null || \
-        warn "report generation did not complete"
+    set +e
+    trap - ERR
+    cli analysis run --run-id "$RESOLVED_RUN_ID" >/dev/null
+    ANALYSIS_RC=$?
+    cli report generate --run-id "$RESOLVED_RUN_ID" >/dev/null
+    REPORT_RC=$?
+    trap 'on_error $LINENO' ERR
+    set -e
+    [ "$ANALYSIS_RC" -eq 0 ] || \
+        warn "the analysis exited $ANALYSIS_RC: some tables are missing or \
+incomplete. The raw artefacts are intact - fix the extractor and re-run \
+experiments/scripts/analyze_results.sh --run-id $RESOLVED_RUN_ID"
+    [ "$REPORT_RC" -eq 0 ] || {
+        warn "report generation exited $REPORT_RC"
+        [ "$ANALYSIS_RC" -eq 0 ] && ANALYSIS_RC="$REPORT_RC"
+    }
 fi
 
 say "run id: ${RESOLVED_RUN_ID:-<unknown>}"
-exit "$RUN_RC"
+# The run's own exit code wins: a measurement that failed is worse news than
+# an analysis that failed over it. An analysis failure on an otherwise good
+# run must still not read as success.
+if [ "$RUN_RC" -ne 0 ]; then exit "$RUN_RC"; fi
+exit "$ANALYSIS_RC"
