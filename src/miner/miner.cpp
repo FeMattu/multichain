@@ -1214,7 +1214,7 @@ double GetMinerAndExpectedMiningStartTime(CWallet *pwallet,CPubKey *lpkMiner,set
         std::string sLocalAddr=CBitcoinAddress(kThisMiner.GetID()).ToString();
 
         // wPoA Phase 3b: when the RANDAO beacon governs this height, seed the
-        // election from the accumulator (seed[n+1]=H(R_tot[n-k]‖h[n-1]‖n)) rather
+        // election from the accumulator (seed[n+1]=H(R_tot[n-k]‖h[n]‖n+1)) rather
         // than the plain previous block hash. The validator derives the identical
         // seed from the same tip in VerifyBlockMinerWPoA, so both agree on the
         // proposer. Falls back to the prev-hash seed if RANDAO is inactive.
