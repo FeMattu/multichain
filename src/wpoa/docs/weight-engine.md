@@ -253,25 +253,41 @@ Implemented verbatim from the thesis chapter *"Gestione del peso"* in
 depends only on the C++ standard library, so it is testable in isolation.
 
 ```
-c_i^(e)   = ESG_i * tau_i^(e) / kappa                            (weighted contribution)
-W_k^(e)   = ESG_Mk * ( tau_Mk^(e) + sum_{i in C_k} c_i^(e) )     (raw weight)
-A_k^(e)   = alpha * Theta^(e) * W_k^(e) / W_tot^(e)              (allocation)
-rho_k^(e) = R_k^(e) / ( A_k^(e) + B_k^(e-1) )  in [0,1]          (compliance rate)
-B_k^(e)   = A_k^(e) - R_k^(e) + B_k^(e-1),  B_k^(0) = 0          (reconciliation)
-w_k^(1)   = W_k^(1)                                              (final weight, e = 1)
-w_k^(e)   = W_k^(e) * [ rho_k^(e-1) * lambda + (1 - lambda) ]    (e >= 2)
+c_i^(e)     = ESG_i * tau_i^(e) / kappa                          (weighted contribution)
+W_k^(e)     = ESG_Mk * ( tau_Mk^(e) + sum_{i in C_k} c_i^(e) )   (raw weight)
+g_k^(e)     = Entrate_k^(e) - Uscite_k^(e)                       (gain)
+saldo_k^(e) = saldo_k^(e-1) + g_k^(e),  saldo_k^(0) = 0          (balance)
+rho_k^(e)   = R_k^(e) / saldo_k^(e)  in [0,1]                    (restitution rate)
+w_k^(1)     = W_k^(1)                                            (final weight, e = 1)
+w_k^(e)     = W_k^(e) * [ rho_k^(e-1) * lambda + (1 - lambda) ]  (e >= 2)
 ```
+
+`Uscite` **excludes the epoch's own restitution** `R_k^(e)`, accounted separately so that
+`saldo_k^(e)` does not depend on `R_k^(e)` — otherwise `rho = R/saldo` would be
+self-referential. Operationally the reader hands over *gross* flows with the restitution
+still inside the debits, and `WeightEngine::Gain` adds it back: one subtraction, in one
+place.
 
 The final integer weight is `ToIntegerWeight(w_k)`, always `>= 1` — the weight-positivity
 requirement, and also the Efraimidis–Spirakis requirement
 ([`wpoa_selector.h`](../wpoa_selector.h)).
 
-> **`R_k^(e)` is chain-derived, not declared.** The formula is unchanged and `R_k` is
-> still clamped to `[0, A_k + B_{k-1}]`, but the value now comes from the epoch's
-> confirmed transfers to the treasury rather than from an administrator's statement
-> ([§2.1](#21-activity-and-reconciliation-are-published-by-nobody)). This is the one
-> point where the implementation's **source** for a Cap. 6 quantity differs from what the
-> thesis text describes; the proposed wording is in
+> **Supersedes the allocation / compliance formulation.** Until this change the engine
+> implemented the earlier version of the same feedback slot: an allocation
+> `A_k = alpha*Theta*W_k/W_tot`, a residual carry `B_k`, and a compliance rate
+> `rho_k = R_k / (A_k + B_k^(e-1))`. The thesis chapter replaced that trio with the three
+> lines above. The denominator is no longer an amount the protocol notionally **assigns**
+> to a cluster, but the amount the cluster actually **has**, derived from the epoch's
+> confirmed transfers exactly like `R_k` itself. `A_k`, `B_k` and `Theta` are gone from
+> the pipeline; `alpha` survives only as a parsed, hash-enforced params.dat field
+> ([§3.3](#33-why-the-balance-is-recomputed-and-not-read-from-the-ledger) and
+> [protocol-parameters.md](protocol-parameters.md)), because dropping a params.dat field
+> would change its hash and make every existing chain unjoinable.
+
+> **`R_k^(e)` is chain-derived, not declared.** `R_k` is the epoch's confirmed transfers
+> to the treasury rather than an administrator's statement
+> ([§2.1](#21-activity-and-reconciliation-are-published-by-nobody)); the same is now true
+> of `Entrate`/`Uscite`, which come from the same single pass. See
 > [adr/reconciliation-onchain.md §7](adr/reconciliation-onchain.md#7-divergence-from-the-thesis-text).
 
 ### 3.1 Consensus-critical determinism
@@ -282,12 +298,16 @@ Four explicit choices guarantee it:
 1. **Double precision** throughout, matching the selector core (`ScoreFromEntropy64`),
    which already treats IEEE-754 `double` as deterministic across the identical-binary
    validator set.
-2. **Sums taken in ascending address order** — both `sum_i c_i` and `W_tot`. Floating
-   point is not associative: without a fixed order the result would depend on input
-   order.
-3. **A denominator `<= 0` in `rho` yields `0`**, never `NaN`/`Inf`. This is the
-   degeneration that propagated `#DIV/0!` through the reference simulation; the thesis
-   form with `lambda < 1` avoids it by construction.
+2. **Sums taken in ascending address order** — `sum_i c_i` within a cluster, and the
+   clusters themselves in ascending miner order. Floating point is not associative:
+   without a fixed order the result would depend on input order. The epoch's flows are
+   accumulated as **int64 base units** and converted once at the end, like `R`, so the
+   totals carry no rounding of their own.
+3. **A `saldo <= 0` in `rho` yields `0`**, never `NaN`/`Inf`. This is the degeneration
+   that propagated `#DIV/0!` through the reference simulation; the thesis form with
+   `lambda < 1` keeps it from reaching `w_k`. Note the direction is the safe one: `rho`
+   only ever damps `w_k`, so an indeterminate ratio costs a cluster feedback rather than
+   granting it any.
 4. **`ToIntegerWeight`** rounds half-away-from-zero and clamps to `[1, UINT32_MAX]`.
 
 ### 3.2 Epochs and the stability margin
@@ -313,7 +333,61 @@ making two nodes read different blocks for either quantity.
 > `weightepochlength`. See
 > [protocol-parameters.md §4](protocol-parameters.md#4-catalogue--weight-engine).
 
-### 3.3 Relation to the selector — three distinct levels
+### 3.3 Why the balance is recomputed and not read from the ledger
+
+MultiChain is UTXO-based: the ledger already tracks, for every address, exactly the
+quantity `saldo` appears to name. Replacing the recursion of Def. *saldo* with a direct
+balance lookup is therefore the obvious simplification — and it is wrong. Three
+independent reasons, any one of which is disqualifying:
+
+**1. It is a different quantity.** Every epoch's `Uscite` excludes that epoch's own
+restitution, so the recursion never subtracts any `R` at all:
+
+```
+saldo_k^(e) = sum_{j<=e} ( Entrate_k^(j) - Uscite_k^(j) )
+            = ledger_balance_k(e) + sum_{j<=e} R_k^(j)
+```
+
+The two coincide only for a cluster that has never restituted anything. Reading the ledger
+would shrink the denominator by precisely the cluster's own good behaviour. In the limit
+the inversion is total: a cluster that earns 100 and returns all 100 ends the epoch with a
+ledger balance of **zero**, so `rho` would divide by zero, hit the guard, and report
+`rho = 0` — maximal non-compliance — for maximal compliance. `rho` must be `1`. This is
+pinned by `full_restitution_scores_one_not_zero` and
+`cluster_restituting_everything_reaches_rho_one_and_full_weight` in the engine suite.
+
+**2. It is state at the wrong time.** `w_k` for a buried epoch must be a function of *that
+epoch's* confirmed blocks alone. A UTXO balance is current state at the local tip, so two
+nodes at different heights — or one re-syncing — would attribute a historical epoch
+differently than the network did when it happened. This is the same failure mode that
+already ruled out deriving the treasury address from the mutable admin set
+([adr/reconciliation-onchain.md](adr/reconciliation-onchain.md)).
+
+**3. It is not available anyway.** Balance lookups here are wallet-scoped —
+`getaddressbalances` and `CWallet::GetAddressBalances` filter by
+`ISMINE_SPENDABLE | ISMINE_WATCH_ONLY` — and MultiChain keeps no address index. A node
+therefore cannot read another cluster's balance at all, yet **every** node must recompute
+**every** cluster's weight in order to verify the published ones
+([weight_verifier.h](../../weight_engine/weight_verifier.h)). The chain-derived route is
+not merely safer here; it is the only one that exists.
+
+#### No balance cache is needed
+
+The flows come from `WeightStreamReader::ComputeEpochFacts`, the *same* single pass over
+the epoch's blocks that already yields `tau` and `R` — so the extra data costs no extra
+scan. The running total is then carried in `WeightEngine::ClusterState`, which
+`WeightEngineComputeAllWeightsForEpoch` folds forward one epoch per iteration. That map
+**is** the memo: it advances exactly once per buried epoch, under the same
+`MC_WEIGHT_DEFAULT_STABILITY_MARGIN` that keeps every other derived quantity away from an
+unstable tip, and it is rebuilt from epoch 1 on each recomputation rather than persisted,
+so there is no cache to invalidate and no way for it to disagree with the chain. A
+separate balance cache would add a second source of truth for the same number; there is
+nothing for it to make faster.
+
+> Every epoch from 1 must be walked, never just the target: `saldo` is cumulative, so
+> skipping an epoch silently changes the denominator of `rho` for every epoch after it.
+
+### 3.4 Relation to the selector — three distinct levels
 
 The weight engine produces the **raw** weight `w_k`. The whale compression `f(w_k)`
 (`WPoASelector::ApplyDumping`, governed by `-dumpfunction`) is applied **downstream**, at
@@ -326,16 +400,18 @@ w_k  (engine)  ->  wpoa-weights  ->  w_eff = w * Psi  (malus)  ->  f(w_eff)  (du
 The three levels are complementary and must be kept distinct in diagrams: `w_k` is not the
 value the draw operates on.
 
-### 3.4 Deliberate divergence from the reference simulation
+### 3.5 Deliberate divergence from the reference simulation
 
-This core follows the **thesis**, which defines the allocation `A_k` on the **raw** weight
-`W_k`. The reference `Vers_2` simulation instead derives its *"GuadagnoEx"* entry from the
-normalised, feedback-adjusted weight.
+The reference `Vers_2` simulation derives its *"GuadagnoEx"* entry from the normalised,
+feedback-adjusted weight — a **notional** assignment, computed from the model rather than
+observed.
 
-The two formulations **coincide** for epoch 1 and for `W_k` in every epoch, but the
-allocation-derived quantities (`A_k`, `rho_k`, `B_k`) can diverge from epoch 2 onwards. The
-thesis form is used deliberately: allocation tracks certified and current merit (`W_k`),
-avoiding a feedback-on-feedback loop.
+This core no longer models an assignment at all. `g_k` is the cluster's **observed**
+native-currency flow over the epoch's confirmed blocks, so there is no allocation to
+derive and no feedback-on-feedback loop to avoid. The two still coincide for `W_k` in
+every epoch and for `w_k` at epoch 1; from epoch 2 on the feedback term differs,
+deliberately, because it now measures what the cluster actually earned and returned
+rather than what it was notionally due.
 
 ---
 
@@ -495,9 +571,13 @@ every node would be strictly worse than the model it replaces.
 
 The marginal cost is much smaller than O(clusters) suggests.
 `WeightEngineComputeAllWeightsForEpoch` **already** folds the pipeline across every
-cluster — it always did, because `ComputeEpoch` needs `W_tot` and so cannot evaluate one
-cluster in isolation; the previous code computed the whole map and used a single entry.
-Verification adds a map comparison to work already performed.
+cluster — it always did, and still must: a cluster's `saldo` is cumulative, so the fold
+runs from epoch 1 regardless, and the single shared block scan that feeds it yields every
+cluster's facts at once whether or not they are used. (Under the superseded formulation
+there was a second reason — `ComputeEpoch` needed `W_tot` for the allocation, so no
+cluster could be evaluated in isolation. That coupling is gone; the fold is not.) The
+previous code computed the whole map and used a single entry; verification adds a map
+comparison to work already performed.
 
 What *would* be prohibitive is verifying in the consensus hot path.
 `GetAllNodesWeights()` is called by the miner and every validator on **every round**,
@@ -810,7 +890,7 @@ The module has its **own** unit suites, with a runner separate from the wPoA one
 | `records` | [`weight_records_tests.cpp`](../../weight_engine/test/weight_records_tests.cpp) | The chain-derived **reconciliation rules** (only treasury-paying outputs count; third parties, change and non-monetary outputs excluded; the signer is credited so a transfer *to* a miner never counts as one *from* it; treasury self-payment excluded; multi-transaction aggregation; order independence across nodes). Record parsing; the **self-attestation rule** (own declaration accepted, foreign / admin-proxy declaration rejected, fail-closed on an unrecoverable signer); cluster inversion, including a node changing cluster twice so only the last declaration counts, and the no-self-membership rule. |
 | `authorization` | [`weight_authorization_tests.cpp`](../../weight_engine/test/weight_authorization_tests.cpp) | The ESG write decision table: CA authorized; **global admin without the role refused**; generic address refused; revocation biting while `.write` remains; CA lacking `.write`; CA-first error ordering; fail-closed on a chain without custom permissions; and that the role sits in a `high*` slot. |
 | `verifier` | [`weight_verifier_tests.cpp`](../../weight_engine/test/weight_verifier_tests.cpp) | Matching values accepted; an inflated **and** an understated value rejected and dropped from the map; off-by-one rejected (no tolerance band); a weight published for a non-cluster rejected with its own reason; **fail-open** when the recomputation was unavailable, including a partial map; two honest nodes reaching identical verdicts and identical filtered maps. |
-| `engine` | [`weight_engine_tests.cpp`](../../weight_engine/test/weight_engine_tests.cpp) | Order independence, zero-total guard, `rho` bounds, balance recursion, weight positivity, `ToIntegerWeight` clamp, multi-cluster allocation identity. |
+| `engine` | [`weight_engine_tests.cpp`](../../weight_engine/test/weight_engine_tests.cpp) | Order independence, gain excluding the epoch's own restitution, cumulative `saldo` recursion, `rho` bounds and the non-positive-`saldo` guard, full-restitution scoring `rho = 1` (not `0`), per-cluster independence, weight positivity, `ToIntegerWeight` clamp. |
 
 All four suites are node-free: they do not require building the node. See [testing.md](testing.md).
 

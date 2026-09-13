@@ -140,22 +140,31 @@ bool WeightEngineComputeAllWeightsForEpoch(WeightStreamReader& reader,
         return false;
     }
 
-    // Neither tau nor R comes from a stream: both are derived per-epoch from the
-    // epoch's confirmed blocks, in a single shared pass (see the loop below).
+    // None of tau, R or the flows comes from a stream: all are derived per-epoch from
+    // the epoch's confirmed blocks, in a single shared pass (see the loop below).
     WeightEngine::Params params(g_weight_kappa, g_weight_alpha, g_weight_lambda);
-    std::map<std::string, WeightEngine::ClusterState> state;   // empty -> B_0 = 0 at epoch 1
+    // Empty state -> saldo_0 = 0 at epoch 1. This map IS the saldo memo: it is folded
+    // forward one epoch per iteration below, which is why the recursive saldo needs no
+    // cache of its own (and must not be replaced by a balance lookup — see
+    // WeightEngine::Saldo).
+    std::map<std::string, WeightEngine::ClusterState> state;
     std::map<std::string, WeightEngine::ClusterResult> results;
 
     for (uint32_t e = 1; e <= target_epoch; e++)
     {
-        // tau_e AND R_e are both DERIVED deterministically from epoch e's confirmed
-        // blocks, in one pass over them (no stream, no publisher for either). If e is
-        // not yet buried or its block/undo data is unavailable we cannot compute
-        // identically across nodes -> abort; the caller retries once the epoch buries.
-        // (target_epoch is buried, so every e <= it is too.)
+        // tau_e, R_e AND the per-address flows are all DERIVED deterministically from
+        // epoch e's confirmed blocks, in one pass over them (no stream, no publisher for
+        // any of them). If e is not yet buried or its block/undo data is unavailable we
+        // cannot compute identically across nodes -> abort; the caller retries once the
+        // epoch buries. (target_epoch is buried, so every e <= it is too.)
+        //
+        // EVERY epoch from 1 must be walked, not just target_epoch: saldo is cumulative,
+        // so skipping an epoch would silently change the denominator of rho thereafter.
         std::map<std::string, uint32_t> tau_e;
         std::map<std::string, double> r_e;
-        if (!reader.ComputeActivityAndReconciliationForEpoch(e, tau_e, r_e))
+        std::map<std::string, double> credits_e;
+        std::map<std::string, double> debits_e;
+        if (!reader.ComputeEpochFacts(e, tau_e, r_e, credits_e, debits_e))
         {
             return false;
         }
@@ -171,7 +180,12 @@ bool WeightEngineComputeAllWeightsForEpoch(WeightStreamReader& reader,
             in.miner      = ci->first;
             in.esg_miner  = LookupDouble(esg, ci->first);      // 0 if uncertified -> W_k = 0
             in.tau_miner  = LookupTau(tau_e, ci->first);
-            in.reconciled = LookupDouble(r_e, ci->first);
+            in.restituted = LookupDouble(r_e, ci->first);
+            // Flows are the MINER address' own: the cluster's wallet in the thesis'
+            // accounting is the miner node, and company members pay their own fees from
+            // their own addresses. Absent from the map -> 0, i.e. no movement this epoch.
+            in.credits    = LookupDouble(credits_e, ci->first);
+            in.debits     = LookupDouble(debits_e, ci->first);
             for (std::set<std::string>::const_iterator ai = ci->second.begin(); ai != ci->second.end(); ++ai)
             {
                 WeightEngine::Company c;
@@ -183,9 +197,8 @@ bool WeightEngineComputeAllWeightsForEpoch(WeightStreamReader& reader,
             inputs.push_back(in);
         }
 
-        double theta = WeightEngine::NetworkActivity(inputs);
         std::map<std::string, WeightEngine::ClusterState> newstate;
-        WeightEngine::ComputeEpoch(inputs, theta, state, params, e, results, newstate);
+        WeightEngine::ComputeEpoch(inputs, state, params, e, results, newstate);
         state = newstate;
     }
 

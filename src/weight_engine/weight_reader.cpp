@@ -472,8 +472,21 @@ bool WeightStreamReader::ComputeActivityForEpoch(uint32_t epoch, std::map<std::s
 bool WeightStreamReader::ComputeActivityAndReconciliationForEpoch(
     uint32_t epoch, std::map<std::string, uint32_t>& tau, std::map<std::string, double>& r)
 {
+    // Thin wrapper: the flows are computed by the same pass and discarded here, so the
+    // tau+R call sites stay readable without a second scan (mirrors ComputeActivityForEpoch).
+    std::map<std::string, double> ignored_credits;
+    std::map<std::string, double> ignored_debits;
+    return ComputeEpochFacts(epoch, tau, r, ignored_credits, ignored_debits);
+}
+
+bool WeightStreamReader::ComputeEpochFacts(
+    uint32_t epoch, std::map<std::string, uint32_t>& tau, std::map<std::string, double>& r,
+    std::map<std::string, double>& credits, std::map<std::string, double>& debits)
+{
     tau.clear();
     r.clear();
+    credits.clear();
+    debits.clear();
 
     // The treasury address is the recipient that defines a reconciliation transfer. It
     // is a hash-enforced chain parameter, so every node resolves the same one; when it
@@ -549,9 +562,11 @@ bool WeightStreamReader::ComputeActivityAndReconciliationForEpoch(
         }
     }
 
-    // Reconciliation is accumulated in integer base units and converted once at the end
-    // (see the loop below), so the sum itself never rounds.
+    // Reconciliation and the two flow aggregates are accumulated in integer base units
+    // and converted once at the end (see the loop below), so the sums never round.
     std::map<std::string, int64_t> r_raw;
+    std::map<std::string, int64_t> credits_raw;   // Entrate (gross, per Def. guadagno)
+    std::map<std::string, int64_t> debits_raw;    // Uscite  (gross: restitution still included)
 
     // Off-lock: iterate oldest -> newest; resolve each input's owner from undo data,
     // using only the snapshotted immutable positions/hashes.
@@ -579,9 +594,43 @@ bool WeightStreamReader::ComputeActivityAndReconciliationForEpoch(
         for (size_t k = 0; k < block.vtx.size(); k++)
         {
             const CTransaction& txn = block.vtx[k];
+
+            // ---- Entrate: every output, credited to whoever it pays --------------
+            // Resolved ONCE per transaction and used twice: as the credit side of the
+            // flows, and (below, non-coinbase only) as the treasury-payment test. The
+            // same extraction the input side uses for signers, so "paid to" and
+            // "signed by" keep meaning exactly corresponding things.
+            std::vector<std::string> out_addresses;
+            std::vector<int64_t> out_values;
+            out_addresses.reserve(txn.vout.size());
+            out_values.reserve(txn.vout.size());
+            for (size_t ov = 0; ov < txn.vout.size(); ov++)
+            {
+                CTxDestination odest;
+                std::string oaddr;
+                if (ExtractDestinationScriptValid(txn.vout[ov].scriptPubKey, odest))
+                {
+                    oaddr = CBitcoinAddress(odest).ToString();
+                }
+                // An OP_RETURN / bare-multisig / non-standard output yields "" and so can
+                // never match the treasury, nor be credited to anybody.
+                out_addresses.push_back(oaddr);
+                out_values.push_back((int64_t)txn.vout[ov].nValue);
+
+                if (!oaddr.empty() && txn.vout[ov].nValue > 0)
+                {
+                    credits_raw[oaddr] += (int64_t)txn.vout[ov].nValue;
+                }
+            }
+
             if (txn.IsCoinBase())
             {
-                continue; // coinbase has no resolvable input signer
+                // The coinbase has no resolvable input signer, so it yields no tau, no
+                // debit and no reconciliation — but its outputs ARE an entry for the
+                // miner they pay (the mining remuneration of Def. guadagno: on a
+                // preminted chain, the fees of the transactions the block includes).
+                // This is the one transaction the traversal credits without charging.
+                continue;
             }
             if (!haveUndo || k == 0 || (k - 1) >= undo.vtxundo.size())
             {
@@ -600,7 +649,19 @@ bool WeightStreamReader::ComputeActivityAndReconciliationForEpoch(
                 CTxDestination dest;
                 if (ExtractDestinationScriptValid(spk, dest)) // 0-or-1 dest; non-standard -> nobody
                 {
-                    signers.insert(CBitcoinAddress(dest).ToString());
+                    const std::string owner = CBitcoinAddress(dest).ToString();
+                    signers.insert(owner);
+
+                    // ---- Uscite: the prevout's whole value, charged to its owner ----
+                    // Summed per INPUT (not per distinct signer): this is an amount, not
+                    // a count, so two inputs from the same address must both be charged.
+                    // Charging the full prevout and crediting the change output back
+                    // (above) accounts for the fee exactly, with no separate fee term.
+                    const int64_t spent = (int64_t)tu.vprevout[jj].txout.nValue;
+                    if (spent > 0)
+                    {
+                        debits_raw[owner] += spent;
+                    }
                 }
             }
             for (std::set<std::string>::const_iterator it = signers.begin(); it != signers.end(); ++it)
@@ -622,23 +683,6 @@ bool WeightStreamReader::ComputeActivityAndReconciliationForEpoch(
             {
                 continue;
             }
-            std::vector<std::string> out_addresses;
-            std::vector<int64_t> out_values;
-            out_addresses.reserve(txn.vout.size());
-            out_values.reserve(txn.vout.size());
-            for (size_t ov = 0; ov < txn.vout.size(); ov++)
-            {
-                CTxDestination odest;
-                std::string oaddr;
-                if (ExtractDestinationScriptValid(txn.vout[ov].scriptPubKey, odest))
-                {
-                    oaddr = CBitcoinAddress(odest).ToString();
-                }
-                // An OP_RETURN / bare-multisig / non-standard output yields "" and so can
-                // never match the treasury.
-                out_addresses.push_back(oaddr);
-                out_values.push_back((int64_t)txn.vout[ov].nValue);
-            }
 
             mc_AccumulateReconciliation(
                 r_raw, signers,
@@ -647,11 +691,21 @@ bool WeightStreamReader::ComputeActivityAndReconciliationForEpoch(
         }
     }
 
-    // One conversion per miner, after all integer accumulation is done.
+    // One conversion per address, after all integer accumulation is done.
     for (std::map<std::string, int64_t>::const_iterator it = r_raw.begin();
          it != r_raw.end(); ++it)
     {
         r[it->first] = (double)it->second / (double)COIN;
+    }
+    for (std::map<std::string, int64_t>::const_iterator it = credits_raw.begin();
+         it != credits_raw.end(); ++it)
+    {
+        credits[it->first] = (double)it->second / (double)COIN;
+    }
+    for (std::map<std::string, int64_t>::const_iterator it = debits_raw.begin();
+         it != debits_raw.end(); ++it)
+    {
+        debits[it->first] = (double)it->second / (double)COIN;
     }
     return true;
 }

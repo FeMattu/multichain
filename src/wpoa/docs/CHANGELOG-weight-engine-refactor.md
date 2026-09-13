@@ -11,6 +11,52 @@ already, the stream is deleted and the value derived.
 
 ---
 
+## 0. Restitution rate — the feedback denominator changed
+
+The permission changes below are about *who may write what*. One later change is about
+*what is computed*, and is recorded here because it retires two symbols the tables still
+referenced.
+
+The thesis chapter replaced the **allocation / compliance** trio
+
+```
+A_k^(e)   = alpha * Theta^(e) * W_k^(e) / W_tot^(e)
+rho_k^(e) = R_k^(e) / ( A_k^(e) + B_k^(e-1) )
+B_k^(e)   = A_k^(e) - R_k^(e) + B_k^(e-1)
+```
+
+with the **gain / balance / restitution-rate** chain
+
+```
+g_k^(e)     = Entrate_k^(e) - Uscite_k^(e)        (Uscite excluding this epoch's R_k)
+saldo_k^(e) = saldo_k^(e-1) + g_k^(e)
+rho_k^(e)   = R_k^(e) / saldo_k^(e)
+```
+
+`w_k` keeps its shape — `w_k^(e) = W_k^(e) * [rho_k^(e-1)*lambda + (1-lambda)]` — and with
+it the positivity argument, which consumes only `rho in [0,1]`.
+
+| | Before | After |
+|---|---|---|
+| Denominator of `rho` | `A_k + B_k^(e-1)` — an amount the protocol notionally **assigns** | `saldo_k^(e)` — the amount the cluster actually **has** |
+| Source | derived from `W_k`, `W_tot`, `Theta` and `alpha` | derived from the epoch's confirmed transfers, like `R_k` |
+| Cross-cluster coupling | yes, via `W_tot` | **none** — each cluster's result depends on its own inputs only |
+| `alpha` | scaled the allocation | **parsed, validated, never read** (see below) |
+| New reader output | — | `ComputeEpochFacts` also returns per-address `credits` / `debits`, from the same single pass |
+
+**`alpha` is retained deliberately.** `weightalpha` is a params.dat field and params.dat is
+hash-enforced, so removing it would change the file's hash and make every existing chain
+unjoinable. It is still parsed and still range-validated, so a chain created before or
+after this change is configured identically — it simply has no consumer.
+
+**The balance is recomputed, never read from the ledger.** MultiChain is UTXO-based, so a
+direct balance lookup looks like the obvious simplification; it is wrong on three counts
+(different quantity, wrong time, not available for other clusters). The argument, with the
+`rho = 0`-instead-of-`1` counterexample that settles it, is in
+[weight-engine.md §3.3](weight-engine.md#33-why-the-balance-is-recomputed-and-not-read-from-the-ledger).
+
+---
+
 ## 1. The four inputs at a glance
 
 | Input | Before | After |
@@ -18,7 +64,7 @@ already, the stream is deleted and the value derived.
 | `weight-engine-membership` | Admin writes for everyone, via `weightsetmembership`. Keyed by **miner**, accumulated with `jsonobjectmerge`. | **Every node writes its own record**, via `weightregistermembership`. Keyed by the **declaring node**, last-confirmed-wins. Reader **discards** any record whose tx signer is not its declared `node_address`. |
 | `weight-engine-esg` | Admin writes, via `weightsetesg` gated by `CanAdmin`. | **Certification Authority** writes, via `weightsetesg` gated by `IsCertificationAuthority` (`high1`). Being an admin is **not** sufficient. |
 | `weight-engine-reconciliation` | Admin **attests** `R_k`, via `weightsetreconciliation`. | **Stream removed.** `R_k` is derived from the epoch's confirmed transfers to the treasury address. |
-| `weight-engine-activity` | Listed as a stream; **never created, written or read**. | **Removed.** `tau` was always derived; it now shares one pass with `R_k`. |
+| `weight-engine-activity` | Listed as a stream; **never created, written or read**. | **Removed.** `tau` was always derived; it now shares one pass with `R_k` and with the per-address flows (`Entrate`/`Uscite`). |
 | *(output)* `wpoa-weights` | CLOSED, `.write` to a designated publisher per cluster. Reader trusts any schema-valid record. | CLOSED, `.write` to **every node**. Each node publishes only its **own** cluster, with `publishfrom`. Reader **discards** a record not signed by its subject, and every node **recomputes** every published value. |
 
 ---
