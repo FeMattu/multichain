@@ -39,7 +39,7 @@ Five phases are implemented today:
   sortition.
 - **Phase 3b — RANDAO beacon seed (accumulation).** When `-enablewpoarandao=1`,
   the per-block reveals are folded into a running accumulator
-  `R_tot[n]=H(R_tot[n-1]⊕H(R[n]))` and the proposer election is seeded by the
+  `R_tot[n]=R_tot[n-1]⊕R[n]` (thesis Def. 5.3) and the proposer election is seeded by the
   lookback beacon seed `seed[n+1]=H(R_tot[n-k]‖h[n]‖n+1)` instead of the plain
   previous block hash (lookback `k` set by `-wpoarandaolookback`). Only the seed
   source changes — the Efraimidis–Spirakis election stays weight-proportional —
@@ -174,7 +174,7 @@ flowchart TD
     end
 
     subgraph P3B [Phase 3b — RANDAO beacon seed]
-        RND["RandaoAccumulator<br/>R_tot=H(R_tot⊕H(R)); seed=H(R_tot[n−k]‖h[n]‖n+1)"]
+        RND["RandaoAccumulator<br/>R_tot=R_tot⊕R; seed=H(R_tot[n−k]‖h[n]‖n+1)"]
         RSEED["miner.cpp / multichainblock.cpp<br/>seed from R_tot instead of prevhash"]
         RND --> RSEED
     end

@@ -335,7 +335,7 @@ authorized wPoA validators.
 
 **Deliverable:** the seed input to the selector is no longer just the
 previous block hash but a RANDAO accumulator, updated block by block via a
-commit-reveal scheme (`R_tot[n] = H(R_tot[n-1] ⊕ H(R[n]))`, per
+commit-reveal scheme (`R_tot[n] = R_tot[n-1] ⊕ R[n]`, thesis Def. 5.3, per
 [thesis-project-overview.md §5.4](thesis-project-overview.md#54-global-accumulator-update)),
 combined with per-validator VRF evaluation of that seed. The elected
 proposer publishes `(y_i, π_i)` and every peer verifies

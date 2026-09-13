@@ -689,7 +689,7 @@ samples.
 - **Last-revealer bias is not addressed here.** It is a property of the RANDAO layer
   (Phase 3b) / its VDF mitigation (Phase 5), not of the VRF primitive
   ([thesis §7.3](thesis-project-overview.md#73-bias-analysis-cleves-impossibility-theorem-and-vdf-mitigation)).
-- **Phase 3b hook.** Accumulate the per-block `R[n]` into `R_tot[n] = H(R_tot[n-1] ⊕ H(R[n]))`
+- **Phase 3b hook.** Accumulate the per-block `R[n]` into `R_tot[n] = R_tot[n-1] ⊕ R[n]`
   and derive `seed[n+1]`, then swap the selection seed (and the VRF input) at the call
   sites in §12.1.
 - **Phase 4 hook.** Reuse `WPoAVRF` to evaluate the *selection* score privately

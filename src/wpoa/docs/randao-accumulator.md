@@ -121,45 +121,59 @@ static void Fold(const unsigned char* rtot_prev32,
                  const unsigned char* reveal, size_t reveal_len,
                  unsigned char* rtot_out32)
 {
-    // t = H(reveal)
-    unsigned char t[HASH_SIZE];
-    CSHA256().Write(reveal, reveal_len).Finalize(t);
-
-    // x = R_tot_prev ⊕ t   (into a local buffer so in/out may alias)
-    unsigned char x[HASH_SIZE];
+    // Start from R_tot_prev (a no-op when the caller folds in place).
     for (size_t i = 0; i < HASH_SIZE; i++)
     {
-        x[i] = (unsigned char)(rtot_prev32[i] ^ t[i]);
+        rtot_out32[i] = rtot_prev32[i];
     }
 
-    // R_tot_out = H(x)
-    CSHA256().Write(x, HASH_SIZE).Finalize(rtot_out32);
+    // R_tot_out = R_tot_prev ⊕ reveal. The modulo is the identity map in the
+    // consensus case reveal_len == HASH_SIZE; it only defines the result for the
+    // off-size buffers described above.
+    for (size_t i = 0; i < reveal_len; i++)
+    {
+        rtot_out32[i % HASH_SIZE] = (unsigned char)(rtot_out32[i % HASH_SIZE] ^ reveal[i]);
+    }
 }
 ```
 
-Implements the thesis §5.4 recurrence `R_tot[n] = H( R_tot[n-1] ⊕ H(R[n]) )` in three steps:
+Implements the thesis Def. 5.3 recurrence `R_tot[n] = R_tot[n-1] ⊕ R[n]` — a bare byte-wise
+XOR, no hashing on either side — in two loops:
 
-1. **`t = SHA256(reveal)`.** `CSHA256()` constructs a temporary hasher; `.Write(reveal,
-   reveal_len)` hashes the reveal; `.Finalize(t)` writes the 32-byte digest into the local
-   `t`. Hashing the reveal *first* normalizes it to exactly 32 bytes (the reveal may in
-   principle be any length — the parameter is `reveal_len`) and destroys any internal
-   structure before it meets the XOR.
-2. **`x = rtot_prev ⊕ t`.** The byte-wise XOR over all `HASH_SIZE` bytes, written into a
-   **local** buffer `x`. Writing into `x` (not into `rtot_out32`) is what makes **in/out
-   aliasing safe**: a caller may pass the same pointer for `rtot_prev32` and `rtot_out32`
-   (fold in place), and the previous value is still fully read before anything is written
-   back. The `(unsigned char)` cast silences the integer-promotion warning `^` produces.
-3. **`rtot_out = SHA256(x)`.** The final hash of the XORed value. This outer hash is the
-   crucial part: a *bare* XOR accumulator is linear, so a last revealer who could choose its
-   reveal freely could cancel earlier contributions; wrapping the XOR in `H(·)` destroys that
-   linearity. (The VRF makes the reveal itself unchooseable — this outer hash is the
-   belt-and-braces algebraic defense.)
+1. **Copy `R_tot_prev` into the output.** This is what makes **in/out aliasing safe**: a
+   caller may pass the same pointer for `rtot_prev32` and `rtot_out32` (fold in place), in
+   which case the copy is a no-op and the second loop mixes the reveal straight into the
+   accumulator. Nothing is read after it has been overwritten.
+2. **XOR the reveal in, byte by byte.** In consensus `reveal_len` is always `HASH_SIZE`
+   (see below), so `i % HASH_SIZE` is the identity and this is precisely `prev[i] ^
+   reveal[i]` for the 32 positions. The `(unsigned char)` cast silences the
+   integer-promotion warning `^` produces.
 
-**Order sensitivity.** Because each step hashes, `Fold(Fold(g, A), B) != Fold(Fold(g, B),
-A)`: folding reveals in a different order gives a different result. That is *intended* — it
-is exactly what makes `R_tot` a function of the **ordered** reveal history (a chain, not a
-set). The glue therefore always folds strictly in ascending block order (§2.4), and the unit
-test asserts the inequality.
+**Why no hashes.** An earlier revision folded the hardened variant
+`H(R_tot_prev ⊕ H(reveal))`. It was dropped because neither hash pays for itself here:
+the reveal is a fixed-width 32-byte VRF output (`WPoAVRF::OUTPUT_SIZE`, and
+`WPoAVRF::Verify` rejects any other length), so the inner hash had nothing to normalize;
+the outer hash existed to destroy XOR linearity, which only matters against a last revealer
+*free to choose* its reveal — VRF uniqueness already removes that freedom; and `R_tot` is
+never consumed raw, since `DeriveSeed` (§1.4) hashes it with `h[n]` and the height anyway.
+Decision record: [adr/randao-fold-bare-xor.md](adr/randao-fold-bare-xor.md); design
+context: [phase3b-implementation-guide.md §5.1](phase3b-implementation-guide.md#51-the-fold-is-the-thesis-def-53-itself-a-bare-xor).
+
+**`reveal_len` off 32.** Not a consensus path — a governed block that reached the fold has
+already passed `VerifyBlockMinerWPoA` with a 32-byte reveal. The parameter is honoured
+anyway so the function stays total and deterministic for the degenerate buffers the glue
+can synthesize and the unit tests exercise: a shorter reveal touches only its own prefix, a
+longer one wraps back over the accumulator word rather than being silently truncated
+(`fold_of_an_off_size_reveal_is_deterministic`).
+
+**Order independence.** XOR is commutative and self-inverse, so `Fold(Fold(g, A), B) ==
+Fold(Fold(g, B), A)` and folding the same reveal twice returns to the starting value. Both
+are properties of Def. 5.3, and both are out of reach on a chain: the chain fixes the order
+of its own blocks, and the Phase-3a VRF input is the parent hash `h[n-1]`, distinct at
+every height, so two governed blocks on one branch cannot carry the same reveal. Position
+is re-bound one step later regardless — `seed[n+1]` commits to `h[n]` and `n+1` (§1.4). The
+unit test `accumulator_algebra_is_known_and_bounded` pins all three facts. The glue still
+folds in ascending block order (§2.4), which is simply the order the walk produces.
 
 ### 1.4 `DeriveSeed(...)` — the selection seed
 
@@ -513,7 +527,7 @@ static uint256 GetAccumulator(const CBlockIndex* pindex)
 
 - **Fold forward, oldest first.** `pending` was filled newest→oldest, so the loop iterates it
   **in reverse** (`i` from `size()-1` down to `0`) to fold in **ascending block order** — the
-  order the fold's order-sensitivity (§1.3) requires.
+  order the accumulator is defined over (§1.3), and the one every node reproduces.
 - **Read the reveal — the happy path.** The three-part guard, evaluated left to right with
   short-circuit `&&`:
   1. `(b->nStatus & BLOCK_HAVE_DATA) != 0` — the block's body is actually on disk (not just a
