@@ -33,6 +33,7 @@
 #   --cpus=N            fractional CPU quota      (default: no quota)
 #   --cpuset=LIST       pin to these CPUs         (default: every CPU)
 #   --memory=SIZE       memory ceiling, e.g. 16g  (default: no ceiling)
+#   --memory-swap=SIZE  limite complessivo RAM + swap (default: no limit)
 #
 # Environment overrides:
 #   IMAGE=poesia-emu:22.04     image tag
@@ -62,6 +63,7 @@ RESULTS_DIR="${RESULTS_DIR:-}"
 CPUSET=""
 CPUS=""
 MEMORY=""
+MEMORY_SWAP=""
 
 say()  { printf '\033[1m[mcsim]\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m[mcsim] %s\033[0m\n' "$*" >&2; }
@@ -131,6 +133,7 @@ docker_flags() {
     [ -n "$CPUSET" ] && flags+=(--cpuset-cpus "$CPUSET")
     [ -n "$CPUS" ]   && flags+=(--cpus "$CPUS")
     [ -n "$MEMORY" ] && flags+=(--memory "$MEMORY")
+    [ -n "$MEMORY_SWAP" ] && flags+=(--memory-swap "$MEMORY_SWAP")
 
     [ -t 0 ] && flags+=(-it)
 
@@ -151,7 +154,7 @@ report_resources() {
     if [ -z "$CPUSET$CPUS$MEMORY" ]; then
         say "resources: unconstrained — all ${cpus} host CPUs, all ${mem} GiB"
     else
-        say "resources: cpus=${CPUS:-all} cpuset=${CPUSET:-all} memory=${MEMORY:-all}" \
+        say "resources: cpus=${CPUS:-all} cpuset=${CPUSET:-all} memory=${MEMORY:-all} memory-swap=${MEMORY_SWAP:-all}" \
             "(host has ${cpus} CPUs, ${mem} GiB)"
     fi
 }
@@ -220,6 +223,7 @@ for arg in "$@"; do
         --cpuset=*) CPUSET="${arg#*=}" ;;
         --cpus=*)   CPUS="${arg#*=}" ;;
         --memory=*) MEMORY="${arg#*=}" ;;
+        --memory-swap=*|--memswap=*) MEMORY_SWAP="${arg#*=}" ;;
         *)          ARGS+=("$arg") ;;
     esac
 done
