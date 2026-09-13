@@ -1368,10 +1368,10 @@
     "semantic_hash": "2b14313f695ffd1372377e06590b6c71"
   },
   "src/miner/miner.cpp": {
-    "mtime": 1788648786.5186772,
-    "seen": 1789320703.116724,
-    "ast_hash": "c0efe400433b6869395ab4177be729c2",
-    "semantic_hash": "c0efe400433b6869395ab4177be729c2"
+    "mtime": 1789324349.5035787,
+    "seen": 1789324635.2076588,
+    "ast_hash": "9676516e215b3161aded4417a203f6ec",
+    "semantic_hash": ""
   },
   "src/miner/miner.h": {
     "mtime": 1783003880.550771,
@@ -3312,9 +3312,9 @@
     "semantic_hash": ""
   },
   "src/wpoa/randao_accumulator.h": {
-    "mtime": 1789323308.661489,
-    "seen": 1789323698.3605785,
-    "ast_hash": "8b6732cf0e1dbb15c5791eac85fa8e42",
+    "mtime": 1789324573.5820506,
+    "seen": 1789324635.2081118,
+    "ast_hash": "315184b9d6ed318259fface8453baa0b",
     "semantic_hash": ""
   },
   "src/wpoa/stream_weight_registry.cpp": {
@@ -3354,9 +3354,9 @@
     "semantic_hash": "d34cc271a3862511884e864540186795"
   },
   "src/wpoa/test/randao_accumulator_tests.cpp": {
-    "mtime": 1789323264.3535209,
-    "seen": 1789323698.3606055,
-    "ast_hash": "d92c596a4a17e9f4b55b327f825350ca",
+    "mtime": 1789324287.816793,
+    "seen": 1789324635.2081409,
+    "ast_hash": "78eac9fc7d2866110c704f4a65ceff2b",
     "semantic_hash": ""
   },
   "src/wpoa/test/run_all_tests.sh": {
@@ -3540,10 +3540,10 @@
     "semantic_hash": "735b4b14ff64efb8758d35a2dd131b6f"
   },
   "src/wpoa/README.md": {
-    "mtime": 1789043110.383093,
-    "seen": 1789320703.117227,
-    "ast_hash": "5e8be5077695c4ee7c143168530f9a06",
-    "semantic_hash": "5e8be5077695c4ee7c143168530f9a06"
+    "mtime": 1789324349.5023527,
+    "seen": 1789324635.208313,
+    "ast_hash": "e40794ac5857973de9ec24b4dafbeac1",
+    "semantic_hash": ""
   },
   "src/wpoa/docs/CHANGELOG-weight-engine-refactor.md": {
     "mtime": 1789323438.3190114,
@@ -3570,22 +3570,22 @@
     "semantic_hash": "34d31689e47ec3d0092aeaa161a42627"
   },
   "src/wpoa/docs/implementation-guide.md": {
-    "mtime": 1788705087.6597903,
-    "seen": 1789320703.1172323,
-    "ast_hash": "45b56c2ac8b9f4fb9a1ab5f3bc2d9133",
-    "semantic_hash": "45b56c2ac8b9f4fb9a1ab5f3bc2d9133"
+    "mtime": 1789324349.502639,
+    "seen": 1789324635.2083209,
+    "ast_hash": "4c2d64d80cc18f9e218855498d978c30",
+    "semantic_hash": ""
   },
   "src/wpoa/docs/implementation-roadmap.md": {
-    "mtime": 1788705087.6601226,
-    "seen": 1789320703.1172338,
-    "ast_hash": "bbb54b4b39d204984d330f7e306e5b1b",
-    "semantic_hash": "bbb54b4b39d204984d330f7e306e5b1b"
+    "mtime": 1789324349.5019486,
+    "seen": 1789324635.2083218,
+    "ast_hash": "283e63c339c93285794ba309625aad9f",
+    "semantic_hash": ""
   },
   "src/wpoa/docs/implementation-status.md": {
-    "mtime": 1789043110.384946,
-    "seen": 1789320703.1172347,
-    "ast_hash": "e2c8d3f41798cb5372a5522a569321b1",
-    "semantic_hash": "e2c8d3f41798cb5372a5522a569321b1"
+    "mtime": 1789324573.5819223,
+    "seen": 1789324635.2083228,
+    "ast_hash": "1bc14d7982e272c647113239928fb9a5",
+    "semantic_hash": ""
   },
   "src/wpoa/docs/malus-registry.md": {
     "mtime": 1788705087.660833,
@@ -3630,16 +3630,16 @@
     "semantic_hash": "f1f78a3b1394fadcce07f5ad2d1b6b94"
   },
   "src/wpoa/docs/phase3a-implementation-guide.md": {
-    "mtime": 1788705087.662336,
-    "seen": 1789320703.1172438,
-    "ast_hash": "5ec8c77ac450a4ac917d48f05208d142",
-    "semantic_hash": "5ec8c77ac450a4ac917d48f05208d142"
+    "mtime": 1789324349.5021842,
+    "seen": 1789324635.2083323,
+    "ast_hash": "36151916f41cfe47ab90c37033d396fd",
+    "semantic_hash": ""
   },
   "src/wpoa/docs/phase3b-implementation-guide.md": {
-    "mtime": 1788705087.6625257,
-    "seen": 1789320703.1172447,
-    "ast_hash": "c122ab4016691d1ee5351e81aaf6fb9c",
-    "semantic_hash": "c122ab4016691d1ee5351e81aaf6fb9c"
+    "mtime": 1789324573.581748,
+    "seen": 1789324635.2083333,
+    "ast_hash": "a6140072121d4c797033ed274174505c",
+    "semantic_hash": ""
   },
   "src/wpoa/docs/phase4-implementation-guide.md": {
     "mtime": 1788705087.6627753,
@@ -3660,10 +3660,10 @@
     "semantic_hash": ""
   },
   "src/wpoa/docs/randao-accumulator.md": {
-    "mtime": 1788705087.663354,
-    "seen": 1789320703.117249,
-    "ast_hash": "da56207b7415c8bd329d5fb6e75aa8cc",
-    "semantic_hash": "da56207b7415c8bd329d5fb6e75aa8cc"
+    "mtime": 1789324573.5814881,
+    "seen": 1789324635.2083383,
+    "ast_hash": "5c053020bf784081212db9e3a31cf3ab",
+    "semantic_hash": ""
   },
   "src/wpoa/docs/randao-miner.md": {
     "mtime": 1788705087.6634507,
@@ -3714,10 +3714,10 @@
     "semantic_hash": "124fb686b5e827f54536693facab5f35"
   },
   "src/wpoa/docs/thesis-project-overview.md": {
-    "mtime": 1788705087.6649792,
-    "seen": 1789320703.1172585,
-    "ast_hash": "a7fe87aa7b6cc2c1d799870994be9dd7",
-    "semantic_hash": "a7fe87aa7b6cc2c1d799870994be9dd7"
+    "mtime": 1789324331.371935,
+    "seen": 1789324635.2083488,
+    "ast_hash": "a7f9b73f44b69a9e075f3c071f9e8204",
+    "semantic_hash": ""
   },
   "src/wpoa/docs/vrf-prover.md": {
     "mtime": 1788705087.6650689,
@@ -5217,6 +5217,12 @@
     "mtime": 1789321166.463922,
     "seen": 1789323698.3608124,
     "ast_hash": "c476ffb086ede9d03c35ecddec42bab7",
+    "semantic_hash": ""
+  },
+  "src/wpoa/docs/adr/randao-fold-bare-xor.md": {
+    "mtime": 1789324565.9175632,
+    "seen": 1789324635.2083158,
+    "ast_hash": "3f77d8fda70fcf325cfb7a35468e4314",
     "semantic_hash": ""
   }
 }
