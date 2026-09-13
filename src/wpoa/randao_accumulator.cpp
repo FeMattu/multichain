@@ -31,7 +31,7 @@ using namespace std;
 // selection is seeded by the plain previous block hash, no accumulator is built.
 bool g_wpoa_randao_enabled = false;
 
-// Lookback k in seed[n+1] = H(R_tot[n-k] ‖ h[n-1] ‖ n). Bound once from
+// Lookback k in seed[n+1] = H(R_tot[n-k] ‖ h[n] ‖ n+1). Bound once from
 // -wpoarandaolookback in AppInit2. CONSENSUS-CRITICAL (must match on all nodes).
 int g_wpoa_randao_lookback = MC_WPOA_DEFAULT_RANDAO_LOOKBACK;
 

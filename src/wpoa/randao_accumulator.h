@@ -23,6 +23,30 @@
 // height term belongs to the seed, not to the reveal; see
 // docs/phase3a-implementation-guide.md §4.4).
 //
+// A DELIBERATE STRENGTHENING OF Def. 5.3, NOT A TRANSCRIPTION OF IT. The thesis states
+// the accumulator in its pure algebraic form, R_tot[n] = R_tot[n-1] ⊕ R[n] — a bare XOR,
+// with no hash on either side — and proves agreement between honest nodes (Prop. 5.1) on
+// that form. The recurrence implemented above, and specified by the implementation
+// chapter, is the HARDENED variant: the reveal is hashed before the XOR and the XOR is
+// hashed after it. The difference is intentional and is documented here so it can never
+// be mistaken for drift:
+//
+//   * why hash the reveal first — it normalizes a variable-length reveal to exactly 32
+//     bytes and destroys any internal structure before it meets the XOR;
+//   * why hash the XOR after — a bare XOR accumulator is LINEAR, so a last revealer free
+//     to choose its own reveal could cancel the contributions that preceded it. The outer
+//     hash removes that algebraic handle. (The VRF already makes the reveal unchooseable,
+//     so this is a second, independent line of defense rather than the only one.)
+//
+// Neither change affects Prop. 5.1: agreement needs only that the update be a pure,
+// deterministic function of (R_tot[n-1], R[n]), which both forms are. What the hardening
+// costs is commutativity — folding the same reveals in another order now yields another
+// accumulator — which is a property the protocol wants anyway (see Fold below), since
+// R_tot must be a function of the ORDERED reveal history. The unit suite pins the
+// deviation explicitly (test/randao_accumulator_tests.cpp,
+// fold_is_hardened_and_differs_from_bare_xor), so a later "simplification" back to the
+// literal Def. 5.3 form fails the build rather than silently changing consensus.
+//
 // WHAT CHANGES / WHAT DOES NOT. Phase 3b swaps ONLY the bytes fed to the
 // Efraimidis–Spirakis selector (the "seed" argument of WPoASelectProposer); the
 // scoring/argmin/tie-break and the weight-read path are untouched, so the
@@ -83,12 +107,15 @@ public:
     /**
      * One accumulator step: fold a validated reveal into the running value.
      *
-     *   R_tot_out = H( R_tot_prev ⊕ H(reveal) )          (thesis §5.4)
+     *   R_tot_out = H( R_tot_prev ⊕ H(reveal) )     (hardened form of thesis Def. 5.3)
      *
      * Hashing the reveal *before* the XOR normalizes its size and removes any
      * structure; the final hash of the XOR breaks the linearity that a bare XOR
-     * accumulator would expose. Deterministic and associative-free (order
-     * matters): the caller must fold reveals strictly in ascending block order.
+     * accumulator would expose. Def. 5.3 itself specifies the bare XOR — see the
+     * STRENGTHENING note at the top of this file for why this implements the hardened
+     * variant instead, and which test pins the difference. Deterministic and
+     * associative-free (order matters): the caller must fold reveals strictly in
+     * ascending block order.
      *
      * In/out aliasing is permitted (`rtot_out32` may equal `rtot_prev32`): the
      * XOR term is computed into a local buffer before the final hash writes out.

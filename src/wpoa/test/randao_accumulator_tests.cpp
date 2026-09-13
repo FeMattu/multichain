@@ -77,6 +77,17 @@ static bytes ref_seed(const bytes& rtot, const bytes& hprev, uint32_t height)
     return out;
 }
 
+// The thesis Definition 5.3 EXACTLY as written: a bare XOR, no hashing on either side.
+// Present only so the hardened fold can be pinned as DIFFERENT from it (see
+// fold_is_hardened_and_differs_from_bare_xor): this is the formula the implementation
+// deliberately strengthens, not the one it implements.
+static bytes ref_bare_xor_fold(const bytes& prev, const bytes& reveal)
+{
+    bytes out(32);
+    for (size_t i = 0; i < 32; i++) out[i] = (unsigned char)(prev[i] ^ reveal[i]);
+    return out;
+}
+
 static bytes core_fold(const bytes& prev, const bytes& reveal)
 {
     bytes out(32);
@@ -126,6 +137,100 @@ BOOST_AUTO_TEST_CASE(fold_matches_spec)
         bytes reveal = make_val(i);
         BOOST_CHECK(core_fold(prev, reveal) == ref_fold(prev, reveal));
     }
+}
+
+BOOST_AUTO_TEST_CASE(fold_is_hardened_and_differs_from_bare_xor)
+{
+    // REGRESSION GUARD ON A DELIBERATE DEVIATION.
+    //
+    // Thesis Def. 5.3 states the accumulator as a BARE XOR, R_tot[n] = R_tot[n-1] XOR
+    // R[n]. The implementation folds the hardened form H(R_tot[n-1] XOR H(R[n])) that the
+    // implementation chapter specifies instead: hashing the reveal normalizes its length,
+    // and the outer hash destroys the linearity a bare XOR would leave exposed (a last
+    // revealer able to choose its reveal could otherwise cancel earlier contributions).
+    //
+    // The two must therefore NOT agree — if some future edit "simplified" Fold back to
+    // the bare formula, every other test here would still pass, because they all check
+    // Fold against a reference that shares the hardened shape. This one would not.
+    for (uint32_t i = 0; i < 16; i++)
+    {
+        bytes prev = make_val(2000 + i);
+        bytes reveal = make_val(i);
+        BOOST_CHECK(core_fold(prev, reveal) != ref_bare_xor_fold(prev, reveal));
+    }
+
+    // The specific property the outer hash buys: the bare XOR is an involution, so
+    // folding the same reveal twice returns to the starting value — the cancellation the
+    // hardening exists to prevent. The hardened fold must not do that.
+    bytes g = H32(); RandaoAccumulator::Genesis(&g[0]);
+    bytes A = make_val(4242);
+    BOOST_CHECK(ref_bare_xor_fold(ref_bare_xor_fold(g, A), A) == g);   // bare: cancels
+    BOOST_CHECK(core_fold(core_fold(g, A), A) != g);                   // hardened: does not
+}
+
+BOOST_AUTO_TEST_CASE(seed_height_is_serialized_big_endian)
+{
+    // CONSENSUS-CRITICAL ENCODING. DeriveSeed serializes the height byte-by-byte as
+    // big-endian rather than memcpy-ing the uint32_t, so two architectures hash the same
+    // bytes for the same height. ref_seed shares that construction, so seed_matches_spec
+    // alone could not catch a switch to host order — this pins the byte layout against a
+    // literal, hand-written buffer that has no endianness at all.
+    bytes rtot = make_val(1), hprev = make_val(2);
+    const uint32_t height = 0x01020304u;
+
+    unsigned char literal_be[4] = {0x01, 0x02, 0x03, 0x04};
+    bytes expect(32);
+    CSHA256().Write(&rtot[0], 32).Write(&hprev[0], 32)
+             .Write(literal_be, 4).Finalize(&expect[0]);
+
+    BOOST_CHECK(core_seed(rtot, hprev, height) == expect);
+
+    // And the byte-swapped height must give a different seed, i.e. the order is load-bearing.
+    BOOST_CHECK(core_seed(rtot, hprev, 0x04030201u) != expect);
+}
+
+BOOST_AUTO_TEST_CASE(seed_depends_on_the_lookback_distance)
+{
+    // The glue picks R_tot[n-k] and feeds it here as the first argument; k itself never
+    // reaches the core. What the core must guarantee is that DIFFERENT lookback depths —
+    // i.e. different accumulator values along one chain — really do give different seeds,
+    // so that the choice of k is not silently inert.
+    bytes g = H32(); RandaoAccumulator::Genesis(&g[0]);
+    bytes hn = make_val(77);
+    const uint32_t height = 101;
+
+    // R_tot at successive depths of one 8-block chain.
+    std::vector<bytes> rtot_at_depth;
+    bytes rtot = g;
+    rtot_at_depth.push_back(rtot);
+    for (uint32_t i = 1; i <= 8; i++)
+    {
+        rtot = core_fold(rtot, make_val(i));
+        rtot_at_depth.push_back(rtot);
+    }
+
+    std::set<bytes> seeds;
+    for (size_t d = 0; d < rtot_at_depth.size(); d++)
+    {
+        seeds.insert(core_seed(rtot_at_depth[d], hn, height));
+    }
+    // Same tip hash and same height throughout: any collision would mean the looked-back
+    // accumulator had stopped mattering.
+    BOOST_CHECK_EQUAL(seeds.size(), rtot_at_depth.size());
+}
+
+BOOST_AUTO_TEST_CASE(fold_accepts_a_block_hash_as_the_fallback_contribution)
+{
+    // The glue folds the BLOCK HASH in place of the reveal when a governed block's data
+    // is unavailable (a deterministic fallback, so nodes still agree rather than
+    // diverge). That path must be an ordinary fold — same 32-byte contract, no special
+    // case — and must not coincide with the fold of the real reveal.
+    bytes g = H32(); RandaoAccumulator::Genesis(&g[0]);
+    bytes reveal = make_val(900);
+    bytes blockhash = make_val(901);
+
+    BOOST_CHECK(core_fold(g, blockhash) == ref_fold(g, blockhash));  // plain fold
+    BOOST_CHECK(core_fold(g, blockhash) != core_fold(g, reveal));    // distinguishable
 }
 
 BOOST_AUTO_TEST_CASE(fold_is_deterministic)
