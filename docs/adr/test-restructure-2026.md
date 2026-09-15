@@ -701,21 +701,29 @@ triggered.
 
 ---
 
-## 8. Commit plan
+## 8. Commit plan, as executed
 
-Per the mandate, the move is separated from the content changes so each diff stays readable:
+The move is separated from the content changes so each diff stays readable:
 
-1. `docs(adr): record the test-restructure analysis` *(this document)*
-2. `test: move the functional suites to a project-level test/functional` — pure `git mv`, zero content change
-3. `test: repoint every reference at test/functional` — docs, READMEs, the one `.cpp` comment
-4. `test(functional): consolidate the shared bash helpers into one library`
-5. `test(randao): name the seed inputs for the h[n]/n+1 convention`
-6. `test(weight-engine): assert the epoch-scoped verification verdicts`
-7. `test(weight-engine): add the large-network functional suite`
+| # | Commit | Note |
+|---|---|---|
+| 1 | `docs(adr): record the test-restructure analysis…` | this document |
+| 2 | `test: move the functional suites to a project-level test/functional` | **pure `git mv`**, zero content change |
+| 3 | `test(functional): wire up the new tree — runner, shared library, references` | |
+| 4 | `test(randao): name the seed inputs for the h[n]/n+1 convention, and pin it` | |
+| 5 | `test(weight-engine): assert the epoch-scoped verdicts, and set the treasury` | |
+| 6 | `test(weight-engine): add the large-network functional suite` | |
+| 7 | `docs(adr): record the execution and the test results` | this section + §10 |
 
-All seven steps are implemented; §7 is resolved.
+**Deviation from the plan as first written:** steps 3 and 4 of the original list ("repoint
+every reference" and "consolidate the shared bash helpers") were committed **together**.
+They are one unit of work — the previous commit deliberately leaves the tree broken, and
+splitting "make it work" across two commits would have left an intermediate state where
+the runner pointed at a library that had not yet moved its helpers. The pure-rename
+separation, which is the one the mandate asked for, is intact.
 
----
+Commit 2 leaves the scripts **broken on purpose** (their relative source paths still point
+at the old tree) and commit 3 repairs them. That is stated in commit 2's own message.
 
 ## 9. Consequences
 
@@ -731,3 +739,89 @@ alongside the upstream MultiChain `src/test/`, which is a small ambiguity — th
 `test/functional/README.md` will name the distinction.
 
 **Neutral.** No build-system change, in either direction (§5.2). No production code change.
+
+---
+
+## 10. Test results
+
+### 10.1 Unit suites — 10 of 10 pass
+
+Run with `./src/wpoa/test/run_unit_tests.sh` and
+`./src/weight_engine/test/run_unit_tests.sh`. Both compile straight from source with
+`g++`; neither needs a built node, which is why they are runnable here.
+
+| Suite | File | Result |
+|---|---|---|
+| `weight` | `src/wpoa/test/wpoa_weight_tests.cpp` | **PASS** |
+| `malus` | `src/wpoa/test/wpoa_malus_tests.cpp` | **PASS** |
+| `selector` | `src/wpoa/test/wpoa_selector_tests.cpp` | **PASS** |
+| `vrf` | `src/wpoa/test/vrf_wrapper_tests.cpp` | **PASS** |
+| `randao` | `src/wpoa/test/randao_accumulator_tests.cpp` | **PASS** (incl. the new `seed_operands_are_not_interchangeable`) |
+| `sortition` | `src/wpoa/test/private_sortition_tests.cpp` | **PASS** |
+| `records` | `src/weight_engine/test/weight_records_tests.cpp` | **PASS** |
+| `authorization` | `src/weight_engine/test/weight_authorization_tests.cpp` | **PASS** |
+| `engine` | `src/weight_engine/test/weight_engine_tests.cpp` | **PASS** |
+| `verifier` | `src/weight_engine/test/weight_verifier_tests.cpp` | **PASS** |
+
+`*** No errors detected` on every one. The move did not touch the `.cpp` files or the
+runners' source resolution, which is why this is unsurprising — and worth recording
+precisely because it confirms §5.2's claim that the move cannot break a build.
+
+### 10.2 Functional suites — NOT RUN, and cannot be run in this environment
+
+`src/multichaind` in this tree was linked against **Boost 1.74**; this host has **1.88 /
+1.90**. The binary does not start:
+
+```
+$ ./src/multichaind --help
+./src/multichaind: error while loading shared libraries:
+libboost_filesystem.so.1.74.0: cannot open shared object file
+```
+
+The binaries are also dated 2026-09-10 and owned by `root`, so they predate the RANDAO
+fold (`c1879600`, 09-13) and the restitution-rate change (`530357bb`, 09-14) — even if
+they ran, they would not be testing this code. Rebuilding against Boost 1.90 is not a
+side task for a test-restructuring change: this is a MultiChain 2.3 fork of an old
+Bitcoin Core, and Boost removed APIs that vintage uses.
+
+| Suite | Result |
+|---|---|
+| `wpoa` | **NOT RUN** — no runnable node |
+| `weight-engine` | **NOT RUN** — no runnable node |
+| `weight-engine-bootstrap` | **NOT RUN** — no runnable node |
+| `weight-engine-large` | **NOT RUN** — no runnable node |
+
+### 10.3 What WAS verified without a node
+
+| Check | Result |
+|---|---|
+| `bash -n` on all six scripts + the library | clean |
+| Path resolution from each script's new depth | correct (`FUNC_DIR`, `REPO_ROOT`, `SRC_DIR`, the library) |
+| `run_functional_tests.sh --list`, `--suite`, `--all`, `--fast`, `DRY_RUN=1` | correct, incl. per-suite timeouts (1800 s / 28800 s / 3600 s under `--fast`) |
+| `run_all_tests.sh` delegating to the project-level runner | resolves and runs end to end under `DRY_RUN=1` |
+| Library epoch arithmetic vs. §3.4 | `floor(100)=109`, `buried_epoch_at(105)=1`, `(104)=0`, `height_for_buried_epoch(50)=5005`, `(51)=5105` |
+| Large-suite plan output | floor 109, epoch 50 published 5005, verified 5105, target **5120**; `--fast` → 620 |
+| Large-suite role array | `1 admin + 10 miner + 20 company + 2 ca = 33` |
+| RANDAO log parser | correct against a synthetic derivation line (two-space separators, 64-hex operands) |
+| RANDAO convention discriminator | `tip=41/max=42` passes; `tip=41/max=41` is flagged as the `ef08074c` regression |
+| `weightverifyweights` verdict parser | correct tally against a synthetic 4-entry report (3 `ok` + 1 `other-epoch`) |
+| Treasury-payment parser | returns `5.5` for a 2-output transaction paying the treasury 5.5 |
+| `fl_lt` / `fl_is_zero` decimal comparators | correct on `0.5<1.0`, `2.0<1.0`, `10<9.5`, `0`, `5.5` |
+
+### 10.4 How to run the functional suites where the node builds
+
+```bash
+./autogen.sh && ./configure && make          # on a host with the matching Boost
+./test/functional/run_functional_tests.sh                          # the fast three
+./test/functional/run_functional_tests.sh --suite weight-engine-large --fast   # ~620 blocks
+./test/functional/run_functional_tests.sh --suite weight-engine-large          # 50 epochs
+WE_LARGE_LAMBDA=0.3 ./test/functional/run_functional_tests.sh --suite weight-engine-large
+./src/wpoa/test/run_all_tests.sh                                   # unit + functional
+```
+
+The first thing to check in a large run is the `PLAN` block: it prints the derived
+`setup-first-blocks` floor and the computed block target before mining anything, so a
+misconfiguration is visible in the first seconds rather than after an hour. The first
+thing to check in its output is `gas_seeded` — if the admin has no native balance,
+`initial-block-reward` did not take effect and every economic assertion downstream is
+vacuous (the suite fails loudly on exactly that, rather than proceeding).
