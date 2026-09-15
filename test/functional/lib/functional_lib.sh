@@ -702,10 +702,17 @@ fl_start_role_network() {
     [ -f "$params" ] || fl_die "params.dat not found at $params"
     sed -i -E "s/^(target-block-time[[:space:]]*=[[:space:]]*)[0-9]+/\1$TARGET_BLOCK_TIME/" "$params" || true
     sed -i -E "s/^(mine-empty-rounds[[:space:]]*=[[:space:]]*)[-0-9.]+/\11000/"              "$params" || true
-    # setup-first-blocks is deliberately NOT forced here: with the weight engine and wPoA
-    # selection both on, the genesis node DERIVES a floor for it and writes the corrected
-    # value into params.dat before the parameter hash is taken. Forcing a value would
-    # either be overridden anyway or, if higher, silently lengthen the setup phase.
+    # setup-first-blocks is NOT forced here, but a caller SHOULD pass one through
+    # FL_PARAM_OVERRIDES on a network of any size -- see fl_setup_blocks_for_network.
+    #
+    # The genesis node derives a floor and writes it into params.dat before the parameter
+    # hash is taken, which covers the EPOCH GEOMETRY (when the first weight can confirm)
+    # and nothing else. It cannot know how long bringing N daemons up takes, and past a
+    # handful of nodes that is the larger of the two: the chain reaches the floor before
+    # the registry has anything in it, wPoA elects nobody, and the chain stops. Passing a
+    # LARGER value is safe -- AdjustSetupFirstBlocks only ever raises to its floor and
+    # leaves a bigger value untouched -- and lengthening the setup phase is the fix, not
+    # a side effect.
     fl_apply_param_overrides "$params"
 
     fl_log "starting node 0 (genesis / admin)..."
