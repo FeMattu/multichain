@@ -417,8 +417,8 @@ BOOST_AUTO_TEST_CASE(esg_duplicate_field_first_wins)
 // which is deliberately kept in the pure layer rather than buried in the scan loop.
 // Only the traversal itself — the buried-epoch guard and the undo-based signer
 // attribution, both shared with tau — needs the block layer and is covered by
-// functional_test_weight_engine.sh. Decision and rationale:
-// wpoa/docs/adr/reconciliation-onchain.md.
+// test/functional/weight_engine/functional_test_weight_engine.sh. Decision and
+// rationale: wpoa/docs/adr/reconciliation-onchain.md.
 
 // ---- reconciliation: which outputs count -------------------------------
 

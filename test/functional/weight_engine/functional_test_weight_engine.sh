@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 #
-# Functional test — WeightEngine publish side (admin attestations) + closed streams.
+# Functional test — WeightEngine publish side (self-attested + CA-gated writes) and the
+# closed input streams.
 # -----------------------------------------------------------------------------
 # Brings up a single genesis node with the weight engine enabled, then asserts:
-#   1. the three input streams are auto-created (CLOSED);
+#   1. the TWO published input streams are auto-created (CLOSED) -- tau and R_k are
+#      derived from the epoch's confirmed blocks, so neither is a stream;
 #   2. ESG is CERTIFICATION-AUTHORITY-only: a global admin WITHOUT the role is
 #      refused, publishes once granted `high1`, and is refused again after the role
 #      is revoked even though `.write` is still held;
@@ -20,61 +22,46 @@
 #   9. independent verification of the published weights is reachable.
 #
 # Self-contained: no external deps beyond python3 (JSON parsing). Fast blocks
-# (target-block-time=1) keep confirmations quick.
+# (target-block-time=2, the parameter minimum) keep confirmations quick.
+#
+# Bootstrap, RPC polling, teardown and the small predicates come from the shared
+# library (../lib/functional_lib.sh) rather than being reimplemented here; the
+# assertions below, and this script's PASS/FAIL output contract, are unchanged.
 #
 # Usage:  ./functional_test_weight_engine.sh
 # Exit:   0 iff every assertion passed.
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"     # repo root
-MCD="$ROOT/src/multichaind"
-UTIL="$ROOT/src/multichain-util"
-CLIBIN="$ROOT/src/multichain-cli"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # test/functional/weight_engine
+FUNC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"                     # test/functional
+ROOT="$(cd "$FUNC_DIR/../.." && pwd)"                        # repo root
+# shellcheck source=../lib/functional_lib.sh
+. "$FUNC_DIR/lib/functional_lib.sh"
 
-CHAIN="wetestpub"
-DD="${TMPDIR:-/tmp}/mcw_pub_$$"
-PORT=31811
-RPC=31812
+BINDIR="${BINDIR:-$ROOT/src}"
+EPOCH_LEN="${EPOCH_LEN:-4}"
+export FL_CHAIN_PREFIX="wetestpub"
 
 PASS=0; FAIL=0
 say(){ echo "-- $*"; }
 ok(){ echo "  PASS: $*"; PASS=$((PASS+1)); }
 bad(){ echo "  FAIL: $*"; FAIL=$((FAIL+1)); }
 
-# multichain-cli echoes the request JSON ({"method":...}) ahead of the response;
-# strip it so JSON parsing / assertions see only the response.
-mcli(){ "$CLIBIN" "$CHAIN" -datadir="$DD" -rpcport=$RPC "$@" 2>&1 | grep -v '"method"'; }
+# This script's assertions grep for ERROR MESSAGES, which arrive on stderr, so every
+# call goes through fl_cli_q (stderr merged, request echo stripped) rather than fl_cli.
+mcli(){ fl_cli_q 0 "$@"; }
 first_addr(){ mcli getaddresses | python3 -c 'import sys,json; a=json.load(sys.stdin); print(a[0] if a else "")' 2>/dev/null; }
-is_txid(){ echo "$1" | grep -qiE '[0-9a-f]{64}'; }
+is_txid(){ fl_is_txid "$1"; }
 
-cleanup(){ mcli stop >/dev/null 2>&1; sleep 2; pkill -x multichaind 2>/dev/null; rm -rf "$DD"; }
-trap cleanup EXIT
+trap fl_teardown EXIT
 
-pkill -x multichaind 2>/dev/null; sleep 1
-rm -rf "$DD"; mkdir -p "$DD"
-
-say "creating chain $CHAIN"
-"$UTIL" create "$CHAIN" -datadir="$DD" >/dev/null 2>&1
-# fast blocks so grant/publish confirmations are quick (2s is the param minimum)
-sed -i 's/^target-block-time.*/target-block-time = 2  # (test override)/' "$DD/$CHAIN/params.dat" 2>/dev/null
-
-say "starting daemon (weight engine ON, epoch length 4)"
-"$MCD" "$CHAIN" -datadir="$DD" -enablewpoaweights -enableweightengine \
-       -weightepochlength=4 -port=$PORT -rpcport=$RPC -daemon >/dev/null 2>&1
-
-# wait for RPC
-up=0
-for i in $(seq 1 30); do sleep 2; if mcli getinfo >/dev/null 2>&1; then up=1; break; fi; done
-if [ "$up" != 1 ]; then
-  echo "daemon did not come up; tail of debug.log:"
-  tail -20 "$DD/$CHAIN/debug.log" 2>/dev/null
-  exit 1
-fi
+fl_phase "SETUP — single genesis node, weight engine ON (epoch length $EPOCH_LEN)"
+fl_require_binaries
+fl_start_single_node "-enablewpoaweights -enableweightengine -weightepochlength=$EPOCH_LEN"
 
 ADMIN="$(first_addr)"
 say "admin/node address: $ADMIN"
-[ -n "$ADMIN" ] || { echo "could not resolve node address"; exit 1; }
+[ -n "$ADMIN" ] || fl_die "could not resolve node address"
 
 # 1. streams auto-created (closed)
 say "waiting for the 2 published input streams to be auto-created"
@@ -229,6 +216,10 @@ r=$(mcli weightverifyweights 2>&1)
 echo "$r" | grep -qE '"epoch"|weight engine is disabled' \
   && ok "weightverifyweights reports verification state" \
   || bad "weightverifyweights unexpected output: $r"
+
+fl_phase "TEARDOWN"
+fl_teardown
+trap - EXIT
 
 echo ""
 echo "== SUMMARY: PASS=$PASS  FAIL=$FAIL =="

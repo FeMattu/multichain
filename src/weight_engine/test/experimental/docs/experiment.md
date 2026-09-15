@@ -9,7 +9,7 @@ the consensus-timing pitfalls) that make it work.
 It is an **experimental, offline-analysis harness**, *not* a pass/fail functional
 test — though it now closes every run with an invariant pass (§5). The pass/fail
 check for the publish side is
-[`../functional_test_weight_engine.sh`](../functional_test_weight_engine.sh); the
+[`test/functional/weight_engine/functional_test_weight_engine.sh`](../../../../../test/functional/weight_engine/functional_test_weight_engine.sh); the
 system-level wPoA check is
 [`../../../wpoa/test/functional_test_wpoa_system.sh`](../../../wpoa/test/functional_test_wpoa_system.sh).
 

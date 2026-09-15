@@ -55,10 +55,12 @@
 # Exit code: 0 iff every CRITICAL check passed; non-zero otherwise.
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"          # .../src
-# shellcheck source=functional_lib.sh
-. "$SCRIPT_DIR/functional_lib.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # test/functional/wpoa
+FUNC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"                     # test/functional
+REPO_ROOT="$(cd "$FUNC_DIR/../.." && pwd)"                   # repo root
+SRC_DIR="$REPO_ROOT/src"
+# shellcheck source=../lib/functional_lib.sh
+. "$FUNC_DIR/lib/functional_lib.sh"
 
 # ---- tunables (QUICK shrinks the sample & budgets) --------------------------
 QUICK="${QUICK:-0}"

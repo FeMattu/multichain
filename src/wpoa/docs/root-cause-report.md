@@ -4,6 +4,16 @@ Repo: `/home/mattu/multichain` — fork di MultiChain 2.3
 Branch di partenza dell'analisi: `tests/shadow-simulator` (HEAD `7e7d9a6`)
 Data: 2026-09-03
 
+> **Nota storica (2026-09-15).** I path e i numeri di riga citati qui sono quelli **al
+> momento della diagnosi** (2026-09-03) e sono lasciati intatti di proposito: riscriverli
+> farebbe citare al testo un file i cui numeri di riga non significano più quello che la
+> prosa afferma. Le suite funzionali sono state da allora spostate — `functional_lib.sh`
+> è oggi [`test/functional/lib/functional_lib.sh`](../../../test/functional/lib/functional_lib.sh),
+> il test di sistema [`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh)
+> e i due functional del weight engine stanno sotto
+> [`test/functional/weight_engine/`](../../../test/functional/weight_engine/). Motivazione:
+> [`docs/adr/test-restructure-2026.md`](../../../docs/adr/test-restructure-2026.md).
+
 Tutti i path in questo documento sono stati **verificati per ricerca nel codice**, non ipotizzati.
 La struttura reale del fork differisce dall'upstream nominale: i moduli custom vivono in
 `src/wpoa/` e `src/weight_engine/`, e l'harness di orchestrazione in `shadow/tools/` oltre che

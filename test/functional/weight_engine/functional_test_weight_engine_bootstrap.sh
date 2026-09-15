@@ -33,8 +33,8 @@
 #      a configuration that SATISFIES it (epoch 10 -> first weight at 15, setup 30) and
 #      asserts the registry is genuinely populated by the transition height.
 #
-# Reuses the wPoA functional library for the network bootstrap, so no setup code is
-# duplicated. Requires the node to be built first.
+# Reuses the shared functional library (../lib/functional_lib.sh) for the network
+# bootstrap, so no setup code is duplicated. Requires the node to be built first.
 #
 # Usage:
 #   ./functional_test_weight_engine_bootstrap.sh
@@ -44,10 +44,12 @@
 # Exit code: 0 iff every critical check passed.
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"          # .../src
-# shellcheck source=../../wpoa/test/functional_lib.sh
-. "$SRC_DIR/wpoa/test/functional_lib.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # test/functional/weight_engine
+FUNC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"                     # test/functional
+REPO_ROOT="$(cd "$FUNC_DIR/../.." && pwd)"                   # repo root
+SRC_DIR="$REPO_ROOT/src"
+# shellcheck source=../lib/functional_lib.sh
+. "$FUNC_DIR/lib/functional_lib.sh"
 
 BINDIR="${BINDIR:-$SRC_DIR}"
 NODES="${NODES:-3}"

@@ -152,7 +152,7 @@ New files (the module):
 | [`randao_accumulator.cpp`](../randao_accumulator.cpp) | Definitions of the node-coupled glue: the runtime flag/lookback, the height activation predicate, the memoized block-index walk (`GetAccumulator`), the thread-local reveal extractor (`ExtractBlockReveal`) and the seed helper (`WPoARandaoSelectionSeed`). |
 | [`test/randao_accumulator_tests.cpp`](../test/randao_accumulator_tests.cpp) | Boost.Test unit suite for the pure core (spec conformance vs. an independent reference, determinism, order/input sensitivity, chain consistency). |
 | [`test/run_unit_tests.sh randao`](../test/run_unit_tests.sh) | Build + run the accumulator unit tests (no node build needed; links only SHA256). |
-| [`test/functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh) | Multi-node end-to-end test: liveness + no-fork under the beacon seed, beacon-engaged evidence, and weight-proportional distribution under the seed. |
+| [`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh) | Multi-node end-to-end test: liveness + no-fork under the beacon seed, beacon-engaged evidence, and weight-proportional distribution under the seed. |
 
 Files **modified** in the host tree (integration points):
 
@@ -626,7 +626,7 @@ Run it:
 
 ### 12.2 Multi-node functional test
 
-[test/functional_test_wpoa_system.sh](../test/functional_test_wpoa_system.sh). Bootstraps N
+[test/functional/wpoa/functional_test_wpoa_system.sh](../../../test/functional/wpoa/functional_test_wpoa_system.sh). Bootstraps N
 permissioned nodes with `-enablewpoa=1 -enablewpoavrf=1 -enablewpoarandao=1`, waits for weight
 convergence, drives the chain `RANDAO_BLOCKS` blocks past the setup height, and asserts:
 
@@ -640,18 +640,18 @@ convergence, drives the chain `RANDAO_BLOCKS` blocks past the setup height, and 
    and folded).
 4. **Weight-proportional distribution under the seed** — the observed proposer distribution
    still matches the weight ratios (chi-square goodness-of-fit via
-   [analyze_distribution.py](../test/analyze_distribution.py)), confirming the seed swap did not
+   [analyze_distribution.py](../../../test/functional/wpoa/analyze_distribution.py)), confirming the seed swap did not
    disturb `Pr[i]=w_i/Σw`.
 
 Run it:
 
 ```
 # default 3-node run, k=1
-./src/wpoa/test/functional_test_wpoa_system.sh
+./test/functional/wpoa/functional_test_wpoa_system.sh
 
 # quick validation with a non-trivial lookback
 NODES=3 WEIGHTS="100 200 300" SETUP_BLOCKS=20 RANDAO_BLOCKS=60 RANDAO_LOOKBACK=2 \
-    RANDAO_TIMEOUT=320 ./src/wpoa/test/functional_test_wpoa_system.sh
+    RANDAO_TIMEOUT=320 ./test/functional/wpoa/functional_test_wpoa_system.sh
 ```
 
 Representative run (`WEIGHTS="100 200 300"`, 60 blocks, k=2): chain advanced with **no fork**,

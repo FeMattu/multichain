@@ -1,11 +1,16 @@
 # shellcheck shell=bash
 #
-# functional_lib.sh — shared helpers for the wPoA functional tests.
+# functional_lib.sh — shared helpers for the project functional tests.
 #
 # This library is *sourced*, never executed. It factors out the network
 # bootstrap, block-height waiting, metrics collection and assertion bookkeeping
 # that used to be copy-pasted into every per-feature functional test, so a
 # single orchestrated run can start ONE network and check many features on it.
+#
+# It serves the wPoA, weight-engine and large-network suites alike: a functional run
+# exercises all of those layers together, which is why the library (and the suites)
+# live at test/functional/ rather than under one module. See
+# ../../docs/adr/test-restructure-2026.md.
 #
 # The bootstrap protocol (permissioned MultiChain: create → grant → rejoin) is
 # preserved verbatim from the original per-feature functional tests it replaces,
@@ -14,12 +19,19 @@
 # Public surface (all prefixed fl_ / FL_):
 #   fl_require_binaries                     assert multichaind/-util/-cli exist
 #   fl_start_network "<WPOA_ARGS>"          create chain + bootstrap all nodes
+#   fl_start_single_node "<NODE_ARGS>"      create chain + ONE genesis node
+#   fl_restart_node i "<NODE_ARGS>"         stop + relaunch node i with new args
 #   fl_wait_weight_convergence              wait until every node sees TOTAL_WEIGHT
 #   fl_drive_to_height H TIMEOUT [STALLMSG] mine until node 0 tip >= H
 #   fl_teardown                             stop + wipe every node (idempotent)
 #   fl_cli i <args...>                      run multichain-cli against node i
 #   fl_node_total i / fl_tip_height i / fl_blockhash_at i H
 #   fl_logcount_all "<grep -E pattern>"     sum matches across every node's debug.log
+#   fl_cli_q i <args...>                    fl_cli with stderr merged + request echo stripped
+#   fl_is_txid STR / fl_node_address i / fl_new_address i
+#   fl_apply_param_overrides PARAMS_FILE    write FL_PARAM_OVERRIDES into params.dat
+#   Epoch geometry: fl_buried_epoch_at H LEN / fl_height_for_buried_epoch E LEN
+#                   fl_setup_first_blocks_floor LEN
 #   fl_phase "msg" / fl_log "msg" / fl_die "msg"
 #   Assertion bookkeeping: fl_check_begin NAME CRITICAL / fl_ok MSG / fl_bad MSG
 #                          fl_assert_gt0 VAL MSG / fl_assert_zero VAL MSG / fl_assert_eq A B MSG
@@ -235,26 +247,9 @@ fl_start_network() {
     sed -i -E "s/^(mine-empty-rounds[[:space:]]*=[[:space:]]*)[-0-9.]+/\11000/"              "$params" || true
     sed -i -E "s/^(setup-first-blocks[[:space:]]*=[[:space:]]*)[0-9]+/\1$SETUP_BLOCKS/"       "$params" || true
 
-    # Optional extra params.dat overrides, one "key = value" per line. Chain parameters are
-    # hash-enforced and inherited by joining nodes, so anything consensus-critical -- the
-    # weight-engine switches, weight-epoch-length, the wPoA phase flags -- belongs HERE and
-    # not on the command line. Passed as a runtime flag instead, the value applies to this
-    # node only: it diverges from its own chain (AppInit2 warns about exactly that), and any
-    # parameter DERIVED at genesis is computed from the file rather than from the override.
-    if [ -n "${FL_PARAM_OVERRIDES:-}" ]; then
-        local _k _v _line
-        while IFS= read -r _line; do
-            [ -z "${_line// /}" ] && continue
-            _k="$(printf '%s' "${_line%%=*}" | xargs)"
-            _v="$(printf '%s' "${_line#*=}"  | xargs)"
-            if grep -qE "^${_k}[[:space:]]*=" "$params"; then
-                sed -i -E "s|^(${_k}[[:space:]]*=[[:space:]]*)[^#]*|\1${_v} |" "$params"
-                fl_log "params.dat: $_k = $_v"
-            else
-                fl_log "WARNING: params.dat has no key '$_k'; override skipped"
-            fi
-        done <<< "$FL_PARAM_OVERRIDES"
-    fi
+    # Optional extra params.dat overrides (see fl_apply_param_overrides for why anything
+    # consensus-critical has to go in the FILE and not on the command line).
+    fl_apply_param_overrides "$params"
 
     fl_log "starting node 0 (seed, weight=${FL_WEIGHTS[0]})..."
     # shellcheck disable=SC2086
@@ -395,4 +390,148 @@ fl_check_summary() {
     echo
     if [ "$any_fail" = "1" ]; then echo "  RESULT: FAIL (a critical check failed)"; return 1; fi
     echo "  RESULT: PASS (all critical checks passed)"; return 0
+}
+
+# ---- single-node lifecycle ---------------------------------------------------
+# Some functional tests need ONE genesis node on a fresh chain rather than the
+# multi-node grant/rejoin bootstrap of fl_start_network: the properties they assert
+# (stream auto-creation, write policy, schema validation) are visible on a single
+# node, and a 3-node network would only make them slower and flakier.
+#
+# Factored verbatim out of functional_test_weight_engine.sh, whose contract it
+# preserves exactly: multichain-util create, target-block-time forced down so
+# confirmations are quick, then the daemon with the caller's args and an RPC probe.
+# It populates the same FL_* state fl_cli and fl_teardown read, so a single-node test
+# gets the shared teardown and logging for free.
+#
+# fl_start_single_node "<NODE_ARGS>" — fatal (fl_die) if the node does not serve RPC.
+fl_start_single_node() {
+    local node_args=$1
+    FL_CHAIN="${FL_CHAIN_PREFIX:-wesingle}$$"
+    NODES=1
+
+    local base=$(( 20000 + (RANDOM % 20000) ))
+    FL_RPCPORTS[0]=$base
+    FL_P2PPORTS[0]=$(( base + 1 ))
+    FL_DATADIRS[0]="$(mktemp -d "${TMPDIR:-/tmp}/wpoa_single.XXXXXX")"
+    FL_WEIGHTS[0]=0
+    FL_NET_UP=1   # datadir exists -> teardown must clean it even if a later step dies
+
+    fl_log "chain=$FL_CHAIN (single node) datadir=${FL_DATADIRS[0]}"
+    [ -n "$node_args" ] && fl_log "node args: $node_args"
+
+    "$BINDIR/multichain-util" create "$FL_CHAIN" -datadir="${FL_DATADIRS[0]}" >/dev/null 2>&1 \
+        || fl_die "multichain-util create failed"
+
+    local params="${FL_DATADIRS[0]}/$FL_CHAIN/params.dat"
+    [ -f "$params" ] || fl_die "params.dat not found at $params"
+    # 2s is the parameter minimum; fast blocks keep grant/publish confirmations quick.
+    sed -i -E "s/^(target-block-time[[:space:]]*=[[:space:]]*)[0-9]+/\1$TARGET_BLOCK_TIME/" "$params" || true
+    fl_apply_param_overrides "$params"
+
+    # shellcheck disable=SC2086
+    "$BINDIR/multichaind" "$FL_CHAIN" -datadir="${FL_DATADIRS[0]}" -port="${FL_P2PPORTS[0]}" \
+        -rpcport="${FL_RPCPORTS[0]}" $node_args -daemon >/dev/null 2>&1
+
+    if ! fl_wait_rpc 0; then
+        fl_log "daemon did not come up; tail of debug.log:"
+        tail -20 "${FL_DATADIRS[0]}/$FL_CHAIN/debug.log" 2>/dev/null
+        fl_die "RPC did not come up on the single node"
+    fi
+}
+
+# Restart node i with a (possibly changed) argument string, and wait for RPC.
+#
+# Needed because -weighttreasuryaddress cannot be passed at first launch: the genesis
+# address does not exist until the node has created its wallet. A node left without the
+# flag is the one node computing R_k = 0, so it disagrees with the rest of the network —
+# which is why the treasury must be set by a stop/relaunch, not by a later RPC. Mirrors
+# helpers/chain_setup.py in the experimental harness.
+fl_restart_node() {
+    local i=$1 node_args=$2
+    fl_cli "$i" stop >/dev/null 2>&1 || true
+    sleep 3
+    # shellcheck disable=SC2086
+    "$BINDIR/multichaind" "$FL_CHAIN" -datadir="${FL_DATADIRS[i]}" -port="${FL_P2PPORTS[i]}" \
+        -rpcport="${FL_RPCPORTS[i]}" $node_args -daemon >/dev/null 2>&1
+    fl_wait_rpc "$i"
+}
+
+# ---- small shared predicates -------------------------------------------------
+# multichain-cli echoes the request JSON ({"method":...}) ahead of the response, so a
+# naive grep on the output can match the REQUEST instead of the answer. Every caller
+# that greps a response needs this, hence one definition.
+fl_strip_request_json() { grep -v '"method"'; }
+
+# fl_cli with stderr merged and the request echo stripped: the contract an assertion
+# that greps for an ERROR MESSAGE needs, since the error arrives on stderr.
+fl_cli_q() { local i=$1; shift; fl_cli "$i" "$@" 2>&1 | fl_strip_request_json; }
+
+# True when the string contains a 64-hex-digit txid, i.e. the call succeeded.
+fl_is_txid() { echo "$1" | grep -qiE '[0-9a-f]{64}'; }
+
+# First address of node i's wallet ("" when it has none yet).
+fl_node_address() {
+    fl_cli "$1" getaddresses 2>/dev/null \
+        | sed -nE 's/.*"([A-Za-z0-9]{30,40})".*/\1/p' | head -n1
+}
+
+# A fresh address on node i.
+fl_new_address() { fl_cli "$1" getnewaddress 2>/dev/null | tr -d '"[:space:]'; }
+
+# ---- params.dat overrides (extracted so both lifecycles share one copy) -------
+# Chain parameters are hash-enforced and inherited by joining nodes, so anything
+# consensus-critical -- the weight-engine switches, weight-epoch-length, weight-lambda,
+# the wPoA phase flags -- belongs in params.dat and NOT on the command line. Passed as a
+# runtime flag instead, the value applies to that node only: it diverges from its own
+# chain (AppInit2 warns about exactly that), and any parameter DERIVED at genesis is
+# computed from the file rather than from the override.
+#
+# One "key = value" per line in FL_PARAM_OVERRIDES.
+fl_apply_param_overrides() {
+    local params=$1
+    [ -n "${FL_PARAM_OVERRIDES:-}" ] || return 0
+    local _k _v _line
+    while IFS= read -r _line; do
+        [ -z "${_line// /}" ] && continue
+        _k="$(printf '%s' "${_line%%=*}" | xargs)"
+        _v="$(printf '%s' "${_line#*=}"  | xargs)"
+        if grep -qE "^${_k}[[:space:]]*=" "$params"; then
+            sed -i -E "s|^(${_k}[[:space:]]*=[[:space:]]*)[^#]*|\1${_v} |" "$params"
+            fl_log "params.dat: $_k = $_v"
+        else
+            fl_log "WARNING: params.dat has no key '$_k'; override skipped"
+        fi
+    done <<< "$FL_PARAM_OVERRIDES"
+}
+
+# ---- epoch geometry ----------------------------------------------------------
+# The engine publishes for the newest BURIED epoch: with STABILITY_MARGIN = 6,
+#   epoch(height) = (height - 6 + 1) / weight-epoch-length
+# (weight_engine.cpp). Duplicated nowhere else — every caller that reasons about which
+# epoch a height belongs to uses these, so the arithmetic cannot drift between tests.
+FL_STABILITY_MARGIN="${FL_STABILITY_MARGIN:-6}"      # MC_WEIGHT_DEFAULT_STABILITY_MARGIN
+FL_SETUP_PUBLISH_MARGIN="${FL_SETUP_PUBLISH_MARGIN:-3}"  # MC_WEIGHT_SETUP_PUBLISH_MARGIN
+
+# The newest epoch buried at a given tip height (0 = nothing buried yet).
+fl_buried_epoch_at() {
+    local h=$1 len=$2 stable=$(( $1 - FL_STABILITY_MARGIN ))
+    [ "$stable" -lt 0 ] && { echo 0; return; }
+    echo $(( (stable + 1) / len ))
+}
+
+# The tip height at which epoch e first becomes buried.
+fl_height_for_buried_epoch() {
+    echo $(( $1 * $2 + FL_STABILITY_MARGIN - 1 ))
+}
+
+# The setup-first-blocks floor the node derives at genesis
+# (mc_MultichainParams::AdjustSetupFirstBlocks):
+#   first_computable = len + STABILITY_MARGIN - 1
+#   floor            = first_computable + SETUP_PUBLISH_MARGIN + 1
+# The trailing +1 is load-bearing: at exactly first_computable + margin the confirming
+# block would land on the first wPoA height, which cannot be produced without the
+# registry it would populate.
+fl_setup_first_blocks_floor() {
+    echo $(( $1 + FL_STABILITY_MARGIN - 1 + FL_SETUP_PUBLISH_MARGIN + 1 ))
 }

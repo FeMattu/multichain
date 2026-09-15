@@ -412,8 +412,8 @@ RANDAO, sortition) run node-free via
 just one, e.g. `run_unit_tests.sh vrf`. The malus suite runs the same way
 (`run_unit_tests.sh malus`). The functional tests are now a single
 system-level run,
-[`test/functional_test_wpoa_system.sh`](test/functional_test_wpoa_system.sh)
-(wrapped by [`test/run_functional_tests.sh`](test/run_functional_tests.sh)): it
+[`test/functional/wpoa/functional_test_wpoa_system.sh`](../../test/functional/wpoa/functional_test_wpoa_system.sh)
+(wrapped by [`test/functional/run_functional_tests.sh`](../../test/functional/run_functional_tests.sh)): it
 starts ONE full-stack network and verifies weight, multi-node consistency, VRF,
 RANDAO, sortition and the chi-square distribution on that shared run. Run
 absolutely everything with [`test/run_all_tests.sh`](test/run_all_tests.sh).

@@ -406,7 +406,7 @@ to change.
   weight — testable node-free, following the same Boost.Test pattern as
   [`wpoa_weight_tests.cpp`](../test/wpoa_weight_tests.cpp).
 - **Multi-node functional tests**: the `check_sortition` check of
-  [`functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh)
+  [`test/functional/wpoa/functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh)
   asserts that (a) only the winning node's score is ever broadcast under
   normal operation, and (b) the observed proposer distribution over many
   rounds matches weight ratios within statistical tolerance (chi-square).

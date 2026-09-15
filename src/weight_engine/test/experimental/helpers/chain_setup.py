@@ -4,7 +4,7 @@
 # chain_setup.py -- MultiChain network lifecycle for the WeightEngine experiment.
 #
 # This is a Python port of the permissioned-bootstrap protocol proven in
-# src/wpoa/test/functional_lib.sh (create -> start seed -> grant -> rejoin), kept
+# test/functional/lib/functional_lib.sh (create -> start seed -> grant -> rejoin), kept
 # deliberately faithful to it: node 0 is the seed/genesis node, every other node
 # launches once (prints the grant hint and exits), is granted connect/send/receive
 # /mine + wpoa-weights.write from node 0, then relaunched to join. The one addition

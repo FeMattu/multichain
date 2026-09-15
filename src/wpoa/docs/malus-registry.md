@@ -398,7 +398,7 @@ the node logs a note, because on such a chain those reports are refused network-
   severity ordering; that the two-score form stays backward-compatible by scoring the new
   kinds `0`; and end to end through the correction — one proved `badweight` halving
   `w_eff`, a second reaching the threshold, then decaying back.
-- **Functional** ([`../test/functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh)):
+- **Functional** ([`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh)):
   `check_stream_permissions` asserts the closed/open asymmetry and that it bites (an
   address without `wpoa-weights.write` cannot publish a weight, yet can publish a report);
   `check_malus` asserts the mechanism is inert on honest behaviour and that every node
