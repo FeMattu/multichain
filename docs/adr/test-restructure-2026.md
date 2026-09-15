@@ -929,3 +929,120 @@ tooling backups, and git history already serves that purpose, so tracking them i
 duplication that will keep growing. Not touched here — it is neither a test file nor a
 structural question about tests — but worth a `.gitignore` entry and a one-off
 `git rm -r --cached graphify-out/20*`.
+
+---
+
+## 12. The stall, and the statistics the suites were missing
+
+Reported from a real environment: the large-network suite **stops the chain very quickly**
+and it never recovers. Diagnosed, and fixed, along with the two gaps the same report named.
+
+### 12.1 The stall is a race, not an arithmetic error
+
+§3.4 got the *floor* right — `epoch_len + 9`, which the node derives itself — and then
+used it as though it were the whole answer. It is not. wPoA engaging is a race between two
+quantities measured in different units:
+
+| | measured in | at 33 nodes, `target-block-time` 2 |
+|---|---|---|
+| the chain reaching `setup-first-blocks` | blocks | 109 blocks ≈ **218 s** |
+| this harness finishing the bootstrap | seconds | 8–20 s/node × 32 ≈ **256–640 s** |
+
+The bootstrap wins. The chain sails past 109 before a single membership record exists, wPoA
+takes over an **empty** weight registry, `WPoASelectProposer` elects nobody, and the chain
+stops dead — reporting `0 validators, total=0`, which reads like a weight-pipeline fault
+and is really a stopwatch.
+
+The bootstrap suite never caught it because at 3 nodes and `EPOCH_LEN=10` the race runs the
+other way. The failure mode only appears once the network is large enough for the mandate's
+own topology, which is exactly the configuration §6 introduced.
+
+**Three fixes, in order of how much they matter.**
+
+1. **Parallel bootstrap** (`_fl_bootstrap_role_nodes_parallel`). The join is independent per
+   node — each talks only to the seed — so only the grant pass has to be serial. Three
+   phases: concurrent first launch, one serialised grant pass from node 0, concurrent
+   relaunch. This attacks the cause rather than the symptom. `fl_restart_all_nodes` is
+   parallelised for the same reason: 33 sequential stop/start cycles were minutes of
+   degraded network during the treasury restart.
+2. **A setup budget that includes the wall clock** (`fl_setup_blocks_for_network`), derived
+   from the node count and `target-block-time` rather than from epoch geometry alone. Safe
+   by construction: `AdjustSetupFirstBlocks` only ever *raises* `setup-first-blocks` to its
+   floor and leaves a larger value untouched, so this cannot conflict with the derivation
+   the mandate warns about. At 33 nodes / epoch 100 it gives **325** against a floor of 109.
+   Overridable with `WE_LARGE_SETUP_BLOCKS`.
+3. **An explicit readiness gate** (`fl_wait_registry_ready`), and this is the part worth
+   keeping regardless of the other two. The suite now refuses to proceed until the registry
+   carries validators with a **non-zero** weight — non-zero because Efraimidis–Spirakis
+   cannot draw a zero-weight key (Cor. 5.4), so a registry of ten validators at 0 elects
+   nobody just as surely as an empty one. If the tip reaches `setup-first-blocks` first it
+   **fails with the diagnosis and the remedy**, instead of leaving a silent dead chain.
+
+### 12.2 The suites tested structure, not distributions
+
+The other half of the report: the suites did not perform the statistical tests the work
+needs. True, and the gap was in kind rather than degree — every check was structural (did
+it stall, was a verdict invalid, did a node run dry). None asked whether the **election**
+was correct, which is a question about a distribution and needs a stated null hypothesis.
+
+`test/functional/lib/we_stats.py` adds two tests, and the reason there are two is the
+substance of the design:
+
+* the **empirical chi-square** runs against *this binary* on *this run*, so it exercises
+  the compiled selector, the VRF, the beacon and the weight pipeline together. Its sample
+  is however many blocks were mined, which gives it **no power in the tail**: over 5000
+  blocks a 0.1 %-weight validator expects 5 blocks;
+* the **Monte Carlo** re-implements `ScoreFromEntropy64` and `ApplyDumping` from
+  `wpoa_selector.h` and draws as many times as asked, so the tail is testable. It cannot
+  catch a C++ bug — it is not running the C++. The 64-bit entropy comes from a uniform
+  source rather than a VRF, which is the intended test: Prop. 5.11 requires the VRF to be
+  indistinguishable from uniform, so substituting a uniform source tests the algorithm
+  *above* the randomness source.
+
+Read together they **localise** a fault: Monte Carlo PASS with empirical FAIL says the
+design is right and the implementation is not. That is not a hypothetical — the negative
+control below produces exactly that signature.
+
+Also computed: Gini and normalised Shannon entropy (for weights and for proposals,
+descriptive rather than verdicts — under weighted selection the target is not uniformity),
+Wilson score intervals per validator, per-epoch weight dispersion, and the gas trajectory.
+Scenarios cover the uniform case, a 95/4/1 skew, two zero-weight cases pinning Cor. 5.4, a
+500:1 decade, **and the run's own weight vector** — the one configuration a report about
+this run most needs tested at a sample size the run itself could not reach.
+
+Standard library only, matching `analyze_distribution.py`: chi-square p-values come from a
+regularised incomplete gamma implemented in the module, so it runs on a bare node host.
+
+### 12.3 Output
+
+`test/output/<experiment>/` per run: `report.md` and `summary.txt`, the raw observations
+(`proposers.csv`, `weights.csv`, `epochs.csv`, `gas.csv`, `refuels.csv`) and the derived
+tables (`montecarlo.csv`, `distribution.csv`, `concentration.csv`, `epoch_stats.csv`,
+`gas_stats.csv`). The analysis re-runs over the raw files without touching a network.
+
+Recording streams out **during** the drive loop rather than at the end, deliberately: a run
+that stalls at epoch 12 still leaves twelve epochs of evidence, which is precisely the case
+where the evidence matters. The data is gitignored — a fresh run supersedes the last, and
+it is reproducible from the raw files — while this directory's `README.md` is tracked so it
+explains itself on a clean clone.
+
+### 12.4 Validating the statistics themselves
+
+A statistics module nobody checks is worse than none. `--selfcheck` validates chi-square
+p-values against textbook critical values (3.841/1, 5.991/2, 11.070/5, 15.507/8 → 0.05),
+Gini and entropy against closed forms, Wilson bracketing, and Cor. 5.4 over 20 000 draws —
+plus a **negative control**: a deliberately unweighted draw against 90/10 weights must be
+rejected. Without that last one, a chi-square that could only ever pass would look exactly
+like a passing test.
+
+Registered as the `stats-selfcheck` suite, in the default set. It needs no node, which
+makes it the only suite in this tree runnable on a host where `multichaind` does not build
+— including the one this work was authored on.
+
+**End-to-end verification, since the node does not run here.** A synthetic run was written
+in exactly the layout the bash recorders produce, with proposers drawn by the real
+algorithm: analysed **PASS**, every verdict green. A second synthetic run with proposers
+drawn **uniformly**, a node at zero balance and an epoch carrying real mismatches: analysed
+**FAIL**, exit 1, with `chi2 = 1767.099, df = 9, p = 0.0000` on the empirical test while
+every Monte Carlo scenario still passed — the fault-localisation signature above, produced
+on demand.

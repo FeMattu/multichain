@@ -34,10 +34,11 @@ test/functional/
 
 | Suite | Default? | What it does |
 |---|---|---|
+| `stats-selfcheck` | **yes** | Validates the statistical machinery itself — chi-square p-values against textbook critical values, Gini and entropy against closed forms, Cor. 5.4, and a negative control confirming an unweighted draw is rejected. **Needs no node**, so it is the one suite that runs where `multichaind` does not build. |
 | `wpoa` | **yes** | One full-stack network (weights + VRF + RANDAO + sortition), warmed up once, then every feature check against that shared run: weight registry, stream permissions, malus, multi-node consistency, mining-diversity, VRF, RANDAO, sortition, distribution. |
 | `weight-engine` | **yes** | Single genesis node: the two published input streams auto-create CLOSED, ESG is Certification-Authority-only, membership is self-written, reconciliation has no write path, the closed-stream guard bites, verification is reachable. |
 | `weight-engine-bootstrap` | **yes** | Clean multi-node network: `wpoa-weights` exists *before* wPoA engages, the `setup-first-blocks` floor is enforced on chain, the registry is populated at the transition, no stall. |
-| `weight-engine-large` | **no** | 10 miners + 20 companies + 2 CAs + admin, 100-block epochs, ≥ 50 epochs (~5120 blocks). Exercises the restitution-rate feedback, epoch-scoped verification, proposer coverage and GAS refuelling over a long run. **Hours** by default; `--fast` cuts it to 5 epochs. |
+| `weight-engine-large` | **no** | 10 miners + 20 companies + 2 CAs + admin, 100-block epochs, ≥ 50 epochs (~5120 blocks). Exercises the restitution-rate feedback, epoch-scoped verification, proposer coverage and GAS refuelling over a long run, then **records itself to `test/output/` and runs the statistical analysis**. **Hours** by default; `--fast` cuts it to 5 epochs. |
 
 ## Run
 
@@ -92,7 +93,10 @@ not — see [`src/wpoa/test/`](../../src/wpoa/test/) and
 | `INCLUDE_PUBLIC_SELECTOR=1` | wpoa | Also run the sortition-off (public argmin) scenario. |
 | `SKIP_DIVERSITY_SCENARIO=1` | wpoa | Skip the 4-miner mining-diversity regression scenario. |
 | `EPOCH_LEN` | weight-engine | Epoch length for the single-node run (default 4). |
-| `WE_LARGE_*` | weight-engine-large | See the header of that script; all documented there. |
+| `WE_LARGE_SETUP_BLOCKS` | weight-engine-large | `setup-first-blocks`. Derived from the node count by default — raise it if the bootstrap outruns it (the suite says so explicitly if it does). |
+| `WE_LARGE_MC_DRAWS`, `WE_LARGE_ALPHA` | weight-engine-large | Monte Carlo draws per scenario (50000) and significance level (0.01). |
+| `WE_LARGE_OUTPUT`, `WE_LARGE_NAME` | weight-engine-large | Where the recorded run is written, and under what name. |
+| `WE_LARGE_*` (others) | weight-engine-large | See the header of that script; all documented there. |
 | `FUNCTIONAL_TIMEOUT` | all | Hard timeout **per suite**, in seconds (`0` disables). |
 | `NO_WARN=1` | all | Suppress the warning banners (for CI). |
 | `DRY_RUN=1` | all | Print the plan without launching anything. |

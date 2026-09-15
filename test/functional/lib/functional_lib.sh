@@ -58,7 +58,7 @@ FL_CHAIN=""
 FL_SEED_ADDR=""
 FL_TOTAL_WEIGHT=0
 FL_NET_UP=0
-declare -a FL_DATADIRS=() FL_RPCPORTS=() FL_P2PPORTS=() FL_WEIGHTS=()
+declare -a FL_DATADIRS=() FL_RPCPORTS=() FL_P2PPORTS=() FL_WEIGHTS=() FL_NODE_ADDR=()
 
 # assertion bookkeeping
 declare -a FL_CHECK_NAMES=() FL_CHECK_STATE=()   # STATE: PASS | FAIL | WARN
@@ -636,15 +636,33 @@ fl_make_treasury_address() {
 # again before any joined node tries to re-dial it; the joined nodes then come back
 # against the seed address.
 fl_restart_all_nodes() {
-    local node_args=$1 i
+    local node_args=$1 i pids=()
     fl_log "restarting all $NODES node(s) with: $node_args"
+
+    # The seed first and alone: the others re-dial it, so it has to be serving before
+    # they come back.
     fl_restart_node 0 "$node_args" || fl_die "the seed node did not come back up after the restart"
     fl_log "node 0 (seed) back up"
-    for ((i = 1; i < NODES; i++)); do
-        fl_restart_node "$i" "$node_args" "$FL_SEED_ADDR" \
-            || fl_die "node $i did not come back up after the restart"
-        fl_log "node $i back up"
-    done
+
+    # The rest concurrently. Sequentially this costs 3s + RPC wait per node, and with 33
+    # nodes that is minutes of the network running degraded -- long enough, at
+    # target-block-time 2, to matter to the setup-phase budget.
+    if [ "${FL_BOOTSTRAP_PARALLEL:-1}" = "1" ] && [ "$NODES" -gt 2 ]; then
+        for ((i = 1; i < NODES; i++)); do
+            fl_restart_node "$i" "$node_args" "$FL_SEED_ADDR" >/dev/null 2>&1 &
+            pids+=($!)
+        done
+        for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done
+        local up=0
+        for ((i = 0; i < NODES; i++)); do fl_cli "$i" getinfo >/dev/null 2>&1 && up=$(( up + 1 )); done
+        fl_log "  $up of $NODES node(s) back up"
+        [ "$up" -eq "$NODES" ] || fl_die "only $up of $NODES nodes came back after the restart"
+    else
+        for ((i = 1; i < NODES; i++)); do
+            fl_restart_node "$i" "$node_args" "$FL_SEED_ADDR" \
+                || fl_die "node $i did not come back up after the restart"
+        done
+    fi
 }
 
 # ---- role-differentiated network --------------------------------------------
@@ -701,10 +719,99 @@ fl_start_role_network() {
     FL_SEED_ADDR="$FL_CHAIN@127.0.0.1:${FL_P2PPORTS[0]}"
     fl_log "seed node address: $FL_SEED_ADDR"
 
+    # PARALLEL, and this is a correctness fix rather than a speed-up.
+    #
+    # Bootstrapping sequentially costs 10-30s per node while the seed keeps mining. At 33
+    # nodes and target-block-time 2 that is 150-500 BLOCKS consumed before the first
+    # membership record is even published -- past setup-first-blocks, where wPoA takes
+    # over and finds an empty weight registry, elects nobody, and the chain stops dead.
+    # The join itself is independent per node (each one talks only to the seed), so the
+    # only serialised part is the grant, which must come from node 0.
+    #
+    # Two phases: every node makes its first launch and prints its address concurrently,
+    # then node 0 issues all the grants in one pass, then every node relaunches
+    # concurrently. FL_BOOTSTRAP_PARALLEL=0 falls back to the sequential path.
+    if [ "${FL_BOOTSTRAP_PARALLEL:-1}" = "1" ] && [ "$NODES" -gt 2 ]; then
+        _fl_bootstrap_role_nodes_parallel "$common_args" || fl_die "parallel bootstrap failed"
+    else
+        for ((i = 1; i < NODES; i++)); do
+            _fl_bootstrap_role_node "$i" "$common_args" || \
+                fl_die "node $i (${FL_ROLE[i]}) refused to join (see ${FL_DATADIRS[i]}/node.log)"
+        done
+    fi
+}
+
+# Phase 1: first launch, concurrently. On a permissioned chain the node initialises,
+# prints the grant hint and exits without serving RPC.
+_fl_first_launch_one() {
+    local i=$1 common_args=$2
+    # shellcheck disable=SC2086
+    "$BINDIR/multichaind" "$FL_SEED_ADDR" -datadir="${FL_DATADIRS[i]}" -port="${FL_P2PPORTS[i]}" \
+        -rpcport="${FL_RPCPORTS[i]}" $common_args -daemon > "${FL_DATADIRS[i]}/node.log" 2>&1
+}
+
+_fl_bootstrap_role_nodes_parallel() {
+    local common_args=$1 i pids=()
+
+    fl_log "phase 1/3: first launch of $(( NODES - 1 )) nodes, concurrently"
     for ((i = 1; i < NODES; i++)); do
-        _fl_bootstrap_role_node "$i" "$common_args" || \
-            fl_die "node $i (${FL_ROLE[i]}) refused to join (see ${FL_DATADIRS[i]}/node.log)"
+        _fl_first_launch_one "$i" "$common_args" &
+        pids+=($!)
     done
+    for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done
+    sleep 3   # let the hints land in the logs
+
+    fl_log "phase 2/3: granting from node 0 (serialised -- only the admin can grant)"
+    local granted=0 already=0
+    declare -a NEEDS_GRANT=()
+    for ((i = 1; i < NODES; i++)); do
+        if fl_cli "$i" getinfo >/dev/null 2>&1; then
+            already=$(( already + 1 ))           # joined directly, no grant needed
+            continue
+        fi
+        local addr; addr="$(_fl_addr_from_log "${FL_DATADIRS[i]}/node.log")"
+        if [ -z "$addr" ]; then
+            fl_log "  WARNING: node $i printed no grant hint; see ${FL_DATADIRS[i]}/node.log"
+            continue
+        fi
+        FL_NODE_ADDR[i]="$addr"
+        if fl_cli 0 grant "$addr" "$(_fl_role_global_perms "${FL_ROLE[i]:-company}")" >/dev/null 2>&1; then
+            granted=$(( granted + 1 )); NEEDS_GRANT+=("$i")
+        else
+            fl_log "  WARNING: grant failed for node $i ($addr)"
+        fi
+    done
+    fl_log "  granted $granted node(s); $already had already joined"
+    # One confirmation wait for ALL the grants, instead of one per node.
+    sleep $(( TARGET_BLOCK_TIME * 4 ))
+
+    fl_log "phase 3/3: relaunching $granted node(s), concurrently"
+    pids=()
+    for i in "${NEEDS_GRANT[@]}"; do
+        ( for ((t = 0; t < CONNECT_TIMEOUT; t += 2)); do
+              _fl_first_launch_one "$i" "$common_args"
+              for ((u = 0; u < 10; u++)); do
+                  fl_cli "$i" getinfo >/dev/null 2>&1 && exit 0
+                  sleep 1
+              done
+              sleep 2
+          done
+          exit 1 ) &
+        pids+=($!)
+    done
+    local failed=0 idx=0
+    for p in "${pids[@]}"; do
+        wait "$p" 2>/dev/null || { fl_log "  node ${NEEDS_GRANT[idx]} did not come up"; failed=$(( failed + 1 )); }
+        idx=$(( idx + 1 ))
+    done
+
+    local up=0
+    for ((i = 0; i < NODES; i++)); do
+        fl_cli "$i" getinfo >/dev/null 2>&1 && up=$(( up + 1 ))
+    done
+    fl_log "  $up of $NODES node(s) serving RPC"
+    [ "$up" -eq "$NODES" ] || return 1
+    return 0
 }
 
 # The per-role permission set. Split out so the grant list is readable and so the
@@ -847,3 +954,196 @@ print(("%.8f" % total).rstrip("0").rstrip(".") or 0)
 
 # True when the decimal string is numerically zero.
 fl_is_zero() { awk -v a="$1" 'BEGIN{exit !(a+0 == 0)}'; }
+
+# ---- setup-phase budgeting ---------------------------------------------------
+# THE DEADLOCK THIS EXISTS TO PREVENT, because it is a race and not an arithmetic error.
+#
+# fl_setup_first_blocks_floor answers "how many blocks must pass before the first weight
+# can be CONFIRMED", which is pure epoch geometry: epoch_len + 9. The node derives the
+# same figure at genesis. But the floor knows nothing about WALL CLOCK, and wPoA engaging
+# is a race between two things measured in different units:
+#
+#   * the chain reaching setup-first-blocks   -- blocks, at target-block-time each;
+#   * this harness finishing the bootstrap    -- seconds: N nodes joining, then the
+#     grants, then membership and ESG published and confirmed.
+#
+# With 3 nodes and a short epoch the first is slower, so the floor is enough and the
+# bootstrap suite passes. With 33 nodes it inverts: even a brisk 8s per node is 256s,
+# i.e. 128 blocks at target-block-time 2, and the chain is past a floor of 109 before a
+# single membership record exists. wPoA then takes over an EMPTY registry, elects nobody,
+# and the chain stops -- reporting "0 validators, total=0", which reads like a weight
+# bug and is really a stopwatch.
+#
+# So the setup phase must also cover the bootstrap, in blocks:
+#
+#   setup >= (per-node bootstrap seconds * nodes + input publication) / target-block-time
+#
+# Safe to set: AdjustSetupFirstBlocks only ever RAISES setup-first-blocks to its floor and
+# leaves a larger value untouched, so a generous value here cannot conflict with the
+# derivation. It costs blocks, not correctness.
+#
+# fl_setup_blocks_for_network NODES EPOCH_LEN [SECONDS_PER_NODE]
+fl_setup_blocks_for_network() {
+    local nodes=$1 len=$2 per_node=${3:-${FL_BOOTSTRAP_SECONDS_PER_NODE:-6}}
+    local tbt=${TARGET_BLOCK_TIME:-2}
+    local floor; floor="$(fl_setup_first_blocks_floor "$len")"
+
+    # Bootstrap: parallel, so the cost is dominated by the slowest node plus the grant
+    # pass rather than by the sum -- but keep a per-node term, because 33 daemons
+    # contend for one host's CPU and disk.
+    local boot_s=$(( per_node * nodes / 2 + 60 ))
+    local inputs_s=$(( tbt * 12 + nodes ))         # grants + membership + ESG, confirmed
+    local need=$(( (boot_s + inputs_s) / tbt ))
+
+    # Plus the epoch geometry itself, and 50% head-room: this is a deadline, and
+    # overshooting wastes blocks while undershooting kills the run.
+    need=$(( (need + floor) * 3 / 2 ))
+    [ "$need" -lt "$floor" ] && need="$floor"
+    echo "$need"
+}
+
+# Wait until the weight registry is genuinely usable: at least `want` validators carrying
+# a NON-ZERO weight, as seen by node 0.
+#
+# Non-zero matters. Efraimidis-Spirakis cannot draw a zero-weight key (Cor. 5.4), so a
+# registry listing validators at weight 0 elects nobody just as surely as an empty one.
+#
+# Returns 0 when ready. Returns 1 on timeout, having logged the diagnosis -- and the
+# diagnosis is the point: without it a caller sees only a chain that stopped.
+fl_wait_registry_ready() {
+    local want=$1 timeout=$2 setup_blocks=${3:-0}
+    local deadline=$(( SECONDS + timeout )) n h
+    fl_log "waiting for >= $want validator(s) with a non-zero weight (timeout ${timeout}s)..."
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        n="$(fl_cli 0 getallweights 2>/dev/null \
+             | grep -oE '"[A-Za-z0-9]{30,40}"[[:space:]]*:[[:space:]]*[0-9]+' \
+             | sed -E 's/.*:[[:space:]]*//' | awk '$1>0' | wc -l)"
+        n="${n:-0}"
+        h="$(fl_tip_height 0)"; h="${h:-0}"
+        if [ "$n" -ge "$want" ]; then
+            fl_log "registry ready: $n scoreable validator(s) at height $h"
+            return 0
+        fi
+        if [ "$setup_blocks" -gt 0 ] && [ "$h" -ge "$setup_blocks" ]; then
+            fl_log "  !! height $h has reached setup-first-blocks=$setup_blocks with only $n scoreable validator(s)."
+            fl_log "     wPoA now governs and the registry cannot elect a proposer: the chain will stop here."
+            fl_log "     This is the bootstrap race, not a weight-pipeline fault -- raise setup-first-blocks"
+            fl_log "     (WE_LARGE_SETUP_BLOCKS) or lower the node count."
+            return 1
+        fi
+        sleep 3
+    done
+    fl_log "  !! timed out with $n scoreable validator(s) at height $h (wanted $want)"
+    return 1
+}
+
+# ---- run recording -----------------------------------------------------------
+# A functional run is a one-shot experiment on a live network: once the nodes are torn
+# down the evidence is gone. These helpers stream the observations to CSV AS THEY ARE
+# TAKEN, under test/output/<experiment>/, so an analysis can be re-run, compared across
+# runs, or checked by someone who was not there. we_stats.py consumes exactly this layout.
+#
+# Recording is append-only and cheap, and deliberately happens DURING the drive loop
+# rather than at the end: a run that stalls at epoch 12 still leaves 12 epochs of data
+# to diagnose it with, which is the case where the evidence matters most.
+
+FL_RUN_DIR=""
+
+# fl_record_begin <experiment-name> [output-root]
+fl_record_begin() {
+    local name=$1 root=${2:-${FL_OUTPUT_ROOT:-}}
+    if [ -z "$root" ]; then
+        fl_log "WARNING: no output root; recording disabled"
+        return 1
+    fi
+    FL_RUN_DIR="$root/$name"
+    mkdir -p "$FL_RUN_DIR" || { fl_log "WARNING: cannot create $FL_RUN_DIR"; FL_RUN_DIR=""; return 1; }
+
+    echo "height,miner"                                                   > "$FL_RUN_DIR/proposers.csv"
+    echo "epoch,address,weight"                                           > "$FL_RUN_DIR/weights.csv"
+    echo "epoch,height,verified_epoch,mismatch,not_a_cluster,other_epoch,refuels" \
+                                                                          > "$FL_RUN_DIR/epochs.csv"
+    echo "epoch,node,role,balance"                                        > "$FL_RUN_DIR/gas.csv"
+    echo "epoch,node,role,before,after,amount,txid"                       > "$FL_RUN_DIR/refuels.csv"
+    fl_log "recording this run to $FL_RUN_DIR"
+    return 0
+}
+
+# fl_record_meta <experiment> <json-object-of-parameters>
+fl_record_meta() {
+    [ -n "$FL_RUN_DIR" ] || return 0
+    printf '{\n  "experiment": "%s",\n  "started": "%s",\n  "chain": "%s",\n  "nodes": %s,\n  "parameters": %s\n}\n' \
+        "$1" "$(date -Is)" "$FL_CHAIN" "$NODES" "$2" > "$FL_RUN_DIR/meta.json"
+}
+
+fl_record_finish() {
+    [ -n "$FL_RUN_DIR" ] || return 0
+    [ -f "$FL_RUN_DIR/meta.json" ] || return 0
+    python3 - "$FL_RUN_DIR/meta.json" <<'PYEOF' 2>/dev/null || true
+import json, sys, datetime
+p = sys.argv[1]
+try:
+    d = json.load(open(p))
+except Exception:
+    sys.exit(0)
+d["finished"] = datetime.datetime.now().astimezone().isoformat()
+json.dump(d, open(p, "w"), indent=2)
+PYEOF
+}
+
+# Every miner in the closed height range, one row per block.
+fl_record_proposers() {
+    [ -n "$FL_RUN_DIR" ] || return 0
+    local from=$1 to=$2 h=$from
+    fl_block_miners 0 "$from" "$to" | while IFS= read -r m; do
+        printf '%s,%s\n' "$h" "$m" >> "$FL_RUN_DIR/proposers.csv"
+        h=$(( h + 1 ))
+    done
+}
+
+# The whole weight map as node 0 sees it, stamped with the epoch.
+fl_record_weights() {
+    [ -n "$FL_RUN_DIR" ] || return 0
+    local epoch=$1
+    fl_cli 0 getallweights 2>/dev/null \
+        | grep -oE '"[A-Za-z0-9]{30,40}"[[:space:]]*:[[:space:]]*[0-9]+' \
+        | sed -E 's/"//g; s/[[:space:]]*:[[:space:]]*/,/' \
+        | awk -v e="$epoch" -F, '{printf "%s,%s,%s\n", e, $1, $2}' \
+        >> "$FL_RUN_DIR/weights.csv"
+}
+
+# fl_record_epoch <epoch> <height> <verified> <mismatch> <not_a_cluster> <other_epoch> <refuels>
+fl_record_epoch() {
+    [ -n "$FL_RUN_DIR" ] || return 0
+    printf '%s,%s,%s,%s,%s,%s,%s\n' "$1" "$2" "$3" "$4" "$5" "$6" "$7" >> "$FL_RUN_DIR/epochs.csv"
+}
+
+# fl_record_gas <epoch> — one row per node, with its role.
+fl_record_gas() {
+    [ -n "$FL_RUN_DIR" ] || return 0
+    local epoch=$1 i
+    for ((i = 0; i < NODES; i++)); do
+        printf '%s,%s,%s,%s\n' "$epoch" "$i" "${FL_ROLE[i]:-?}" "$(fl_native_balance "$i")" \
+            >> "$FL_RUN_DIR/gas.csv"
+    done
+}
+
+# fl_record_refuel <epoch> <node> <before> <after> <amount> <txid>
+fl_record_refuel() {
+    [ -n "$FL_RUN_DIR" ] || return 0
+    printf '%s,%s,%s,%s,%s,%s,%s\n' "$1" "$2" "${FL_ROLE[$2]:-?}" "$3" "$4" "$5" "$6" \
+        >> "$FL_RUN_DIR/refuels.csv"
+}
+
+# Hand the recorded run to the analyser. Returns its exit code, so a statistical
+# failure can fail the suite.
+fl_record_analyse() {
+    [ -n "$FL_RUN_DIR" ] || { fl_log "no recorded run to analyse"; return 0; }
+    local lib="${FL_LIB_DIR:-$(dirname "${BASH_SOURCE[0]}")}"
+    fl_phase "STATISTICS — analysing the recorded run"
+    python3 "$lib/we_stats.py" "$FL_RUN_DIR" "$@"
+    local rc=$?
+    fl_log "report:  $FL_RUN_DIR/report.md"
+    fl_log "summary: $FL_RUN_DIR/summary.txt"
+    return "$rc"
+}

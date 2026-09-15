@@ -12,6 +12,10 @@
 #                           check against that shared run
 #   weight-engine           weight-engine publish side + closed streams (single node)
 #   weight-engine-bootstrap weight-engine bootstrap ordering on a clean network
+#   stats-selfcheck         validates the statistical machinery itself (chi-square
+#                           p-values, Gini, entropy, Wilson intervals, Cor. 5.4, and a
+#                           negative control). NEEDS NO NODE -- the one suite runnable
+#                           on a host where multichaind does not build
 #   weight-engine-large     LARGE network: 10 miners + 20 companies + 2 CAs + admin,
 #                           100-block epochs, >= 50 epochs. NOT in the default set —
 #                           it mines thousands of blocks and takes a long time. Use
@@ -55,6 +59,7 @@ FAST_LARGE=0
 # so the script still runs under bash 3 (macOS /bin/bash).
 suite_script() {
     case "$1" in
+        stats-selfcheck)         echo "$SCRIPT_DIR/lib/we_stats.py" ;;
         wpoa)                    echo "$SCRIPT_DIR/wpoa/functional_test_wpoa_system.sh" ;;
         weight-engine)           echo "$SCRIPT_DIR/weight_engine/functional_test_weight_engine.sh" ;;
         weight-engine-bootstrap) echo "$SCRIPT_DIR/weight_engine/functional_test_weight_engine_bootstrap.sh" ;;
@@ -65,6 +70,7 @@ suite_script() {
 
 suite_desc() {
     case "$1" in
+        stats-selfcheck)         echo "statistics self-check (no node needed)" ;;
         wpoa)                    echo "wPoA system run (one full-stack network, every feature check)" ;;
         weight-engine)           echo "weight-engine publish side + closed streams (single node)" ;;
         weight-engine-bootstrap) echo "weight-engine bootstrap ordering on a clean network" ;;
@@ -80,13 +86,14 @@ suite_timeout() {
         echo "$FUNCTIONAL_TIMEOUT"; return
     fi
     case "$1" in
+        stats-selfcheck)     echo 300 ;;
         weight-engine-large) [ "$FAST_LARGE" = "1" ] && echo 3600 || echo 28800 ;;
         *)                   echo 1800 ;;
     esac
 }
 
-DEFAULT_SUITES="wpoa weight-engine weight-engine-bootstrap"
-ALL_SUITES="wpoa weight-engine weight-engine-bootstrap weight-engine-large"
+DEFAULT_SUITES="stats-selfcheck wpoa weight-engine weight-engine-bootstrap"
+ALL_SUITES="stats-selfcheck wpoa weight-engine weight-engine-bootstrap weight-engine-large"
 
 usage() { sed -n '2,45p' "${BASH_SOURCE[0]}" | sed 's/^#\{0,1\} \{0,1\}//'; }
 
@@ -153,8 +160,9 @@ for s in $SELECTED; do
     fi
 
     declare -a cmd=("$script")
+    [ "$s" = "stats-selfcheck" ] && cmd=("$script" --selfcheck)
     if [ "$t" -gt 0 ] && command -v timeout >/dev/null 2>&1; then
-        cmd=(timeout --kill-after=30s "${t}s" "$script")
+        cmd=(timeout --kill-after=30s "${t}s" "${cmd[@]}")
     fi
 
     echo
