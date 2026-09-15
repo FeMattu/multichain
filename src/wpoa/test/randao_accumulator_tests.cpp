@@ -10,7 +10,7 @@
 //
 // They validate, node-free, every property the beacon relies on:
 //   * spec conformance — Fold == R_tot_prev ⊕ reveal (thesis Def. 5.3, §5.4) and
-//     DeriveSeed == H(R_tot ‖ h_prev ‖ height_be) exactly (§5.5), checked against an
+//     DeriveSeed == H(R_tot ‖ h_tip ‖ height_be) exactly (§5.5), checked against an
 //     INDEPENDENT re-implementation of the formulas;
 //   * determinism — identical inputs always yield identical outputs;
 //   * the algebra of a bare XOR — commutativity and self-inverse are real properties
@@ -18,7 +18,27 @@
 //     with the reason they are unreachable: the seed re-binds position via h[n]/n+1;
 //   * avalanche/sensitivity — a one-bit change in any input changes the output;
 //   * chain consistency — folding a sequence step-by-step matches the recurrence
-//     and distinct heights give distinct, well-spread seeds.
+//     and distinct heights give distinct, well-spread seeds;
+//   * argument order — the three inputs are not interchangeable, so a call site cannot
+//     swap the accumulator and the hash and still produce the network's seed.
+//
+// WHAT THIS FILE CANNOT TEST, and where that is tested instead.
+// -------------------------------------------------------------
+// The core is deliberately CONVENTION-AGNOSTIC: DeriveSeed hashes three opaque inputs in
+// a fixed order and has no idea whether the caller passes h[n] or h[n-1], n or n+1. The
+// thesis convention
+//
+//     seed[n+1] = H( R_tot[n-k] ‖ h[n] ‖ n+1 )            (Def. 5.4, seed with lookback)
+//
+// therefore lives entirely in the GLUE, WPoARandaoSelectionSeed (randao_accumulator.cpp),
+// which passes the TIP hash and n+1. Commit ef08074c fixed that call site -- it had been
+// folding h[n-1] and the tip height n -- and no unit test could have caught the defect,
+// because the byte layout the core computes is identical either way.
+//
+// So the convention is pinned FUNCTIONALLY, against the seed-derivation log line that
+// records height, k, the lookback index and h[n] together:
+// test/functional/wpoa/functional_test_wpoa_system.sh, check_randao_seed_convention.
+// A change to either side has to keep that assertion true.
 
 #define BOOST_TEST_MODULE wPoARandaoTests
 #include <boost/test/included/unit_test.hpp>
@@ -62,8 +82,10 @@ static bytes ref_fold(const bytes& prev, const bytes& reveal)
     return out;
 }
 
-// Independent reference implementation of the thesis §5.5 seed derivation.
-static bytes ref_seed(const bytes& rtot, const bytes& hprev, uint32_t height)
+// Independent reference implementation of the thesis §5.5 seed derivation. The second
+// operand is the TIP hash h[n] (DeriveSeed's h_tip32); the core does not enforce that,
+// the glue does -- see the note at the top of this file.
+static bytes ref_seed(const bytes& rtot, const bytes& h_tip, uint32_t height)
 {
     unsigned char hb[4];
     hb[0] = (unsigned char)((height >> 24) & 0xff);
@@ -71,7 +93,7 @@ static bytes ref_seed(const bytes& rtot, const bytes& hprev, uint32_t height)
     hb[2] = (unsigned char)((height >> 8) & 0xff);
     hb[3] = (unsigned char)(height & 0xff);
     bytes out(32);
-    CSHA256().Write(&rtot[0], 32).Write(&hprev[0], 32).Write(hb, 4).Finalize(&out[0]);
+    CSHA256().Write(&rtot[0], 32).Write(&h_tip[0], 32).Write(hb, 4).Finalize(&out[0]);
     return out;
 }
 
@@ -97,10 +119,10 @@ static bytes core_fold(const bytes& prev, const bytes& reveal)
     return out;
 }
 
-static bytes core_seed(const bytes& rtot, const bytes& hprev, uint32_t height)
+static bytes core_seed(const bytes& rtot, const bytes& h_tip, uint32_t height)
 {
     bytes out(32);
-    RandaoAccumulator::DeriveSeed(&rtot[0], &hprev[0], height, &out[0]);
+    RandaoAccumulator::DeriveSeed(&rtot[0], &h_tip[0], height, &out[0]);
     return out;
 }
 
@@ -236,18 +258,18 @@ BOOST_AUTO_TEST_CASE(seed_height_is_serialized_big_endian)
     // bytes for the same height. ref_seed shares that construction, so seed_matches_spec
     // alone could not catch a switch to host order — this pins the byte layout against a
     // literal, hand-written buffer that has no endianness at all.
-    bytes rtot = make_val(1), hprev = make_val(2);
+    bytes rtot = make_val(1), h_tip = make_val(2);
     const uint32_t height = 0x01020304u;
 
     unsigned char literal_be[4] = {0x01, 0x02, 0x03, 0x04};
     bytes expect(32);
-    CSHA256().Write(&rtot[0], 32).Write(&hprev[0], 32)
+    CSHA256().Write(&rtot[0], 32).Write(&h_tip[0], 32)
              .Write(literal_be, 4).Finalize(&expect[0]);
 
-    BOOST_CHECK(core_seed(rtot, hprev, height) == expect);
+    BOOST_CHECK(core_seed(rtot, h_tip, height) == expect);
 
     // And the byte-swapped height must give a different seed, i.e. the order is load-bearing.
-    BOOST_CHECK(core_seed(rtot, hprev, 0x04030201u) != expect);
+    BOOST_CHECK(core_seed(rtot, h_tip, 0x04030201u) != expect);
 }
 
 BOOST_AUTO_TEST_CASE(seed_depends_on_the_lookback_distance)
@@ -351,45 +373,71 @@ BOOST_AUTO_TEST_CASE(accumulator_chain_matches_recurrence)
 
 BOOST_AUTO_TEST_CASE(seed_matches_spec)
 {
-    bytes rtot = make_val(500), hprev = make_val(600);
+    bytes rtot = make_val(500), h_tip = make_val(600);
     for (uint32_t hgt = 0; hgt < 128; hgt++)
     {
-        BOOST_CHECK(core_seed(rtot, hprev, hgt) == ref_seed(rtot, hprev, hgt));
+        BOOST_CHECK(core_seed(rtot, h_tip, hgt) == ref_seed(rtot, h_tip, hgt));
     }
 }
 
 BOOST_AUTO_TEST_CASE(seed_is_deterministic)
 {
-    bytes rtot = make_val(1), hprev = make_val(2);
-    BOOST_CHECK(core_seed(rtot, hprev, 12345) == core_seed(rtot, hprev, 12345));
+    bytes rtot = make_val(1), h_tip = make_val(2);
+    BOOST_CHECK(core_seed(rtot, h_tip, 12345) == core_seed(rtot, h_tip, 12345));
 }
 
 BOOST_AUTO_TEST_CASE(seed_is_sensitive_to_every_input)
 {
-    bytes rtot = make_val(8), hprev = make_val(9);
-    bytes base = core_seed(rtot, hprev, 77);
+    bytes rtot = make_val(8), h_tip = make_val(9);
+    bytes base = core_seed(rtot, h_tip, 77);
 
-    BOOST_CHECK(core_seed(rtot, hprev, 78) != base);        // height matters
+    BOOST_CHECK(core_seed(rtot, h_tip, 78) != base);        // height matters
 
     bytes rtot2 = rtot; rtot2[15] ^= 0x01;
-    BOOST_CHECK(core_seed(rtot2, hprev, 77) != base);       // accumulator matters
+    BOOST_CHECK(core_seed(rtot2, h_tip, 77) != base);       // accumulator matters
 
-    bytes hprev2 = hprev; hprev2[0] ^= 0x40;
-    BOOST_CHECK(core_seed(rtot, hprev2, 77) != base);       // prev-hash matters
+    bytes h_tip2 = h_tip; h_tip2[0] ^= 0x40;
+    BOOST_CHECK(core_seed(rtot, h_tip2, 77) != base);       // tip hash matters
 }
 
 BOOST_AUTO_TEST_CASE(seeds_are_distinct_across_heights)
 {
-    // Even with a fixed accumulator and prev-hash (a slowly-changing beacon), the
+    // Even with a fixed accumulator and tip hash (a slowly-changing beacon), the
     // per-round height keeps the seed fresh: 4096 consecutive heights give 4096
     // distinct seeds.
-    bytes rtot = make_val(31337), hprev = make_val(42);
+    bytes rtot = make_val(31337), h_tip = make_val(42);
     std::set<bytes> seeds;
     for (uint32_t hgt = 0; hgt < 4096; hgt++)
     {
-        seeds.insert(core_seed(rtot, hprev, hgt));
+        seeds.insert(core_seed(rtot, h_tip, hgt));
     }
     BOOST_CHECK_EQUAL(seeds.size(), (size_t)4096);
+}
+
+BOOST_AUTO_TEST_CASE(seed_operands_are_not_interchangeable)
+{
+    // THE ORDER OF THE THREE INPUTS IS CONSENSUS-CRITICAL, and it is the one part of the
+    // convention the core CAN defend. DeriveSeed hashes R_tot, then the tip hash, then
+    // the height: a call site that swapped the first two operands would still compile,
+    // still be deterministic, and still agree with itself -- so it would fork the network
+    // silently rather than fail. Pin the asymmetry.
+    bytes a = make_val(4242), b = make_val(2424);
+    BOOST_CHECK(core_seed(a, b, 900) != core_seed(b, a, 900));
+
+    // The same holds against the reference implementation, which builds the digest from
+    // the formula rather than from the header: both agree that H(a ‖ b) != H(b ‖ a).
+    BOOST_CHECK(ref_seed(a, b, 900) != ref_seed(b, a, 900));
+    BOOST_CHECK(core_seed(a, b, 900) == ref_seed(a, b, 900));
+
+    // And the height is a THIRD field, not a suffix of the second operand: a 32-byte
+    // hash whose last 4 bytes happen to carry the height must not collide with the
+    // seed of that height. (Concatenation is unambiguous only because the first two
+    // operands are fixed-width; this is the case that would catch a switch to a
+    // variable-length or delimiter-free encoding.)
+    const uint32_t height = 0x11223344u;
+    bytes packed = a;
+    packed[28] = 0x11; packed[29] = 0x22; packed[30] = 0x33; packed[31] = 0x44;
+    BOOST_CHECK(core_seed(a, packed, height) != core_seed(a, a, height));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
