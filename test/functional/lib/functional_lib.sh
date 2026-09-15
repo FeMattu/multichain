@@ -646,3 +646,204 @@ fl_restart_all_nodes() {
         fl_log "node $i back up"
     done
 }
+
+# ---- role-differentiated network --------------------------------------------
+# fl_start_network bootstraps a HOMOGENEOUS set: every node gets `mine` and a static
+# -weight. The large-network topology is not homogeneous -- miners mine, companies
+# generate activity and must NOT mine, Certification Authorities sign ESG and must not
+# mine either -- so it needs its own bootstrap. The grant/rejoin dance itself is
+# identical and is not duplicated: only the permission set differs per role.
+#
+# Deliberately NO static -weight here. That is the other weight path (a fixed value the
+# node publishes for itself); this network is about the weight the ENGINE computes, and
+# a static value would sit alongside it as a second, epoch-less record.
+#
+# Caller sets FL_ROLE, one entry per node, index 0 = the genesis admin:
+#   FL_ROLE=(admin miner miner ... company ... ca ca)
+#
+# Roles and what each is granted from node 0:
+#   admin     genesis; holds everything by construction
+#   miner     connect,send,receive,mine   + wpoa-weights.write, membership.write
+#   company   connect,send,receive        + membership.write        (NO mine)
+#   ca        connect,send,receive        + high1, esg.write        (NO mine)
+#
+# fl_start_role_network "<COMMON_ARGS>" — fatal on any setup failure.
+fl_start_role_network() {
+    local common_args=$1 i
+    FL_CHAIN="${FL_CHAIN_PREFIX:-wpoarole}$$"
+    _fl_alloc
+    FL_NET_UP=1   # datadirs exist -> teardown must clean them even if a later step dies
+
+    fl_log "chain=$FL_CHAIN nodes=$NODES roles=(${FL_ROLE[*]})"
+    [ -n "$common_args" ] && fl_log "common node args: $common_args"
+
+    "$BINDIR/multichain-util" create "$FL_CHAIN" -datadir="${FL_DATADIRS[0]}" >/dev/null 2>&1 \
+        || fl_die "multichain-util create failed"
+
+    local params="${FL_DATADIRS[0]}/$FL_CHAIN/params.dat"
+    [ -f "$params" ] || fl_die "params.dat not found at $params"
+    sed -i -E "s/^(target-block-time[[:space:]]*=[[:space:]]*)[0-9]+/\1$TARGET_BLOCK_TIME/" "$params" || true
+    sed -i -E "s/^(mine-empty-rounds[[:space:]]*=[[:space:]]*)[-0-9.]+/\11000/"              "$params" || true
+    # setup-first-blocks is deliberately NOT forced here: with the weight engine and wPoA
+    # selection both on, the genesis node DERIVES a floor for it and writes the corrected
+    # value into params.dat before the parameter hash is taken. Forcing a value would
+    # either be overridden anyway or, if higher, silently lengthen the setup phase.
+    fl_apply_param_overrides "$params"
+
+    fl_log "starting node 0 (genesis / admin)..."
+    # shellcheck disable=SC2086
+    "$BINDIR/multichaind" "$FL_CHAIN" -datadir="${FL_DATADIRS[0]}" -port="${FL_P2PPORTS[0]}" \
+        -rpcport="${FL_RPCPORTS[0]}" $common_args -daemon >/dev/null 2>&1 \
+        || fl_die "multichaind failed to launch node 0"
+    fl_wait_rpc 0 || fl_die "RPC did not come up on node 0"
+
+    # Same-host peers dial loopback (getinfo nodeaddress can be a NAT addr on WSL).
+    FL_SEED_ADDR="$FL_CHAIN@127.0.0.1:${FL_P2PPORTS[0]}"
+    fl_log "seed node address: $FL_SEED_ADDR"
+
+    for ((i = 1; i < NODES; i++)); do
+        _fl_bootstrap_role_node "$i" "$common_args" || \
+            fl_die "node $i (${FL_ROLE[i]}) refused to join (see ${FL_DATADIRS[i]}/node.log)"
+    done
+}
+
+# The per-role permission set. Split out so the grant list is readable and so the
+# post-join re-grant below can reuse it verbatim.
+_fl_role_global_perms() {
+    case "$1" in
+        miner)   echo "connect,send,receive,mine" ;;
+        company) echo "connect,send,receive" ;;
+        ca)      echo "connect,send,receive" ;;
+        *)       echo "connect,send,receive" ;;
+    esac
+}
+
+_fl_bootstrap_role_node() {
+    local i=$1 common_args=$2
+    local role=${FL_ROLE[i]:-company}
+    local log="${FL_DATADIRS[i]}/node.log"
+
+    fl_log "bootstrapping node $i (role=$role)..."
+    # First launch: on a permissioned chain the node initializes, prints the grant hint
+    # and exits without serving RPC (with -daemon the launcher still returns 0, so a real
+    # join is detected by probing RPC, not by the exit code).
+    # shellcheck disable=SC2086
+    "$BINDIR/multichaind" "$FL_SEED_ADDR" -datadir="${FL_DATADIRS[i]}" -port="${FL_P2PPORTS[i]}" \
+        -rpcport="${FL_RPCPORTS[i]}" $common_args -daemon > "$log" 2>&1
+
+    local t
+    for ((t = 0; t < 5; t++)); do
+        if fl_cli "$i" getinfo >/dev/null 2>&1; then
+            fl_log "node $i joined directly (no grant needed)"; return 0
+        fi
+        sleep 1
+    done
+
+    local addr; addr="$(_fl_addr_from_log "$log")"
+    [ -n "$addr" ] || { cat "$log" >&2; return 1; }
+    fl_log "node $i ($role) address: $addr -> granting $(_fl_role_global_perms "$role")"
+    fl_cli 0 grant "$addr" "$(_fl_role_global_perms "$role")" >/dev/null 2>&1 || return 1
+
+    for ((t = 0; t < CONNECT_TIMEOUT; t += 2)); do
+        # shellcheck disable=SC2086
+        "$BINDIR/multichaind" "$FL_SEED_ADDR" -datadir="${FL_DATADIRS[i]}" -port="${FL_P2PPORTS[i]}" \
+            -rpcport="${FL_RPCPORTS[i]}" $common_args -daemon > "$log" 2>&1
+        fl_wait_rpc "$i" && return 0
+        sleep 2
+    done
+    cat "$log" >&2
+    return 1
+}
+
+# ---- native currency ---------------------------------------------------------
+# MultiChain defaults initial-block-reward = 0, so on a stock chain there IS NO spendable
+# native currency and every balance below reads 0 forever. That is not a cosmetic detail:
+# ComputeEpochFacts derives the credits, the debits AND R_k from native output values, so
+# without native currency R_k = 0, the saldo is 0, RestitutionRate hits its saldo <= 0
+# guard and rho is pinned at 0 for every cluster -- w_k collapses to W_k * (1 - lambda),
+# a uniform scaling, and the restitution feedback is inert no matter how many epochs run.
+#
+# A suite that needs the feedback to MOVE must therefore enable the native currency in
+# its own params.dat (initial-block-reward, plus first-block-reward to premine the
+# genesis admin). See docs/adr/test-restructure-2026.md §6.2.
+
+# Wallet-wide native balance of node i, as a decimal string ("0" when unreadable).
+fl_native_balance() {
+    fl_cli "$1" getbalance 2>/dev/null | tr -d '"[:space:]' | grep -E '^-?[0-9]+(\.[0-9]+)?$' || echo 0
+}
+
+# Numeric compare for decimal balances, since [ -lt ] is integer-only.
+# fl_lt A B -> true when A < B
+fl_lt() { awk -v a="$1" -v b="$2" 'BEGIN{exit !(a+0 < b+0)}'; }
+
+# Send `amount` of NATIVE currency from node 0 (the admin) to node i's first address,
+# logging the balance either side, the amount and the txid.
+#
+# DIRECTION MATTERS, and this is the safe direction. R_k credits the SIGNERS of a
+# transaction by what that transaction pays TO THE TREASURY
+# (mc_AccumulateReconciliation + mc_ValuePaidToTreasury). A refuel is admin -> node:
+# the signer is the admin and the outputs pay the node, so the value paid to the
+# treasury is 0 and nothing accumulates. A reconciliation is the opposite,
+# node -> treasury. Provided the treasury is NOT the admin's own address, a refuel
+# cannot touch R_k at all -- which is why fl_make_treasury_address returns a dedicated
+# one rather than reusing the admin's.
+fl_refuel_node() {
+    local i=$1 amount=$2 addr before after txid
+    addr="$(fl_node_address "$i")"
+    if [ -z "$addr" ]; then
+        fl_log "  REFUEL node $i: no address to fund"
+        return 1
+    fi
+    before="$(fl_native_balance "$i")"
+    txid="$(fl_cli 0 sendtoaddress "$addr" "$amount" 2>/dev/null | tr -d '"[:space:]')"
+    if ! fl_is_txid "$txid"; then
+        fl_log "  REFUEL node $i ($addr): FAILED -- admin could not send $amount (out of funds?)"
+        return 1
+    fi
+    after="$(fl_native_balance "$i")"
+    fl_log "  REFUEL node $i ($addr): balance $before -> $after  (+$amount)  txid=$txid"
+    echo "$txid"
+}
+
+# ---- proposer tally ----------------------------------------------------------
+# "addr count" per line, descending, over the closed height range [from, to].
+# listblocks carries the miner, so this is one RPC regardless of the window size.
+fl_proposer_tally() {
+    fl_block_miners "$1" "$2" "$3" | sort | uniq -c | sort -rn | awk '{print $2, $1}'
+}
+
+# ---- reconciliation direction -----------------------------------------------
+# The native value a transaction pays TO a given address, summed over its outputs.
+#
+# This is the shell mirror of mc_ValuePaidToTreasury (weight_engine/weight_records.h):
+# R_k is the value paid to the treasury by transactions the miner SIGNED, so "does this
+# transaction pay the treasury" is exactly the predicate that decides whether it counts
+# as a reconciliation. There is no RPC that exposes R_k, so this is how the direction
+# rule is asserted -- on the transaction itself, against the same quantity the engine
+# reads, rather than on a derived weight where the signal would be buried in epoch noise.
+#
+# Prints a decimal total; 0 when the transaction pays that address nothing.
+fl_tx_value_to_address() {
+    local i=$1 txid=$2 addr=$3
+    fl_cli "$i" getrawtransaction "$txid" 1 2>/dev/null | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print(0); sys.exit(0)
+want = sys.argv[1]
+total = 0.0
+for o in d.get("vout", []):
+    spk = o.get("scriptPubKey", {}) or {}
+    addrs = spk.get("addresses") or ([spk["address"]] if spk.get("address") else [])
+    if want in addrs:
+        try:
+            total += float(o.get("value") or 0)
+        except (TypeError, ValueError):
+            pass
+print(("%.8f" % total).rstrip("0").rstrip(".") or 0)
+' "$addr" 2>/dev/null || echo 0
+}
+
+# True when the decimal string is numerically zero.
+fl_is_zero() { awk -v a="$1" 'BEGIN{exit !(a+0 == 0)}'; }
