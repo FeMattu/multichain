@@ -5218,17 +5218,5 @@
     "seen": 1789373846.617496,
     "ast_hash": "3f77d8fda70fcf325cfb7a35468e4314",
     "semantic_hash": ""
-  },
-  "docs/adr/test-restructure-2026.md": {
-    "mtime": 1789495188.6748946,
-    "seen": 1789495231.1653512,
-    "ast_hash": "135a3dd4c39079264800375732ccbc7e",
-    "semantic_hash": ""
-  },
-  "experiments/configs/experiments/continental-3m-2a-1ca.yaml": {
-    "mtime": 1789390888.6903503,
-    "seen": 1789495231.1653657,
-    "ast_hash": "33910e6148ccf72c7bee9c27102769df",
-    "semantic_hash": ""
   }
 }
