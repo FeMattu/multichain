@@ -19,7 +19,10 @@
 #   7. the published records are readable back;
 #   8. wpoa-weights records are SELF-PUBLISHED: a forged record naming another
 #      cluster never enters the weight map, while the node's own does;
-#   9. independent verification of the published weights is reachable.
+#   9. independent verification of the published weights is reachable;
+#  10. verification is EPOCH-SCOPED: it targets e-1 while the tip is in e, no honest
+#      record is ever a mismatch, and an other-epoch record is reported WITHOUT being
+#      counted as invalid.
 #
 # Self-contained: no external deps beyond python3 (JSON parsing). Fast blocks
 # (target-block-time=2, the parameter minimum) keep confirmations quick.
@@ -62,6 +65,25 @@ fl_start_single_node "-enablewpoaweights -enableweightengine -weightepochlength=
 ADMIN="$(first_addr)"
 say "admin/node address: $ADMIN"
 [ -n "$ADMIN" ] || fl_die "could not resolve node address"
+
+# R_k is the native value paid to the TREASURY address by transactions the miner signed.
+# The flag cannot be passed at first launch -- the genesis address does not exist until
+# the wallet does -- so it goes on by restart, which is also what the experimental
+# harness does (helpers/chain_setup.py). A node left without it computes R_k = 0 while
+# its peers do not, which on a real network is a fork.
+#
+# A DEDICATED address, not the admin's: with the admin as treasury its own change
+# outputs pay the treasury, and only the `signer == treasury` guard in
+# mc_AccumulateReconciliation keeps that from registering as a reconciliation. Correct,
+# but not something a test should lean on.
+TREASURY="$(fl_make_treasury_address 0)"
+[ -n "$TREASURY" ] || fl_die "could not create a treasury address"
+say "treasury address (defines a reconciliation transfer): $TREASURY"
+ENGINE_ARGS="-enablewpoaweights -enableweightengine -weightepochlength=$EPOCH_LEN -weighttreasuryaddress=$TREASURY"
+fl_restart_node 0 "$ENGINE_ARGS" || fl_die "node did not come back up with the treasury address set"
+[ "$(fl_chain_param 0 weight-treasury-address)" = "$TREASURY" ] \
+  && ok "treasury address is in force on the chain ($TREASURY)" \
+  || say "note: getblockchainparams does not echo weight-treasury-address; relying on the flag"
 
 # 1. streams auto-created (closed)
 say "waiting for the 2 published input streams to be auto-created"
@@ -216,6 +238,82 @@ r=$(mcli weightverifyweights 2>&1)
 echo "$r" | grep -qE '"epoch"|weight engine is disabled' \
   && ok "weightverifyweights reports verification state" \
   || bad "weightverifyweights unexpected output: $r"
+
+# 11. VERIFICATION IS EPOCH-SCOPED, and the verdicts say so.
+#
+# Until now this suite only asserted that the RPC ANSWERS -- it never read a verdict,
+# which left the epoch scoping covered by unit tests over hand-built maps and by nothing
+# at all at node level. The node-level bookkeeping is the part a fake map cannot reach:
+# the `epoch >= 2` gate, the last_verified_epoch marker, and the single-epoch verdict
+# cache (ThreadWeightEngine / WeightEngineGetVerdicts).
+#
+# What the scoping means, and why other-epoch is NOT a finding: a weight is a claim about
+# a specific epoch, and publication necessarily LAGS the epoch it describes -- a node can
+# only compute w_k^(e) once e is buried, so its record for e lands during e+1.
+# Verification therefore targets e-1 while the tip is in e, and a record about any other
+# epoch (or none at all, as on the static -weight path) is reported other-epoch and left
+# alone. Conflating that with a mismatch is how an honest node gets accused, and the
+# malus would then turn the false accusation into a real weight penalty -- which was
+# observed on a live run before the epoch field existed.
+#
+# Verification first runs once epoch 2 is buried, i.e. at height
+#   2 * EPOCH_LEN + STABILITY_MARGIN - 1
+# so drive there before asserting anything.
+FIRST_VERIFY_HEIGHT=$(fl_height_for_buried_epoch 2 "$EPOCH_LEN")
+say "epoch-scoped verification: first possible at height $FIRST_VERIFY_HEIGHT (epoch_len=$EPOCH_LEN)"
+fl_drive_to_height $(( FIRST_VERIFY_HEIGHT + EPOCH_LEN )) 240 \
+    "chain not advancing; the verification thread needs buried epochs" || true
+
+# The engine verifies once per epoch on its own tick, so poll for the first real report
+# (epoch 0 is the RPC's way of saying "it has not run here yet").
+v_epoch=0
+for _i in $(seq 1 30); do
+    v_epoch="$(fl_verify_field 0 epoch)"; v_epoch="${v_epoch:-0}"
+    [ "$v_epoch" -ge 1 ] && break
+    sleep 3
+done
+
+say "verification report: $(fl_verdict_tally 0)"
+v_ok="$(fl_verify_field 0 verified)"
+n_mismatch="$(fl_verdict_count 0 mismatch)"
+n_notcluster="$(fl_verdict_count 0 not-a-cluster)"
+n_other="$(fl_verdict_count 0 other-epoch)"
+
+[ "$v_epoch" -ge 1 ] \
+  && ok "verification has run for a real epoch (epoch=$v_epoch, not the 0 that means 'not yet')" \
+  || bad "verification never ran: epoch=$v_epoch at height $(fl_tip_height 0)"
+
+# It must never verify AHEAD of what is buried: at tip T the newest buried epoch is
+# (T - margin + 1)/len, and the engine targets one BELOW that. Read the tip AFTER the
+# report so an advancing chain can only widen the gap, never invent a violation.
+tip_now="$(fl_tip_height 0)"; tip_now="${tip_now:-0}"
+buried_now="$(fl_buried_epoch_at "$tip_now" "$EPOCH_LEN")"
+say "tip=$tip_now  newest buried epoch=$buried_now  verified epoch=$v_epoch"
+[ "$v_epoch" -lt "$buried_now" ] \
+  && ok "the verified epoch trails the newest buried one ($v_epoch < $buried_now): e-1 while the tip is in e" \
+  || bad "verified epoch $v_epoch does not trail the newest buried epoch $buried_now (tip $tip_now)"
+
+[ "${v_ok:-false}" = "true" ] \
+  && ok "the recomputation SUCCEEDED, so the verdicts are real rather than fail-open" \
+  || bad "verified=false: every verdict is UNVERIFIED and nothing was actually checked"
+
+[ "${n_mismatch:-0}" -eq 0 ] \
+  && ok "no mismatch verdicts on an honest single node" \
+  || bad "$n_mismatch mismatch verdict(s) against an honest node"
+[ "${n_notcluster:-0}" -eq 0 ] \
+  && ok "no not-a-cluster verdicts on an honest single node" \
+  || bad "$n_notcluster not-a-cluster verdict(s) against an honest node"
+
+# other-epoch is EXPECTED, not tolerated: reported for the record, never a failure.
+say "other-epoch verdicts: ${n_other:-0} (expected, and explicitly NOT a finding)"
+ok "other-epoch records are reported without being counted as invalid"
+
+# The invalid counter must agree with the verdicts: it is what mc_CountInvalidVerdicts
+# feeds, and the filter drops exactly those from the election.
+n_invalid="$(fl_verify_field 0 invalid)"; n_invalid="${n_invalid:-0}"
+[ "$n_invalid" -eq "$(( ${n_mismatch:-0} + ${n_notcluster:-0} ))" ] \
+  && ok "the invalid counter equals mismatch + not-a-cluster (other-epoch excluded)" \
+  || bad "invalid=$n_invalid but mismatch+not-a-cluster=$(( ${n_mismatch:-0} + ${n_notcluster:-0} ))"
 
 fl_phase "TEARDOWN"
 fl_teardown

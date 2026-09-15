@@ -447,12 +447,17 @@ fl_start_single_node() {
 # flag is the one node computing R_k = 0, so it disagrees with the rest of the network —
 # which is why the treasury must be set by a stop/relaunch, not by a later RPC. Mirrors
 # helpers/chain_setup.py in the experimental harness.
+# fl_restart_node i "<NODE_ARGS>" [CHAIN_SPEC]
+#
+# CHAIN_SPEC defaults to the bare chain name, which is right for the seed: its datadir
+# already holds the chain. A JOINED node is relaunched against the seed address instead,
+# so it re-dials a known peer rather than depending on peers.dat having survived.
 fl_restart_node() {
-    local i=$1 node_args=$2
+    local i=$1 node_args=$2 spec=${3:-$FL_CHAIN}
     fl_cli "$i" stop >/dev/null 2>&1 || true
     sleep 3
     # shellcheck disable=SC2086
-    "$BINDIR/multichaind" "$FL_CHAIN" -datadir="${FL_DATADIRS[i]}" -port="${FL_P2PPORTS[i]}" \
+    "$BINDIR/multichaind" "$spec" -datadir="${FL_DATADIRS[i]}" -port="${FL_P2PPORTS[i]}" \
         -rpcport="${FL_RPCPORTS[i]}" $node_args -daemon >/dev/null 2>&1
     fl_wait_rpc "$i"
 }
@@ -534,4 +539,110 @@ fl_height_for_buried_epoch() {
 # registry it would populate.
 fl_setup_first_blocks_floor() {
     echo $(( $1 + FL_STABILITY_MARGIN - 1 + FL_SETUP_PUBLISH_MARGIN + 1 ))
+}
+
+# ---- published-weight verification (weightverifyweights) ---------------------
+# The RPC answers with
+#   { "epoch": n, "verified": bool, "records": n, "invalid": n, "entries": [ ... ] }
+# where each entry carries address / published / published_epoch / recomputed / verdict,
+# and verdict is one of: ok | mismatch | not-a-cluster | other-epoch | unverified.
+#
+# Parsed with python3 rather than sed because a verdict tally has to look INSIDE the
+# entries array, and a regex over the flat text would happily count the word "mismatch"
+# out of the RPC's own help string. python3 is already a dependency of this suite
+# (analyze_distribution.py).
+
+# One top-level field of the verification report ("" when absent / unparsable).
+fl_verify_field() {
+    fl_cli "$1" weightverifyweights 2>/dev/null | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+v = d.get(sys.argv[1])
+if isinstance(v, bool):
+    print("true" if v else "false")
+elif v is not None:
+    print(v)
+' "$2" 2>/dev/null
+}
+
+# How many entries carry a given verdict. Prints 0 when the report is empty, so callers
+# can compare numerically without guarding.
+fl_verdict_count() {
+    fl_cli "$1" weightverifyweights 2>/dev/null | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print(0); sys.exit(0)
+want = sys.argv[1]
+print(sum(1 for e in d.get("entries", []) if e.get("verdict") == want))
+' "$2" 2>/dev/null || echo 0
+}
+
+# A one-line tally for the evidence log: "epoch=3 verified=true records=4 ok=3
+# other-epoch=1 mismatch=0 not-a-cluster=0 unverified=0".
+fl_verdict_tally() {
+    fl_cli "$1" weightverifyweights 2>/dev/null | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("(no verification report)"); sys.exit(0)
+es = d.get("entries", [])
+c = {}
+for e in es:
+    c[e.get("verdict", "?")] = c.get(e.get("verdict", "?"), 0) + 1
+order = ["ok", "other-epoch", "mismatch", "not-a-cluster", "unverified"]
+parts = ["epoch=%s" % d.get("epoch"), "verified=%s" % d.get("verified"),
+         "records=%s" % d.get("records"), "invalid=%s" % d.get("invalid")]
+parts += ["%s=%d" % (k, c.get(k, 0)) for k in order]
+for k in sorted(c):
+    if k not in order:
+        parts.append("%s=%d" % (k, c[k]))
+print("  ".join(parts))
+' 2>/dev/null || echo "(no verification report)"
+}
+
+# ---- treasury address --------------------------------------------------------
+# R_k is the native-currency value paid to the TREASURY address by transactions the
+# miner signed, derived from the epoch's confirmed blocks. Every node must resolve the
+# SAME address -- it is consensus-critical, and nodes disagreeing about it compute
+# different R_k and therefore different w_k.
+#
+# The flag cannot be passed at first launch: the genesis address does not exist until
+# the node has created its wallet. So the sequence is start -> read address -> derive a
+# treasury -> RESTART EVERY NODE with the flag. A node left without it is the one node
+# computing R_k = 0, which is a fork, not a degradation. Mirrors
+# helpers/chain_setup.py in the experimental harness.
+#
+# Deliberately returns a DEDICATED address rather than reusing the admin's. With the
+# admin as treasury, an admin -> node payment sends its CHANGE back to the treasury, so
+# mc_ValuePaidToTreasury sees a positive value and the transaction is only spared by the
+# `signer == treasury` guard in mc_AccumulateReconciliation. That guard is correct, but
+# a refuel path whose safety rests on one `continue` is not worth the risk in a test
+# whose job is to prove the direction rule. A separate address cannot touch it at all.
+fl_make_treasury_address() {
+    local i=$1 addr
+    addr="$(fl_new_address "$i")"
+    [ -n "$addr" ] || return 1
+    fl_cli "$i" grant "$addr" receive >/dev/null 2>&1 || true
+    echo "$addr"
+}
+
+# Restart every node with a new argument string. The SEED goes first so it is serving
+# again before any joined node tries to re-dial it; the joined nodes then come back
+# against the seed address.
+fl_restart_all_nodes() {
+    local node_args=$1 i
+    fl_log "restarting all $NODES node(s) with: $node_args"
+    fl_restart_node 0 "$node_args" || fl_die "the seed node did not come back up after the restart"
+    fl_log "node 0 (seed) back up"
+    for ((i = 1; i < NODES; i++)); do
+        fl_restart_node "$i" "$node_args" "$FL_SEED_ADDR" \
+            || fl_die "node $i did not come back up after the restart"
+        fl_log "node $i back up"
+    done
 }
