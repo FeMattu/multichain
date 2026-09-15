@@ -38,7 +38,8 @@ Throughout, `CHAIN` is the blockchain name and the binaries are in `./src`
   - [5.3 Start node C, (same steps of node B)](#53-start-node-c-same-steps-of-node-b)
   - [5.4 Verify (from any node)](#54-verify-from-any-node)
 - [6. When exactly do records appear?](#6-when-exactly-do-records-appear)
-- [7. Automated functional test (single system-level run)](#7-automated-functional-test-single-system-level-run)
+- [7. Automated functional tests](#7-automated-functional-tests)
+  - [7.1 The wPoA system run](#71-the-wpoa-system-run)
 - [8. Troubleshooting](#8-troubleshooting)
   - [8.1 Deep debugging: -wpoadebug](#81-deep-debugging--wpoadebug)
 - [Related documents](#related-documents)
@@ -48,22 +49,34 @@ Throughout, `CHAIN` is the blockchain name and the binaries are in `./src`
 
 ```mermaid
 flowchart TD
-    subgraph unit [Node-free]
-        U[run_unit_tests.sh<br/>all Boost.Test suites:<br/>weight / selector / vrf / randao / sortition]
+    subgraph unit [Node-free -- beside their modules]
+        UW[src/wpoa/test/run_unit_tests.sh<br/>weight / malus / selector<br/>vrf / randao / sortition]
+        UE[src/weight_engine/test/run_unit_tests.sh<br/>records / authorization<br/>engine / verifier]
     end
-    subgraph func [Requires a built node]
-        F[run_functional_tests.sh<br/>wrapper: timeout + QUICK]
-        SYS[functional_test_wpoa_system.sh<br/>ONE full-stack network, warmed up once]
-        C[checks on the shared run:<br/>weight / consistency / vrf / randao / sortition / distribution]
+    subgraph func [Requires a built node -- test/functional/]
+        F[run_functional_tests.sh<br/>suite selection + per-suite timeout]
+        SYS[wpoa/functional_test_wpoa_system.sh<br/>ONE full-stack network, warmed up once]
+        C[checks on the shared run: weight / stream permissions<br/>malus / consistency / diversity / vrf / randao<br/>randao seed convention / sortition / distribution]
+        WE[weight_engine/functional_test_weight_engine.sh<br/>publish side, closed streams, epoch-scoped verdicts]
+        WB[weight_engine/..._bootstrap.sh<br/>bootstrap ordering, setup-first-blocks floor]
+        WL[weight_engine/..._large_network.sh<br/>33 nodes, 50 epochs -- NOT in the default set]
         MAN[Manual tests<br/>single node §4 / three nodes §5]
     end
-    ALL[run_all_tests.sh<br/>unit then functional] --> U
+    ALL[src/wpoa/test/run_all_tests.sh<br/>unit then functional] --> UW
     ALL --> F
-    F --> SYS
+    F -->|default| SYS
+    F -->|default| WE
+    F -->|default| WB
+    F -.--suite weight-engine-large.-> WL
     SYS --> C
     BUILD[make: multichaind / multichain-cli / multichain-util] --> func
-    U -.no build needed.-> UOK([pure logic verified])
+    UW -.no build needed.-> UOK([pure logic verified])
+    UE -.no build needed.-> UOK
 ```
+
+The functional suites live at the **project level**, not under a module: a functional run
+exercises wPoA, the weight engine, the malus registry and the streams as one system. See
+[`../../../docs/adr/test-restructure-2026.md`](../../../docs/adr/test-restructure-2026.md).
 
 ---
 
@@ -353,18 +366,42 @@ Notes:
 
 ---
 
-## 7. Automated functional test (single system-level run)
+## 7. Automated functional tests
+
+There are **four** suites under [`test/functional/`](../../../test/functional/), three of
+them in the default set:
+
+| Suite | Default | What it covers |
+|---|---|---|
+| `wpoa` | yes | the system-level run described below |
+| `weight-engine` | yes | publish side, closed streams, epoch-scoped verdicts (single node) |
+| `weight-engine-bootstrap` | yes | bootstrap ordering, the `setup-first-blocks` floor |
+| `weight-engine-large` | **no** | 33 nodes, 100-block epochs, ≥ 50 epochs; hours |
+
+```bash
+./test/functional/run_functional_tests.sh                    # the default three
+./test/functional/run_functional_tests.sh --list             # suites, defaults marked
+./test/functional/run_functional_tests.sh --suite wpoa       # just one
+./test/functional/run_functional_tests.sh --suite weight-engine-large --fast
+```
+
+Full reference, including every environment knob:
+[`test/functional/README.md`](../../../test/functional/README.md).
+
+### 7.1 The wPoA system run
 
 `test/functional/wpoa/functional_test_wpoa_system.sh` drives a **real multi-node**
 network end to end. It starts **one** full-stack network (weights + VRF + RANDAO
 + sortition), waits for weight convergence and a block warm-up **once**, and then
 runs every feature check against that shared run — `check_weight`,
-`check_multinode_consistency`, `check_vrf`, `check_randao`, `check_sortition`,
-`check_distribution` — before stopping the nodes and cleaning up. It requires the
-node to be built first (§1). Set `NODES=1` for a single-node run.
+`check_stream_permissions`, `check_malus`, `check_multinode_consistency`,
+`check_diversity_spacing`, `check_vrf`, `check_randao`,
+`check_randao_seed_convention`, `check_sortition`, `check_distribution` — before
+stopping the nodes and cleaning up. It requires the node to be built first (§1).
+Set `NODES=1` for a single-node run.
 
 ```bash
-cd ./src/wpoa/test
+cd ./test/functional/wpoa
 ./functional_test_wpoa_system.sh                          # 3 nodes, full sample
 QUICK=1 ./functional_test_wpoa_system.sh                  # smaller sample, faster
 NODES=1 ./functional_test_wpoa_system.sh                  # single node
@@ -374,11 +411,13 @@ INCLUDE_PUBLIC_SELECTOR=1 ./functional_test_wpoa_system.sh # + the sortition-off
 
 Each check prints ✔/✗ lines and a final results table; the run exits non-zero if
 any critical check fails. Prefer the wrapper, which adds a warning banner and a
-hard timeout safety-net — see [`../test/README.md`](../test/README.md):
+hard timeout safety-net — see
+[`test/functional/README.md`](../../../test/functional/README.md):
 
 ```bash
-./test/functional/run_functional_tests.sh            # the system run (full)
-QUICK=1 ./test/functional/run_functional_tests.sh    # fast smoke (smaller sample)
+./test/functional/run_functional_tests.sh                 # the default three suites
+./test/functional/run_functional_tests.sh --suite wpoa    # this suite alone
+QUICK=1 ./test/functional/run_functional_tests.sh         # smaller sample, faster
 ```
 
 Exit code `0` and `FUNCTIONAL TEST PASSED` on success; non-zero with diagnostics

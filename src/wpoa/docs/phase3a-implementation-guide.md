@@ -140,7 +140,7 @@ New files (the module):
 | [`vrf_wrapper.cpp`](../vrf_wrapper.cpp) | The ECVRF implementation: hash-to-curve, deterministic nonce, DLEQ prove/verify, point/scalar helpers over the core secp256k1 API. |
 | [`test/vrf_wrapper_tests.cpp`](../test/vrf_wrapper_tests.cpp) | Boost.Test unit suite for the pure VRF core (correctness, determinism, tamper/forgery rejection, pseudorandomness sanity). |
 | [`test/run_unit_tests.sh vrf`](../test/run_unit_tests.sh) | Build + run the VRF unit tests (no node build needed; links the prebuilt `libsecp256k1.a`). |
-| [`test/functional/wpoa/functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh) | Multi-node end-to-end test: reveals produced, verified network-wide, chain live and fork-free under mandatory verification. |
+| [`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh) | Multi-node end-to-end test: reveals produced, verified network-wide, chain live and fork-free under mandatory verification. |
 
 Files **modified** in the host tree (integration points):
 
@@ -643,7 +643,7 @@ Run it:
 
 ### 13.2 Multi-node functional test
 
-[test/functional_test_wpoa_system.sh](../test/functional_test_wpoa_system.sh). Bootstraps N
+[test/functional_test_wpoa_system.sh](../../../test/functional/wpoa/functional_test_wpoa_system.sh). Bootstraps N
 permissioned nodes with `-enablewpoa=1 -enablewpoavrf=1`, waits for weight convergence,
 drives the chain `VRF_BLOCKS` blocks past the setup height, and asserts:
 

@@ -90,7 +90,7 @@ See [`docs/experiment.md` §1.2](docs/experiment.md).
 
 * Brings up **1 ADMIN node + 5 cluster-miner nodes**, reusing the
   permissioned-bootstrap protocol proven in
-  [`../../../wpoa/test/functional_lib.sh`](../../../wpoa/test/functional_lib.sh).
+  [`test/functional/lib/functional_lib.sh`](../../../../test/functional/lib/functional_lib.sh).
 * The **ADMIN** publishes the public inputs through the sanctioned admin RPCs:
   * `weightsetesg` — a certified, static **integer** ESG score in `[10, 20]` for every
     cluster miner and every azienda, seeded (`WE_SEED`, default 42);
