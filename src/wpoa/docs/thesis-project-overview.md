@@ -280,16 +280,30 @@ accumulator's previous value and the validated reveal contained in the block
 [1][3]:
 
 ```
-R_tot[n] = H( R_tot[n-1] ⊕ H(R[n]) )
+R_tot[n] = R_tot[n-1] ⊕ R[n]
 ```
 
-This form has three relevant functional properties. First, every new reveal
-contributes to network randomness only after being verified. Second, hashing
-the reveal before the XOR operation normalizes the input size and stabilizes
-the accumulator's behavior even if the reveal's internal serialized
-representation varies. Third, the final hashing of the accumulator prevents
-the linearity of the XOR alone from making the incremental mixing structure
-too transparent [1].
+This is Definition 5.3 as stated: a bare byte-wise XOR, with no hashing on
+either side. Every new reveal contributes to network randomness only after
+being verified, and the update is a pure function of `(R_tot[n-1], R[n])` —
+which is all that Proposition 5.1 (agreement between honest nodes) needs.
+
+The implementation chapter describes a hardened variant,
+`R_tot[n] = H(R_tot[n-1] ⊕ H(R[n]))`, whose extra hashes were meant to
+normalize a variable-length reveal and to break the linearity of the XOR. The
+code implemented that variant and has since been realigned to Definition 5.3,
+because neither hash earns its place in this design: the reveal is a
+fixed-width 32-byte VRF output (so there is nothing to normalize), the reveal
+is *unique* for a given key and input (so no last revealer can choose a value
+that cancels earlier contributions, which is the only thing XOR linearity would
+expose), and `R_tot` is never consumed raw — §5.5 hashes it anyway. See
+[phase3b-implementation-guide.md §5.1](phase3b-implementation-guide.md#51-the-fold-is-the-thesis-def-53-itself-a-bare-xor).
+
+The XOR is commutative and self-inverse, so `R_tot[n]` depends on the multiset
+of reveals rather than on their order. On a chain neither matters: the order of
+blocks is fixed by the chain itself, the VRF input `h[n-1]` differs at every
+height (so no reveal can repeat on one branch), and §5.5 re-binds position by
+committing to `h[n]` and `n+1`.
 
 Formally, all nodes observing the same sequence of valid blocks compute the
 same value `R_tot[n]`. This property is essential so that the seed used to
@@ -415,7 +429,7 @@ consumption of `seed[n+1]` without changing anything in §5.1–§5.5.
 
 The public half of the design is unchanged from the baseline model in
 [§5](#5-formal-model): a per-block VRF reveal, verified by every peer, feeds
-the RANDAO-style accumulator `R_tot[n] = H(R_tot[n-1] ⊕ H(R[n]))`, and a
+the RANDAO-style accumulator `R_tot[n] = R_tot[n-1] ⊕ R[n]` (Def. 5.3), and a
 lookback-`k` seed `seed[n+1] = H(R_tot[n-k] ‖ h[n] ‖ n+1)` is derived
 deterministically from that accumulator. Every honest node computes the
 *same* `seed[n+1]` — this is what preserves agreement (§2, requirement 1).

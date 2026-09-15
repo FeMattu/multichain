@@ -11,7 +11,7 @@
 //
 // Formal model (docs/thesis-project-overview.md §5.4–§5.5):
 //
-//   R_tot[n]   = H( R_tot[n-1] ⊕ H(R[n]) )                 (global accumulator)
+//   R_tot[n]   = R_tot[n-1] ⊕ R[n]                         (global accumulator)
 //   seed[n+1]  = H( R_tot[n-k] ‖ h[n] ‖ n+1 )              (lookback selection seed)
 //
 // with `H` = SHA-256, `⊕` a byte-wise XOR over 32-byte values, `R[n]` the
@@ -22,6 +22,39 @@
 // The reveal R[n] is unchanged from Phase 3a — its VRF input stays h[n-1] (the
 // height term belongs to the seed, not to the reveal; see
 // docs/phase3a-implementation-guide.md §4.4).
+//
+// THE ACCUMULATOR IS THE THESIS FORM, LITERALLY. The recurrence above is Def. 5.3 as
+// stated — a bare byte-wise XOR, no hash on either side — and it is what Fold computes.
+// An earlier revision of this module folded the hardened variant H(R_tot[n-1] ⊕ H(R[n]))
+// instead; it was realigned to the definition because the hardening bought nothing here:
+//
+//   * the outer hash was redundant — nothing consumes R_tot raw. DeriveSeed hashes it
+//     together with h[n] and the height, so the bytes the selector actually scores are a
+//     SHA-256 digest either way; hashing twice does not make the seed more uniform.
+//   * the linearity argument did not apply — a bare XOR accumulator is algebraically
+//     linear, so a last revealer FREE TO CHOOSE its reveal could cancel the contributions
+//     before it. Here the reveal is a VRF output: by uniqueness (see vrf_wrapper.h) exactly
+//     one R[n] is valid for a given key and input, and any other value fails
+//     VerifyBlockMinerWPoA. There is no choice left to exploit, so there was no algebraic
+//     handle for the outer hash to remove.
+//   * the inner hash had nothing to normalize — R[n] is fixed-width 32 bytes on the wire
+//     (WPoAVRF::OUTPUT_SIZE) and WPoAVRF::Verify rejects any other length, so a governed
+//     block's reveal is always exactly one accumulator word wide.
+//
+// WHAT THE PURE FORM GIVES UP, AND WHY IT IS UNREACHABLE. XOR is commutative and every
+// value is its own inverse, so R_tot[n] is a function of the MULTISET of reveals rather
+// than of their order, and the same reveal folded twice cancels itself. Neither is
+// reachable on a chain: a chain fixes the order of its own blocks, and the Phase-3a VRF
+// input is the parent hash h[n-1], distinct at every height, so two governed blocks on one
+// branch cannot carry the same reveal. Ordering is in any case re-bound downstream —
+// seed[n+1] commits to h[n] and to n+1, both of which are position-dependent.
+//
+// CONSENSUS BREAK. The fold defines every seed, so this change elects different proposers
+// from the same reveals. It is not backward compatible: a chain already running with
+// -enablewpoarandao must be restarted from genesis, not upgraded in place. The unit suite
+// pins the fold against an independent transcription of Def. 5.3
+// (test/randao_accumulator_tests.cpp, fold_is_the_bare_xor_of_definition_5_3). The decision
+// and the options weighed are recorded in docs/adr/randao-fold-bare-xor.md.
 //
 // WHAT CHANGES / WHAT DOES NOT. Phase 3b swaps ONLY the bytes fed to the
 // Efraimidis–Spirakis selector (the "seed" argument of WPoASelectProposer); the
@@ -83,18 +116,25 @@ public:
     /**
      * One accumulator step: fold a validated reveal into the running value.
      *
-     *   R_tot_out = H( R_tot_prev ⊕ H(reveal) )          (thesis §5.4)
+     *   R_tot_out = R_tot_prev ⊕ reveal                (thesis Def. 5.3, verbatim)
      *
-     * Hashing the reveal *before* the XOR normalizes its size and removes any
-     * structure; the final hash of the XOR breaks the linearity that a bare XOR
-     * accumulator would expose. Deterministic and associative-free (order
-     * matters): the caller must fold reveals strictly in ascending block order.
+     * A bare byte-wise XOR — see the note at the top of this file for why the
+     * hardened H(R_tot ⊕ H(R)) variant was dropped in favour of the definition.
+     *
+     * A governed block's reveal is always exactly HASH_SIZE bytes (WPoAVRF::Verify
+     * rejects any other length), which is the case Def. 5.3 describes and the only
+     * one reachable in consensus. `reveal_len` is nonetheless honoured for the
+     * degenerate inputs the glue can synthesize and the unit tests exercise: the
+     * reveal is XORed cyclically over the accumulator word, so a short reveal
+     * touches only its own prefix and a long one folds back over the start rather
+     * than being silently truncated. Deterministic in every case.
      *
      * In/out aliasing is permitted (`rtot_out32` may equal `rtot_prev32`): the
-     * XOR term is computed into a local buffer before the final hash writes out.
+     * previous value is copied out before any reveal byte is mixed in, and when the
+     * buffers coincide that copy is a no-op.
      *
      * @param rtot_prev32  HASH_SIZE bytes — R_tot[n-1].
-     * @param reveal       The block-n VRF reveal R[n] (any length; typically 32).
+     * @param reveal       The block-n VRF reveal R[n] (HASH_SIZE bytes in consensus).
      * @param reveal_len   Length of `reveal`.
      * @param rtot_out32   [out] HASH_SIZE bytes — R_tot[n].
      */
@@ -102,19 +142,19 @@ public:
                      const unsigned char* reveal, size_t reveal_len,
                      unsigned char* rtot_out32)
     {
-        // t = H(reveal)
-        unsigned char t[HASH_SIZE];
-        CSHA256().Write(reveal, reveal_len).Finalize(t);
-
-        // x = R_tot_prev ⊕ t   (into a local buffer so in/out may alias)
-        unsigned char x[HASH_SIZE];
+        // Start from R_tot_prev (a no-op when the caller folds in place).
         for (size_t i = 0; i < HASH_SIZE; i++)
         {
-            x[i] = (unsigned char)(rtot_prev32[i] ^ t[i]);
+            rtot_out32[i] = rtot_prev32[i];
         }
 
-        // R_tot_out = H(x)
-        CSHA256().Write(x, HASH_SIZE).Finalize(rtot_out32);
+        // R_tot_out = R_tot_prev ⊕ reveal. The modulo is the identity map in the
+        // consensus case reveal_len == HASH_SIZE; it only defines the result for the
+        // off-size buffers described above.
+        for (size_t i = 0; i < reveal_len; i++)
+        {
+            rtot_out32[i % HASH_SIZE] = (unsigned char)(rtot_out32[i % HASH_SIZE] ^ reveal[i]);
+        }
     }
 
     /**

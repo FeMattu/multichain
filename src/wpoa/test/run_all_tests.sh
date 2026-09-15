@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 #
-# Run the ENTIRE wPoA test suite: unit tests first, then functional tests.
+# Run the ENTIRE test suite: wPoA unit tests first, then the project functional suites.
 #
 # This is the single entrypoint that validates the whole system end to end:
 #   Phase 1  ── unit tests      (fast, node-free) via run_unit_tests.sh
-#   Phase 2  ── functional tests (slow, real multi-node) via run_functional_tests.sh
+#   Phase 2  ── functional tests (slow, real multi-node) via
+#               test/functional/run_functional_tests.sh
 #
 # Unit tests run first because they are fast and node-free: if the pure logic is
 # broken there is no point spending many minutes on the multi-node functional run. By
@@ -28,6 +29,11 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+# The functional suites are project-level, not module-level: a functional run exercises
+# wPoA, the weight engine, the malus registry and the streams together. See
+# docs/adr/test-restructure-2026.md.
+FUNCTIONAL_RUNNER="$REPO_ROOT/test/functional/run_functional_tests.sh"
 CONTINUE_ON_UNIT_FAIL="${CONTINUE_ON_UNIT_FAIL:-0}"
 
 unit_rc=0
@@ -56,7 +62,7 @@ fi
 # ---- Phase 2: functional tests ----------------------------------------------
 echo
 echo ">>> PHASE 2/2 — functional tests"
-"$SCRIPT_DIR/run_functional_tests.sh"
+"$FUNCTIONAL_RUNNER"
 func_rc=$?
 [ "$func_rc" -ne 0 ] && echo ">>> functional tests FAILED (exit $func_rc)"
 

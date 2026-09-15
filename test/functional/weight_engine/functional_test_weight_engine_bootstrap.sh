@@ -27,14 +27,22 @@
 #      parameters, not of the code:
 #
 #          setup-first-blocks  >  weight-epoch-length + STABILITY_MARGIN(6) - 1
+#                                                       + SETUP_PUBLISH_MARGIN(3)
+#
+#      i.e. weight-epoch-length + 9, which is what AdjustSetupFirstBlocks derives. Being
+#      COMPUTABLE is not enough: the selector reads CONFIRMED items, so the value still
+#      has to be published and mined, and that block must be one the NATIVE rules can
+#      produce. Hence the trailing +1 -- at exactly epoch+margin the confirming block
+#      would land on the first wPoA height, which cannot be produced without the
+#      registry it would populate.
 #
 #      The stock defaults (epoch 100, margin 6, setup 60 -> 105 > 60) VIOLATE it, which is
 #      why this is easy to hit; AppInit2 now warns explicitly when they do. This test runs
 #      a configuration that SATISFIES it (epoch 10 -> first weight at 15, setup 30) and
 #      asserts the registry is genuinely populated by the transition height.
 #
-# Reuses the wPoA functional library for the network bootstrap, so no setup code is
-# duplicated. Requires the node to be built first.
+# Reuses the shared functional library (../lib/functional_lib.sh) for the network
+# bootstrap, so no setup code is duplicated. Requires the node to be built first.
 #
 # Usage:
 #   ./functional_test_weight_engine_bootstrap.sh
@@ -44,10 +52,12 @@
 # Exit code: 0 iff every critical check passed.
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"          # .../src
-# shellcheck source=../../wpoa/test/functional_lib.sh
-. "$SRC_DIR/wpoa/test/functional_lib.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # test/functional/weight_engine
+FUNC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"                     # test/functional
+REPO_ROOT="$(cd "$FUNC_DIR/../.." && pwd)"                   # repo root
+SRC_DIR="$REPO_ROOT/src"
+# shellcheck source=../lib/functional_lib.sh
+. "$FUNC_DIR/lib/functional_lib.sh"
 
 BINDIR="${BINDIR:-$SRC_DIR}"
 NODES="${NODES:-3}"
@@ -120,6 +130,37 @@ fl_check_begin "setup_first_blocks_floor" 1
 fl_check_end || true
 
 SETUP_BLOCKS="$EFFECTIVE_SETUP"
+
+# ---------------------------------------------------------------------------
+# 0b. The treasury address, which is what makes R_k non-trivial.
+# ---------------------------------------------------------------------------
+# R_k is the native value paid to the TREASURY address by transactions the miner signed.
+# It cannot be passed at first launch -- the genesis address does not exist until the
+# node has a wallet -- so it goes on by restarting EVERY node with the flag. Restarting
+# every node is the point, not a convenience: the parameter is consensus-critical, and a
+# node left without it is the one node computing R_k = 0, which is a fork rather than a
+# degradation. Same sequence as helpers/chain_setup.py in the experimental harness.
+#
+# A dedicated address rather than the admin's: with the admin as treasury, an admin
+# payment sends its own change back to the treasury, and only the `signer == treasury`
+# guard in mc_AccumulateReconciliation keeps that from counting as a reconciliation.
+fl_phase "TREASURY — set -weighttreasuryaddress on every node (by restart)"
+TREASURY="$(fl_make_treasury_address 0)"
+[ -n "$TREASURY" ] || fl_die "could not create a treasury address"
+fl_log "treasury address (defines a reconciliation transfer): $TREASURY"
+ENGINE_ARGS="$ENGINE_ARGS -weighttreasuryaddress=$TREASURY"
+fl_restart_all_nodes "$ENGINE_ARGS"
+
+fl_check_begin "treasury_set_uniformly" 1
+    bad_treasury=0
+    for ((i = 0; i < NODES; i++)); do
+        if ! fl_cli "$i" getinfo >/dev/null 2>&1; then
+            fl_bad "node $i is not serving RPC after the treasury restart"
+            bad_treasury=$(( bad_treasury + 1 ))
+        fi
+    done
+    fl_assert_zero "$bad_treasury" "nodes that failed to come back with the treasury set"
+fl_check_end || true
 
 # ---------------------------------------------------------------------------
 # 1. The stream exists, and it exists EARLY — before wPoA engages.
@@ -247,6 +288,88 @@ fl_check_begin "weights_agree_across_nodes" 1
         [ -n "$ti" ] && [ "$ti" != "$ref" ] && { fl_bad "node $i total=$ti != node 0 total=$ref"; mism=$((mism+1)); }
     done
     fl_assert_zero "$mism" "nodes disagreeing on the aggregate weight (node 0 = $ref)"
+fl_check_end || true
+
+# ---------------------------------------------------------------------------
+# 5. Verification is EPOCH-SCOPED, and it agrees across the network.
+# ---------------------------------------------------------------------------
+# Until now the epoch scoping was covered by unit tests over hand-built maps and by
+# nothing at node level. The node-level part is what a fake map cannot reach: the
+# `epoch >= 2` gate, the last_verified_epoch marker, and the single-epoch verdict cache
+# in ThreadWeightEngine / WeightEngineGetVerdicts.
+#
+# The rule: a weight is a claim about a SPECIFIC epoch, and publication necessarily LAGS
+# the epoch it describes -- w_k^(e) is computable only once e is buried, so the record
+# for e lands during e+1. Verification therefore targets e-1 while the tip is in e, and a
+# record about any other epoch (or none, as on the static -weight path) is reported
+# other-epoch and LEFT ALONE. Conflating that with a mismatch is how an honest node gets
+# accused, and the malus would turn the false accusation into a real weight penalty.
+#
+# This network has a static -weight on every node as well as engine-computed weights, so
+# other-epoch entries are EXPECTED here and are reported, never failed on.
+fl_phase "VERIFICATION — epoch-scoped verdicts across $NODES nodes"
+
+VERIFY_FROM=$(fl_height_for_buried_epoch 2 "$EPOCH_LEN")
+fl_log "verification is first possible at height $VERIFY_FROM (epoch 2 buried, epoch_len=$EPOCH_LEN)"
+fl_drive_to_height $(( VERIFY_FROM + EPOCH_LEN )) "$DRIVE_TIMEOUT" \
+    "chain not advancing; the verification thread needs buried epochs" || true
+
+fl_check_begin "verification_is_epoch_scoped" 1
+    novote=0; invalid_total=0
+    for ((i = 0; i < NODES; i++)); do
+        # Poll: the engine verifies on its own tick, once per epoch.
+        ve=0
+        for ((t = 0; t < 20; t++)); do
+            ve="$(fl_verify_field "$i" epoch)"; ve="${ve:-0}"
+            [ "$ve" -ge 1 ] && break
+            sleep 3
+        done
+        fl_log "node $i: $(fl_verdict_tally "$i")"
+
+        if [ "$ve" -lt 1 ]; then
+            fl_bad "node $i never verified an epoch (epoch=0) by height $(fl_tip_height "$i")"
+            novote=$(( novote + 1 ))
+            continue
+        fi
+
+        # Never ahead of what is buried. The tip is read AFTER the report, so an
+        # advancing chain can only widen the gap rather than invent a violation.
+        tip_i="$(fl_tip_height "$i")"; tip_i="${tip_i:-0}"
+        buried_i="$(fl_buried_epoch_at "$tip_i" "$EPOCH_LEN")"
+        if [ "$ve" -lt "$buried_i" ]; then
+            fl_ok "node $i verified epoch $ve, trailing the newest buried epoch $buried_i (e-1 while in e)"
+        else
+            fl_bad "node $i verified epoch $ve which does not trail the newest buried epoch $buried_i (tip $tip_i)"
+        fi
+
+        # No honest node is ever a finding.
+        mm="$(fl_verdict_count "$i" mismatch)";      mm="${mm:-0}"
+        nc="$(fl_verdict_count "$i" not-a-cluster)"; nc="${nc:-0}"
+        inv="$(fl_verify_field "$i" invalid)";       inv="${inv:-0}"
+        invalid_total=$(( invalid_total + mm + nc ))
+
+        # And the invalid counter must equal exactly the two invalidating verdicts:
+        # other-epoch and unverified are explicitly NOT findings
+        # (mc_WeightVerdictIsInvalid).
+        [ "$inv" -eq $(( mm + nc )) ] \
+            || fl_bad "node $i: invalid=$inv but mismatch+not-a-cluster=$(( mm + nc )) -- other-epoch is being counted as a finding"
+    done
+    fl_assert_zero "$novote"        "nodes that never ran a verification"
+    fl_assert_zero "$invalid_total" "mismatch / not-a-cluster verdicts against honest nodes"
+fl_check_end || true
+
+fl_check_begin "verdicts_agree_across_nodes" 0
+    # Non-critical: nodes tick independently, so they can legitimately sit one epoch
+    # apart. What would be a defect is a PERSISTENT spread, or disagreement about
+    # whether anything is invalid.
+    ref_ep="$(fl_verify_field 0 epoch)"; ref_ep="${ref_ep:-0}"
+    spread=0
+    for ((i = 1; i < NODES; i++)); do
+        ei="$(fl_verify_field "$i" epoch)"; ei="${ei:-0}"
+        d=$(( ei - ref_ep )); [ "$d" -lt 0 ] && d=$(( -d ))
+        [ "$d" -gt 1 ] && { fl_bad "node $i verified epoch $ei vs node 0's $ref_ep (more than one epoch apart)"; spread=$(( spread + 1 )); }
+    done
+    fl_assert_zero "$spread" "nodes more than one epoch apart in what they verified"
 fl_check_end || true
 
 fl_phase "TEARDOWN"

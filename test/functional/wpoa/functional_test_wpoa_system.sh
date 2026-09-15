@@ -21,6 +21,8 @@
 #                      check_diversity_spacing      mining-diversity inert under wPoA
 #                      check_vrf                    reveals carried & verified, 0 rejects
 #                      check_randao                 beacon seed derived, 0 fallback folds
+#                      check_randao_seed_convention seed[n+1]=H(R_tot[n-k]||h[n]||n+1):
+#                                                    anchored to the TIP, not its parent
 #                      check_sortition              private path engaged, 0 public argmin
 #                      check_distribution           weight-proportional (chi-square)
 #   4. teardown    — stop and wipe every node
@@ -55,10 +57,12 @@
 # Exit code: 0 iff every CRITICAL check passed; non-zero otherwise.
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"          # .../src
-# shellcheck source=functional_lib.sh
-. "$SCRIPT_DIR/functional_lib.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # test/functional/wpoa
+FUNC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"                     # test/functional
+REPO_ROOT="$(cd "$FUNC_DIR/../.." && pwd)"                   # repo root
+SRC_DIR="$REPO_ROOT/src"
+# shellcheck source=../lib/functional_lib.sh
+. "$FUNC_DIR/lib/functional_lib.sh"
 
 # ---- tunables (QUICK shrinks the sample & budgets) --------------------------
 QUICK="${QUICK:-0}"
@@ -367,6 +371,347 @@ check_randao() {
     fl_assert_zero "$folds" "RANDAO fallback folds (a governed reveal could not be read)"
 }
 
+# The seed is anchored to the TIP and to the height being ELECTED (Def. 5.4):
+#
+#     seed[n+1] = H( R_tot[n-k] ‖ h[n] ‖ n+1 )
+#
+# This is the ONE assertion of that convention anywhere in the suite, and it exists
+# because the unit tests structurally cannot make it: RandaoAccumulator::DeriveSeed is
+# convention-agnostic -- it hashes three opaque inputs in a fixed order and cannot tell
+# h[n] from h[n-1], or n+1 from n. The choice lives in the glue,
+# WPoARandaoSelectionSeed (wpoa/randao_accumulator.cpp).
+#
+# That call site HAS been wrong: it folded h[n-1] and the tip height n, so with k=1 the
+# seed for a round depended only on the chain up to n-1 and lost the anchoring the
+# definition requires. Commit ef08074c fixed it and the whole unit suite stayed green,
+# because the bytes the core hashes are identical either way.
+#
+# The evidence is in the derivation log line, which records every operand:
+#
+#   [wPoA-RANDAO] seed for height=42  k=1  R_tot[40]=<hex>  h[41]=<hex> -> seed=<hex>
+#
+# WHICH OF THESE ASSERTIONS ACTUALLY DISCRIMINATES, because it is not obvious and
+# getting it wrong yields a check that passes under the bug:
+#
+#   * "the hash index is height-1" does NOT discriminate. ef08074c moved the height and
+#     the hash by the SAME offset, so the old code logged height=n with h[n-1] and the
+#     new logs height=n+1 with h[n]. The relation h_idx == height-1 holds under both,
+#     and the log is internally self-consistent either way. It is still worth asserting
+#     -- it catches an independent off-by-one between the two fields -- but on its own
+#     it would be a tautology dressed up as a regression guard;
+#   * "the accumulator index is height-1-k" likewise pins k against an off-by-one, not
+#     the anchoring;
+#   * "the logged h[n] equals getblockhash(n)" pins that the field is a real block hash
+#     rather than 32 bytes that merely sit in the right place. Also true under both;
+#   * THE DISCRIMINATOR is the relation to the CHAIN TIP. The highest height ever seeded
+#     is the round currently OPEN. Under the definition that round is tip+1; under the
+#     old code it was the tip itself. So max(logged height) == tip+1 is true only for
+#     the correct convention, and max(logged height) <= tip is the signature of the bug.
+#
+# The last one races against the tip advancing, so it is polled rather than sampled once:
+# a new round opens every target-block-time, and the equality holds as soon as one does.
+# A node that never reaches tip+1 is either running the old convention or is stalled, and
+# both deserve a failure.
+#
+# Needs -debug=wpoa (the line is under LogPrint("wpoa", ...) and fDebug), which the
+# full-stack args already carry.
+_randao_seed_lines() {
+    grep -oE '\[wPoA-RANDAO\] seed for height=[0-9]+ +k=[0-9]+ +R_tot\[[0-9]+\]=[0-9a-f]+ +h\[[0-9]+\]=[0-9a-f]+' \
+        "${FL_DATADIRS[0]}/$FL_CHAIN/debug.log" 2>/dev/null
+}
+
+_randao_max_seeded_height() {
+    _randao_seed_lines | sed -nE 's/.*height=([0-9]+).*/\1/p' | sort -n | tail -n1
+}
+
+check_randao_seed_convention() {
+    local log lines sampled=0 bad_h=0 bad_r=0 bad_hash=0 checked_hash=0
+    log="${FL_DATADIRS[0]}/$FL_CHAIN/debug.log"
+
+    if [ ! -f "$log" ]; then
+        fl_bad "node 0 debug.log not found at $log"
+        return
+    fi
+
+    # ---- the discriminator: the open round is tip+1, not the tip ----------------
+    local tip maxh matched=0 t
+    for ((t = 0; t < 15; t++)); do
+        tip="$(fl_tip_height 0)";            tip="${tip:-0}"
+        maxh="$(_randao_max_seeded_height)"; maxh="${maxh:-0}"
+        if [ "$maxh" -eq $(( tip + 1 )) ]; then matched=1; break; fi
+        sleep "$TARGET_BLOCK_TIME"
+    done
+    if [ "$matched" = "1" ]; then
+        fl_ok "the highest seeded height is tip+1 ($maxh vs tip $tip): the seed elects n+1, anchored to h[n]"
+    elif [ "${maxh:-0}" -le "${tip:-0}" ] && [ "${maxh:-0}" -gt 0 ]; then
+        fl_bad "highest seeded height is $maxh with tip $tip: the seed is being derived FOR THE TIP, i.e. h[n-1]/n -- the ef08074c regression"
+    else
+        fl_bad "could not establish the seeded-height/tip relation (max seeded=${maxh:-none}, tip=${tip:-?})"
+    fi
+
+    # ---- field-level consistency on a sample -----------------------------------
+    # Any recent derivation is as good as any other; a handful keeps the getblockhash
+    # round-trips cheap.
+    lines="$(_randao_seed_lines | tail -n 12)"
+    if [ -z "$lines" ]; then
+        fl_bad "no parsable RANDAO seed-derivation lines in node 0's log (is -debug=wpoa on?)"
+        return
+    fi
+
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        local height k rtot_idx h_idx h_hash want_rtot
+        height="$(  printf '%s' "$line" | sed -nE 's/.*height=([0-9]+).*/\1/p')"
+        k="$(       printf '%s' "$line" | sed -nE 's/.*k=([0-9]+).*/\1/p')"
+        rtot_idx="$(printf '%s' "$line" | sed -nE 's/.*R_tot\[([0-9]+)\].*/\1/p')"
+        h_idx="$(   printf '%s' "$line" | sed -nE 's/.*h\[([0-9]+)\]=.*/\1/p')"
+        h_hash="$(  printf '%s' "$line" | sed -nE 's/.*h\[[0-9]+\]=([0-9a-f]+).*/\1/p')"
+        [ -n "$height" ] && [ -n "$k" ] && [ -n "$rtot_idx" ] && [ -n "$h_idx" ] || continue
+        sampled=$(( sampled + 1 ))
+
+        # The hash operand belongs to the height below the one being elected.
+        [ "$h_idx" -eq $(( height - 1 )) ] || {
+            bad_h=$(( bad_h + 1 ))
+            fl_bad "seed for height=$height used h[$h_idx]; the two fields must differ by exactly 1"
+        }
+
+        # The accumulator operand is R_tot[n-k], clamped at genesis.
+        want_rtot=$(( height - 1 - k )); [ "$want_rtot" -lt 0 ] && want_rtot=0
+        [ "$rtot_idx" -eq "$want_rtot" ] || {
+            bad_r=$(( bad_r + 1 ))
+            fl_bad "seed for height=$height used R_tot[$rtot_idx] with k=$k; expected R_tot[$want_rtot]"
+        }
+
+        # And that hash is genuinely block n's, not 32 bytes in the right field.
+        if [ "$h_idx" -le "$(fl_tip_height 0)" ]; then
+            local onchain
+            onchain="$(fl_blockhash_at 0 "$h_idx" | tr -d '"[:space:]')"
+            if [ -n "$onchain" ]; then
+                checked_hash=$(( checked_hash + 1 ))
+                [ "$onchain" = "$h_hash" ] || {
+                    bad_hash=$(( bad_hash + 1 ))
+                    fl_bad "seed for height=$height: logged h[$h_idx]=$h_hash but getblockhash($h_idx)=$onchain"
+                }
+            fi
+        fi
+    done <<< "$lines"
+
+    fl_log "sampled $sampled seed derivations; $checked_hash of them hash-checked against the chain"
+    fl_assert_gt0  "$sampled"      "parsable seed derivations sampled"
+    fl_assert_zero "$bad_h"        "derivations whose height and hash index are not exactly 1 apart"
+    fl_assert_zero "$bad_r"        "derivations using the wrong lookback index (must be R_tot[n-k])"
+    fl_assert_gt0  "$checked_hash" "derivations whose h[n] was verified against getblockhash"
+    fl_assert_zero "$bad_hash"     "derivations whose logged h[n] did not match the block's real hash"
+}
+
+# All nodes agree on the block hash at SAMPLE_END (buried under CONFIRM_BUFFER).
+check_multinode_consistency() {
+    local ref i hi mism=0
+    ref="$(fl_blockhash_at 0 "$SAMPLE_END")"
+    [ -n "$ref" ] || { fl_bad "could not read node 0 block hash at $SAMPLE_END"; return; }
+    fl_log "reference block $SAMPLE_END @ node 0 = $ref"
+    for ((i = 1; i < NODES; i++)); do
+        hi="$(fl_blockhash_at "$i" "$SAMPLE_END")"
+        if [ -n "$hi" ] && [ "$hi" != "$ref" ]; then
+            fl_bad "fork: node $i block $SAMPLE_END = $hi"; mism=$((mism+1))
+        fi
+    done
+    fl_assert_zero "$mism" "nodes disagreeing on the chain at height $SAMPLE_END"
+}
+
+# The three symptom counters, asserted by check_diversity_spacing in both regimes.
+_check_diversity_symptoms() {
+    local denied cannot nokey
+    denied=$(fl_logcount_all "Permission denied for miner")
+    cannot=$(fl_logcount_all "cannot mine now, waiting")
+    nokey=$(fl_logcount_all "no local mining key, waiting")
+    fl_log "per-node 'Permission denied for miner':"; fl_logcount_per_node "Permission denied for miner"
+    fl_assert_zero "$denied" "'Permission denied for miner' block rejections"
+    fl_assert_zero "$cannot" "miner-side 'cannot mine now' back-offs"
+    fl_assert_zero "$nokey"  "elected proposers that found no local mining key"
+}
+
+# REGRESSION — mining-diversity spacing must be inert on wPoA-governed heights.
+#
+# The native rule (mc_Permissions::IsBarredByDiversity) is round-robin: it forbids a
+# miner from producing a block within `spacing` heights of its previous one. Under
+# weighted selection every permissioned address takes part in every round, so a heavier
+# validator legitimately wins two CONSECUTIVE rounds — which the native rule rejects.
+#
+# The defect was masked by the default 3-node set-up, where the computed spacing
+# degenerates to 1 and the rule is arithmetically inert; from 4 miners upward (with the
+# default mining-diversity 0.3) it becomes 2 and bites. So this check FIRST asserts the
+# run is in the biting regime, then asserts the consecutive win was accepted.
+#
+# The three symptom counters are the three faces of the same bug:
+#   "Permission denied for miner"  — validator side, block admission (CheckBlockPermissions)
+#   "cannot mine now, waiting"     — miner side, CreateNewBlock's canMine self-test probe
+#   "no local mining key, waiting" — miner side, GetKeyFromAddressBook via GetAllPermissions:
+#                                    the elected proposer concludes it holds no mining key
+#                                    and sleeps through its own round (the stalling face)
+check_diversity_spacing() {
+    local d spacing
+    d="$(fl_chain_param 0 mining-diversity)"
+    [ -n "$d" ] || { fl_bad "could not read mining-diversity from getblockchainparams"; return; }
+    spacing="$(fl_native_diversity_spacing "$NODES" "$d")"
+    fl_log "miners=$NODES  mining-diversity=$d  ->  native spacing=$spacing"
+
+    if [ "${spacing:-1}" -lt 2 ]; then
+        # Not a failure: at this miner count the native rule is arithmetically inert, so
+        # there is nothing for it to break. The consecutive-win case is covered by
+        # scenario_diversity_spacing, which the orchestration runs precisely when this
+        # shared run cannot express it. Assert the symptom counters anyway — they are
+        # meaningful at any miner count — and skip the pair requirement.
+        fl_log "native spacing is $spacing: the native rule is inert at $NODES miners, so this"
+        fl_log "shared run cannot express the consecutive-win case (covered by the dedicated scenario)."
+        _check_diversity_symptoms
+        return
+    fi
+    fl_ok "native spacing is $spacing (>=2): the consecutive-win regime is under test"
+
+    # Count consecutive same-miner pairs over the sample window.
+    local miners=() pairs=0 i
+    while IFS= read -r line; do [ -n "$line" ] && miners+=("$line"); done \
+        < <(fl_block_miners 0 "$SAMPLE_START" "$SAMPLE_END")
+    if [ "${#miners[@]}" -lt 2 ]; then
+        fl_bad "could not read block miners for heights $SAMPLE_START..$SAMPLE_END"
+        return
+    fi
+    for ((i = 1; i < ${#miners[@]}; i++)); do
+        [ "${miners[i]}" = "${miners[i-1]}" ] && pairs=$((pairs + 1))
+    done
+    fl_log "blocks sampled: ${#miners[@]} (heights $SAMPLE_START..$SAMPLE_END); consecutive same-miner pairs: $pairs"
+
+    _check_diversity_symptoms
+
+    # A run with zero consecutive pairs proves nothing either way: report it as a
+    # failure of the TEST to exercise the case, not as a pass.
+    if [ "$pairs" -gt 0 ]; then
+        fl_ok "a validator won two consecutive wPoA rounds and the block was accepted ($pairs occurrence(s))"
+    else
+        fl_bad "no consecutive same-miner pair occurred: INCONCLUSIVE (raise SAMPLE_BLOCKS, or skew WEIGHTS so one validator wins more often)"
+    fi
+}
+
+# VRF reveals were carried and verified network-wide; the prover never failed and
+# nothing was rejected for a VRF reason. Under the full stack the verify is logged
+# by the sortition path (see check_sortition); here we assert the VRF invariants.
+check_vrf() {
+    local prover_fail vrf_reject
+    prover_fail=$(fl_logcount_all "wPoA-VRF: failed to produce VRF reveal")
+    vrf_reject=$(fl_logcount_all "REJECT.*(missing|invalid) VRF reveal|missing VRF reveal \(sortition\)|invalid or missing VRF reveal over the sortition input")
+    fl_log "per-node VRF rejections:"; fl_logcount_per_node "REJECT.*VRF|missing VRF reveal|invalid VRF reveal"
+    fl_assert_zero "$prover_fail" "miner-side VRF prover failures"
+    fl_assert_zero "$vrf_reject"  "VRF-reveal rejections under honest operation"
+    # Liveness past setup already proves every accepted governed block carried a
+    # reveal that verified (mandatory verification); recorded here for the report.
+    fl_log "chain advanced past setup under mandatory VRF verification: height $(fl_tip_height 0)"
+}
+
+# RANDAO beacon seed was derived on the governed heights and no governed reveal
+# was missing (0 fallback folds).
+check_randao() {
+    local seeds folds
+    seeds=$(fl_logcount_all "\[wPoA-RANDAO\] seed for height=")
+    folds=$(fl_logcount_all "reveal unavailable")
+    fl_log "per-node RANDAO seed derivations:"; fl_logcount_per_node "\[wPoA-RANDAO\] seed for height="
+    fl_assert_gt0  "$seeds" "RANDAO beacon-seed derivations logged"
+    fl_assert_zero "$folds" "RANDAO fallback folds (a governed reveal could not be read)"
+}
+
+# The seed is anchored to the TIP and to the height being ELECTED (Def. 5.4):
+#
+#     seed[n+1] = H( R_tot[n-k] ‖ h[n] ‖ n+1 )
+#
+# This is the ONE assertion of that convention anywhere in the suite, and it exists
+# because the unit tests structurally cannot make it: RandaoAccumulator::DeriveSeed is
+# convention-agnostic -- it hashes three opaque inputs in a fixed order and cannot tell
+# h[n] from h[n-1], or n+1 from n. The choice lives in the glue,
+# WPoARandaoSelectionSeed (wpoa/randao_accumulator.cpp).
+#
+# That call site HAS been wrong: it folded h[n-1] and the tip height n, so with k=1 the
+# seed for a round depended only on the chain up to n-1 and lost the anchoring the
+# definition requires. Commit ef08074c fixed it and the whole unit suite stayed green,
+# because the bytes the core hashes are identical either way.
+#
+# The evidence is already in the log. The derivation line records every operand:
+#
+#   [wPoA-RANDAO] seed for height=42  k=1  R_tot[40]=<hex>  h[41]=<hex> -> seed=<hex>
+#
+# so the convention is checkable by arithmetic on the indices plus one getblockhash:
+#   1. the hash index is height-1  -> it is the TIP, not the tip's parent;
+#   2. the accumulator index is height-1-k (clamped at 0)  -> the lookback is applied
+#      to the tip, and k is not silently off by one;
+#   3. the logged h[n] EQUALS getblockhash(n) -> it really is that block's hash, not
+#      some other 32 bytes that happen to sit in the right field.
+#
+# Needs -debug=wpoa (the line is under LogPrint("wpoa", ...) and fDebug), which the
+# full-stack args already carry.
+check_randao_seed_convention() {
+    local log lines sampled=0 bad_h=0 bad_r=0 bad_hash=0 checked_hash=0
+    log="${FL_DATADIRS[0]}/$FL_CHAIN/debug.log"
+
+    if [ ! -f "$log" ]; then
+        fl_bad "node 0 debug.log not found at $log"
+        return
+    fi
+
+    # Sample the most recent derivations: any one of them is as good as any other, and a
+    # handful keeps the getblockhash round-trips cheap.
+    lines="$(grep -oE '\[wPoA-RANDAO\] seed for height=[0-9]+ +k=[0-9]+ +R_tot\[[0-9]+\]=[0-9a-f]+ +h\[[0-9]+\]=[0-9a-f]+' \
+             "$log" 2>/dev/null | tail -n 12)"
+    if [ -z "$lines" ]; then
+        fl_bad "no parsable RANDAO seed-derivation lines in node 0's log (is -debug=wpoa on?)"
+        return
+    fi
+
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        local height k rtot_idx h_idx h_hash want_rtot
+        height="$(  printf '%s' "$line" | sed -nE 's/.*height=([0-9]+).*/\1/p')"
+        k="$(       printf '%s' "$line" | sed -nE 's/.*k=([0-9]+).*/\1/p')"
+        rtot_idx="$(printf '%s' "$line" | sed -nE 's/.*R_tot\[([0-9]+)\].*/\1/p')"
+        h_idx="$(   printf '%s' "$line" | sed -nE 's/.*h\[([0-9]+)\]=.*/\1/p')"
+        h_hash="$(  printf '%s' "$line" | sed -nE 's/.*h\[[0-9]+\]=([0-9a-f]+).*/\1/p')"
+        [ -n "$height" ] && [ -n "$k" ] && [ -n "$rtot_idx" ] && [ -n "$h_idx" ] || continue
+        sampled=$(( sampled + 1 ))
+
+        # (1) the hash operand is h[n], where the elected height is n+1.
+        [ "$h_idx" -eq $(( height - 1 )) ] || {
+            bad_h=$(( bad_h + 1 ))
+            fl_bad "seed for height=$height used h[$h_idx]; Def. 5.4 requires h[$(( height - 1 ))] (the tip)"
+        }
+
+        # (2) the accumulator operand is R_tot[n-k], clamped at genesis.
+        want_rtot=$(( height - 1 - k )); [ "$want_rtot" -lt 0 ] && want_rtot=0
+        [ "$rtot_idx" -eq "$want_rtot" ] || {
+            bad_r=$(( bad_r + 1 ))
+            fl_bad "seed for height=$height used R_tot[$rtot_idx] with k=$k; expected R_tot[$want_rtot]"
+        }
+
+        # (3) and that hash is genuinely block n's. One round-trip per sampled line,
+        # only where the block is still in range.
+        if [ "$h_idx" -le "$(fl_tip_height 0)" ]; then
+            local onchain
+            onchain="$(fl_blockhash_at 0 "$h_idx" | tr -d '"[:space:]')"
+            if [ -n "$onchain" ]; then
+                checked_hash=$(( checked_hash + 1 ))
+                [ "$onchain" = "$h_hash" ] || {
+                    bad_hash=$(( bad_hash + 1 ))
+                    fl_bad "seed for height=$height: logged h[$h_idx]=$h_hash but getblockhash($h_idx)=$onchain"
+                }
+            fi
+        fi
+    done <<< "$lines"
+
+    fl_log "sampled $sampled seed derivations; $checked_hash of them hash-checked against the chain"
+    fl_assert_gt0  "$sampled"    "parsable seed derivations sampled"
+    fl_assert_zero "$bad_h"      "derivations anchored to the WRONG block (must be h[n], the tip)"
+    fl_assert_zero "$bad_r"      "derivations using the wrong lookback index (must be R_tot[n-k])"
+    fl_assert_gt0  "$checked_hash" "derivations whose h[n] was verified against getblockhash"
+    fl_assert_zero "$bad_hash"   "derivations whose logged h[n] did not match the block's real hash"
+}
+
 # Private sortition governed selection: private scorings + private acceptances
 # occurred, and ZERO blocks were accepted via the public argmin path.
 check_sortition() {
@@ -486,6 +831,7 @@ fl_check_begin "multinode_consistency" 1; check_multinode_consistency; fl_check_
 fl_check_begin "diversity_spacing"     1; check_diversity_spacing;     fl_check_end || true
 fl_check_begin "vrf"                   1; check_vrf;                   fl_check_end || true
 fl_check_begin "randao"                1; check_randao;                fl_check_end || true
+fl_check_begin "randao_seed_convention" 1; check_randao_seed_convention; fl_check_end || true
 fl_check_begin "sortition"             1; check_sortition;             fl_check_end || true
 fl_check_begin "distribution"          1; check_distribution;          fl_check_end || true
 

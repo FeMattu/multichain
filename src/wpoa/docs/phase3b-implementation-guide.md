@@ -95,7 +95,7 @@ hash (Phase 2) but by a mixed, grinding-resistant beacon value.
 Formally (see [thesis §5.4–§5.5](thesis-project-overview.md#54-global-accumulator-update)):
 
 ```
-R_tot[n]  = H( R_tot[n-1] ⊕ H(R[n]) )               (global accumulator)
+R_tot[n]  = R_tot[n-1] ⊕ R[n]                       (global accumulator)
 seed[n+1] = H( R_tot[n-k] ‖ h[n] ‖ n+1 )            (lookback selection seed)
 ```
 
@@ -152,7 +152,7 @@ New files (the module):
 | [`randao_accumulator.cpp`](../randao_accumulator.cpp) | Definitions of the node-coupled glue: the runtime flag/lookback, the height activation predicate, the memoized block-index walk (`GetAccumulator`), the thread-local reveal extractor (`ExtractBlockReveal`) and the seed helper (`WPoARandaoSelectionSeed`). |
 | [`test/randao_accumulator_tests.cpp`](../test/randao_accumulator_tests.cpp) | Boost.Test unit suite for the pure core (spec conformance vs. an independent reference, determinism, order/input sensitivity, chain consistency). |
 | [`test/run_unit_tests.sh randao`](../test/run_unit_tests.sh) | Build + run the accumulator unit tests (no node build needed; links only SHA256). |
-| [`test/functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh) | Multi-node end-to-end test: liveness + no-fork under the beacon seed, beacon-engaged evidence, and weight-proportional distribution under the seed. |
+| [`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh) | Multi-node end-to-end test: liveness + no-fork under the beacon seed, beacon-engaged evidence, and weight-proportional distribution under the seed. |
 
 Files **modified** in the host tree (integration points):
 
@@ -228,14 +228,20 @@ The consequences:
 ### 4.1 The fold (`RandaoAccumulator::Fold`, thesis §5.4)
 
 ```
-R_tot[n] = H( R_tot[n-1] ⊕ H(R[n]) )
+R_tot[n] = R_tot[n-1] ⊕ R[n]
 ```
 
-Implemented as: `t = SHA256(reveal)`; `x = R_tot_prev ⊕ t` (byte-wise, 32 bytes);
-`R_tot_out = SHA256(x)`. Hashing the reveal *before* the XOR normalizes its size and
-removes structure; the final hash of the XOR breaks the linearity a bare XOR accumulator
-would expose. The fold is **order-sensitive** (folding A then B ≠ B then A), which is
-exactly what makes `R_tot` capture the *ordered history* of reveals — a chain, not a set.
+Implemented as a single byte-wise XOR over 32 bytes — thesis **Def. 5.3 verbatim**, no
+hashing on either side. A governed block's reveal is exactly 32 bytes (`WPoAVRF::Verify`
+rejects any other length), i.e. one accumulator word, so nothing has to be normalized
+first.
+
+**The fold is order-independent, and that is bounded.** XOR is commutative and
+self-inverse, so `R_tot` is a function of the *multiset* of reveals, not of their order,
+and the same reveal folded twice cancels itself. Neither is reachable: a chain fixes the
+order of its own blocks, and the Phase-3a VRF input is the parent hash `h[n-1]`, distinct
+at every height, so no two governed blocks of one branch carry the same reveal. Position
+is re-bound one step later anyway — `seed[n+1]` commits to `h[n]` and `n+1` (§4.3).
 
 ### 4.2 The genesis base (`RandaoAccumulator::Genesis`)
 
@@ -278,15 +284,27 @@ from disk exactly once.
 
 ## 5. Design decisions
 
-### 5.1 SHA-256 fold matching the thesis, order-sensitive
-- **Choice:** `R_tot = H(R_tot_prev ⊕ H(reveal))` with `H = SHA256`, exactly the thesis
-  §5.4 form.
-- **Why:** it is the adopted RANDAO construction; hashing before XOR and after the XOR are
-  the two properties the thesis calls out (size normalization, killing XOR linearity). It
-  is deterministic and needs no state beyond the previous value.
-- **Rejected:** a bare running XOR of reveals (linear, and a last revealer could cancel
-  prior contributions), or hashing a concatenation of all reveals (O(n) per step, no
-  incremental state).
+### 5.1 The fold is the thesis Def. 5.3 itself, a bare XOR
+- **Choice:** `R_tot = R_tot_prev ⊕ reveal`, exactly the §5.4 / Def. 5.3 form. Constant
+  work per block, no state beyond the previous value.
+- **Why not the hardened `H(R_tot_prev ⊕ H(reveal))`.** That variant was implemented first
+  and has been dropped, because each of its two hashes turned out to buy nothing *here*:
+  - the **outer** hash was redundant — nothing consumes `R_tot` raw. `DeriveSeed` hashes it
+    with `h[n]` and the height, so the bytes the selector scores are a SHA-256 digest
+    either way.
+  - the **linearity** argument it rested on does not apply — a bare XOR is linear, so a
+    last revealer *free to choose* its reveal could cancel earlier contributions. The
+    reveal here is a VRF output: by uniqueness exactly one `R[n]` is valid for a given key
+    and input, and anything else fails `VerifyBlockMinerWPoA`. There is no choice left to
+    exploit.
+  - the **inner** hash had nothing to normalize — the reveal is fixed-width 32 bytes on the
+    wire (`WPoAVRF::OUTPUT_SIZE`).
+- **Rejected:** hashing a concatenation of all reveals (O(n) per step, no incremental
+  state).
+- **Decision record:** [adr/randao-fold-bare-xor.md](adr/randao-fold-bare-xor.md).
+- **Consequence:** the fold defines every seed, so this is a consensus break. A chain
+  already running with `-enablewpoarandao` elects different proposers from the same
+  reveals and must be restarted from genesis, not upgraded in place.
 
 ### 5.2 Seed = `H(R_tot[n-k] ‖ h[n] ‖ n+1)`, replacing the prev-hash seed at both call sites
 - **Choice:** the selector's `seed` argument becomes the derived beacon seed; the argmin,
@@ -497,7 +515,7 @@ flowchart TD
     VACC -->|new tip| MA
 
     subgraph ACC ["GetAccumulator(pindex) — memoized, both threads"]
-        A1["walk back to first cached / pre-beacon ancestor"] --> A2["fold forward: R_tot = H(R_tot ⊕ H(reveal))"] --> A3["cache R_tot by block hash"]
+        A1["walk back to first cached / pre-beacon ancestor"] --> A2["fold forward: R_tot = R_tot ⊕ reveal"] --> A3["cache R_tot by block hash"]
     end
     MB -.uses.-> ACC
     VB -.uses.-> ACC
@@ -560,7 +578,9 @@ Operators still override it with `-wpoarandaolookback`; it must match on all nod
 ### 11.3 Change the fold / accumulator construction
 Reimplement `RandaoAccumulator::Fold` behind the same signature and re-run
 [`test/run_unit_tests.sh randao`](../test/run_unit_tests.sh); no caller changes. Keep it
-order-sensitive and deterministic, or the chain-history property (§4.1) breaks.
+deterministic and a pure function of `(R_tot_prev, reveal)` — that is all agreement between
+honest nodes needs. Any change to the fold changes every seed and is therefore a consensus
+break: chains running with `-enablewpoarandao` must restart from genesis.
 
 ### 11.4 Change when the beacon seed engages
 Edit `WPoARANDAOActiveAtHeight` in [`randao_accumulator.cpp`](../randao_accumulator.cpp). Keep it
@@ -583,12 +603,18 @@ up again), or persist `R_tot` in the block index — see §5.4 for the trade-off
 Boost.Test. Covers, node-free:
 
 - **spec conformance** — `Fold` and `DeriveSeed` match an *independent* re-implementation of
-  the thesis §5.4/§5.5 formulas (so a bug in the header cannot hide behind a shared helper),
-  and `Genesis` equals `SHA256` of the documented tag;
-- **determinism** and **in/out aliasing** of the fold;
-- **order sensitivity** — folding A then B ≠ B then A (the accumulator captures reveal order);
-- **avalanche** — a one-bit change in any input (accumulator, reveal, prev-hash, height) flips
-  the output;
+  the thesis Def. 5.3 / §5.5 formulas (so a bug in the header cannot hide behind a shared
+  helper), and `Genesis` equals `SHA256` of the documented tag;
+- **the realignment itself** — `fold_is_the_bare_xor_of_definition_5_3` checks the fold
+  against hand-written bytes and against the *old* hardened formula, so reintroducing
+  `H(R_tot ⊕ H(R))` fails the build instead of silently changing every seed;
+- **the XOR algebra, stated as known** — `accumulator_algebra_is_known_and_bounded` pins
+  commutativity and self-inversion, and that the seed still separates positions via `h[n]`
+  and `n+1`;
+- **determinism**, **in/out aliasing**, and the off-size-reveal path (short reveals touch
+  their prefix, long ones wrap rather than truncate);
+- **sensitivity** — every input bit reaches the output; a one-bit change in any seed input
+  (accumulator, prev-hash, height) changes the seed;
 - **chain consistency** — a 50-reveal chain matches the step-by-step recurrence with no
   collisions, and 4096 consecutive heights give 4096 distinct seeds.
 
@@ -600,7 +626,7 @@ Run it:
 
 ### 12.2 Multi-node functional test
 
-[test/functional_test_wpoa_system.sh](../test/functional_test_wpoa_system.sh). Bootstraps N
+[test/functional/wpoa/functional_test_wpoa_system.sh](../../../test/functional/wpoa/functional_test_wpoa_system.sh). Bootstraps N
 permissioned nodes with `-enablewpoa=1 -enablewpoavrf=1 -enablewpoarandao=1`, waits for weight
 convergence, drives the chain `RANDAO_BLOCKS` blocks past the setup height, and asserts:
 
@@ -614,18 +640,18 @@ convergence, drives the chain `RANDAO_BLOCKS` blocks past the setup height, and 
    and folded).
 4. **Weight-proportional distribution under the seed** — the observed proposer distribution
    still matches the weight ratios (chi-square goodness-of-fit via
-   [analyze_distribution.py](../test/analyze_distribution.py)), confirming the seed swap did not
+   [analyze_distribution.py](../../../test/functional/wpoa/analyze_distribution.py)), confirming the seed swap did not
    disturb `Pr[i]=w_i/Σw`.
 
 Run it:
 
 ```
 # default 3-node run, k=1
-./src/wpoa/test/functional_test_wpoa_system.sh
+./test/functional/wpoa/functional_test_wpoa_system.sh
 
 # quick validation with a non-trivial lookback
 NODES=3 WEIGHTS="100 200 300" SETUP_BLOCKS=20 RANDAO_BLOCKS=60 RANDAO_LOOKBACK=2 \
-    RANDAO_TIMEOUT=320 ./src/wpoa/test/functional_test_wpoa_system.sh
+    RANDAO_TIMEOUT=320 ./test/functional/wpoa/functional_test_wpoa_system.sh
 ```
 
 Representative run (`WEIGHTS="100 200 300"`, 60 blocks, k=2): chain advanced with **no fork**,

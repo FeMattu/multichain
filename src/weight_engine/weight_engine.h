@@ -11,11 +11,28 @@
 //
 //   c_i^{(e)}   = ESG_i * tau_i^{(e)} / kappa                       (Def. contributo-pesato)
 //   W_k^{(e)}   = ESG_{Mk} * ( tau_{Mk}^{(e)} + sum_{i in C_k} c_i^{(e)} )   (Def. peso-grezzo)
-//   A_k^{(e)}   = alpha * Theta^{(e)} * W_k^{(e)} / W_tot^{(e)}      (Def. allocazione)
-//   rho_k^{(e)} = R_k^{(e)} / ( A_k^{(e)} + B_k^{(e-1)} )  in [0,1]  (Def. tasso-conformita)
-//   B_k^{(e)}   = A_k^{(e)} - R_k^{(e)} + B_k^{(e-1)},  B_k^{(0)} = 0 (Def. riconciliazione)
+//   g_k^{(e)}   = Entrate_k^{(e)} - Uscite_k^{(e)}                   (Def. guadagno)
+//   saldo_k^{(e)} = saldo_k^{(e-1)} + g_k^{(e)},  saldo_k^{(0)} = 0  (Def. saldo)
+//   rho_k^{(e)} = R_k^{(e)} / saldo_k^{(e)}   in [0,1]               (Def. tasso-restituzione)
 //   w_k^{(1)}   = W_k^{(1)}                                          (Def. peso-finale, e = 1)
 //   w_k^{(e)}   = W_k^{(e)} * [ rho_k^{(e-1)} * lambda + (1-lambda) ]         (e >= 2)
+//
+// with Uscite EXCLUDING the epoch's own restitution R_k^{(e)} — accounted separately so
+// saldo_k^{(e)} does not depend on R_k^{(e)}, which would make rho_k^{(e)} = R/saldo
+// self-referential (Def. guadagno states the exclusion and its reason). Operationally the
+// reader hands over GROSS flows, restitution still inside the debits, and Gain() adds it
+// back: one subtraction in one place, rather than a special case threaded through the scan.
+//
+// SUPERSEDES ALLOCATION / COMPLIANCE. Until this change the engine implemented the earlier
+// formulation of the same feedback slot — an allocation A_k = alpha*Theta*W_k/W_tot, a
+// residual carry B_k, and a compliance rate rho_k = R_k/(A_k + B_k^{(e-1)}). The thesis
+// chapter replaced that trio with the three lines above: the denominator is no longer an
+// amount the protocol notionally ASSIGNS to a cluster, but the amount the cluster actually
+// HAS, derived from the epoch's confirmed transfers like R_k itself. A_k, B_k, Theta and the
+// alpha parameter are therefore gone from the pipeline (alpha survives only as a parsed,
+// hash-enforced chain parameter — see g_weight_alpha below — because dropping a params.dat
+// field would change its hash and break every existing chain). The recursion shape of
+// w_k, the positivity argument (lambda < 1) and the wpoa-weights contract are unchanged.
 //
 // The final integer weight fed to the stream is ToIntegerWeight(w_k), always >= 1
 // (Prop. positivita-peso; also the Efraimidis-Spirakis requirement, wpoa_selector.h).
@@ -26,25 +43,25 @@
 // election time; the two are complementary and the wpoa-weights contract
 // ({address, integer weight > 0}) is unchanged.
 //
-// RELATION TO THE Vers_2 SIMULATION. This core follows the THESIS, which defines
-// the allocation A_k on the RAW weight W_k (A_k = alpha*Theta*W_k/W_tot). The
-// reference Vers_2 spreadsheet instead derives its "GuadagnoEx" from the
-// feedback-adjusted, normalized weight (ImpCluster/Delay). The two therefore
-// coincide for epoch 1 and for W_k in every epoch, but the allocation-derived
-// quantities (A_k, rho_k, B_k) can differ from epoch 2 on. The thesis form is
-// used deliberately: allocation tracks certified+current merit (W_k), avoiding a
-// feedback-of-feedback loop. See docs and the Phase-2 plan.
+// RELATION TO THE Vers_2 SIMULATION. The reference Vers_2 spreadsheet derived its
+// "GuadagnoEx" from the feedback-adjusted, normalized weight (ImpCluster/Delay) — a
+// notional assignment. This core no longer models an assignment at all: g_k is the
+// cluster's OBSERVED native-currency flow over the epoch's confirmed blocks. The two
+// still coincide for W_k in every epoch and for w_k at epoch 1; from epoch 2 on the
+// feedback term differs, deliberately, because it now measures what the cluster
+// actually earned and returned rather than what it was notionally due.
 //
 // CONSENSUS-CRITICAL DETERMINISM. w_k gates proposer election, so every honest
 // node must compute the SAME integer w_k:
 //   * double precision throughout, matching the selector core
 //     (wpoa_selector.h ScoreFromEntropy64) — reproducible across the
 //     identical-binary validator set;
-//   * sum_{i} c_i and the W_tot sum are taken in ascending-ADDRESS order, so the
-//     (non-associative) floating-point result never depends on input order;
-//   * a zero/negative denominator in rho yields 0 (never NaN/Inf) — this is the
-//     degeneration that turned the "con delega" simulation into propagating
-//     #DIV/0!; the thesis form with lambda < 1 provably avoids it;
+//   * sum_{i} c_i is taken in ascending-ADDRESS order and clusters are processed in
+//     ascending-MINER order, so the (non-associative) floating-point result never
+//     depends on input order;
+//   * a zero/negative saldo in rho yields 0 (never NaN/Inf) — this is the degeneration
+//     that turned the "con delega" simulation into propagating #DIV/0!; the thesis form
+//     with lambda < 1 provably avoids it propagating into w_k;
 //   * ToIntegerWeight rounds half-away-from-zero and clamps to [1, UINT32_MAX].
 //
 // The core is header-only and depends ONLY on the C++ standard library, so it is
@@ -92,50 +109,67 @@ public:
             : address(a), esg(e), tau(t) {}
     };
 
-    /** One cluster's inputs for a single epoch. */
+    /** One cluster's inputs for a single epoch. All four chain-derived quantities come
+     *  from one pass over the epoch's confirmed blocks
+     *  (WeightStreamReader::ComputeEpochFacts); none is declared by anybody. */
     struct ClusterInput
     {
         std::string          miner;       // miner / cluster address (C_k key)
         double               esg_miner;   // ESG_{Mk} > 0
         uint32_t             tau_miner;   // tau_{Mk}^{(e)}
         std::vector<Company> companies;   // the cluster members C_k
-        double               reconciled;  // R_k^{(e)} (derived from the epoch's blocks)
+        double               restituted;  // R_k^{(e)}        (Def. restituzione)
+        double               credits;     // Entrate_k^{(e)}  (gross, coinbase included)
+        double               debits;      // Uscite_k^{(e)}   (GROSS: R_k still inside)
 
-        ClusterInput() : esg_miner(0.0), tau_miner(0), reconciled(0.0) {}
+        ClusterInput()
+            : esg_miner(0.0), tau_miner(0), restituted(0.0), credits(0.0), debits(0.0) {}
     };
 
-    /** Inter-epoch state carried per cluster: (B_k^{(e-1)}, rho_k^{(e-1)}). */
+    /** Inter-epoch state carried per cluster: (saldo_k^{(e-1)}, rho_k^{(e-1)}).
+     *
+     *  This IS the engine's memo of the recursive saldo: ComputeEpoch folds it forward
+     *  one buried epoch at a time, so no separate balance cache is needed and none may
+     *  be introduced — see the NOT AN AVAILABLE-BALANCE READING note on Saldo() for why
+     *  the running total and a UTXO balance are different quantities. */
     struct ClusterState
     {
-        double balance;      // B_k^{(e-1)}  (residual carry; B_k^{(0)} = 0)
-        double compliance;   // rho_k^{(e-1)} (previous-epoch compliance rate)
+        double saldo;        // saldo_k^{(e-1)} (cumulative net; saldo_k^{(0)} = 0)
+        double restitution;  // rho_k^{(e-1)}   (previous-epoch restitution rate)
 
-        ClusterState() : balance(0.0), compliance(0.0) {}
-        ClusterState(double b, double r) : balance(b), compliance(r) {}
+        ClusterState() : saldo(0.0), restitution(0.0) {}
+        ClusterState(double s, double r) : saldo(s), restitution(r) {}
     };
 
     /** Full per-cluster result of one epoch. */
     struct ClusterResult
     {
         double   raw_weight;      // W_k^{(e)}
-        double   allocation;      // A_k^{(e)}
-        double   compliance;      // rho_k^{(e)}   (becomes next epoch's prev)
-        double   balance;         // B_k^{(e)}     (carried forward)
+        double   gain;            // g_k^{(e)}     (Def. guadagno; may be negative)
+        double   restitution;     // rho_k^{(e)}   (becomes next epoch's prev)
+        double   saldo;           // saldo_k^{(e)} (carried forward)
         double   weight;          // w_k^{(e)}     (real-valued final weight)
         uint32_t integer_weight;  // published weight, always >= 1
 
         ClusterResult()
-            : raw_weight(0.0), allocation(0.0), compliance(0.0),
-              balance(0.0), weight(0.0), integer_weight(1) {}
+            : raw_weight(0.0), gain(0.0), restitution(0.0),
+              saldo(0.0), weight(0.0), integer_weight(1) {}
     };
 
     /** Protocol parameters (defaults from weight_streams.h). CONSENSUS-CRITICAL:
-     *  identical on every node. Constraints (kappa>0, alpha in (0,1], 0<=lambda<1)
-     *  are enforced where the flags are parsed (W3), not here. */
+     *  identical on every node. Constraints (kappa>0, 0<=lambda<1) are enforced where
+     *  the flags are parsed (W3), not here.
+     *
+     *  `alpha` is RETAINED BUT UNUSED. It parameterised the allocation A_k that the
+     *  restitution-rate formulation replaced; nothing reads it any more. It is kept as a
+     *  field — and as a parsed chain parameter — only because `weightalpha` is part of
+     *  params.dat, which is hash-enforced: removing it would change the hash and reject
+     *  every existing chain. Do not reintroduce a consumer without reopening the
+     *  Def. tasso-restituzione decision. */
     struct Params
     {
         double kappa;   // kappa > 0
-        double alpha;   // alpha in (0,1]
+        double alpha;   // DEPRECATED: parsed for params.dat compatibility, never read
         double lambda;  // lambda in [0,1)
 
         Params()
@@ -181,70 +215,116 @@ public:
     }
 
     /**
-     * A_k = alpha * Theta * W_k / W_tot   (Def. allocazione).
-     * Returns 0 when W_tot <= 0 (no active cluster in the epoch) — deterministic,
-     * never a division by zero.
-     */
-    static double Allocation(double alpha, double theta, double raw_weight,
-                             double total_raw_weight)
-    {
-        if (total_raw_weight <= 0.0)
-        {
-            return 0.0;
-        }
-        return alpha * theta * raw_weight / total_raw_weight;
-    }
-
-    /**
-     * rho_k = clamp(R_k, [0, A_k + B_{k-1}]) / (A_k + B_{k-1})   (Def. tasso-conformita).
+     * g_k = Entrate_k - Uscite_k   (Def. guadagno), where Uscite EXCLUDES the epoch's
+     * own restitution R_k.
      *
-     * Always in [0, 1]. R_k is an external input (reconciliation stream), so it is
-     * clamped to its legal domain [0, A_k + B_{k-1}] (Def. riconciliazione) before
-     * the ratio. A non-positive denominator (nothing was allocated and no residual
-     * carried) yields 0 — the defined value that keeps the pipeline finite where
-     * the "con delega" simulation produced a propagating #DIV/0!.
+     * The reader supplies GROSS flows — `debits_gross` still contains R_k, because a
+     * restitution is an ordinary outgoing transfer and the block scan has no reason to
+     * treat it specially — so the exclusion is performed here, once, by adding R_k back:
+     *
+     *     g_k = credits - (debits_gross - R_k) = credits - debits_gross + R_k
+     *
+     * Why exclude it at all: saldo_k feeds rho_k = R_k / saldo_k. Were R_k also
+     * subtracted inside saldo_k, the ratio would be self-referential — a cluster that
+     * returned everything would divide by the very zero its own restitution created, and
+     * score 0 for the behaviour the mechanism exists to reward. The thesis states this
+     * exclusion and its reason directly (Def. guadagno).
+     *
+     * R_k is clamped at 0 first, so a negative input can never inflate the gain.
+     * The result MAY be negative (a cluster that spent more than it received); the saldo
+     * recursion carries that through honestly and RestitutionRate's guard handles the
+     * degenerate non-positive case.
      */
-    static double ComplianceRate(double reconciled, double allocation,
-                                 double balance_prev)
+    static double Gain(double credits, double debits_gross, double restituted)
     {
-        double denom = allocation + balance_prev;
-        if (denom <= 0.0)
-        {
-            return 0.0;
-        }
-        double r = ClampReconciled(reconciled, denom);
-        return r / denom;
+        double r = (restituted > 0.0) ? restituted : 0.0;
+        return credits - debits_gross + r;
     }
 
     /**
-     * B_k = A_k - clamp(R_k, [0, A_k + B_{k-1}]) + B_{k-1}   (Def. riconciliazione).
-     * Uses the same R_k clamp as ComplianceRate, so B_k >= 0 and the two stay
-     * mutually consistent.
+     * saldo_k^{(e)} = saldo_k^{(e-1)} + g_k^{(e)},  saldo_k^{(0)} = 0   (Def. saldo).
+     *
+     * NOT AN AVAILABLE-BALANCE READING. It is tempting to replace this recursion with a
+     * direct read of the address' UTXO balance — MultiChain is UTXO-based and the ledger
+     * already tracks exactly that. It would be wrong, for three independent reasons:
+     *
+     *   1. DIFFERENT QUANTITY. Because every epoch's Uscite excludes that epoch's own
+     *      restitution, the recursion adds every past R back: saldo_k^{(e)} equals the
+     *      real balance PLUS sum_{j<=e} R_k^{(j)}. The two coincide only for a cluster
+     *      that never restituted. Reading the ledger would shrink the denominator by the
+     *      cluster's own good behaviour — in the limit, a cluster that returns everything
+     *      reads a balance of 0 and scores rho = 0 (the guard's value) instead of rho = 1,
+     *      exactly inverting the incentive.
+     *   2. WRONG TIME. w_k for a buried epoch must be a function of THAT epoch's confirmed
+     *      blocks alone. A UTXO balance is current state at the local tip, so two nodes at
+     *      different heights — or one re-syncing — would attribute a historical epoch
+     *      differently than the network did when it happened. This is the same failure
+     *      that ruled out deriving the treasury address from the mutable admin set
+     *      (wpoa/docs/adr/reconciliation-onchain.md).
+     *   3. NOT AVAILABLE ANYWAY. Balance lookups here are wallet-scoped
+     *      (ISMINE_SPENDABLE | ISMINE_WATCH_ONLY: see getaddressbalances,
+     *      CWallet::GetAddressBalances) and MultiChain keeps no address index, so a node
+     *      simply cannot read another cluster's balance — yet every node must recompute
+     *      EVERY cluster's weight to verify the published ones (weight_verifier.h).
+     *
+     * The flows themselves come from the block scan every node already runs once per
+     * buried epoch, and ClusterState carries the running total forward, so the recursion
+     * costs nothing beyond the pass already being made and needs no cache of its own.
      */
-    static double Balance(double reconciled, double allocation, double balance_prev)
+    static double Saldo(double saldo_prev, double gain)
     {
-        double denom = allocation + balance_prev;
-        double r = (denom <= 0.0) ? 0.0 : ClampReconciled(reconciled, denom);
-        return allocation - r + balance_prev;
+        return saldo_prev + gain;
+    }
+
+    /**
+     * rho_k = clamp(R_k, [0, saldo_k]) / saldo_k   in [0,1]   (Def. tasso-restituzione).
+     *
+     * A non-positive saldo (a cluster that received nothing this epoch and carried
+     * nothing in, or spent more than it ever took) yields 0 — the defined value that
+     * keeps the pipeline finite where the "con delega" simulation produced a propagating
+     * #DIV/0!. Note this is the SAFE direction: rho only ever damps w_k, so an
+     * indeterminate ratio costs a cluster feedback, it never grants any.
+     *
+     * The clamp is belt-and-braces. The ledger already enforces R_k <= saldo_k: a
+     * restitution is an ordinary transfer, so it cannot exceed the balance actually
+     * available, and the available balance never exceeds saldo_k by reason 1 above
+     * (Oss. limite-restituzione argues the bound from exactly this ledger semantics).
+     * Clamping anyway keeps rho in [0,1] by construction rather than by argument, which
+     * is what the positivity proof of w_k consumes.
+     */
+    static double RestitutionRate(double restituted, double saldo)
+    {
+        if (saldo <= 0.0)
+        {
+            return 0.0;
+        }
+        double r = ClampRestituted(restituted, saldo);
+        return r / saldo;
     }
 
     /**
      * w_k = W_k                                   (e = 1)
      * w_k = W_k * [ rho_{k,e-1} * lambda + (1-lambda) ]   (e >= 2)   (Def. peso-finale).
      *
+     * `restitution_prev` is rho_k^{(e-1)}, the PREVIOUS epoch's restitution rate: the
+     * feedback is deliberately one epoch late, so the weight of epoch e never depends on
+     * a quantity of epoch e that it would in turn influence.
+     *
      * For e >= 2 the bracket is a convex combination of rho_{k,e-1} in [0,1] and 1
      * with weight lambda in [0,1), hence in [1-lambda, 1] and strictly positive, so
      * w_k > 0 whenever W_k > 0 (Prop. positivita-peso) — the reason lambda < 1 is a
-     * correctness requirement, not just a tuning choice.
+     * correctness requirement, not just a tuning choice. Swapping the compliance rate
+     * for the restitution rate leaves this argument untouched: it needs only rho in
+     * [0,1], which RestitutionRate guarantees by construction.
      */
-    static double FinalWeight(double raw_weight, double compliance_prev,
+    static double FinalWeight(double raw_weight, double restitution_prev,
                               double lambda, uint32_t epoch)
     {
         if (epoch <= 1)
         {
             return raw_weight;
         }
-        double factor = compliance_prev * lambda + (1.0 - lambda);
+        double factor = restitution_prev * lambda + (1.0 - lambda);
         return raw_weight * factor;
     }
 
@@ -276,54 +356,36 @@ public:
     }
 
     // -----------------------------------------------------------------------
-    // Convenience: network activity Theta
-    // -----------------------------------------------------------------------
-
-    /**
-     * Theta^{(e)} = sum over all clusters of sum_{i in C_k} tau_i   — the network's
-     * total COMPANY activity this epoch (the reference simulation's "TotTx"; the
-     * thesis' "somma di tutti i contatori tau_i"). Miner counters tau_{Mk} are part
-     * of W_k but not of Theta. Supplied as the `theta` argument to ComputeEpoch;
-     * callers may substitute any deterministic network-activity measure.
-     */
-    static double NetworkActivity(const std::vector<ClusterInput>& inputs)
-    {
-        double theta = 0.0;
-        for (size_t k = 0; k < inputs.size(); k++)
-        {
-            for (size_t i = 0; i < inputs[k].companies.size(); i++)
-            {
-                theta += (double)inputs[k].companies[i].tau;
-            }
-        }
-        return theta;
-    }
-
-    // -----------------------------------------------------------------------
     // Epoch driver
     // -----------------------------------------------------------------------
 
     /**
      * Compute one epoch's weights for every cluster.
      *
-     * Two passes, both over clusters in ascending-miner-address order so W_tot and
-     * every derived quantity are order-independent:
-     *   1. W_k for each cluster and their sum W_tot;
-     *   2. per cluster: A_k, rho_k^{(e)}, B_k^{(e)}, w_k^{(e)} (using the carried
-     *      rho_k^{(e-1)}) and the integer weight.
+     * One pass over clusters in ascending-miner-address order, so every floating-point
+     * accumulation is order-independent. For each cluster: W_k, then g_k from the
+     * epoch's flows, then saldo_k folded onto the carried saldo_k^{(e-1)}, then
+     * rho_k^{(e)}, then w_k^{(e)} from the carried rho_k^{(e-1)}, then the integer weight.
+     *
+     * NOTE the two different vintages in play: w_k^{(e)} consumes the PREVIOUS epoch's
+     * rho (one-epoch-late feedback), while rho_k^{(e)} computed here is what the NEXT
+     * epoch will consume. The single pass is safe precisely because of that separation —
+     * no cluster's result depends on another cluster's result within the epoch, which is
+     * what the removed allocation term (via W_tot) used to require a second pass for.
      *
      * @param inputs      per-cluster inputs for THIS epoch.
-     * @param theta       Theta^{(e)} (e.g. NetworkActivity(inputs)).
-     * @param prior       miner -> {B^{(e-1)}, rho^{(e-1)}}; ignored for epoch 1
-     *                    (B^{(0)} = 0). A miner absent here starts from zero state.
-     * @param params      kappa / alpha / lambda.
+     * @param prior       miner -> {saldo^{(e-1)}, rho^{(e-1)}}. A miner absent here starts
+     *                    from zero state. Consulted for the saldo at EVERY epoch (the
+     *                    recursion is cumulative, and saldo^{(0)} = 0 makes epoch 1 fall
+     *                    out of the general case) but for rho only from epoch 2, since
+     *                    there is no rho^{(0)}.
+     * @param params      kappa / lambda. (alpha is no longer consumed; see the header.)
      * @param epoch       1-based epoch index.
      * @param out_results miner -> ClusterResult (cleared first).
-     * @param out_state   miner -> {B^{(e)}, rho^{(e)}} to carry into epoch e+1
+     * @param out_state   miner -> {saldo^{(e)}, rho^{(e)}} to carry into epoch e+1
      *                    (cleared first).
      */
     static void ComputeEpoch(const std::vector<ClusterInput>& inputs,
-                             double theta,
                              const std::map<std::string, ClusterState>& prior,
                              const Params& params,
                              uint32_t epoch,
@@ -342,60 +404,53 @@ public:
         }
         std::sort(ordered.begin(), ordered.end(), ClusterMinerLess);
 
-        // Pass 1 — raw weights and their total.
-        std::vector<double> raw(ordered.size(), 0.0);
-        double total_raw = 0.0;
-        for (size_t i = 0; i < ordered.size(); i++)
-        {
-            raw[i] = RawWeight(*ordered[i], params.kappa);
-            total_raw += raw[i];
-        }
-
-        // Pass 2 — allocation, feedback, final weight, carried state.
         for (size_t i = 0; i < ordered.size(); i++)
         {
             const ClusterInput& in = *ordered[i];
-            double Wk = raw[i];
 
-            // Prior state: for epoch 1, B^{(0)} = 0 and there is no rho^{(0)}.
-            double balance_prev = 0.0;
-            double compliance_prev = 0.0;
-            if (epoch >= 2)
+            // Prior state. The saldo recursion runs from epoch 1 (where the absent entry
+            // correctly yields saldo^{(0)} = 0); rho^{(e-1)} only exists from epoch 2.
+            double saldo_prev = 0.0;
+            double restitution_prev = 0.0;
             {
                 std::map<std::string, ClusterState>::const_iterator it = prior.find(in.miner);
                 if (it != prior.end())
                 {
-                    balance_prev = it->second.balance;
-                    compliance_prev = it->second.compliance;
+                    saldo_prev = it->second.saldo;
+                    if (epoch >= 2)
+                    {
+                        restitution_prev = it->second.restitution;
+                    }
                 }
             }
 
-            double Ak = Allocation(params.alpha, theta, Wk, total_raw);
-            double rho = ComplianceRate(in.reconciled, Ak, balance_prev);
-            double Bk = Balance(in.reconciled, Ak, balance_prev);
-            double wk = FinalWeight(Wk, compliance_prev, params.lambda, epoch);
+            double Wk    = RawWeight(in, params.kappa);
+            double gk    = Gain(in.credits, in.debits, in.restituted);
+            double saldo = Saldo(saldo_prev, gk);
+            double rho   = RestitutionRate(in.restituted, saldo);
+            double wk    = FinalWeight(Wk, restitution_prev, params.lambda, epoch);
 
             ClusterResult r;
-            r.raw_weight = Wk;
-            r.allocation = Ak;
-            r.compliance = rho;
-            r.balance = Bk;
-            r.weight = wk;
+            r.raw_weight     = Wk;
+            r.gain           = gk;
+            r.restitution    = rho;
+            r.saldo          = saldo;
+            r.weight         = wk;
             r.integer_weight = ToIntegerWeight(wk, params.kappa);
 
             out_results[in.miner] = r;
-            out_state[in.miner] = ClusterState(Bk, rho);
+            out_state[in.miner] = ClusterState(saldo, rho);
         }
     }
 
 private:
 
-    /** Reconciled amount clamped to its legal domain [0, denom]. */
-    static double ClampReconciled(double reconciled, double denom)
+    /** Restituted amount clamped to its legal domain [0, saldo] (Oss. limite-restituzione). */
+    static double ClampRestituted(double restituted, double saldo)
     {
-        if (reconciled < 0.0)   return 0.0;
-        if (reconciled > denom) return denom;
-        return reconciled;
+        if (restituted < 0.0)   return 0.0;
+        if (restituted > saldo) return saldo;
+        return restituted;
     }
 
     /** Strict weak ordering on company address (for deterministic summation). */
@@ -434,7 +489,12 @@ extern int g_weight_epoch_length;
 /** -weightkappa: normalization constant kappa > 0 (Def. contributo-pesato). */
 extern double g_weight_kappa;
 
-/** -weightalpha: allocation constant alpha in [0,1] (Def. allocazione). */
+/** -weightalpha: DEPRECATED. It scaled the allocation A_k = alpha*Theta*W_k/W_tot in the
+ *  superseded compliance-rate formulation; the restitution-rate pipeline has no allocation
+ *  and reads it nowhere. Still parsed and still hash-enforced, because `weightalpha` is a
+ *  params.dat field (protocol 20014) and dropping it would change the file's hash and make
+ *  every existing chain unjoinable. Validation of its range is likewise retained, so a
+ *  chain created before or after this change is configured identically. */
 extern double g_weight_alpha;
 
 /** -weightlambda: feedback damping lambda in [0,1) (Def. peso-finale). */
@@ -442,11 +502,11 @@ extern double g_weight_lambda;
 
 /** -weighttreasuryaddress: the recipient that defines a reconciliation transfer.
  *
- *  R_k^{(e)} (Def. riconciliazione) is the native-currency value paid to THIS address by
+ *  R_k^{(e)} (Def. restituzione) is the native-currency value paid to THIS address by
  *  transactions the miner signed, among the confirmed transactions of epoch e — derived
- *  from the blocks by WeightStreamReader::ComputeActivityAndReconciliationForEpoch, never
- *  declared by anyone. It replaced an administrator attestation on a dedicated stream;
- *  see wpoa/docs/adr/reconciliation-onchain.md.
+ *  from the blocks by WeightStreamReader::ComputeEpochFacts, never declared by anyone. It
+ *  replaced an administrator attestation on a dedicated stream; see
+ *  wpoa/docs/adr/reconciliation-onchain.md.
  *
  *  CONSENSUS-CRITICAL, and necessarily a chain parameter rather than a derived value: the
  *  value of R_k depends on it, so two nodes disagreeing about the treasury address compute
@@ -457,7 +517,9 @@ extern double g_weight_lambda;
  *  EMPTY IS LEGAL and means R_k = 0 for every cluster, uniformly and on every node — the
  *  same behaviour as the old model on a chain where nobody published reconciliation
  *  records. A uniform R = 0 gives rho_k = 0 and hence w_k = W_k * (1 - lambda), a uniform
- *  scaling that leaves the relative weights, and so the election, unchanged. */
+ *  scaling that leaves the relative weights, and so the election, unchanged — note this
+ *  holds under the restitution-rate formulation too, and for the same reason: rho enters
+ *  w_k only through a factor that is identical across clusters when R is. */
 extern std::string g_weight_treasury_address;
 
 // --- epoch mapping / activation / background thread (defined in weight_engine.cpp) ---

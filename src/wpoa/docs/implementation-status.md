@@ -340,7 +340,7 @@ Detail: [phase3a-implementation-guide.md](phase3a-implementation-guide.md) ·
 
 | Area | Status | Notes |
 |---|---|---|
-| Accumulator and seed (`RandaoAccumulator`) | Done | `R_tot[n] = H(R_tot[n-1] XOR H(R[n]))` folded over the 3a reveals; `seed[n+1] = H(R_tot[n-k] \|\| h[n] \|\| n+1)` derived and memoized. |
+| Accumulator and seed (`RandaoAccumulator`) | Done | `R_tot[n] = R_tot[n-1] XOR R[n]` (thesis Def. 5.3) folded over the 3a reveals; `seed[n+1] = H(R_tot[n-k] \|\| h[n] \|\| n+1)` derived and memoized. The hardened variant `H(R_tot XOR H(R))` the module used to fold was dropped: [adr/randao-fold-bare-xor.md](adr/randao-fold-bare-xor.md). |
 | `-enablewpoarandao` + `-wpoarandaolookback=k` | Done | `k` is consensus-critical, validated at startup. |
 | Seed anchored to `h[n]` and `n+1` | Done | Conforms to Def. 5.4 of the thesis. |
 | Selection-seed swap (miner + validator) | Done | Both call sites replace the prev-hash seed with `WPoARandaoSelectionSeed(tip)`; the election stays weight-proportional. |
@@ -417,8 +417,8 @@ model before/after, per stream) ·
 ## 8. End-to-end validation
 
 The functional tests are a **single** system run:
-[`functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh) (wrapped by
-[`run_functional_tests.sh`](../test/run_functional_tests.sh)). It starts ONE full-stack
+[`test/functional/wpoa/functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh) (wrapped by
+[`test/functional/run_functional_tests.sh`](../test/run_functional_tests.sh)). It starts ONE full-stack
 network, warms it up once, then runs every check on the shared run.
 
 | Check | What it demonstrates |

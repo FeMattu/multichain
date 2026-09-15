@@ -4,7 +4,7 @@ An **experimental, offline-analysis** harness that runs a real local MultiChain
 network modelled on **MyLedger** end-to-end and records how the `WeightEngine`
 behaves across many epochs — in either the weighted-wPoA regime or native
 round-robin. It is *not* a pass/fail functional test (that is
-[`../functional_test_weight_engine.sh`](../functional_test_weight_engine.sh)); its
+[`test/functional/weight_engine/functional_test_weight_engine.sh`](../../../../test/functional/weight_engine/functional_test_weight_engine.sh)); its
 product is a set of CSVs, an `.xlsx` report and a log for plotting and statistics —
 plus an invariant pass that closes every run.
 

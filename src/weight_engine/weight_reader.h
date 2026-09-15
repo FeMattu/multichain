@@ -183,6 +183,48 @@ public:
                                                   std::map<std::string, uint32_t>& tau,
                                                   std::map<std::string, double>& r);
 
+    /**
+     * The same single pass, additionally returning the epoch's native-currency FLOWS
+     * per address — the inputs of Entrate/Uscite (Def. guadagno) from which the engine
+     * folds the running saldo (Def. saldo) and the restitution rate (Def. tasso-restituzione).
+     *
+     *   credits_k = every native-currency amount an output of the epoch pays TO k,
+     *               INCLUDING the coinbase outputs that pay a miner the fees of the
+     *               block it produced (Def. guadagno names the mining remuneration
+     *               explicitly as an entry);
+     *   debits_k  = every native-currency amount the epoch spends FROM k, i.e. the
+     *               value of the prevouts owned by k in transactions k signed. Because
+     *               a transaction's inputs minus its outputs is its fee, charging the
+     *               whole prevout value and crediting k's own change output back
+     *               accounts for the fee exactly, with no separate fee term.
+     *
+     * Both are gross flows: the restitution R_k is still part of `debits` here, and the
+     * engine adds it back when forming g_k (WeightEngine::Gain), which is what
+     * "Uscite ESCLUSA la restituzione dell'epoca stessa" means operationally. Keeping
+     * the subtraction out of the reader leaves this function a plain, auditable
+     * statement of what the blocks say, with the protocol's accounting in the pure core.
+     *
+     * COINBASE ASYMMETRY. A coinbase transaction contributes to `credits` but never to
+     * `debits`, `tau` or `r`: it has no resolvable input signer (it spends nothing), so
+     * it is an entry for its beneficiary and nothing else. This is the one place where
+     * the traversal does NOT skip the coinbase outright.
+     *
+     * Values are accumulated as int64 base units and converted once at the end, exactly
+     * like R, so the sums carry no floating-point rounding of their own.
+     *
+     * @param epoch    1-based epoch index.
+     * @param tau      [out] address -> activity counter (cleared first).
+     * @param r        [out] miner address -> restituted amount (cleared first).
+     * @param credits  [out] address -> total received this epoch (cleared first).
+     * @param debits   [out] address -> total spent this epoch, restitution included
+     *                 (cleared first).
+     */
+    bool ComputeEpochFacts(uint32_t epoch,
+                           std::map<std::string, uint32_t>& tau,
+                           std::map<std::string, double>& r,
+                           std::map<std::string, double>& credits,
+                           std::map<std::string, double>& debits);
+
     /** Activity only, for callers that do not need R. Thin wrapper over the single-pass
      *  computation above — kept so the tau-only call sites stay readable, NOT a second
      *  scan. */

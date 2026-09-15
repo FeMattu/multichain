@@ -355,7 +355,7 @@ Notes:
 
 ## 7. Automated functional test (single system-level run)
 
-`src/wpoa/test/functional_test_wpoa_system.sh` drives a **real multi-node**
+`test/functional/wpoa/functional_test_wpoa_system.sh` drives a **real multi-node**
 network end to end. It starts **one** full-stack network (weights + VRF + RANDAO
 + sortition), waits for weight convergence and a block warm-up **once**, and then
 runs every feature check against that shared run — `check_weight`,
@@ -377,8 +377,8 @@ any critical check fails. Prefer the wrapper, which adds a warning banner and a
 hard timeout safety-net — see [`../test/README.md`](../test/README.md):
 
 ```bash
-./src/wpoa/test/run_functional_tests.sh            # the system run (full)
-QUICK=1 ./src/wpoa/test/run_functional_tests.sh    # fast smoke (smaller sample)
+./test/functional/run_functional_tests.sh            # the system run (full)
+QUICK=1 ./test/functional/run_functional_tests.sh    # fast smoke (smaller sample)
 ```
 
 Exit code `0` and `FUNCTIONAL TEST PASSED` on success; non-zero with diagnostics
