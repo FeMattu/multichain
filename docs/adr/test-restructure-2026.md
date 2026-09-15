@@ -733,10 +733,13 @@ become reachable from a runner for the first time. The `h[n]`/`n+1` convention g
 first test of any kind. `other-epoch` gets functional coverage, closing the false-negative
 hazard §3.3 identifies before it can bite.
 
-**Negative.** Nine documents change paths. `git log --follow` is required to trace the moved
-files (mitigated by using `git mv` in a commit of its own). A root-level `test/` appears
-alongside the upstream MultiChain `src/test/`, which is a small ambiguity — the new
-`test/functional/README.md` will name the distinction.
+**Negative.** Twelve documents change paths. `git log --follow` is required to trace the
+moved files (mitigated by using `git mv` in a commit of its own).
+
+A first draft of this section claimed the new root-level `test/` would sit "alongside the
+upstream MultiChain `src/test/`". That was wrong: **this fork has no `src/test/`** (nor the
+upstream `qa/` tree — see §11). There is no ambiguity to name, and `test/functional/README.md`
+says so instead.
 
 **Neutral.** No build-system change, in either direction (§5.2). No production code change.
 
@@ -825,3 +828,104 @@ misconfiguration is visible in the first seconds rather than after an hour. The 
 thing to check in its output is `gas_seeded` — if the admin has no native balance,
 `initial-block-reward` did not take effect and every economic assertion downstream is
 vacuous (the suite fails loudly on exactly that, rather than proceeding).
+
+---
+
+## 11. Cleanup pass — residues and structural incoherences
+
+A follow-up sweep over the test tree, after the restructuring landed. Four classes of
+finding, and one thing that was deliberately **not** deleted.
+
+### 11.1 Dangling links the first pass missed — 7, all fixed
+
+The reference-repointing pass in commit 3 used a regex over ``[`path`](path)`` and bare
+repo-relative paths. It missed `[text](path)` where the link **text differs from the
+target**, which is the shape four of the guides used:
+
+| File | Broken link |
+|---|---|
+| `src/wpoa/docs/implementation-roadmap.md` | `../test/functional_test_wpoa_system.sh` |
+| `src/wpoa/docs/implementation-status.md` | `../test/functional_test_wpoa_system.sh`, `../test/run_functional_tests.sh` |
+| `src/wpoa/docs/phase3a-implementation-guide.md` | `../test/functional_test_wpoa_system.sh` |
+| `src/weight_engine/test/experimental/README.md` | `../../../wpoa/test/functional_lib.sh` |
+| `src/weight_engine/test/experimental/docs/experiment.md` | `../../../wpoa/test/functional_lib.sh`, `…functional_test_wpoa_system.sh` |
+
+A scan over **every tracked `.md`** now reports zero unresolved relative links, outside
+`/experiments` (which is out of scope and has one pre-existing broken link of its own,
+`experiments/docs/pipeline/README.md → 00-fase0-…md`).
+
+### 11.2 `qa/` — an upstream test tree that never existed here
+
+`Makefile.am` referenced the Bitcoin Core `qa/` tree in three places, inherited at fork
+time. **`git log --all -- qa/` finds zero files ever tracked**, so none of these has ever
+resolved in this repository:
+
+| Location | Status |
+|---|---|
+| `EXTRA_DIST` — `qa/pull-tester/rpc-tests.sh`, `qa/pull-tester/run-bitcoin-cli`, `qa/rpc-tests` | **removed.** Unconditional, and an unresolvable `EXTRA_DIST` entry makes `make dist` fail |
+| `check-local` under `if USE_COMPARISON_TOOL` | **removed.** Self-contained, and enabling the conditional could only ever fail |
+| `block_test.info` and the `make cov` chain below it | **annotated, kept.** `total_coverage.info` depends on it, and unpicking that chain is a coverage-tooling change rather than test-structure cleanup. A comment now says `make cov` does not work here and names `test_bitcoin_coverage.info` as the usable target |
+
+`src/Makefile.am` needed nothing: `TESTS =` is empty and the `ENABLE_TESTS` /
+`ENABLE_QT_TESTS` blocks are commented out — consistent with §5.2's finding that the unit
+runners bypass autotools entirely.
+
+### 11.3 `src/test/` does not exist — an error this ADR introduced
+
+§9 originally said the new root-level `test/` would sit "alongside the upstream MultiChain
+`src/test/`", and `test/functional/README.md` repeated it as a "not to be confused with"
+note. **There is no `src/test/` in this fork.** Both are corrected; the README now states
+the actual arrangement (no `src/test/`, no `qa/`, unit tests beside their modules).
+
+### 11.4 `testing.md` had drifted
+
+The module's principal testing document still described the pre-restructuring world:
+
+* the layers diagram listed **five** unit suites, omitting `malus`, and showed
+  `run_functional_tests.sh` as a "wrapper: timeout + QUICK" rather than a four-suite
+  selector. Redrawn with both unit runners, all four functional suites, and
+  `weight-engine-large` shown as opt-in;
+* the shared-run check list named six checks; it is now ten (`stream_permissions`,
+  `malus`, `diversity_spacing` and the new `randao_seed_convention` were missing);
+* `cd ./src/wpoa/test` — a directory the script no longer lives in;
+* "the system run (full)" described the runner's default as one suite, now three;
+* a "prefer the wrapper" link pointed at `src/wpoa/test/README.md`, which after the split
+  documents the **unit** tests. Repointed at `test/functional/README.md`;
+* §7 is retitled and gains the suite table, with the old content as §7.1.
+
+### 11.5 `experimental/` — NOT deleted, and the reason matters
+
+It was proposed for deletion as a test that is no longer needed. It is neither.
+
+**It is not a test.** No pass/fail contract; its product is CSVs, an `.xlsx` and a log
+(§2.3). Deleting it as "a test that no longer serves" would be deleting it on the strength
+of a category it never belonged to.
+
+**It is not stale.** The RPCs it actually calls are `getallweights`,
+`weightregistermembership` and `weightsetesg` — all current. Its only mentions of the
+removed `weightsetreconciliation` / `weight-engine-reconciliation` /
+`weight-engine-activity` are in **comments explaining the removal**, which is accurate
+documentation, not dead code.
+
+**It is load-bearing evidence.** Its README carries the result that the deployed engine
+computes the documented weight — *"20/20 cells exact in `wpoa` mode"* — and
+`output/*.csv` plus `output/report.xlsx` are the tracked reference data behind that claim.
+An accepted ADR cites it as evidence for a design decision:
+[reconciliation-onchain.md](../../src/wpoa/docs/adr/reconciliation-onchain.md) line 34
+points at `helpers/stream_writer.py` for the note that a reconciliation record could
+contradict the ledger. Deleting the harness would leave that ADR citing nothing.
+
+It also remains the behavioural reference this work adopted twice: the
+`-weighttreasuryaddress` start → read → restart sequence in `functional_lib.sh` and in
+both weight-engine suites is modelled on `helpers/chain_setup.py`.
+
+**Unchanged, in place, under its original name.**
+
+### 11.6 Observed but out of scope
+
+`graphify-out/` carries three dated snapshot directories (`2026-09-13`, `-14`, `-15`),
+15 tracked files, **19 MB**, and `graphify update` adds one per run. They are graph
+tooling backups, and git history already serves that purpose, so tracking them is pure
+duplication that will keep growing. Not touched here — it is neither a test file nor a
+structural question about tests — but worth a `.gitignore` entry and a one-off
+`git rm -r --cached graphify-out/20*`.

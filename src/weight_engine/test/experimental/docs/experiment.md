@@ -11,7 +11,7 @@ test — though it now closes every run with an invariant pass (§5). The pass/f
 check for the publish side is
 [`test/functional/weight_engine/functional_test_weight_engine.sh`](../../../../../test/functional/weight_engine/functional_test_weight_engine.sh); the
 system-level wPoA check is
-[`../../../wpoa/test/functional_test_wpoa_system.sh`](../../../wpoa/test/functional_test_wpoa_system.sh).
+[`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../../../test/functional/wpoa/functional_test_wpoa_system.sh).
 
 **Cardinal rule:** it never re-implements the weight math *for consensus*. The
 [`WeightEngine`](../../../weight_engine.h) computes `w_k` on the nodes; the harness
@@ -199,7 +199,7 @@ Driver: [`experimental_test.py`](../experimental_test.py), class `Experiment`.
 ### 3.1 Setup — [`chain_setup.py`](../helpers/chain_setup.py)
 
 Ports the permissioned-bootstrap protocol proven in
-[`functional_lib.sh`](../../../wpoa/test/functional_lib.sh): create the chain, start
+[`functional_lib.sh`](../../../../../test/functional/lib/functional_lib.sh): create the chain, start
 node 0 (seed/ADMIN), then for each miner *launch → grant `connect,send,receive,mine` +
 `wpoa-weights.write` → relaunch to join*. `params.dat` is tuned (fast blocks; a long
 setup phase — see §6.1; `mine-empty-rounds` high so it keeps mining).

@@ -185,6 +185,12 @@ test_bitcoin.info: baseline_filtered_combined.info
 test_bitcoin_filtered.info: test_bitcoin.info
 	$(LCOV) -r $< "/usr/include/*" -o $@
 
+# NOTE: block_test.info and everything downstream of it (block_test_filtered.info,
+# total_coverage.info, `make cov`) drive the BitcoinJ comparison tool out of the upstream
+# qa/ tree, which this fork does not have. They are left in place rather than removed
+# because total_coverage.info depends on them and unpicking that chain is a
+# coverage-tooling change, not test-structure cleanup. `make cov` will not work here;
+# test_bitcoin_coverage.info, which does not touch qa/, is the usable target.
 block_test.info: test_bitcoin_filtered.info
 	$(MKDIR_P) qa/tmp
 	-@TIMEOUT=15 qa/pull-tester/run-bitcoind-for-test.sh $(JAVA) -jar $(JAVA_COMPARISON_TOOL) qa/tmp/compTool 0
@@ -213,13 +219,18 @@ cov: test_bitcoin.coverage/.dirstamp total.coverage/.dirstamp
 
 endif
 
-if USE_COMPARISON_TOOL
-check-local:
-	$(MKDIR_P) qa/tmp
-	@qa/pull-tester/run-bitcoind-for-test.sh $(JAVA) -jar $(JAVA_COMPARISON_TOOL) qa/tmp/compTool $(COMPARISON_TOOL_REORG_TESTS) 2>&1
-endif
+# The USE_COMPARISON_TOOL check-local target lived here. It ran
+# qa/pull-tester/run-bitcoind-for-test.sh, from the same qa/ tree that has never existed
+# in this fork, so enabling the conditional could only ever fail. Removed rather than
+# left as a trap for whoever turns it on.
 
-EXTRA_DIST = $(top_srcdir)/share/genbuild.sh qa/pull-tester/rpc-tests.sh qa/pull-tester/run-bitcoin-cli qa/rpc-tests $(DIST_DOCS) $(WINDOWS_PACKAGING) $(OSX_PACKAGING)
+# The upstream qa/ tree (qa/pull-tester/rpc-tests.sh, qa/pull-tester/run-bitcoin-cli,
+# qa/rpc-tests) was listed here by inheritance from Bitcoin Core, but it has NEVER
+# existed in this fork -- `git log --all -- qa/` finds nothing. An EXTRA_DIST entry that
+# does not resolve makes `make dist` fail, so the three are dropped. This fork's tests
+# are src/wpoa/test/, src/weight_engine/test/ (unit) and test/functional/ (end to end);
+# see docs/adr/test-restructure-2026.md.
+EXTRA_DIST = $(top_srcdir)/share/genbuild.sh $(DIST_DOCS) $(WINDOWS_PACKAGING) $(OSX_PACKAGING)
 
 CLEANFILES = $(OSX_DMG) $(BITCOIN_WIN_INSTALLER)
 

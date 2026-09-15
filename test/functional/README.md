@@ -10,8 +10,9 @@ engine, the malus registry and the streams **as one system** — none of them is
 single module's artifact. The unit tests stay with their modules. Rationale:
 [`docs/adr/test-restructure-2026.md`](../../docs/adr/test-restructure-2026.md).
 
-> Not to be confused with `src/test/`, which is upstream MultiChain's own
-> Boost.Test tree. Nothing here touches it.
+> This is the only `test/` tree in the repository. Upstream Bitcoin Core keeps a
+> `src/test/` and a `qa/`; this fork has neither, and the unit tests live beside
+> their modules instead (`src/wpoa/test/`, `src/weight_engine/test/`).
 
 ## Layout
 

@@ -417,8 +417,8 @@ model before/after, per stream) ·
 ## 8. End-to-end validation
 
 The functional tests are a **single** system run:
-[`test/functional/wpoa/functional_test_wpoa_system.sh`](../test/functional_test_wpoa_system.sh) (wrapped by
-[`test/functional/run_functional_tests.sh`](../test/run_functional_tests.sh)). It starts ONE full-stack
+[`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh) (wrapped by
+[`test/functional/run_functional_tests.sh`](../../../test/functional/run_functional_tests.sh)). It starts ONE full-stack
 network, warms it up once, then runs every check on the shared run.
 
 | Check | What it demonstrates |
