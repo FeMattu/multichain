@@ -98,6 +98,11 @@
 #   WE_LARGE_GAS_SEED       1000  native currency seeded to each node at setup
 #   WE_LARGE_BLOCK_REWARD   10    initial-block-reward
 #   WE_LARGE_PREMINE        100000000  first-block-reward (the admin's float)
+#   WE_LARGE_SETUP_BLOCKS   derived  setup-first-blocks; raise if the bootstrap outruns it
+#   WE_LARGE_MC_DRAWS       50000 Monte Carlo draws per scenario
+#   WE_LARGE_ALPHA          0.01  significance level for every statistical verdict
+#   WE_LARGE_OUTPUT         test/output   where the recorded run and its report are written
+#   WE_LARGE_NAME           derived  the run's directory name under the output root
 #   TARGET_BLOCK_TIME       2     seconds (the parameter minimum)
 #   BINDIR, KEEP_LOGS, FL_PARAM_OVERRIDES   as elsewhere in the suite
 #
@@ -113,6 +118,8 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # test/functional/weight_engine
 FUNC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"                     # test/functional
 REPO_ROOT="$(cd "$FUNC_DIR/../.." && pwd)"                   # repo root
+export FL_LIB_DIR="$FUNC_DIR/lib"
+export FL_OUTPUT_ROOT="${WE_LARGE_OUTPUT:-$REPO_ROOT/test/output}"
 # shellcheck source=../lib/functional_lib.sh
 . "$FUNC_DIR/lib/functional_lib.sh"
 
@@ -157,9 +164,25 @@ export FL_CHAIN_PREFIX="welarge"
 
 # ---- the block budget, computed --------------------------------------------
 SETUP_FLOOR="$(fl_setup_first_blocks_floor "$EPOCH_LEN")"
+# THE FLOOR IS NOT ENOUGH ON A BIG NETWORK, and this is what stalled earlier revisions.
+#
+# The floor answers a question about epoch geometry: how many blocks before the first
+# weight can be CONFIRMED. It knows nothing about how long it takes to bring 33 daemons
+# up. Those are a race in different units, and at this size the bootstrap wins: even a
+# brisk 8s per node is 256s, i.e. 128 blocks at target-block-time 2, so the chain sails
+# past a floor of 109 before a single membership record exists. wPoA then takes over an
+# EMPTY registry, elects nobody, and the chain stops -- looking like a weight bug when it
+# is a stopwatch. See fl_setup_blocks_for_network.
+#
+# Raising it is safe: AdjustSetupFirstBlocks only ever raises setup-first-blocks TO the
+# floor and leaves a larger value untouched, so this cannot conflict with the derivation
+# the mandate warns about. It costs blocks, not correctness.
+SETUP_BLOCKS="${WE_LARGE_SETUP_BLOCKS:-$(fl_setup_blocks_for_network "$NODES" "$EPOCH_LEN")}"
+[ "$SETUP_BLOCKS" -ge "$SETUP_FLOOR" ] || SETUP_BLOCKS="$SETUP_FLOOR"
 PUBLISH_HEIGHT="$(fl_height_for_buried_epoch "$EPOCHS" "$EPOCH_LEN")"
 VERIFY_HEIGHT="$(fl_height_for_buried_epoch $(( EPOCHS + 1 )) "$EPOCH_LEN")"
 TARGET_HEIGHT=$(( VERIFY_HEIGHT + FL_STABILITY_MARGIN + 9 ))   # slack past the last check
+[ "$TARGET_HEIGHT" -gt "$SETUP_BLOCKS" ] || TARGET_HEIGHT=$(( SETUP_BLOCKS + EPOCH_LEN ))
 
 # One RPC-poll budget per epoch chunk, generous: a 100-block epoch at 2s/block is ~200s
 # of mining, and 33 nodes on one host will not hit that ideal.
@@ -184,7 +207,8 @@ cat <<PLAN
     initial-block-reward            $BLOCK_REWARD  (native currency MUST exist -- see header)
     first-block-reward              $PREMINE       (the admin's float)
     target-block-time               $TARGET_BLOCK_TIME
-    setup-first-blocks              NOT SET -- derived at genesis, floor = $SETUP_FLOOR
+    setup-first-blocks              $SETUP_BLOCKS  (floor $SETUP_FLOOR; raised to cover the
+                                    bootstrap of $NODES nodes -- see the header)
 
   block arithmetic (computed from the epoch geometry, not hardcoded)
     stability margin                $FL_STABILITY_MARGIN
@@ -193,6 +217,7 @@ cat <<PLAN
     epoch $EPOCHS published at            $EPOCH_LEN * $EPOCHS + $(( FL_STABILITY_MARGIN - 1 )) = $PUBLISH_HEIGHT
     epoch $EPOCHS VERIFIED at             $EPOCH_LEN * $(( EPOCHS + 1 )) + $(( FL_STABILITY_MARGIN - 1 )) = $VERIFY_HEIGHT
     TOTAL BLOCKS TO MINE            $TARGET_HEIGHT
+    output directory                $FL_OUTPUT_ROOT
 
   gas
     seeded per node                 $GAS_SEED
@@ -213,7 +238,8 @@ for ((i = 0; i < CAS; i++));       do FL_ROLE+=(ca);      CA_IDX+=($(( ${#FL_ROL
 # hash-enforced and inherited by joining nodes, and a runtime flag would apply to one
 # node only (AppInit2 warns about exactly that). setup-first-blocks is deliberately
 # absent so the genesis derivation owns it.
-export FL_PARAM_OVERRIDES="weight-epoch-length = $EPOCH_LEN
+export FL_PARAM_OVERRIDES="setup-first-blocks = $SETUP_BLOCKS
+weight-epoch-length = $EPOCH_LEN
 weight-lambda = $LAMBDA
 wpoa-randao-lookback = $LOOKBACK
 initial-block-reward = $BLOCK_REWARD
@@ -243,6 +269,11 @@ fl_check_begin "setup_first_blocks_derived" 1
         fl_ok "setup-first-blocks=$EFFECTIVE_SETUP is at or above the derived floor $SETUP_FLOOR"
     else
         fl_bad "setup-first-blocks=$EFFECTIVE_SETUP is BELOW the floor $SETUP_FLOOR: the chain will stall there"
+    fi
+    if [ "$EFFECTIVE_SETUP" -ge "$SETUP_BLOCKS" ]; then
+        fl_ok "and at or above the bootstrap budget we asked for ($SETUP_BLOCKS)"
+    else
+        fl_bad "setup-first-blocks=$EFFECTIVE_SETUP is below the bootstrap budget $SETUP_BLOCKS: wPoA may engage before the registry is populated"
     fi
     first_confirmable=$(( EPOCH_LEN + FL_STABILITY_MARGIN - 1 + FL_SETUP_PUBLISH_MARGIN ))
     if [ "$EFFECTIVE_SETUP" -gt "$first_confirmable" ]; then
@@ -309,6 +340,11 @@ fl_check_begin "treasury_is_not_the_admin" 1
 fl_check_end || true
 
 # ---- permissions and engine inputs -----------------------------------------
+EXPERIMENT="${WE_LARGE_NAME:-large-network-$( [ "$FAST" = "1" ] && echo fast || echo full )-e${EPOCHS}-l${LAMBDA}-$(date +%Y%m%d-%H%M%S)}"
+fl_record_begin "$EXPERIMENT" || fl_log "continuing without recording"
+fl_record_meta "$EXPERIMENT" "$(printf '{"miners": %s, "companies": %s, "cas": %s, "epoch_len": %s, "epochs": %s, "lookback": %s, "lambda": "%s", "setup_first_blocks": %s, "target_block_time": %s, "block_reward": %s, "premine": %s, "gas_floor": %s, "gas_topup": %s, "treasury": "%s", "fast": %s}' \
+    "$MINERS" "$COMPANIES" "$CAS" "$EPOCH_LEN" "$EPOCHS" "$LOOKBACK" "$LAMBDA" "$EFFECTIVE_SETUP" "$TARGET_BLOCK_TIME" "$BLOCK_REWARD" "$PREMINE" "$GAS_FLOOR" "$GAS_TOPUP" "$TREASURY" "$FAST")"
+
 fl_phase "INPUTS — membership (self-attested), ESG (Certification Authority)"
 
 # Every node speaks about itself on the membership stream. The grant is on the node's own
@@ -403,6 +439,36 @@ fl_check_begin "reconciliation_direction" 1
     fi
 fl_check_end || true
 
+# ---- the registry must be usable BEFORE wPoA engages ------------------------
+# The gate that turns the old silent stall into a diagnosis. Efraimidis-Spirakis cannot
+# draw a zero-weight key (Cor. 5.4), so "populated" means validators with a NON-ZERO
+# weight: a registry listing ten validators at 0 elects nobody just as surely as an empty
+# one, and the chain stops at setup-first-blocks either way.
+fl_phase "READINESS — the weight registry must be populated before wPoA takes over at $EFFECTIVE_SETUP"
+fl_check_begin "registry_ready_before_wpoa" 1
+    want_ready=$(( MINERS / 2 )); [ "$want_ready" -lt 1 ] && want_ready=1
+    ready_budget=$(( EFFECTIVE_SETUP * TARGET_BLOCK_TIME ))
+    if fl_wait_registry_ready "$want_ready" "$ready_budget" "$EFFECTIVE_SETUP"; then
+        fl_ok "the registry carries scoreable weights with the chain still at $(fl_tip_height 0) < $EFFECTIVE_SETUP"
+    else
+        fl_bad "the registry was NOT usable before wPoA engaged -- the run cannot proceed (see the diagnosis above)"
+        fl_log ""
+        fl_log "  Most likely: bootstrapping $NODES nodes outran setup-first-blocks=$EFFECTIVE_SETUP."
+        fl_log "  Retry with a larger budget, e.g. WE_LARGE_SETUP_BLOCKS=$(( EFFECTIVE_SETUP * 2 )),"
+        fl_log "  or a smaller network (WE_LARGE_MINERS / WE_LARGE_COMPANIES)."
+        fl_check_end || true
+        fl_phase "TEARDOWN (aborted at readiness)"
+        fl_record_finish
+        [ -n "$FL_RUN_DIR" ] && fl_log "partial recording kept at $FL_RUN_DIR"
+        fl_teardown
+        trap - EXIT
+        fl_check_summary || true
+        echo
+        echo "LARGE-NETWORK TEST FAILED: the weight registry was not ready before wPoA engaged." >&2
+        exit 1
+    fi
+fl_check_end || true
+
 # ---- the long run -----------------------------------------------------------
 # Driven one epoch at a time so the monitoring happens DURING the run, not after it: a
 # node that runs dry at epoch 12 must be refuelled at epoch 12, and a mismatch verdict
@@ -410,6 +476,9 @@ fl_check_end || true
 fl_phase "RUN — driving $TARGET_HEIGHT blocks, monitoring each epoch"
 
 REFUELS=0
+EPOCH_REFUELS=0
+CURRENT_EPOCH=0
+LAST_RECORDED_HEIGHT=$EFFECTIVE_SETUP
 REFUEL_FAILURES=0
 VERIFY_SAMPLES=0
 VERIFY_MISMATCH=0
@@ -427,8 +496,12 @@ monitor_gas() {
     for ((i = 1; i < NODES; i++)); do
         bal="$(fl_native_balance "$i")"
         if fl_lt "$bal" "$GAS_FLOOR"; then
-            if fl_refuel_node "$i" "$GAS_TOPUP" >/dev/null; then
+            local txid
+            txid="$(fl_refuel_node "$i" "$GAS_TOPUP")"
+            if [ -n "$txid" ]; then
                 REFUELS=$(( REFUELS + 1 ))
+                EPOCH_REFUELS=$(( EPOCH_REFUELS + 1 ))
+                fl_record_refuel "$CURRENT_EPOCH" "$i" "$bal" "$(fl_native_balance "$i")" "$GAS_TOPUP" "$txid"
             else
                 REFUEL_FAILURES=$(( REFUEL_FAILURES + 1 ))
             fi
@@ -442,6 +515,7 @@ monitor_gas() {
 monitor_verification() {
     local -a probe=(0 "${MINER_IDX[0]}" "${MINER_IDX[$(( ${#MINER_IDX[@]} - 1 ))]}")
     local i ve mm nc oe inv
+    EPOCH_MISMATCH=0; EPOCH_NOTCLUSTER=0; EPOCH_OTHER=0; EPOCH_VERIFIED=0
     for i in "${probe[@]}"; do
         ve="$(fl_verify_field "$i" epoch)"; ve="${ve:-0}"
         [ "$ve" -ge 1 ] || continue
@@ -456,6 +530,10 @@ monitor_verification() {
         VERIFY_MISMATCH=$((   VERIFY_MISMATCH + mm ))
         VERIFY_NOTCLUSTER=$(( VERIFY_NOTCLUSTER + nc ))
         VERIFY_OTHER_EPOCH=$(( VERIFY_OTHER_EPOCH + oe ))
+        EPOCH_MISMATCH=$((   EPOCH_MISMATCH + mm ))
+        EPOCH_NOTCLUSTER=$(( EPOCH_NOTCLUSTER + nc ))
+        EPOCH_OTHER=$((      EPOCH_OTHER + oe ))
+        [ "$ve" -gt "$EPOCH_VERIFIED" ] && EPOCH_VERIFIED="$ve"
         # other-epoch and unverified are explicitly NOT findings
         # (mc_WeightVerdictIsInvalid), so the invalid counter must equal exactly
         # mismatch + not-a-cluster. This is the assertion that catches other-epoch
@@ -496,10 +574,24 @@ for ((e = 1; e <= EPOCHS; e++)); do
         STALLED=1
         break
     fi
+    CURRENT_EPOCH=$e
+    EPOCH_REFUELS=0
     monitor_gas
     monitor_verification
 
-    fl_log "epoch $e/$EPOCHS covered at height $(fl_tip_height 0)  |  refuels=$REFUELS  max verified epoch=$MAX_VERIFIED_EPOCH"
+    # Stream this epoch's observations out NOW. A run that stalls at epoch 12 still
+    # leaves 12 epochs of evidence, which is exactly when the evidence matters.
+    h_now="$(fl_tip_height 0)"; h_now="${h_now:-0}"
+    fl_record_weights "$e"
+    fl_record_gas "$e"
+    fl_record_epoch "$e" "$h_now" "${EPOCH_VERIFIED:-0}" "${EPOCH_MISMATCH:-0}" \
+                    "${EPOCH_NOTCLUSTER:-0}" "${EPOCH_OTHER:-0}" "$EPOCH_REFUELS"
+    if [ "$h_now" -gt "$LAST_RECORDED_HEIGHT" ]; then
+        fl_record_proposers $(( LAST_RECORDED_HEIGHT + 1 )) "$h_now"
+        LAST_RECORDED_HEIGHT="$h_now"
+    fi
+
+    fl_log "epoch $e/$EPOCHS covered at height $h_now  |  refuels=$REFUELS  max verified epoch=$MAX_VERIFIED_EPOCH"
 done
 
 # Past the last epoch, so epoch $EPOCHS itself gets buried AND verified.
@@ -507,8 +599,16 @@ if [ "$STALLED" = "0" ]; then
     fl_log "driving past the final epoch so epoch $EPOCHS can be verified (needs height $VERIFY_HEIGHT)"
     fl_drive_to_height "$TARGET_HEIGHT" $(( EPOCH_DRIVE_TIMEOUT * 3 )) \
         "stall while burying the final epoch" || STALLED=1
+    CURRENT_EPOCH=$(( EPOCHS + 1 ))
+    EPOCH_REFUELS=0
     monitor_gas
     monitor_verification
+    h_now="$(fl_tip_height 0)"; h_now="${h_now:-0}"
+    fl_record_weights "$CURRENT_EPOCH"
+    fl_record_gas "$CURRENT_EPOCH"
+    fl_record_epoch "$CURRENT_EPOCH" "$h_now" "${EPOCH_VERIFIED:-0}" "${EPOCH_MISMATCH:-0}" \
+                    "${EPOCH_NOTCLUSTER:-0}" "${EPOCH_OTHER:-0}" "$EPOCH_REFUELS"
+    [ "$h_now" -gt "$LAST_RECORDED_HEIGHT" ] && fl_record_proposers $(( LAST_RECORDED_HEIGHT + 1 )) "$h_now"
 fi
 
 FINAL_HEIGHT="$(fl_tip_height 0)"; FINAL_HEIGHT="${FINAL_HEIGHT:-0}"
@@ -687,9 +787,60 @@ fl_check_begin "no_persistent_fork" 1
     fl_assert_zero "$mism" "nodes disagreeing on the chain at buried height $probe"
 fl_check_end || true
 
+# =============================================================================
+# STATISTICS
+# =============================================================================
+# The suite's own checks are structural: did it stall, did a verdict come back invalid,
+# did a node run dry. They say nothing about whether the ELECTION was correct, which is
+# a question about a distribution and needs a test with a stated null hypothesis.
+#
+# Two tests, because neither is sufficient alone. The empirical chi-square runs against
+# THIS binary on THIS run, so it tests the compiled selector, the VRF, the beacon and the
+# weight pipeline together -- but its sample is however many blocks were mined, which
+# gives it no power at all in the tail of a skewed weight vector. The Monte Carlo
+# re-implements the Efraimidis-Spirakis transformation and draws it as many times as
+# asked, so it can test that tail -- but it is not running the C++. Together they
+# localise a fault: agree and the pipeline is sound, disagree and it is the
+# implementation rather than the design.
+fl_record_finish
+STATS_RC=0
+if [ -n "$FL_RUN_DIR" ]; then
+    fl_record_analyse --draws "${WE_LARGE_MC_DRAWS:-50000}" \
+                      --alpha "${WE_LARGE_ALPHA:-0.01}" || STATS_RC=$?
+    if [ -f "$FL_RUN_DIR/summary.txt" ]; then
+        echo
+        sed 's/^/  /' "$FL_RUN_DIR/summary.txt"
+    fi
+fi
+
+fl_check_begin "statistical_tests" 1
+    if [ -z "$FL_RUN_DIR" ]; then
+        fl_bad "the run was not recorded, so no statistical test could be made"
+    elif [ "$STATS_RC" -eq 0 ]; then
+        fl_ok "every statistical verdict passed (Monte Carlo + empirical chi-square)"
+    elif [ "$STATS_RC" -eq 2 ]; then
+        fl_bad "the recorded run held no analysable data -- an empty run must not read as a passing one"
+    else
+        fl_bad "a statistical verdict FAILED -- see $FL_RUN_DIR/report.md"
+    fi
+fl_check_end || true
+
 fl_phase "TEARDOWN"
 fl_teardown
 trap - EXIT
+
+if [ -n "$FL_RUN_DIR" ]; then
+    echo
+    echo "Recorded run and analysis: $FL_RUN_DIR"
+    echo "  report.md         the readable report (Monte Carlo, chi-square, concentration, epochs, gas)"
+    echo "  summary.txt       the same verdicts as plain text"
+    echo "  montecarlo.csv    one row per scenario per candidate"
+    echo "  distribution.csv  per-validator expected vs observed, with 95% CIs"
+    echo "  concentration.csv Gini / entropy / top-share, weights and proposals"
+    echo "  epoch_stats.csv   per-epoch weights, dispersion, verdicts, refuels"
+    echo "  gas_stats.csv     per-node balance trajectory"
+    echo "  proposers.csv weights.csv epochs.csv gas.csv refuels.csv   (raw observations)"
+fi
 
 if fl_check_summary; then
     echo
