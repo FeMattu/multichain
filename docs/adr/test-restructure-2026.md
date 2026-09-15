@@ -1,7 +1,7 @@
 # ADR — restructuring the test tree, and realigning the suites with the code
 
-> **Status:** analysis complete, **awaiting confirmation** on four points (§7). No file
-> has been moved or modified yet other than this document.
+> **Status:** accepted, implemented. The four open points of §7 were resolved on
+> 2026-09-15; §7 records the answers.
 > **Scope:** `src/weight_engine/test/`, `src/wpoa/test/`, a new project-level
 > `test/functional/`. Explicitly **out of scope:** `/experiments` (the Python network
 > topology emulation framework) and `src/weight_engine/test/experimental/` (the MyLedger
@@ -668,31 +668,36 @@ which is a coverage gain independent of the move.
 
 ---
 
-## 7. Open questions — I have stopped here, as instructed
+## 7. Open questions — resolved 2026-09-15
 
-**7.1 The native currency (§6.2) — blocking.** Do you want
-`initial-block-reward`/`first-block-reward` enabled in the large-network test's
-`params.dat`? Without it the GAS-refuel requirement is a no-op **and** the restitution-rate
-feedback is inert for all 50 epochs. This is the one item that changes what the test
-measures, and it contradicts the mandate's premise that GAS-the-native-currency already
-exists.
+**7.1 The native currency (§6.2) — RESOLVED: enable it.** The large-network test enables
+the native currency in its own `params.dat` via `FL_PARAM_OVERRIDES`
+(`initial-block-reward`, plus `first-block-reward` to premine the genesis admin). Test
+configuration only; no production code is touched, per mandate point 5. This is what makes
+all four of the mandate's economic requirements simultaneously achievable: real balances to
+sample, a real refuel path, `R_k != 0`, and a `rho` that varies per cluster across the 50
+epochs instead of sitting pinned at 0.
 
-**7.2 `k = 101 > epoch_len = 100` (§4) — confirm intent.** Legal, but it means every
-selection seed reads an accumulator 101 blocks stale, and for the first 101 blocks the
-lookback clamps to height 0 (`randao_accumulator.cpp:211-214`). Is `k > epoch_len` the
-property you want exercised, or was `k > 1` (i.e. "not the default") the intent?
+Rejected: modelling GAS as an issued asset (as `experimental/` does). It satisfies balance
+monitoring but leaves `R_k = 0`, because the engine reads native values — so the
+restitution-rate feedback would still be inert, which is the defect that mattered.
 
-**7.3 Three items where I found no defect, so I propose no fix beyond comments.** §3.2
-(`weightsetreconciliation` is a deliberate negative assertion — keep it), §3.5 (all four
-malus kinds already covered; "both families" is correct terminology). Confirm you are happy
-with "no change" rather than the corrections the mandate anticipated.
+**7.2 `k = 101 > epoch_len = 100` (§4) — RESOLVED: as mandated.** `WE_LARGE_LOOKBACK`
+defaults to 101. The consequence is documented in the test itself: the seed reads
+`R_tot[n-101]`, so it moves far more slowly than one epoch, and below height 101 the
+lookback clamps to 0 (`randao_accumulator.cpp:211-214`). The knob stays overridable.
 
-**7.4 `experimental/` (§2.3).** I agree it should not move. Confirming explicitly because
-you asked to be told if I thought otherwise.
+**7.3 The three non-defects — RESOLVED: no test change.** §3.2's
+`weightsetreconciliation` call stays exactly as it is (it pins the RPC's removal); §3.5's
+four malus kinds stay as they are (already covered in both suites). Only the misleading
+comments are corrected: the "three input streams" header, the "publish side (admin
+attestations)" header, and "both malus families" sharpened to name the four kinds.
 
-**Not blocking, for the record:** I found **no bug in production code**. Every discrepancy
-is in a test, a comment, or a configuration choice. Mandate point 5's stop-and-ask clause
-was not triggered.
+**7.4 `experimental/` — RESOLVED: unmoved, unrenamed.** Confirmed.
+
+**For the record:** no bug was found in production code. Every discrepancy is in a test, a
+comment, or a configuration choice. Mandate point 5's stop-and-ask clause was not
+triggered.
 
 ---
 
@@ -708,7 +713,7 @@ Per the mandate, the move is separated from the content changes so each diff sta
 6. `test(weight-engine): assert the epoch-scoped verification verdicts`
 7. `test(weight-engine): add the large-network functional suite`
 
-Steps 2–7 are **not started**; they await §7.
+All seven steps are implemented; §7 is resolved.
 
 ---
 
