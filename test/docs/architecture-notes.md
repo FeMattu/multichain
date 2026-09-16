@@ -471,7 +471,105 @@ the constraint that actually matters.
 The statistical modules do **not** use `scipy` even though it is present: every test is
 written from its closed form, as the brief requires.
 
-### 8.6 The binaries only run inside the container
+### 8.6 A joining node exits on its first run
+
+Started against the seed with `anyone-can-connect = false`, a peer fetches the chain
+parameters, creates its wallet, prints
+
+```
+Please ask blockchain admin ... to let you connect and/or transact:
+multichain-cli <chain> grant <ADDRESS> connect
+```
+
+and **exits**. It does not become a daemon and never opens an RPC port. This is the
+documented sequence (`Create-Blockchain.md` §5), and it means the address has to be read
+from that output — there is nothing to ask over RPC until the node has been granted
+`connect` and started a second time. The harness therefore runs **join → grant → launch**.
+
+An earlier version launched and then granted, and every peer failed with *"Couldn't
+connect to the seed node"* while the orchestrator waited for RPC ports that were never
+going to open.
+
+### 8.7 A restart races the LevelDB lock
+
+Stopping the admin and restarting it immediately produced:
+
+```
+ERROR: Couldn't initialize permission database for blockchain <chain>.
+       Probably multichaind for this blockchain is already running. Exiting...
+IO error: lock .../permissions.db/LOCK: Resource temporarily unavailable
+```
+
+The RPC port closes before LevelDB releases its lock, so a restart inside that window
+lands on a held lock and leaves a node that looks started and is not — with the seed down,
+every joining peer then fails. Worse, MultiChain did **not** write a pid file here, so an
+implementation that waits on the pid has nothing to wait on and returns immediately.
+
+The fix is to treat the **RPC port** as the liveness signal: stop, poll until the port
+closes, settle for two seconds, and retry a launch that reports a held lock.
+
+### 8.8 An entity permission cannot be granted before its entity exists
+
+`grant <addr> wpoa-weights.write` issued before the stream is created fails with
+
+```
+-708 Entity with this name not found: wpoa-weights
+```
+
+On the first full run this silently lost every stream permission, and the first visible
+symptom was `weightregistermembership` failing with `-704 ... lacks write permission`
+several steps later — by which point the cause was three phases back. Grants are therefore
+issued in two passes: global permissions before the peers launch, per-stream permissions
+after the streams are created.
+
+### 8.9 The treasury's `receive` grant must confirm before the admin restarts
+
+The treasury address is created on the admin, granted `receive`, and then the admin is
+restarted to install `-weighttreasuryaddress`. If the grant has not been mined by then it
+dies with the node, and every miner restitution afterwards fails with
+
+```
+-704 Destination address doesn't have receive permission
+```
+
+Observed on a live run: 96 consecutive failures, no restitution recorded, `R_k = 0` for
+every cluster — and therefore a perfectly flat `rho` that reads as *"the feedback channel
+is inert"* rather than as a broken permission. The harness now waits for the grant to
+confirm, re-asserts it after the restart, and **verifies** it with `listpermissions`
+before any traffic starts.
+
+### 8.10 The audit RPCs must exist in the binary
+
+Run against a `src/multichaind` built twelve hours before the commit that added them,
+every round- and epoch-audit family answered `-32601 Method not found`:
+`wpoalistscores`, `wpoalistdelays`, `wpoalisteffectiveweights`, `wpoalistfinalweights`,
+and the whole `weightlist*` / `weightgetlocal*` set. Phase 1 collected 750 errors and
+produced empty tables — a pipeline that ran to completion and measured nothing.
+
+`./docker/mcsim run mc-build` fixes it. The check is cheap:
+
+```bash
+strings src/multichaind | grep -c '^wpoalistfinalweights$'
+```
+
+### 8.11 The delay formula reproduces exactly
+
+With the rebuilt binary, `wpoalistdelays` reported for one validator
+`score_norm = 0.99999999991224` and `delay = 2.99999999982448` at
+`target_block_time = 2`, `delta = 0.5`, `lambda = 0`. Recomputing
+
+```
+D = T + delta*T*(2*score_norm - 1) + lambda*Phi
+  = 2 + 0.5*2*(2*0.99999999991224 - 1) + 0
+  = 2.99999999982448
+```
+
+reproduces it to the last digit, and across a whole run
+`delay_recompute_mismatch_rounds = 0`. That is the pass condition of the functional test:
+the harness and the node agree about the mechanism, so the timer-race results downstream
+are about the chain rather than about a misunderstanding.
+
+### 8.12 The binaries only run inside the container
 
 `src/multichaind` on the host fails with `libboost_filesystem.so.1.74.0: cannot open
 shared object file`. Ubuntu 22.04 with Boost 1.74 is supplied by `./docker/mcsim`, per
@@ -494,6 +592,12 @@ that container.
 | 10 | One OS process per daemon, launched with `subprocess`, each with its own `.jsonl`. | The brief: daemons must stay individually killable and individually diagnosable. |
 | 11 | `requests` preferred, `urllib` fallback. | §8.5. |
 | 12 | Experiment seed and analysis seed are **separate**. `seed` in the profile drives the network and the traffic; the phase-3 tests use a fixed `20260905` independent of it. | The brief. It keeps a re-run with a different network seed comparable under the identical test procedure. |
+| 13 | Peers are brought up **join → grant → launch**, not launch-then-grant. | §8.6 — a joining node exits on its first run and has no RPC port to be asked on. |
+| 14 | A stop waits on the **RPC port closing**, not on a pid file, and a launch retries a held lock. | §8.7 — MultiChain did not write a pid file, and the lock outlives the port. |
+| 15 | Grants are issued in two passes, global then per-stream. | §8.8 — an entity permission before its entity is `-708`, and the symptom surfaces three steps later. |
+| 16 | The treasury's `receive` is confirmed, re-asserted after the restart, and verified. | §8.9 — otherwise `R_k = 0` everywhere and the feedback looks inert rather than broken. |
+| 17 | `wpoa-weights-malus` is created explicitly, **open**, matching the node's own creation. | Its auto-creation is as unreliable as the others', and the failure is only visible as a missing stream in the logs. |
+| 18 | The first and last epoch of each daemon are marked `full_epoch = False` and excluded from the range check. | Both are partial by construction — the first began before the daemon started, the last was cut short by the shutdown — so their counts cannot be expected to fall in the configured range. |
 
 ## 10. Known divergences
 

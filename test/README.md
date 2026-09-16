@@ -58,6 +58,9 @@ Useful variants:
 
 # validate the sortition formula on its own, with no chain at all
 ./docker/mcsim run python3 test/analysis/pipeline/tools/valida_sortition_montecarlo.py
+
+# check the hand-written statistics against scipy (the only place scipy is used at all)
+./docker/mcsim run python3 test/analysis/pipeline/tools/verify_stat_closed_forms.py
 ```
 
 Every script takes `--config <profile>`; no network or node parameter is hardcoded.
@@ -79,7 +82,7 @@ test/
   shutdown/stop_network.py     teardown, also usable on its own
   analysis/pipeline/           phase1_collect, phase2_aggregate, phase3_analyze
   analysis/pipeline/stat/      wilson, gof, concentration, streak, timer_race, longitudinal
-  analysis/pipeline/tools/     valida_sortition_montecarlo.py
+  analysis/pipeline/tools/     valida_sortition_montecarlo.py, verify_stat_closed_forms.py
   plotting/generate_plots.py   figures, from phase 2 and phase 3 only
   results/                     run directories (not versioned)
 ```
