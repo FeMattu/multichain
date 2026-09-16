@@ -24,3 +24,16 @@ dell'utente.
 
 Corollario operativo: prima di modificare qualunque file, creare un branch dedicato
 all'intervento. Non lavorare mai direttamente su `main`/`master`.
+
+## Regole per l'avvio dei binari multichain
+
+Queste regole valgono per ogni sessione.
+
+- usare il docker fornito per compilare ed avviare i binari: ./docker nella root del progetto
+```bash
+./docker/mcsim run mc-build          # compile MultiChain into src/
+./docker/mcsim preflight             # can this container do it?
+
+./docker/mcsim shell                 # poke around
+```
+`./docker/mcsim` supplies an Ubuntu 22.04 userspace with GCC 11 and Boost 1.74.
