@@ -1098,14 +1098,38 @@ json.dump(d, open(p, "w"), indent=2)
 PYEOF
 }
 
-# Every miner in the closed height range, one row per block.
+# Every miner in the closed height range, one row per block: "height,miner".
+#
+# The height comes from the block object, NOT from a counter seeded at $from. listblocks
+# makes no ordering guarantee, and any mismatch between the blocks returned and the width
+# of the range would silently shift every following row -- corrupting the proposer
+# distribution instead of failing, which is the worst outcome for a statistical test.
+#
+# NOTE the two-step declaration. `local from=$1 to=$2 h=$from` does NOT work: local is a
+# builtin, so all of its arguments are word-expanded BEFORE any assignment takes effect,
+# making $from the (unset) outer variable -- fatal under `set -u`, and only at the first
+# epoch rollover, hours into a large run.
 fl_record_proposers() {
     [ -n "$FL_RUN_DIR" ] || return 0
-    local from=$1 to=$2 h=$from
-    fl_block_miners 0 "$from" "$to" | while IFS= read -r m; do
-        printf '%s,%s\n' "$h" "$m" >> "$FL_RUN_DIR/proposers.csv"
-        h=$(( h + 1 ))
-    done
+    local from to
+    from=$1
+    to=$2
+    fl_cli 0 listblocks "$from-$to" 2>/dev/null | python3 -c '
+import sys, json
+try:
+    blocks = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+if not isinstance(blocks, list):
+    sys.exit(0)
+for b in blocks:
+    if not isinstance(b, dict):
+        continue
+    h, m = b.get("height"), b.get("miner")
+    if h is None or not m:
+        continue
+    print("%s,%s" % (h, m))
+' >> "$FL_RUN_DIR/proposers.csv"
 }
 
 # The whole weight map as node 0 sees it, stamped with the epoch.
