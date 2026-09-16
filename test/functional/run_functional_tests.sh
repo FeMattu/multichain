@@ -12,6 +12,11 @@
 #                           check against that shared run
 #   weight-engine           weight-engine publish side + closed streams (single node)
 #   weight-engine-bootstrap weight-engine bootstrap ordering on a clean network
+#   lib-lint                validates the HARNESS itself: script syntax, the epoch
+#                           geometry and setup-budget helpers, and every per-epoch
+#                           recorder driven against stubbed RPCs. NEEDS NO NODE, runs
+#                           in about a second, and runs FIRST -- a typo in a recorder
+#                           otherwise surfaces hours into the large run
 #   stats-selfcheck         validates the statistical machinery itself (chi-square
 #                           p-values, Gini, entropy, Wilson intervals, Cor. 5.4, and a
 #                           negative control). NEEDS NO NODE -- the one suite runnable
@@ -59,6 +64,7 @@ FAST_LARGE=0
 # so the script still runs under bash 3 (macOS /bin/bash).
 suite_script() {
     case "$1" in
+        lib-lint)                echo "$SCRIPT_DIR/lib/lint_lib.sh" ;;
         stats-selfcheck)         echo "$SCRIPT_DIR/lib/we_stats.py" ;;
         wpoa)                    echo "$SCRIPT_DIR/wpoa/functional_test_wpoa_system.sh" ;;
         weight-engine)           echo "$SCRIPT_DIR/weight_engine/functional_test_weight_engine.sh" ;;
@@ -70,6 +76,7 @@ suite_script() {
 
 suite_desc() {
     case "$1" in
+        lib-lint)                echo "harness lint: helpers + recorders, stubbed (no node needed)" ;;
         stats-selfcheck)         echo "statistics self-check (no node needed)" ;;
         wpoa)                    echo "wPoA system run (one full-stack network, every feature check)" ;;
         weight-engine)           echo "weight-engine publish side + closed streams (single node)" ;;
@@ -86,16 +93,19 @@ suite_timeout() {
         echo "$FUNCTIONAL_TIMEOUT"; return
     fi
     case "$1" in
+        lib-lint)            echo 300 ;;
         stats-selfcheck)     echo 300 ;;
         weight-engine-large) [ "$FAST_LARGE" = "1" ] && echo 3600 || echo 28800 ;;
         *)                   echo 1800 ;;
     esac
 }
 
-DEFAULT_SUITES="stats-selfcheck wpoa weight-engine weight-engine-bootstrap"
-ALL_SUITES="stats-selfcheck wpoa weight-engine weight-engine-bootstrap weight-engine-large"
+DEFAULT_SUITES="lib-lint stats-selfcheck wpoa weight-engine weight-engine-bootstrap"
+ALL_SUITES="lib-lint stats-selfcheck wpoa weight-engine weight-engine-bootstrap weight-engine-large"
 
-usage() { sed -n '2,45p' "${BASH_SOURCE[0]}" | sed 's/^#\{0,1\} \{0,1\}//'; }
+# Print the whole leading comment block, rather than a hardcoded line range that
+# silently truncates the help text every time the header grows.
+usage() { awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "${BASH_SOURCE[0]}"; }
 
 list_suites() {
     echo "Available functional suites:"
