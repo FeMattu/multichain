@@ -775,9 +775,18 @@ class Orchestrator:
 
             epoch = self.profile.last_buried_epoch(tip)
             if epoch != last_report:
+                # Reported against setup-first-blocks rather than against epochs.count:
+                # the epochs that matter are the ones past the setup phase, and the target
+                # height is usually driven by the setup budget rather than by the count.
+                setup = int(
+                    self.effective_params.get(
+                        "setup-first-blocks", self.profile.setup_first_blocks
+                    )
+                )
+                measured = max(0, epoch - self.profile.epoch_of_height(setup))
                 log_step(
-                    "height %d / %d — buried epoch %d / %d"
-                    % (tip, target, epoch, self.profile.epoch_count)
+                    "height %d / %d — buried epoch %d (%d past the setup phase)"
+                    % (tip, target, epoch, measured)
                 )
                 last_report = epoch
             if tip >= target:

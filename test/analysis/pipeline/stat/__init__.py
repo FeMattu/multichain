@@ -275,8 +275,14 @@ def binom_sf_inclusive(k: int, n: int, p: float = 0.5) -> Optional[float]:
     because the informative-pair counts in a smoke run are routinely under 20, where the
     approximation is visibly wrong in the direction that manufactures significance.
     """
-    if n <= 0 or k > n:
+    if n <= 0:
         return None
+    if k > n:
+        # P(X >= k) with k above the number of trials is exactly 0, not "unknown". The
+        # distinction matters: the caller computes the lower tail as 1 - P(X >= k+1), and
+        # a validator that won *every* block in an epoch lands on k = n + 1 here. Returning
+        # None there raised a TypeError on the first run long enough to produce one.
+        return 0.0
     if k <= 0:
         return 1.0
     total = 0.0

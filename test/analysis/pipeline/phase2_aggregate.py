@@ -45,6 +45,7 @@ import argparse
 import csv
 import json
 import math
+import re
 import sys
 from collections import OrderedDict, defaultdict
 from pathlib import Path
@@ -58,6 +59,11 @@ DELAY_TOL_S = 0.0015
 
 #: Tolerance for the normalised score, which is dimensionless.
 SCORE_NORM_TOL = 1e-6
+
+#: ``company_daemon`` publishes under the key ``lot-<epoch>-<node_id>-<seq>``, so the epoch
+#: a transaction was generated for survives on chain and does not have to be inferred from
+#: the block that confirmed it.
+_TRAFFIC_KEY = re.compile(r"^lot-(\d+)-")
 
 COLUMNS: "OrderedDict[str, List[str]]" = OrderedDict(
     [
@@ -98,8 +104,8 @@ COLUMNS: "OrderedDict[str, List[str]]" = OrderedDict(
         (
             "epoch_traffic",
             ["epoch", "node_id", "role", "address", "planned", "sent_logged",
-             "onchain_stream_items", "onchain_returns", "full_epoch", "in_range",
-             "range_low", "range_high"],
+             "onchain_stream_items", "onchain_confirmed_this_epoch", "onchain_returns",
+             "full_epoch", "in_range", "range_low", "range_high"],
         ),
         (
             "epoch_concentration",
@@ -155,6 +161,12 @@ def b(value: Any) -> Optional[bool]:
     if value in ("", None):
         return None
     return str(value).strip().lower() in ("true", "1", "yes")
+
+
+def _epoch_from_key(key: str) -> Optional[int]:
+    """The epoch a company was generating for, read back off the chain."""
+    match = _TRAFFIC_KEY.match(key or "")
+    return int(match.group(1)) if match else None
 
 
 # --------------------------------------------------------------------------------------
@@ -548,13 +560,26 @@ class Aggregator:
 
         event_stream = profile.traffic["event_stream"]
         by_publisher: Dict[Tuple[int, str], int] = defaultdict(int)
+        by_confirm_epoch: Dict[Tuple[int, str], int] = defaultdict(int)
         for row in stream_items:
             if row.get("stream") != event_stream:
                 continue
-            epoch = i(row.get("epoch"))
             publisher = row.get("publisher", "")
-            if epoch is not None and publisher:
-                by_publisher[(epoch, publisher)] += 1
+            if not publisher:
+                continue
+            confirm_epoch = i(row.get("epoch"))
+            if confirm_epoch is not None:
+                by_confirm_epoch[(confirm_epoch, publisher)] += 1
+            # Attribute the item to the epoch the company was generating FOR, which its
+            # key carries (``lot-<epoch>-<node_id>-<seq>``), not to the epoch of the block
+            # that happened to confirm it. A transaction published near a boundary
+            # confirms in the next epoch, so counting by confirmation makes a correctly
+            # drawn quota look one or two out of range at both ends of every epoch.
+            declared = _epoch_from_key(row.get("key", ""))
+            if declared is not None:
+                by_publisher[(declared, publisher)] += 1
+            elif confirm_epoch is not None:
+                by_publisher[(confirm_epoch, publisher)] += 1
 
         tx_low, tx_high = profile.traffic["company_tx_per_epoch_range"]
         ret_low, ret_high = profile.traffic["miner_gas_returns_per_epoch_range"]
@@ -593,6 +618,9 @@ class Aggregator:
                     "sent_logged": sent.get((epoch, node_id), 0) if is_company
                     else sent_returns.get((epoch, node_id), 0),
                     "onchain_stream_items": onchain_stream,
+                    "onchain_confirmed_this_epoch": (
+                        by_confirm_epoch.get((epoch, address), 0) if is_company else None
+                    ),
                     "onchain_returns": onchain_returns,
                     "full_epoch": full_epoch,
                     "in_range": (
