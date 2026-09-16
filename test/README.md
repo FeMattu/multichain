@@ -1,82 +1,181 @@
-# wPoA unit tests
+# `test/` — functional harness for wPoA + WeightEngine
 
-This directory holds the wPoA **unit** tests: self-contained Boost.Test modules
-compiled straight from source, fast, deterministic, and requiring **no** node
-build.
+A **functional / smoke** harness. Every node is a real `multichaind` process on localhost,
+with its own data directory, its own P2P port and its own RPC port. There is deliberately
+**no network emulation**: no netem, no jitter, no link delay, no CORE.
 
-The **functional** tests used to live here too. They now live at
-[`test/functional/`](../../../test/functional/) — a functional run exercises wPoA,
-the weight engine, the malus registry and the streams as one system, so it is not
-a wPoA-module artifact. Rationale:
-[`docs/adr/test-restructure-2026.md`](../../../docs/adr/test-restructure-2026.md).
+That is the design and not a limitation. It isolates the *protocol* — weight computation,
+weighted selection, VRF/RANDAO, inter-epoch feedback, malus — from every network variable,
+so a change in an observed quantity has exactly one candidate explanation. Network
+behaviour is [`experiments/`](../experiments/)'s subject; this harness must never grow a
+dependency on it, and nothing here reads from or writes to that directory.
+
+Every chain created here runs the **complete wPoA stack**, bottom-up: weights → selection →
+VRF → RANDAO → sortition → malus, with the weight engine on. That is fixed and is not a
+configuration option.
+
+---
+
+## Quick start
+
+The binaries are built against Ubuntu 22.04 with Boost 1.74 and do not run on the host, so
+everything goes through the project's container:
+
+```bash
+# once, if src/multichaind is older than the RPC layer you want to audit
+./docker/mcsim run mc-build
+
+# one command: bootstrap -> traffic -> shutdown -> phase1 -> phase2 -> phase3 -> plots
+./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
+    --config test/config/profiles/small.yaml
+```
+
+That writes `test/results/run-<chain>-<UTC>/`, and finishes with
+
+```
+test/results/run-.../analysis/phase3/report.md               the full report
+test/results/run-.../analysis/phase3/weight_vs_election.md   the headline comparison
+test/results/run-.../analysis/plots/                         the figures
+```
+
+Useful variants:
+
+```bash
+# validate a profile and print the derived plan (ports, budgets, target height) — no chain
+./docker/mcsim run python3 test/bootstrap/bootstrap_network.py --config <profile> --dry-run
+
+# run the network but stop before the analysis
+... bootstrap_network.py --config <profile> --no-analyze
+
+# re-analyse a finished run without re-running the network
+./docker/mcsim run python3 test/analysis/pipeline/phase1_collect.py --run-dir <run>
+./docker/mcsim run python3 test/analysis/pipeline/phase2_aggregate.py --run-dir <run>
+./docker/mcsim run python3 test/analysis/pipeline/phase3_analyze.py  --run-dir <run>
+./docker/mcsim run python3 test/plotting/generate_plots.py           --run-dir <run>
+
+# clean up after an interrupted run
+./docker/mcsim run python3 test/shutdown/stop_network.py --config <profile> --run-dir <run>
+
+# validate the sortition formula on its own, with no chain at all
+./docker/mcsim run python3 test/analysis/pipeline/tools/valida_sortition_montecarlo.py
+```
+
+Every script takes `--config <profile>`; no network or node parameter is hardcoded.
+
+---
 
 ## Layout
 
 ```
-src/wpoa/test/
-├── run_all_tests.sh                    ← single entrypoint: unit + functional
-├── run_unit_tests.sh                   ← all unit suites (or a named subset)
-│
-├── wpoa_weight_tests.cpp               ← unit: weight registry
-├── wpoa_malus_tests.cpp                ← unit: behavioural + data-integrity malus
-├── wpoa_selector_tests.cpp             ← unit: proposer selector (argmin)
-├── vrf_wrapper_tests.cpp               ← unit: VRF wrapper (ECVRF/DLEQ)
-├── randao_accumulator_tests.cpp        ← unit: RANDAO accumulator / seed core
-└── private_sortition_tests.cpp         ← unit: private (VRF-scored) sortition
+test/
+  docs/architecture-notes.md   what was read, what was decided, and why  <- read this first
+  docs/RPCLIST.md              the node's full RPC reference
+  config/schema.md             the profile format, field by field
+  config/profiles/             small.yaml, medium.yaml, large.yaml
+  bootstrap/                   config_loader, rpc_client, event_log, node_process,
+                               bootstrap_network (entrypoint), admin_daemon, ca_assign_esg
+  traffic/                     run_company_daemons, company_daemon,
+                               run_miner_daemons, miner_gas_daemon
+  shutdown/stop_network.py     teardown, also usable on its own
+  analysis/pipeline/           phase1_collect, phase2_aggregate, phase3_analyze
+  analysis/pipeline/stat/      wilson, gof, concentration, streak, timer_race, longitudinal
+  analysis/pipeline/tools/     valida_sortition_montecarlo.py
+  plotting/generate_plots.py   figures, from phase 2 and phase 3 only
+  results/                     run directories (not versioned)
 ```
 
-`run_all_tests.sh` stays here because it is the only entrypoint that runs
-*everything*; it delegates its functional phase to
-[`test/functional/run_functional_tests.sh`](../../../test/functional/run_functional_tests.sh).
+## Roles
 
-## Run the unit tests
-
-```bash
-./src/wpoa/test/run_unit_tests.sh                 # every suite
-./src/wpoa/test/run_unit_tests.sh selector vrf    # just the named suite(s)
-./src/wpoa/test/run_unit_tests.sh --list          # list available suites
-```
-
-Suites: `weight  malus  selector  vrf  randao  sortition`. The `vrf` and
-`sortition` suites link `secp256k1`; a normal build produces
-`src/secp256k1/.libs/libsecp256k1.a`, which they pick up automatically.
-
-These runners do **not** use autotools — they invoke `g++` directly with
-`-I$SRC_DIR` and resolve sources relative to themselves. Exit code is `0` only if
-every selected suite **built and passed**.
-
-## Run the functional tests
-
-See [`test/functional/README.md`](../../../test/functional/README.md). In short:
-
-```bash
-./test/functional/run_functional_tests.sh                    # the fast default suites
-QUICK=1 ./test/functional/run_functional_tests.sh            # smaller sample
-./test/functional/run_functional_tests.sh --suite wpoa       # just the wPoA system run
-./test/functional/run_functional_tests.sh --list             # what is available
-```
-
-## Run everything
-
-```bash
-./src/wpoa/test/run_all_tests.sh            # unit, then functional (full)
-QUICK=1 ./src/wpoa/test/run_all_tests.sh    # unit, then functional (fast smoke)
-```
-
-Unit tests run **first** (fast, node-free); a unit failure **skips** the
-functional phase by default, since there is no point spending minutes on
-multi-node drivers when the core logic is broken. Set `CONTINUE_ON_UNIT_FAIL=1`
-to run functional anyway. The full run exits non-zero if **either** phase fails.
-
-## Environment variables
-
-| Variable | Applies to | Meaning |
+| Role | Count | What it does |
 |---|---|---|
-| `CXX`, `CXXFLAGS` | unit | Compiler / flags (default `g++`, `-std=c++11 -O2 -g`). |
-| `TMPDIR` | unit | Where the compiled test binaries go (default `/tmp`). |
-| `DRY_RUN=1` | any | Print the plan without building or launching anything. |
-| `CONTINUE_ON_UNIT_FAIL=1` | all | Run the functional phase even if unit tests fail. |
+| admin | **always exactly 1** | creates the chain, grants every permission, creates the streams, holds the premine and funds everyone, and is the node the observer samples |
+| CA | configurable, ≥ 1 | holds `high1` and publishes certified ESG scores. Without one, every cluster computes `W_k = 0` and publishes the positivity floor of 1, which makes the sortition uniform |
+| miner | configurable, ≥ 1 | validator and cluster head; returns GAS to the treasury, which is the only flow that produces `R_k` |
+| company | configurable, ≥ 1 | publishes informative transactions to a dedicated stream; this is what generates `tau` |
 
-The functional knobs (`NODES`, `WEIGHTS`, `QUICK`, `FUNCTIONAL_TIMEOUT`,
-`BINDIR`, `KEEP_LOGS`, …) are documented in
-[`test/functional/README.md`](../../../test/functional/README.md).
+Each daemon is a **separate OS process** with its own `events.jsonl`, individually
+killable and individually diagnosable.
+
+## A run directory
+
+```
+run-<chain>-<UTC>/
+  manifest.json          the profile, the derived values, the addresses, the treasury
+  addresses.json         node_id -> address
+  clusters.json          company -> miner, drawn from the seed
+  treasury.txt           written early: the miner daemons read it at startup
+  chains/<node>/         data directories and daemon.out
+  logs/<node>/events.jsonl   the run's own JSON Lines log
+  analysis/phase1/       flat tables, one row per input record
+  analysis/phase2/       candidate_long, round_level, epoch_level, epoch_engine, ...
+  analysis/phase3/       tests, consistency checks, report.md, weight_vs_election.md
+  analysis/plots/        figures
+```
+
+## The three phases
+
+Each phase may only read the output of the one before it. That is what makes a surprising
+number in a report traceable back through a phase-2 row to a phase-1 row to a single line
+of a node's `events.jsonl` and the RPC call that produced it.
+
+1. **phase1** — read and normalise. No aggregation, no test. Its one job beyond copying is
+   to flatten result shapes that do not agree with each other: of the audit RPCs,
+   `weightlistreturns` and `weightlistbalances` map an address to a bare number, the other
+   `*list*` families map it to an object, and `weightverifyweights` returns an array.
+2. **phase2** — aggregate to round, epoch and cluster grain, and **recompute** the sortition
+   delay from the logged inputs. `delay_recompute_mismatch_rounds = 0` is a pass condition:
+   a mismatch means the harness and the node disagree about the mechanism itself.
+3. **phase3** — the only phase that tests. Wilson intervals, goodness of fit, concentration,
+   streaks, the timer race, the longitudinal checks and the WeightEngine feedback, plus
+   consistency checks that fail loudly.
+
+Test constants are fixed in code and shared with the thesis: `alpha = 0.05`, Monte-Carlo
+draws 20 000 (GoF) and 10 000 (streak), analysis seed `20260905`. They are **not** profile
+fields. The profile's own seed drives the network and the traffic; these drive the tests.
+
+## Reproducibility
+
+One `seed` in the profile controls everything the harness decides: cluster assignment, ESG
+scores, how many transactions each company sends each epoch, how they are spread in time,
+restitution counts and amounts. Because the daemons are separate processes, each stream is
+derived as `sha256(seed : purpose : node_id)` rather than drawn from one shared generator —
+which gives the same guarantee across process boundaries.
+
+What the seed cannot make deterministic: wallet keys, addresses, and block timing. Those
+come from the node.
+
+## Things that will bite you
+
+All of these were hit while building this, and each is explained in
+[`docs/architecture-notes.md`](docs/architecture-notes.md):
+
+- **`enable-wpoa = true` in `params.dat` does nothing.** `AppInit2` reads only the
+  per-phase keys. The harness writes all eight explicitly.
+- **Stream auto-creation is unreliable.** It is one-shot per process; on a probe run of
+  this repository it produced only `weight-engine-esg` and left the registry permanently
+  empty. The admin creates all four streams explicitly.
+- **A stream permission cannot be granted before its stream exists** (`-708`). Grants come
+  in two passes, global then per-stream.
+- **A joining node exits on its first run** and prints the address it is waiting to have
+  granted. The sequence is join → grant → launch.
+- **Stopping a node and restarting it immediately fails** on the still-held LevelDB lock.
+  The RPC port closing is the signal to wait for, not the pid file, which MultiChain does
+  not reliably write.
+- **`-maxtxfee` must be raised** with `minimum-relay-fee`, or every publish above ~500
+  bytes fails with `-6 Transaction too large for fee policy` while plain transfers keep
+  working — the network looks healthy and no record is ever written.
+- **`mining-diversity` is binding even under wPoA.** At the stock `0.3` the round-robin
+  spacing masks the weighted election entirely. The profiles ship `0`.
+- **`liststreamitems` defaults to `count = 10`** and silently truncates.
+- **The binary must be newer than the RPC layer you want to audit.** The round and epoch
+  audit families are a recent addition; against an older `src/multichaind` every one of
+  them answers `-32601 Method not found` and the analysis has nothing to work with.
+
+## Related
+
+- [`docs/architecture-notes.md`](docs/architecture-notes.md) — the exploration write-up,
+  including how a node acquires its initial weight and why no self-publish is used.
+- [`config/schema.md`](config/schema.md) — the profile format.
+- [`../docs/protocol-parameters.md`](../docs/protocol-parameters.md) — the parameter catalogue.
+- [`../docs/weight-engine.md`](../docs/weight-engine.md) — the pipeline this measures.
+- [`../Create-Blockchain.md`](../Create-Blockchain.md) — the multi-node bootstrap this follows.

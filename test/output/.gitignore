@@ -1,6 +1,0 @@
-# Recorded functional runs. The DATA is deliberately not tracked -- a 50-epoch run
-# writes thousands of rows, and a fresh run supersedes it. What IS tracked is this
-# file and README.md, so the directory exists and explains itself on a clean clone.
-*
-!.gitignore
-!README.md

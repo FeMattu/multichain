@@ -1,0 +1,6 @@
+# Run directories are evidence, not source: a single run carries node data directories,
+# per-node JSON Lines logs and the whole analysis tree, which is far too large and far too
+# machine-specific to version. The directory itself is kept so a run has somewhere to land.
+*
+!.gitignore
+!.gitkeep
