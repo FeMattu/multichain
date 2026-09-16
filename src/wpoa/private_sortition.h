@@ -81,8 +81,10 @@
 
 #include <cmath>
 #include <limits>
+#include <map>
 #include <string>
 #include <vector>
+#include <string.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -387,6 +389,49 @@ double WPoASortitionFeedback(const CBlockIndex* pindexTip);
  * alone which blocks are sortition-governed.
  */
 bool WPoASortitionActiveAtHeight(int height);
+
+/**
+ * WPoARoundContext — everything a round's election is evaluated against, derived
+ * once from finalized chain state.
+ *
+ * It is the single place the three shared quantities are assembled: the beacon
+ * seed, the weight map AFTER the behavioural correction (w_eff = w * Psi,
+ * Def. psi-peso-effettivo) and W = sum_j g(w_eff_j), the band's normalizer. The
+ * miner path (WPoASortitionLocalScoreDelay), the validator path
+ * (WPoASortitionVerifyProposer) and the read-only audit RPCs all consume THIS
+ * struct, so an inspection RPC can never report a score the consensus would not
+ * have computed.
+ */
+struct WPoARoundContext
+{
+    int                             height;            //!< the round n+1 being elected
+    std::map<std::string, uint32_t> raw_weights;       //!< w, straight off wpoa-weights
+    std::map<std::string, uint32_t> weights;           //!< w_eff = w * Psi (what scores)
+    double                          total_eff_weight;  //!< W = sum_j g(w_eff_j) > 0
+    unsigned char                   seed[32];          //!< beacon seed[n+1]
+    bool                            randao_seed;       //!< true: RANDAO beacon; false: prev-hash
+
+    WPoARoundContext() : height(0), total_eff_weight(0.0), randao_seed(false)
+    {
+        memset(seed, 0, sizeof(seed));
+    }
+};
+
+/**
+ * Assemble the round context for the block that follows `pindexTip`.
+ *
+ * Seed selection mirrors the miner exactly (miner.cpp): the RANDAO beacon seed when
+ * the height is beacon-governed and it can be derived, otherwise the previous block
+ * hash — so an audit performed at a historical height reproduces the seed that
+ * actually governed it, not the one today's flags would suggest.
+ *
+ * @return false — leaving `out` untouched — when the wallet, the weight map or the
+ *         seed is unavailable, or when W is not strictly positive. The caller then
+ *         stands down (consensus path) or reports the round as not evaluable (RPC),
+ *         rather than acting on a half-synced view.
+ */
+bool WPoABuildRoundContext(const CBlockIndex* pindexTip, int height,
+                           WPoARoundContext& out);
 
 /**
  * Miner side: compute this node's private sortition score and the mining delay for

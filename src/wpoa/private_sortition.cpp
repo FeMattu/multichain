@@ -131,52 +131,72 @@ bool WPoASortitionActiveAtHeight(int height)
 // ---------------------------------------------------------------------------
 // Shared context: the beacon seed over `pindexTip`, the confirmed weight map
 // corrected by the behavioural malus, and its effective-weight sum Σ_j f(w_j).
-// Read the SAME way on the miner and the validator so both derive identical
-// scores/delays. Returns false when the seed or a usable weight map is
-// unavailable — the caller then stands down / accepts leniently rather than
-// acting on a half-synced view.
+// Read the SAME way on the miner, the validator and the read-only audit RPCs so
+// all three derive identical scores/delays. Returns false when the seed or a
+// usable weight map is unavailable — the caller then stands down / accepts
+// leniently rather than acting on a half-synced view.
 //
-// Determinism note: Σ f(w_j) is summed in the std::map's sorted-key (address) order,
-// which is identical on every node, so the floating-point sum is reproducible.
+// Determinism note: Σ f(w_j) is summed in the std::map's sorted-key (address) order
+// by WPoASelector::TotalEffectiveWeight, which is identical on every node, so the
+// floating-point sum is reproducible.
 // ---------------------------------------------------------------------------
-static bool BuildSortitionContext(const CBlockIndex* pindexTip, int height,
-                                  std::map<std::string, uint32_t>& weights,
-                                  double* total_eff_weight,
-                                  unsigned char seed_out[32])
+bool WPoABuildRoundContext(const CBlockIndex* pindexTip, int height,
+                           WPoARoundContext& out)
 {
     if (pwalletTxsMain == NULL)
     {
         return false;
     }
-    if (!WPoARandaoSelectionSeed(pindexTip, seed_out))
+
+    // Seed selection mirrors the miner (miner.cpp): the RANDAO beacon where it
+    // governs the height and can be derived, the previous block hash otherwise. An
+    // audit at a historical height therefore reproduces the seed that actually
+    // governed it.
+    WPoARoundContext ctx;
+    ctx.height = height;
+    if (WPoARANDAOActiveAtHeight(height))
     {
-        return false;
+        // Beacon-governed height: the seed MUST come from the accumulator. A failure
+        // here is not recoverable by falling back — the validator would derive a
+        // different seed and the two would disagree on the proposer — so the caller
+        // stands down, exactly as before this context was shared with the RPCs.
+        if (!WPoARandaoSelectionSeed(pindexTip, ctx.seed))
+        {
+            return false;
+        }
+        ctx.randao_seed = true;
+    }
+    else
+    {
+        if (pindexTip == NULL)
+        {
+            return false;
+        }
+        uint256 h = pindexTip->GetBlockHash();
+        memcpy(ctx.seed, h.begin(), sizeof(ctx.seed));
+        ctx.randao_seed = false;
     }
 
     StreamWeightRegistry registry(pwalletTxsMain);
-    weights = registry.GetAllNodesWeights();
-    if (weights.empty())
+    ctx.raw_weights = registry.GetAllNodesWeights();
+    if (ctx.raw_weights.empty())
     {
         return false;
     }
 
-    // w_eff = w * Psi (Def. 5.22): the sortition scores the behaviourally corrected
-    // weight, never the raw registry value. Returns the map unchanged when the
-    // malus registry is disabled or nobody carries a proved violation.
-    weights = WPoAApplyMalus(weights, height);
+    // w_eff = w * Psi (Def. psi-peso-effettivo): the sortition scores the
+    // behaviourally corrected weight, never the raw registry value. Returns the map
+    // unchanged when the malus registry is disabled or nobody carries a proved
+    // violation.
+    ctx.weights = WPoAApplyMalus(ctx.raw_weights, height);
 
-    double weff = 0.0;
-    for (std::map<std::string, uint32_t>::const_iterator it = weights.begin();
-         it != weights.end(); ++it)
-    {
-        weff += WPoASelector::ApplyDumping(it->second, g_dumping_function);
-    }
-    if (!(weff > 0.0))
+    ctx.total_eff_weight = WPoASelector::TotalEffectiveWeight(ctx.weights, g_dumping_function);
+    if (!(ctx.total_eff_weight > 0.0))
     {
         return false;
     }
 
-    *total_eff_weight = weff;
+    out = ctx;
     return true;
 }
 
@@ -192,26 +212,25 @@ bool WPoASortitionLocalScoreDelay(const CBlockIndex* pindexTip,
 
     const int height = pindexTip->nHeight + 1;
 
-    std::map<std::string, uint32_t> weights;
-    double weff = 0.0;
-    unsigned char seed[32];
-    if (!BuildSortitionContext(pindexTip, height, weights, &weff, seed))
+    WPoARoundContext ctx;
+    if (!WPoABuildRoundContext(pindexTip, height, ctx))
     {
         return false;
     }
+    const double weff = ctx.total_eff_weight;
 
     // Only a weighted validator can self-elect; a node absent from the registry (or
     // whose effective weight the malus has driven to 0) has an infinite score and
     // never proposes.
-    std::map<std::string, uint32_t>::const_iterator it = weights.find(address);
-    if (it == weights.end() || it->second == 0)
+    std::map<std::string, uint32_t>::const_iterator it = ctx.weights.find(address);
+    if (it == ctx.weights.end() || it->second == 0)
     {
         return false;
     }
     uint32_t weight = it->second;
 
     std::vector<unsigned char> input;
-    PrivateSortition::VRFInput(seed, (uint32_t)height, input);
+    PrivateSortition::VRFInput(ctx.seed, (uint32_t)height, input);
 
     unsigned char vrf_out[WPoAVRF::OUTPUT_SIZE];
     unsigned char vrf_proof[WPoAVRF::PROOF_SIZE];

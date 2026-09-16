@@ -40,7 +40,7 @@ CXXFLAGS="${CXXFLAGS:--std=c++11 -O2 -g}"
 OUTDIR="${TMPDIR:-/tmp}"
 DRY_RUN="${DRY_RUN:-0}"
 
-ALL_SUITES="records authorization engine verifier"
+ALL_SUITES="records authorization engine verifier epoch"
 
 usage() { sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^#\{0,1\} \{0,1\}//'; }
 
@@ -63,6 +63,9 @@ build_and_run() {
         verifier)
             desc="universal verification of published weights (recompute, compare, filter)"
             src="$SCRIPT_DIR/weight_verifier_tests.cpp" ;;
+        epoch)
+            desc="epoch audit core (finality bound, per-definition quantities, feedback)"
+            src="$SCRIPT_DIR/weight_epoch_tests.cpp" ;;
         *)
             echo "  ERROR: unknown suite '$key' (valid: $ALL_SUITES)" >&2
             return 2 ;;

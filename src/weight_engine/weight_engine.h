@@ -443,6 +443,32 @@ public:
         }
     }
 
+    /**
+     * The newest epoch whose blocks are all buried, i.e. the newest epoch whose last
+     * height sits at least `margin` below `tip_height`. 0 when nothing is buried yet.
+     *
+     * Epoch e spans heights [(e-1)*len, e*len - 1], so the largest buried e is the one
+     * with e*len - 1 <= tip_height - margin, i.e. e = (tip_height - margin + 1) / len.
+     *
+     * This is the ONE definition of "how far back the pipeline may be trusted": the
+     * publishing thread uses it to pick the epoch to compute, and the audit RPCs use it
+     * both as their default epoch and as the admissibility bound they refuse past. Kept
+     * pure so the node-free unit test can pin the boundary arithmetic.
+     */
+    static uint32_t LastBuriedEpoch(int tip_height, int epoch_length, int margin)
+    {
+        if (epoch_length < 1 || tip_height < 0 || margin < 0)
+        {
+            return 0;
+        }
+        int stable = tip_height - margin;
+        if (stable < 0)
+        {
+            return 0;
+        }
+        return (uint32_t)((stable + 1) / epoch_length);
+    }
+
 private:
 
     /** Restituted amount clamped to its legal domain [0, saldo] (Oss. limite-restituzione). */
@@ -527,6 +553,57 @@ extern std::string g_weight_treasury_address;
 /** epoch(height) = height / g_weight_epoch_length + 1 (1-based). Every node derives
  *  the same epoch from the height alone (thesis §epochs_slots). */
 uint32_t HeightToEpoch(int height);
+
+class WeightStreamReader;   // forward-declared: the epoch driver reads through it
+
+/**
+ * WeightEpochCluster — one cluster's complete, audited epoch: what went in, what came
+ * out, and the one carried quantity that links it to the epoch before.
+ *
+ * The pipeline already derives all of this to produce a single integer weight, and
+ * WeightEngineComputeAllWeightsForEpoch then discards everything but that integer.
+ * Keeping the intermediate values is what lets a third party check each step of
+ * Def. contributo-pesato -> peso-grezzo -> guadagno -> saldo -> tasso-restituzione ->
+ * peso-finale separately, instead of being handed the end of the chain and asked to
+ * trust it.
+ */
+struct WeightEpochCluster
+{
+    WeightEngine::ClusterInput  input;   //!< ESG, tau, members, R_k, gross flows
+    WeightEngine::ClusterResult result;  //!< W_k, g_k, saldo_k, rho_k, w_k, integer w_k
+
+    /** rho_k^{(e-1)}, the restitution rate the FINAL weight of this epoch consumed.
+     *  Undefined at epoch 1 — there is no previous epoch — which `has_restitution_prev`
+     *  distinguishes from a genuine rate of 0. */
+    double restitution_prev;
+    bool   has_restitution_prev;
+
+    WeightEpochCluster() : restitution_prev(0.0), has_restitution_prev(false) {}
+};
+
+/**
+ * Every cluster's FULL epoch detail for `target_epoch`, folded forward from epoch 1
+ * over purely public on-chain inputs.
+ *
+ * This is the primitive; WeightEngineComputeAllWeightsForEpoch is a projection of it
+ * that keeps only the integer weights. Both therefore walk exactly the same pipeline,
+ * so an audit RPC cannot report a number the consensus path would not have derived.
+ *
+ * @return false when the inputs are not yet readable or the epoch's blocks cannot be
+ *         scanned identically across nodes (not buried, pruned) — never a partial map.
+ */
+bool WeightEngineComputeEpochDetail(WeightStreamReader& reader, uint32_t target_epoch,
+                                    std::map<std::string, WeightEpochCluster>& out);
+
+/**
+ * The newest fully buried epoch at the local tip, or 0 when nothing is buried yet.
+ *
+ * WeightEngine::LastBuriedEpoch applied to the current chain height, the configured
+ * epoch length and MC_WEIGHT_DEFAULT_STABILITY_MARGIN. Shared by the publishing thread
+ * (which epoch to compute) and the audit RPCs (their default epoch, and the bound past
+ * which they refuse), so the two can never disagree about what is final.
+ */
+uint32_t WeightEngineLastBuriedEpoch();
 
 /** True when the weight engine governs the weights at `height` (i.e. it is enabled).
  *  Pure predicate, in the style of WPoAActiveAtHeight (wpoa_selector.h). */

@@ -35,7 +35,7 @@ SECP_LIB="$SRC_DIR/secp256k1/.libs/libsecp256k1.a"
 OUTDIR="${TMPDIR:-/tmp}"
 DRY_RUN="${DRY_RUN:-0}"
 
-ALL_SUITES="weight malus selector vrf randao sortition"
+ALL_SUITES="weight malus selector vrf randao sortition audit"
 
 usage() { sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^#\{0,1\} \{0,1\}//'; }
 
@@ -70,6 +70,10 @@ build_and_run() {
             src="$SCRIPT_DIR/private_sortition_tests.cpp"
             extra=("$SRC_DIR/wpoa/vrf_wrapper.cpp" "$SRC_DIR/crypto/hmac_sha256.cpp" "$SRC_DIR/crypto/sha256.cpp")
             needs_secp=1 ;;
+        audit)
+            desc="round audit core (band normalizer W, zero/excluded weights, delay band)"
+            src="$SCRIPT_DIR/wpoa_audit_tests.cpp"
+            extra=("$SRC_DIR/crypto/hmac_sha256.cpp" "$SRC_DIR/crypto/sha256.cpp") ;;
         *)
             echo "  ERROR: unknown suite '$key' (valid: $ALL_SUITES)" >&2
             return 2 ;;

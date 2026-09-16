@@ -389,6 +389,40 @@ extern json_spirit::Value reportmalus(const json_spirit::Array& params, bool fHe
 extern json_spirit::Value weightsetesg(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value weightregistermembership(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value weightverifyweights(const json_spirit::Array& params, bool fHelp);
+
+/* MCHN START -- wPoA/weightengine read-only audit RPCs */
+extern json_spirit::Value wpoagetlocalscore(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value wpoagetnodescore(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value wpoalistscores(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value wpoagetlocaldelay(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value wpoagetnodedelay(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value wpoalistdelays(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value wpoagetlocaleffectiveweight(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value wpoagetnodeeffectiveweight(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value wpoalisteffectiveweights(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value wpoagetlocalfinalweight(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value wpoagetnodefinalweight(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value wpoalistfinalweights(const json_spirit::Array& params, bool fHelp);
+
+extern json_spirit::Value weightgetlocalcontribution(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value weightgetnodecontribution(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value weightlistcontributions(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value weightgetlocalclusterweight(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value weightgetnodeclusterweight(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value weightlistclusterweights(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value weightgetlocalreturns(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value weightgetnodereturns(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value weightlistreturns(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value weightgetlocalearnings(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value weightgetnodeearnings(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value weightlistearnings(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value weightgetlocalbalance(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value weightgetnodebalance(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value weightlistbalances(const json_spirit::Array& params, bool fHelp);
+/* MCHN END */
+
+
+
 extern json_spirit::Value purehelpitem(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value purehelpitem_nomethod(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value purehelpitem_onlyfilter(const json_spirit::Array& params, bool fHelp);

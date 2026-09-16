@@ -116,21 +116,28 @@ static bool NodeReadyForWeight()
     return !IsInitialBlockDownload();
 }
 
-// Compute EVERY cluster's integer weight for `target_epoch` by folding the pipeline
+// Compute EVERY cluster's FULL epoch detail for `target_epoch` by folding the pipeline
 // forward from epoch 1 using purely public on-chain inputs, so every honest node
 // derives the same map. Returns false when the inputs are not yet readable or the
 // epoch's blocks cannot be scanned identically across nodes.
 //
-// WHY THE WHOLE MAP. This function has always computed every cluster — ComputeEpoch
-// needs W_tot, so a single cluster cannot be evaluated in isolation — and the caller
-// used to keep one entry and discard the rest. Returning the map exposes work already
-// done, which is what makes independent verification of OTHER nodes' published weights
-// (weight_verifier.h) nearly free rather than a new O(clusters) cost.
-bool WeightEngineComputeAllWeightsForEpoch(WeightStreamReader& reader,
-                                           uint32_t target_epoch,
-                                           std::map<std::string, uint32_t>& out_weights)
+// WHY THE WHOLE MAP. This function has always computed every cluster — the fold carries
+// per-cluster state across epochs, so a single cluster cannot be evaluated in isolation
+// — and the caller used to keep one entry and discard the rest. Returning the map
+// exposes work already done, which is what makes independent verification of OTHER
+// nodes' published weights (weight_verifier.h) nearly free rather than a new
+// O(clusters) cost.
+//
+// WHY THE DETAIL. Every intermediate quantity of the thesis pipeline already exists
+// here for one instant before being collapsed into a single integer. Returning them
+// lets the audit RPCs (rpc/rpcweightengine.cpp) show each definition separately without
+// a second implementation of any of them — the requirement that inspection and
+// consensus can never drift apart.
+bool WeightEngineComputeEpochDetail(WeightStreamReader& reader,
+                                    uint32_t target_epoch,
+                                    std::map<std::string, WeightEpochCluster>& out_detail)
 {
-    out_weights.clear();
+    out_detail.clear();
 
     // Static inputs (latest confirmed wins).
     std::map<std::string, std::set<std::string> > clusters;
@@ -149,6 +156,11 @@ bool WeightEngineComputeAllWeightsForEpoch(WeightStreamReader& reader,
     // WeightEngine::Saldo).
     std::map<std::string, WeightEngine::ClusterState> state;
     std::map<std::string, WeightEngine::ClusterResult> results;
+    // Retained for the detail view: the state carried INTO the last epoch (which holds
+    // rho^{(e-1)}) and that epoch's own per-cluster inputs. Both are already built by
+    // the fold; keeping the final iteration's copy costs one assignment per epoch.
+    std::map<std::string, WeightEngine::ClusterState> prev_state;
+    std::map<std::string, WeightEngine::ClusterInput> last_inputs;
 
     for (uint32_t e = 1; e <= target_epoch; e++)
     {
@@ -197,6 +209,13 @@ bool WeightEngineComputeAllWeightsForEpoch(WeightStreamReader& reader,
             inputs.push_back(in);
         }
 
+        prev_state = state;
+        last_inputs.clear();
+        for (size_t ii = 0; ii < inputs.size(); ii++)
+        {
+            last_inputs[inputs[ii].miner] = inputs[ii];
+        }
+
         std::map<std::string, WeightEngine::ClusterState> newstate;
         WeightEngine::ComputeEpoch(inputs, state, params, e, results, newstate);
         state = newstate;
@@ -205,9 +224,79 @@ bool WeightEngineComputeAllWeightsForEpoch(WeightStreamReader& reader,
     for (std::map<std::string, WeightEngine::ClusterResult>::const_iterator it = results.begin();
          it != results.end(); ++it)
     {
-        out_weights[it->first] = it->second.integer_weight;
+        WeightEpochCluster& d = out_detail[it->first];
+        d.result = it->second;
+
+        // The inputs of the LAST epoch walked, i.e. the ones that produced this result.
+        std::map<std::string, WeightEngine::ClusterInput>::const_iterator ii =
+            last_inputs.find(it->first);
+        if (ii != last_inputs.end())
+        {
+            d.input = ii->second;
+        }
+
+        // rho_k^{(e-1)}: the rate the final weight consumed. There is none at epoch 1,
+        // where w_k = W_k by definition (Def. peso-finale, caso base).
+        if (target_epoch >= 2)
+        {
+            std::map<std::string, WeightEngine::ClusterState>::const_iterator si =
+                prev_state.find(it->first);
+            if (si != prev_state.end())
+            {
+                d.restitution_prev = si->second.restitution;
+                d.has_restitution_prev = true;
+            }
+            else
+            {
+                d.restitution_prev = 0.0;      // absent from the carry -> rho^{(e-1)} = 0
+                d.has_restitution_prev = true;
+            }
+        }
     }
     return true;
+}
+
+// The integer-weight projection of the detail above. Kept as the pipeline's public
+// entry point (the verifier and the publishing thread only ever need the integers),
+// but no longer a second walk: one primitive, two views.
+bool WeightEngineComputeAllWeightsForEpoch(WeightStreamReader& reader,
+                                           uint32_t target_epoch,
+                                           std::map<std::string, uint32_t>& out_weights)
+{
+    out_weights.clear();
+
+    std::map<std::string, WeightEpochCluster> detail;
+    if (!WeightEngineComputeEpochDetail(reader, target_epoch, detail))
+    {
+        return false;
+    }
+    for (std::map<std::string, WeightEpochCluster>::const_iterator it = detail.begin();
+         it != detail.end(); ++it)
+    {
+        out_weights[it->first] = it->second.result.integer_weight;
+    }
+    return true;
+}
+
+// The newest fully buried epoch at the local tip (0 when nothing is buried yet). The
+// boundary arithmetic itself is the pure WeightEngine::LastBuriedEpoch; this only binds
+// it to the chain height and the configured epoch length.
+uint32_t WeightEngineLastBuriedEpoch()
+{
+    int height = -1;
+    {
+        LOCK(cs_main);
+        if (chainActive.Tip() != NULL)
+        {
+            height = chainActive.Height();
+        }
+    }
+    if (height < 0)
+    {
+        return 0;
+    }
+    return WeightEngine::LastBuriedEpoch(height, g_weight_epoch_length,
+                                         MC_WEIGHT_DEFAULT_STABILITY_MARGIN);
 }
 
 // THIS node's own integer cluster weight for `target_epoch`. A thin selection over
@@ -309,17 +398,9 @@ void ThreadWeightEngine()
         // Publish for the newest BURIED epoch only: the epoch whose last block sits at
         // least STABILITY_MARGIN below the tip. tau is derived from that epoch's
         // blocks, so computing an open / near-tip epoch could diverge under a reorg.
-        const int len = g_weight_epoch_length;
-        if (len < 1)
-        {
-            continue;
-        }
-        int stableHeight = height - MC_WEIGHT_DEFAULT_STABILITY_MARGIN;
-        if (stableHeight < 0)
-        {
-            continue; // nothing buried yet
-        }
-        uint32_t epoch = (uint32_t)((stableHeight + 1) / len);   // largest e with e*len-1 <= stableHeight
+        // The same bound the audit RPCs refuse past, from the same pure helper.
+        uint32_t epoch = WeightEngine::LastBuriedEpoch(height, g_weight_epoch_length,
+                                                       MC_WEIGHT_DEFAULT_STABILITY_MARGIN);
         if (epoch < 1)
         {
             continue; // nothing buried yet

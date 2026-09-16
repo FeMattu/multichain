@@ -198,6 +198,40 @@ public:
     }
 
     /**
+     * W = sum_j f(w_j) over a weight map — the TOTAL effective weight of a round's
+     * candidates, after dumping (Def. smorzamento).
+     *
+     * This is the normalizing factor the delay band consumes
+     * (PrivateSortition::NormalizedScore / MiningDelay): without it the normalized
+     * score would inherit the scale of E/w and collapse against 0 on a network whose
+     * weights run in the hundreds.
+     *
+     * Summed in the map's sorted-key (address) order, which is identical on every
+     * node, so the (non-associative) floating-point total is reproducible. Entries
+     * with weight 0 contribute f(0), i.e. nothing under DUMP_NONE/DUMP_SQRT and
+     * ln(1) = 0 under DUMP_LOG — a validator the malus has excluded therefore adds
+     * nothing to the band, which is what keeps W the weight of the ELIGIBLE set.
+     *
+     * Kept pure (no global reads) so the node-free unit test can exercise it, and
+     * shared between the consensus path and the audit RPCs so neither can drift.
+     */
+    static double TotalEffectiveWeight(const std::map<std::string, uint32_t>& weights,
+                                       DumpingFunction dumping = DUMP_NONE)
+    {
+        double total = 0.0;
+        for (std::map<std::string, uint32_t>::const_iterator it = weights.begin();
+             it != weights.end(); ++it)
+        {
+            if (it->second == 0)
+            {
+                continue;   // excluded from V+: contributes no band weight
+            }
+            total += ApplyDumping(it->second, dumping);
+        }
+        return total;
+    }
+
+    /**
      * Elect the proposer from an explicit weight map.
      *
      * The result depends ONLY on the (address, weight) set and the seed — never

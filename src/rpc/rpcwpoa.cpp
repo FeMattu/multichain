@@ -25,11 +25,16 @@
 #include "wpoa/stream_weight_registry.h"    // StreamWeightRegistry
 #include "wpoa/malus_registry.h"            // MalusRegistry, the malus runtime globals
 #include "wpoa/malus_record.h"              // MalusAccumulator, mc_MalusKind*
+#include "wpoa/wpoa_selector.h"             // WPoASelector, g_dumping_function
+#include "wpoa/private_sortition.h"         // WPoARoundContext, PrivateSortition, Phi
+#include "chainparams/chainparams.h"        // Params().TargetSpacing()
 #include "weight_engine/weight_engine.h"    // HeightToEpoch (shared height->epoch map)
 #include "weight_engine/weight_streams.h"   // MC_WEIGHT_MEMBERSHIP_STREAM_NAME
 #include "weight_engine/weight_verifier.h"  // WeightEngineRecomputeWeightForEpoch
 #include "core/init.h"                      // pwalletTxsMain
 #include "core/main.h"                      // chainActive, cs_main
+
+#include <cmath>
 
 // ---------------------------------------------------------------------------
 // Weight registry
@@ -134,6 +139,8 @@ Value getnodeweight(const Array& params, bool fHelp)
 // Malus registry
 // ---------------------------------------------------------------------------
 
+static uint32_t RpcGoverningMalusEpoch(int height);   // defined with the round audit below
+
 // The epoch whose accumulators currently govern selection, i.e. the one before the
 // tip's epoch (see WPoAApplyMalus). 0 when there is no previous epoch yet.
 static uint32_t GoverningMalusEpoch()
@@ -146,8 +153,7 @@ static uint32_t GoverningMalusEpoch()
             height = chainActive.Height();
         }
     }
-    uint32_t epoch = HeightToEpoch(height);
-    return (epoch >= 2) ? (epoch - 1) : 0;
+    return RpcGoverningMalusEpoch(height);
 }
 
 Value getallmalus(const Array& params, bool fHelp)
@@ -423,4 +429,539 @@ Value reportmalus(const Array& params, bool fHelp)
     }
 
     return registry.PublishReport(kind, address, (int)height, blocks, detail);
+}
+
+// ---------------------------------------------------------------------------
+// Round audit: score, delay and the two weight stages
+// ---------------------------------------------------------------------------
+//
+// READ-ONLY INSPECTION OF THE PUBLIC MODEL. These reproduce, for an arbitrary
+// height, the quantities the consensus path derives for the round — but from the
+// PUBLIC Efraimidis form (entropy = HMAC-SHA256(seed, address)), which is the only
+// form recomputable without a validator's secret key. On a sortition-governed chain
+// the real election runs the same transform over a PRIVATE VRF output, so these
+// scores are an audit of the model and its inputs, never a prediction of the actual
+// proposer: the winner stays unknown until it proposes, which is the property the
+// whole private-sortition design exists to provide.
+//
+// Everything below consumes WPoABuildRoundContext (wpoa/private_sortition.h), the
+// same context the miner and the validator consume, so an inspection can never
+// report a seed, a weight or a normalizer the consensus would not have used.
+
+/** The weight a candidate is actually scored on, and everything derived from it. */
+struct RpcRoundEntry
+{
+    uint32_t raw;         //!< w, straight off wpoa-weights
+    uint32_t effective;   //!< w_eff = w * Psi (Def. psi-peso-effettivo)
+    double   dumped;      //!< g(w_eff) (Def. smorzamento)
+    bool     eligible;    //!< w_eff > 0, i.e. in V+ for this round
+    double   score;       //!< +inf when not eligible (Cor. efraimidis-peso-nullo)
+    double   score_norm;  //!< 1 - exp(-W * score) (Def. score-normalizzato)
+    double   delay;       //!< D_i in seconds (Def. correzione-globale)
+
+    RpcRoundEntry()
+        : raw(0), effective(0), dumped(0.0), eligible(false),
+          score(0.0), score_norm(0.0), delay(0.0) {}
+};
+
+/** One round's shared context plus the parent it was derived over. */
+struct RpcRound
+{
+    const CBlockIndex* pprev;     //!< block n, parent of the round n+1
+    WPoARoundContext   ctx;
+    double             feedback;  //!< Phi^(n) (Def. correzione-globale)
+
+    RpcRound() : pprev(NULL), feedback(0.0) {}
+};
+
+// Accept an int or a numeric-string JSON value as a height/epoch (multichain-cli
+// sends unconverted arguments as strings). Mirrors the parsing reportmalus does.
+static int64_t RpcInteger(const Value& v, const char* field)
+{
+    if (v.type() == int_type)
+    {
+        return v.get_int64();
+    }
+    if (v.type() == str_type)
+    {
+        const std::string s = v.get_str();
+        char* end = NULL;
+        long long parsed = strtoll(s.c_str(), &end, 10);
+        if (!s.empty() && end != s.c_str() && *end == '\0')
+        {
+            return (int64_t)parsed;
+        }
+    }
+    throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(field) + " must be an integer");
+}
+
+// The round to audit: the optional argument at `idx`, defaulting to tip+1 (the round
+// about to be elected). Heights above tip+1 are refused rather than extrapolated —
+// their seed does not exist yet.
+static int RpcResolveRoundHeight(const Array& params, size_t idx)
+{
+    int tip = -1;
+    {
+        LOCK(cs_main);
+        if (chainActive.Tip() != NULL)
+        {
+            tip = chainActive.Height();
+        }
+    }
+    if (tip < 0)
+    {
+        throw JSONRPCError(RPC_MISC_ERROR, "No chain tip yet");
+    }
+
+    int64_t height = (int64_t)tip + 1;
+    if (params.size() > idx && params[idx].type() != null_type)
+    {
+        height = RpcInteger(params[idx], "height");
+    }
+    if (height < 1)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "height must be >= 1");
+    }
+    if (height > (int64_t)tip + 1)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER,
+                           strprintf("height %d is beyond the next round (tip+1 = %d): the "
+                                     "beacon seed for it does not exist yet",
+                                     (int)height, tip + 1));
+    }
+    return (int)height;
+}
+
+static void RpcBuildRound(const Array& params, size_t idx, RpcRound& out)
+{
+    const int height = RpcResolveRoundHeight(params, idx);
+
+    {
+        LOCK(cs_main);
+        out.pprev = chainActive[height - 1];
+    }
+    if (out.pprev == NULL)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER,
+                           strprintf("no block at height %d in the active chain", height - 1));
+    }
+    if (!WPoABuildRoundContext(out.pprev, height, out.ctx))
+    {
+        throw JSONRPCError(RPC_MISC_ERROR,
+                           "Round not evaluable on this node: the beacon seed or the "
+                           "weight registry is unavailable (wallet not ready, not "
+                           "subscribed to wpoa-weights, or no validator carries a "
+                           "positive effective weight)");
+    }
+    out.feedback = WPoASortitionFeedback(out.pprev);
+}
+
+// Everything the round derives for one address. Weight 0 — absent from the registry,
+// or driven to 0 by the malus — is a legitimate outcome, not an error: the validator
+// is simply outside V+ for this round, with an infinite score and no chance of
+// election (Cor. efraimidis-peso-nullo / Oss. peso-nullo-malus).
+static RpcRoundEntry RpcEvalAddress(const RpcRound& r, const std::string& address)
+{
+    RpcRoundEntry e;
+
+    std::map<std::string, uint32_t>::const_iterator ri = r.ctx.raw_weights.find(address);
+    e.raw = (ri != r.ctx.raw_weights.end()) ? ri->second : 0;
+
+    std::map<std::string, uint32_t>::const_iterator ei = r.ctx.weights.find(address);
+    e.effective = (ei != r.ctx.weights.end()) ? ei->second : 0;
+
+    e.dumped   = WPoASelector::ApplyDumping(e.effective, g_dumping_function);
+    e.eligible = (e.effective > 0);
+
+    e.score = WPoASelector::ComputeScore(r.ctx.seed, sizeof(r.ctx.seed), address,
+                                         e.effective, g_dumping_function);
+    e.score_norm = PrivateSortition::NormalizedScore(e.score, r.ctx.total_eff_weight);
+    e.delay = PrivateSortition::MiningDelay(e.score, r.ctx.total_eff_weight,
+                                            (double)Params().TargetSpacing(),
+                                            g_wpoa_sortition_delta,
+                                            g_wpoa_sortition_lambda,
+                                            r.feedback);
+    return e;
+}
+
+/** Operator-facing name of the active dumping function (Def. smorzamento). */
+static const char* RpcDumpingName(DumpingFunction f)
+{
+    switch (f)
+    {
+        case DUMP_SQRT: return "sqrt";
+        case DUMP_LOG:  return "log";
+        case DUMP_NONE:
+        default:        return "none";
+    }
+}
+
+/** A score is +inf for an ineligible validator, which JSON cannot carry: null. */
+static Value RpcScoreValue(const RpcRoundEntry& e)
+{
+    if (!e.eligible || !std::isfinite(e.score))
+    {
+        return Value::null;
+    }
+    return Value(e.score);
+}
+
+/** This node's own validator identity, as the weight registry keys it. */
+static std::string RpcLocalAddress()
+{
+    if (pwalletTxsMain == NULL)
+    {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Wallet not available");
+    }
+    StreamWeightRegistry registry(pwalletTxsMain);
+    std::string addr = registry.GetLocalAddress();
+    if (addr.empty() || addr == "unknown")
+    {
+        throw JSONRPCError(RPC_WALLET_ERROR,
+                           "This node has no resolvable validator address (no mine / "
+                           "connect key and no wallet default key)");
+    }
+    return addr;
+}
+
+/** Fields common to every round answer, so each output states what it was computed over. */
+static void RpcAddRoundContext(Object& obj, const RpcRound& r)
+{
+    obj.push_back(Pair("height", r.ctx.height));
+    obj.push_back(Pair("seed", HexStr(r.ctx.seed, r.ctx.seed + sizeof(r.ctx.seed))));
+    obj.push_back(Pair("seed_source", r.ctx.randao_seed ? "randao" : "prevblockhash"));
+    obj.push_back(Pair("dumping_function", RpcDumpingName(g_dumping_function)));
+    obj.push_back(Pair("total_effective_weight", r.ctx.total_eff_weight));
+}
+
+// --- score ---------------------------------------------------------------
+
+static Object RpcScoreEntry(const RpcRoundEntry& e)
+{
+    Object o;
+    o.push_back(Pair("score", RpcScoreValue(e)));
+    o.push_back(Pair("weight", (int64_t)e.raw));
+    o.push_back(Pair("effective_weight", (int64_t)e.effective));
+    o.push_back(Pair("eligible", e.eligible));
+    return o;
+}
+
+Value wpoagetlocalscore(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+    {
+        throw runtime_error("Help message not found\n");
+    }
+    const std::string address = RpcLocalAddress();
+    RpcRound r;
+    RpcBuildRound(params, 0, r);
+
+    Object obj = RpcScoreEntry(RpcEvalAddress(r, address));
+    obj.push_back(Pair("address", address));
+    RpcAddRoundContext(obj, r);
+    return obj;
+}
+
+Value wpoagetnodescore(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+    {
+        throw runtime_error("Help message not found\n");
+    }
+    const std::string address = params[0].get_str();
+    RpcRound r;
+    RpcBuildRound(params, 1, r);
+
+    Object obj = RpcScoreEntry(RpcEvalAddress(r, address));
+    obj.push_back(Pair("address", address));
+    RpcAddRoundContext(obj, r);
+    return obj;
+}
+
+Value wpoalistscores(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+    {
+        throw runtime_error("Help message not found\n");
+    }
+    RpcRound r;
+    RpcBuildRound(params, 0, r);
+
+    // Ascending address order — the same iteration SelectProposer uses, so a reader
+    // can replay the argmin comparison in the printed order.
+    Object scores;
+    for (std::map<std::string, uint32_t>::const_iterator it = r.ctx.weights.begin();
+         it != r.ctx.weights.end(); ++it)
+    {
+        scores.push_back(Pair(it->first, RpcScoreEntry(RpcEvalAddress(r, it->first))));
+    }
+
+    Object obj;
+    obj.push_back(Pair("validators", (int)r.ctx.weights.size()));
+    obj.push_back(Pair("scores", scores));
+    RpcAddRoundContext(obj, r);
+    return obj;
+}
+
+// --- delay ---------------------------------------------------------------
+
+static Object RpcDelayEntry(const RpcRoundEntry& e)
+{
+    Object o;
+    o.push_back(Pair("delay", e.delay));
+    o.push_back(Pair("score", RpcScoreValue(e)));
+    o.push_back(Pair("score_norm", e.score_norm));
+    o.push_back(Pair("effective_weight", (int64_t)e.effective));
+    o.push_back(Pair("eligible", e.eligible));
+    return o;
+}
+
+/** The delay answers additionally state the three chain-wide terms of Def. correzione-globale. */
+static void RpcAddDelayContext(Object& obj, const RpcRound& r)
+{
+    obj.push_back(Pair("target_block_time", (int64_t)Params().TargetSpacing()));
+    obj.push_back(Pair("delta", g_wpoa_sortition_delta));
+    obj.push_back(Pair("lambda", g_wpoa_sortition_lambda));
+    obj.push_back(Pair("feedback", r.feedback));
+    RpcAddRoundContext(obj, r);
+}
+
+Value wpoagetlocaldelay(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+    {
+        throw runtime_error("Help message not found\n");
+    }
+    const std::string address = RpcLocalAddress();
+    RpcRound r;
+    RpcBuildRound(params, 0, r);
+
+    Object obj = RpcDelayEntry(RpcEvalAddress(r, address));
+    obj.push_back(Pair("address", address));
+    RpcAddDelayContext(obj, r);
+    return obj;
+}
+
+Value wpoagetnodedelay(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+    {
+        throw runtime_error("Help message not found\n");
+    }
+    const std::string address = params[0].get_str();
+    RpcRound r;
+    RpcBuildRound(params, 1, r);
+
+    Object obj = RpcDelayEntry(RpcEvalAddress(r, address));
+    obj.push_back(Pair("address", address));
+    RpcAddDelayContext(obj, r);
+    return obj;
+}
+
+Value wpoalistdelays(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+    {
+        throw runtime_error("Help message not found\n");
+    }
+    RpcRound r;
+    RpcBuildRound(params, 0, r);
+
+    Object delays;
+    for (std::map<std::string, uint32_t>::const_iterator it = r.ctx.weights.begin();
+         it != r.ctx.weights.end(); ++it)
+    {
+        delays.push_back(Pair(it->first, RpcDelayEntry(RpcEvalAddress(r, it->first))));
+    }
+
+    Object obj;
+    obj.push_back(Pair("validators", (int)r.ctx.weights.size()));
+    obj.push_back(Pair("delays", delays));
+    RpcAddDelayContext(obj, r);
+    return obj;
+}
+
+// --- effective weight (dumping only) -------------------------------------
+
+/** g(w) over the RAW registry weight: the dumping stage in isolation, before any
+ *  behavioural correction (Def. smorzamento). */
+static Object RpcEffectiveWeightEntry(const RpcRoundEntry& e)
+{
+    Object o;
+    o.push_back(Pair("raw_weight", (int64_t)e.raw));
+    o.push_back(Pair("dumping_function", RpcDumpingName(g_dumping_function)));
+    o.push_back(Pair("effective_weight",
+                     WPoASelector::ApplyDumping(e.raw, g_dumping_function)));
+    return o;
+}
+
+Value wpoagetlocaleffectiveweight(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+    {
+        throw runtime_error("Help message not found\n");
+    }
+    const std::string address = RpcLocalAddress();
+    RpcRound r;
+    RpcBuildRound(params, 0, r);
+
+    Object obj = RpcEffectiveWeightEntry(RpcEvalAddress(r, address));
+    obj.push_back(Pair("address", address));
+    obj.push_back(Pair("height", r.ctx.height));
+    return obj;
+}
+
+Value wpoagetnodeeffectiveweight(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+    {
+        throw runtime_error("Help message not found\n");
+    }
+    const std::string address = params[0].get_str();
+    RpcRound r;
+    RpcBuildRound(params, 1, r);
+
+    Object obj = RpcEffectiveWeightEntry(RpcEvalAddress(r, address));
+    obj.push_back(Pair("address", address));
+    obj.push_back(Pair("height", r.ctx.height));
+    return obj;
+}
+
+Value wpoalisteffectiveweights(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+    {
+        throw runtime_error("Help message not found\n");
+    }
+    RpcRound r;
+    RpcBuildRound(params, 0, r);
+
+    Object weights;
+    for (std::map<std::string, uint32_t>::const_iterator it = r.ctx.raw_weights.begin();
+         it != r.ctx.raw_weights.end(); ++it)
+    {
+        weights.push_back(Pair(it->first, RpcEffectiveWeightEntry(RpcEvalAddress(r, it->first))));
+    }
+
+    Object obj;
+    obj.push_back(Pair("height", r.ctx.height));
+    obj.push_back(Pair("dumping_function", RpcDumpingName(g_dumping_function)));
+    obj.push_back(Pair("validators", (int)r.ctx.raw_weights.size()));
+    obj.push_back(Pair("effective_weights", weights));
+    return obj;
+}
+
+// --- final weight (malus, then dumping) ----------------------------------
+
+/** The malus epoch that governs `height`: epoch(height) - 1, since a proved violation
+ *  bites from the epoch AFTER the one it was proved in (Def. accumulatore-malus). */
+static uint32_t RpcGoverningMalusEpoch(int height)
+{
+    uint32_t epoch = HeightToEpoch(height);
+    return (epoch >= 2) ? (epoch - 1) : 0;
+}
+
+/** g(w * Psi): the weight the election actually consumes, with the two stages shown
+ *  separately so the composition order is auditable (Def. psi-peso-effettivo, then
+ *  Def. smorzamento). */
+static Object RpcFinalWeightEntry(const RpcRoundEntry& e, double malus)
+{
+    const double psi = MalusAccumulator::CorrectionFactor(malus, g_wpoa_malus_max);
+
+    Object o;
+    o.push_back(Pair("raw_weight", (int64_t)e.raw));
+    o.push_back(Pair("malus", malus));
+    o.push_back(Pair("malus_factor", psi));
+    o.push_back(Pair("weight_after_malus", (int64_t)e.effective));
+    o.push_back(Pair("dumping_function", RpcDumpingName(g_dumping_function)));
+    o.push_back(Pair("effective_weight_after_malus_and_dumping", e.dumped));
+    o.push_back(Pair("eligible", e.eligible));
+    return o;
+}
+
+/** M for one address at the epoch governing `height` (0 when the registry is
+ *  unavailable or no proved violation is carried). */
+static double RpcMalusAt(uint32_t epoch, const std::string& address)
+{
+    if (epoch < 1 || pwalletTxsMain == NULL)
+    {
+        return 0.0;
+    }
+    MalusRegistry registry(pwalletTxsMain);
+    return registry.GetAccumulator(address, epoch);
+}
+
+Value wpoagetlocalfinalweight(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+    {
+        throw runtime_error("Help message not found\n");
+    }
+    const std::string address = RpcLocalAddress();
+    RpcRound r;
+    RpcBuildRound(params, 0, r);
+
+    const uint32_t epoch = RpcGoverningMalusEpoch(r.ctx.height);
+    Object obj = RpcFinalWeightEntry(RpcEvalAddress(r, address), RpcMalusAt(epoch, address));
+    obj.push_back(Pair("address", address));
+    obj.push_back(Pair("height", r.ctx.height));
+    obj.push_back(Pair("malus_epoch", (int64_t)epoch));
+    return obj;
+}
+
+Value wpoagetnodefinalweight(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+    {
+        throw runtime_error("Help message not found\n");
+    }
+    const std::string address = params[0].get_str();
+    RpcRound r;
+    RpcBuildRound(params, 1, r);
+
+    const uint32_t epoch = RpcGoverningMalusEpoch(r.ctx.height);
+    Object obj = RpcFinalWeightEntry(RpcEvalAddress(r, address), RpcMalusAt(epoch, address));
+    obj.push_back(Pair("address", address));
+    obj.push_back(Pair("height", r.ctx.height));
+    obj.push_back(Pair("malus_epoch", (int64_t)epoch));
+    return obj;
+}
+
+Value wpoalistfinalweights(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+    {
+        throw runtime_error("Help message not found\n");
+    }
+    RpcRound r;
+    RpcBuildRound(params, 0, r);
+
+    const uint32_t epoch = RpcGoverningMalusEpoch(r.ctx.height);
+
+    // One accumulator pass for the whole map: GetAccumulators folds every report once,
+    // where a per-address GetAccumulator would refold the stream for each validator.
+    std::map<std::string, double> accumulators;
+    if (epoch >= 1 && pwalletTxsMain != NULL)
+    {
+        MalusRegistry registry(pwalletTxsMain);
+        registry.GetAccumulators(epoch, accumulators);
+    }
+
+    Object weights;
+    for (std::map<std::string, uint32_t>::const_iterator it = r.ctx.raw_weights.begin();
+         it != r.ctx.raw_weights.end(); ++it)
+    {
+        std::map<std::string, double>::const_iterator mi = accumulators.find(it->first);
+        const double malus = (mi != accumulators.end()) ? mi->second : 0.0;
+        weights.push_back(Pair(it->first,
+                               RpcFinalWeightEntry(RpcEvalAddress(r, it->first), malus)));
+    }
+
+    Object obj;
+    obj.push_back(Pair("height", r.ctx.height));
+    obj.push_back(Pair("malus_epoch", (int64_t)epoch));
+    obj.push_back(Pair("dumping_function", RpcDumpingName(g_dumping_function)));
+    obj.push_back(Pair("validators", (int)r.ctx.raw_weights.size()));
+    obj.push_back(Pair("final_weights", weights));
+    return obj;
 }

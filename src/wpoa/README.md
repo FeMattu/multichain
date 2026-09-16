@@ -334,7 +334,7 @@ current status lives only in
 | [`private_sortition.h`](private_sortition.h) / [`.cpp`](private_sortition.cpp) | Phase 4: pure `PrivateSortition` core (`VRFInput` / `ScoreFromVRFOutput` / `NormalizedScore` / `MiningDelay`) + node glue. |
 | [`malus_record.h`](malus_record.h) | Malus: pure record parsing + accumulator core (`Fold` / `CorrectionFactor` / `EffectiveWeight` / `EpochsToClear`). |
 | [`malus_registry.h`](malus_registry.h) / [`.cpp`](malus_registry.cpp) | Malus: the open report stream, the `Valid(e)` predicate, `WPoAApplyMalus` (the single consensus entry point). |
-| [`../rpc/rpcwpoa.cpp`](../rpc/rpcwpoa.cpp) | The RPC handlers over both registries: `getlocalweight`, `getallweights`, `getnodeweight`, `getallmalus`, `getnodemalus`, `reportmalus`. |
+| [`../rpc/rpcwpoa.cpp`](../rpc/rpcwpoa.cpp) | The RPC handlers over both registries: the registry reads (`getlocalweight`, `getallweights`, `getnodeweight`), the malus surface (`getallmalus`, `getnodemalus`, `reportmalus`) and the read-only **round audit** — `wpoa{getlocal,getnode,list}` × `score` / `delay` / `effectiveweight` / `finalweight`, which replay the public election model for any height. |
 | [`../weight_engine/`](../weight_engine/) | The weight-production layer. See [weight-engine.md](docs/weight-engine.md). |
 
 Unit suites live in [`test/`](test/) and run node-free:

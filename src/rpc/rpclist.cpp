@@ -150,6 +150,44 @@ static const CRPCCommand vRPCCommands[] =
     /* Independent verification of the published weights — a read, open to anyone:
        every input of the pipeline is public, so any node can check any record. */
     { "weight",             "weightverifyweights",    &weightverifyweights,    true,      true,       true },
+
+/* MCHN START -- wPoA/weightengine read-only audit RPCs.
+   Read-only inspection of quantities every node already derives, so okSafeMode is
+   true throughout and none of them writes anything. threadSafe differs by what each
+   family touches: the wPoA round RPCs walk the block index (beacon seed, feedback
+   window), which is cs_main-protected and not self-locking, so they run under the
+   dispatcher's lock; the weight-engine RPCs drive WeightStreamReader, which takes
+   cs_main itself for a short snapshot and must NOT hold it across the epoch fold —
+   exactly as the publishing thread runs it. */
+    { "wpoa",               "wpoagetlocalscore",      &wpoagetlocalscore,      true,      false,      true },
+    { "wpoa",               "wpoagetnodescore",       &wpoagetnodescore,       true,      false,      true },
+    { "wpoa",               "wpoalistscores",         &wpoalistscores,         true,      false,      true },
+    { "wpoa",               "wpoagetlocaldelay",      &wpoagetlocaldelay,      true,      false,      true },
+    { "wpoa",               "wpoagetnodedelay",       &wpoagetnodedelay,       true,      false,      true },
+    { "wpoa",               "wpoalistdelays",         &wpoalistdelays,         true,      false,      true },
+    { "wpoa",               "wpoagetlocaleffectiveweight", &wpoagetlocaleffectiveweight, true,      false,      true },
+    { "wpoa",               "wpoagetnodeeffectiveweight", &wpoagetnodeeffectiveweight, true,      false,      true },
+    { "wpoa",               "wpoalisteffectiveweights", &wpoalisteffectiveweights, true,      false,      true },
+    { "wpoa",               "wpoagetlocalfinalweight", &wpoagetlocalfinalweight, true,      false,      true },
+    { "wpoa",               "wpoagetnodefinalweight", &wpoagetnodefinalweight, true,      false,      true },
+    { "wpoa",               "wpoalistfinalweights",   &wpoalistfinalweights,   true,      false,      true },
+
+    { "weight",             "weightgetlocalcontribution", &weightgetlocalcontribution, true,      true,       true },
+    { "weight",             "weightgetnodecontribution", &weightgetnodecontribution, true,      true,       true },
+    { "weight",             "weightlistcontributions", &weightlistcontributions, true,      true,       true },
+    { "weight",             "weightgetlocalclusterweight", &weightgetlocalclusterweight, true,      true,       true },
+    { "weight",             "weightgetnodeclusterweight", &weightgetnodeclusterweight, true,      true,       true },
+    { "weight",             "weightlistclusterweights", &weightlistclusterweights, true,      true,       true },
+    { "weight",             "weightgetlocalreturns",  &weightgetlocalreturns,  true,      true,       true },
+    { "weight",             "weightgetnodereturns",   &weightgetnodereturns,   true,      true,       true },
+    { "weight",             "weightlistreturns",      &weightlistreturns,      true,      true,       true },
+    { "weight",             "weightgetlocalearnings", &weightgetlocalearnings, true,      true,       true },
+    { "weight",             "weightgetnodeearnings",  &weightgetnodeearnings,  true,      true,       true },
+    { "weight",             "weightlistearnings",     &weightlistearnings,     true,      true,       true },
+    { "weight",             "weightgetlocalbalance",  &weightgetlocalbalance,  true,      true,       true },
+    { "weight",             "weightgetnodebalance",   &weightgetnodebalance,   true,      true,       true },
+    { "weight",             "weightlistbalances",     &weightlistbalances,     true,      true,       true },
+/* MCHN END */
 #endif
 
 /* MCHN END */
