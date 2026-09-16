@@ -3672,9 +3672,9 @@
     "semantic_hash": "10087372686a6ce25ebc3264cde7a3df"
   },
   "src/wpoa/docs/testing.md": {
-    "mtime": 1789498722.205879,
-    "seen": 1789498727.330453,
-    "ast_hash": "4c7317aaffca934f76cea41793dd4ff4",
+    "mtime": 1789544496.282719,
+    "seen": 1789544506.224889,
+    "ast_hash": "47bf35bb4c7962b8880312ef36768df4",
     "semantic_hash": ""
   },
   "src/wpoa/docs/thesis-project-overview.md": {
@@ -5184,9 +5184,9 @@
     "semantic_hash": ""
   },
   "docs/adr/test-restructure-2026.md": {
-    "mtime": 1789515149.1863532,
-    "seen": 1789515151.9044688,
-    "ast_hash": "117dc50ae5c88fe20977ea0268125cfc",
+    "mtime": 1789544496.2825284,
+    "seen": 1789544506.2247882,
+    "ast_hash": "853f30340650b6963df064c04d8ec376",
     "semantic_hash": ""
   },
   "experiments/configs/experiments/continental-3m-2a-1ca.yaml": {
@@ -5196,15 +5196,15 @@
     "semantic_hash": ""
   },
   "test/functional/lib/functional_lib.sh": {
-    "mtime": 1789515149.1866667,
-    "seen": 1789515151.9044487,
-    "ast_hash": "b4f842d545319bf6162b5c7f6e0f0e42",
+    "mtime": 1789544496.2828534,
+    "seen": 1789544506.2247677,
+    "ast_hash": "12bf4364ba4860d72d2c6314df418b0f",
     "semantic_hash": ""
   },
   "test/functional/run_functional_tests.sh": {
-    "mtime": 1789515149.1871433,
-    "seen": 1789515151.904452,
-    "ast_hash": "313df8a0c6a74aefe1ce5dfb97c72434",
+    "mtime": 1789544496.2832723,
+    "seen": 1789544506.2247717,
+    "ast_hash": "39cecb2bbf567eba65aaba52eae2f6f5",
     "semantic_hash": ""
   },
   "test/functional/weight_engine/functional_test_weight_engine.sh": {
@@ -5238,9 +5238,9 @@
     "semantic_hash": ""
   },
   "test/functional/README.md": {
-    "mtime": 1789515149.186498,
-    "seen": 1789515151.9045804,
-    "ast_hash": "4b4edf3b67fff3ce74c8a5602261d99f",
+    "mtime": 1789544496.2828534,
+    "seen": 1789544506.2248979,
+    "ast_hash": "e121e995b18591553c5333f20a97c8bf",
     "semantic_hash": ""
   },
   "test/functional/weight_engine/functional_test_weight_engine_large_network.sh": {
@@ -5259,6 +5259,12 @@
     "mtime": 1789515149.187543,
     "seen": 1789515151.9045815,
     "ast_hash": "5df48a4bb635ad1ff215b48847c6d950",
+    "semantic_hash": ""
+  },
+  "test/functional/lib/lint_lib.sh": {
+    "mtime": 1789544496.2831805,
+    "seen": 1789544506.2247696,
+    "ast_hash": "a9abf5b1226c1a726dd43181339504e4",
     "semantic_hash": ""
   }
 }
