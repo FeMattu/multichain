@@ -106,6 +106,42 @@ fl_check_begin "no_self_reference_in_a_single_local" 1
     fl_assert_zero "$hits" "files with a same-statement self-reference"
 fl_check_end || true
 
+fl_check_begin "no_duplicate_function_definitions" 1
+    # A function defined twice in one file is valid bash: the LAST definition silently
+    # replaces every earlier one. So the copy that runs is whichever happens to come last
+    # in the file, which is not necessarily the one anybody edited.
+    #
+    # This is not hypothetical. 53b177d7 added check_randao_seed_convention along with a
+    # 208-line duplicate of four checks that already existed, and because the duplicates
+    # landed BELOW the originals, five checks silently reverted to their older bodies --
+    # including the very tip+1 discriminator that commit existed to add. The suite passed
+    # its own syntax gate throughout, and nobody could see it because nobody could run the
+    # suite (docs/adr/functional-smoke-refactor-2026.md §3.4).
+    #
+    # `bash -n` cannot see this and neither can the self-reference scan above, so it needs
+    # its own check. Two lines of awk against hours of a shadowed test.
+    dups=0
+    while IFS= read -r f; do
+        found="$(awk -v F="$f" '
+          match($0, /^[[:space:]]*(function[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(\)[[:space:]]*\{?/) {
+            name=$0
+            sub(/^[[:space:]]*(function[[:space:]]+)?/, "", name)
+            sub(/[[:space:]]*\(\).*$/, "", name)
+            if (name in seen) {
+              printf "%s:%d: %s() is already defined at line %d -- the later one wins\n", \
+                     F, NR, name, seen[name]
+            } else {
+              seen[name]=NR
+            }
+          }' "$f")"
+        if [ -n "$found" ]; then
+            dups=$(( dups + 1 ))
+            printf '%s\n' "$found" | sed 's/^/      /'
+        fi
+    done < <(find "$FUNC_DIR" -name '*.sh' -type f | sort)
+    fl_assert_zero "$dups" "files defining the same function more than once"
+fl_check_end || true
+
 # =============================================================================
 # B — PURE HELPERS  (epoch geometry and the setup budget: no RPC, exact answers)
 # =============================================================================
