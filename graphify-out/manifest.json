@@ -5196,15 +5196,15 @@
     "semantic_hash": ""
   },
   "test/functional/lib/functional_lib.sh": {
-    "mtime": 1789544496.2828534,
-    "seen": 1789544506.2247677,
-    "ast_hash": "12bf4364ba4860d72d2c6314df418b0f",
+    "mtime": 1789553433.3115585,
+    "seen": 1789553778.4976263,
+    "ast_hash": "38a3e69f2c039c6fdfe935c28db138d6",
     "semantic_hash": ""
   },
   "test/functional/run_functional_tests.sh": {
-    "mtime": 1789544496.2832723,
-    "seen": 1789544506.2247717,
-    "ast_hash": "39cecb2bbf567eba65aaba52eae2f6f5",
+    "mtime": 1789553001.3825068,
+    "seen": 1789553778.4976318,
+    "ast_hash": "b21a22dad1d190176bc90eb1ef5236ce",
     "semantic_hash": ""
   },
   "test/functional/weight_engine/functional_test_weight_engine.sh": {
@@ -5226,9 +5226,9 @@
     "semantic_hash": ""
   },
   "test/functional/wpoa/functional_test_wpoa_system.sh": {
-    "mtime": 1789498114.7627866,
-    "seen": 1789498138.543352,
-    "ast_hash": "f157c31bc61d001524fa665d3c64f704",
+    "mtime": 1789551639.338755,
+    "seen": 1789552394.6487947,
+    "ast_hash": "418dd604cda897b6f0fdb9d38c9ed75c",
     "semantic_hash": ""
   },
   "src/weight_engine/README.md": {
@@ -5256,15 +5256,39 @@
     "semantic_hash": ""
   },
   "test/output/README.md": {
-    "mtime": 1789515149.187543,
-    "seen": 1789515151.9045815,
-    "ast_hash": "5df48a4bb635ad1ff215b48847c6d950",
+    "mtime": 1789553878.7643898,
+    "seen": 1789553928.0517516,
+    "ast_hash": "11bd3e227f3fe17bed8ef2628a27b7f7",
     "semantic_hash": ""
   },
   "test/functional/lib/lint_lib.sh": {
-    "mtime": 1789544496.2831805,
-    "seen": 1789544506.2247696,
-    "ast_hash": "a9abf5b1226c1a726dd43181339504e4",
+    "mtime": 1789553433.3111181,
+    "seen": 1789553778.4976282,
+    "ast_hash": "0ca5dfdd15fc8e5fb89137074e528899",
+    "semantic_hash": ""
+  },
+  "test/functional/lib/audit_transfers.py": {
+    "mtime": 1789552283.0620692,
+    "seen": 1789552394.6487813,
+    "ast_hash": "3e32e1ee552431c71e21078c94fac5b2",
+    "semantic_hash": ""
+  },
+  "test/functional/lib/stats/plots.py": {
+    "mtime": 1789551892.8884614,
+    "seen": 1789552394.648786,
+    "ast_hash": "e7feefdb3b843237365c5f21138f7522",
+    "semantic_hash": ""
+  },
+  "test/functional/smoke_network.sh": {
+    "mtime": 1789553433.3222108,
+    "seen": 1789553778.4976327,
+    "ast_hash": "678a3518d69d725a386a13ba3d367ee5",
+    "semantic_hash": ""
+  },
+  "docs/adr/functional-smoke-refactor-2026.md": {
+    "mtime": 1789554903.9627898,
+    "seen": 1789554916.8452518,
+    "ast_hash": "0b11c6721af68fdb97e71d5194322272",
     "semantic_hash": ""
   }
 }
