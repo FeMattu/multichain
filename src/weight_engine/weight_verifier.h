@@ -115,7 +115,6 @@
 #include <string>
 #include <stdint.h>
 
-#include "json/json_spirit_value.h"   // for the RPC declaration at the end
 
 // ---------------------------------------------------------------------------
 // Verdicts
@@ -371,7 +370,8 @@ std::map<std::string, WeightVerificationEntry> WeightEngineGetVerdicts(uint32_t 
 /** The most recent epoch for which verdicts are cached; 0 when none. */
 uint32_t WeightEngineLastVerifiedEpoch();
 
-/** RPC: report the cached verification of the published weights (category "weight"). */
-json_spirit::Value weightverifyweights(const json_spirit::Array& params, bool fHelp);
+/* The RPC that reports these cached verdicts (weightverifyweights, category
+   "weight") lives in src/rpc/rpcweightengine.cpp, with every other RPC handler; the
+   prototype is declared in rpc/rpcserver.h. */
 
 #endif // MC_WEIGHT_VERIFIER_H

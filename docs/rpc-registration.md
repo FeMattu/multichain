@@ -14,8 +14,8 @@
 ## Table of contents
 - [1. What this file is for](#1-what-this-file-is-for)
 - [2. Adding the wPoA commands](#2-adding-the-wpoa-commands)
-  - [2.1 The include (line 13)](#21-the-include-line-13)
-  - [2.2 The three registered rows (lines 135-140)](#22-the-three-registered-rows-lines-135-140)
+  - [2.1 Where the prototypes come from](#21-where-the-prototypes-come-from)
+  - [2.2 The registered rows](#22-the-registered-rows)
   - [2.3 How the table reaches the RPC server](#23-how-the-table-reaches-the-rpc-server)
 - [3. Summary: what was "touched" to add the commands](#3-summary-what-was-touched-to-add-the-commands)
 - [4. Links to the other files](#4-links-to-the-other-files)
@@ -53,31 +53,36 @@ Each row has 6 fields (commented in the table header):
 
 ```mermaid
 flowchart LR
-    H[stream_weight_registry.h<br/>1. declare handler prototypes] --> C[stream_weight_registry.cpp<br/>2. define the handlers]
-    C --> T[rpc/rpclist.cpp<br/>3. register in vRPCCommands + include header]
+    H[rpc/rpcserver.h<br/>1. declare handler prototypes] --> C[rpc/rpcwpoa.cpp<br/>2. define the handlers]
+    C --> T[rpc/rpclist.cpp<br/>3. register in vRPCCommands]
     T --> INIT[mc_InitRPCList copies the table<br/>into the runtime dispatcher]
     INIT --> SERVER[RPC server resolves getlocalweight / ... → &handler]
 ```
 
-### 2.1 The include (line 13)
+### 2.1 Where the prototypes come from
+
+`rpclist.cpp` includes exactly one header, `rpc/rpcserver.h`, and that is where **every**
+RPC prototype in the node is declared — the wPoA ones among them:
 
 ```cpp
-#include "wpoa/stream_weight_registry.h"
+/* wPoA — the two on-chain registries (implemented in rpc/rpcwpoa.cpp) */
+extern json_spirit::Value getlocalweight(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value getallweights (const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value getnodeweight (const json_spirit::Array& params, bool fHelp);
 ```
-This is the only link needed: it brings the **prototypes** of the three handler functions
-declared in the registry's header into `rpclist.cpp`:
+Without a declaration the names used in the table would be unknown symbols to the
+compiler. **The functions are defined elsewhere** — in
+[`rpc/rpcwpoa.cpp`](../src/rpc/rpcwpoa.cpp), alongside the malus handlers, and in
+[`rpc/rpcweightengine.cpp`](../src/rpc/rpcweightengine.cpp) for the `weight` category:
+here only the declarations are needed in order to take their address.
 
-```cpp
-json_spirit::Value getlocalweight(const json_spirit::Array& params, bool fHelp);
-json_spirit::Value getallweights (const json_spirit::Array& params, bool fHelp);
-json_spirit::Value getnodeweight (const json_spirit::Array& params, bool fHelp);
-```
-Without this include, the names `getlocalweight` etc. used in the table would be unknown
-symbols to the compiler. **The functions are defined elsewhere** (in
-`stream_weight_registry.cpp`): here only the declarations are needed in order to take
-their address.
+This follows MultiChain's own convention: handlers live in a dedicated `rpc/rpc*.cpp`
+per command family, their prototypes go in `rpcserver.h`, and `rpclist.cpp` stays a pure
+dispatch table with no module includes at all. The registries themselves
+(`wpoa/stream_weight_registry.*`, `wpoa/malus_registry.*`) therefore carry no RPC code:
+they expose a C++ API, and the handlers are just one of its callers.
 
-### 2.2 The three registered rows (lines 135-140)
+### 2.2 The registered rows
 
 ```cpp
 #ifdef ENABLE_WALLET
@@ -136,11 +141,15 @@ call `&getlocalweight`, which runs the registry read logic and returns the resul
 
 Adding an RPC command in MultiChain requires exactly these three steps, all present here:
 
-1. **Declare** the handler in a header (`stream_weight_registry.h`).
-2. **Define** the handler in a `.cpp` (`stream_weight_registry.cpp`, functions
-   `getlocalweight`/`getallweights`/`getnodeweight`).
-3. **Register** it in the `vRPCCommands` table of `rpclist.cpp` (the 3 rows above) plus
-   the `#include` of the header.
+1. **Declare** the handler in `rpc/rpcserver.h`, with every other RPC prototype.
+2. **Define** the handler in the `.cpp` of its command family (`rpc/rpcwpoa.cpp`,
+   functions `getlocalweight`/`getallweights`/`getnodeweight`, plus `getallmalus`/
+   `getnodemalus`/`reportmalus`; `rpc/rpcweightengine.cpp` for the `weight` category).
+3. **Register** it in the `vRPCCommands` table of `rpclist.cpp` (the 3 rows above).
+
+A new `.cpp` also needs one line in `libbitcoin_wallet_a_SOURCES`
+([`src/Makefile.am`](../src/Makefile.am)) — the wallet library, because these handlers
+require the wallet.
 
 ## 4. Links to the other files
 
@@ -148,12 +157,13 @@ Adding an RPC command in MultiChain requires exactly these three steps, all pres
 flowchart TD
     CLIENT([multichain-cli CHAIN getallweights]) --> SERVER
     SERVER[RPC server: look up getallweights in vRPCCommands<br/>rpclist.cpp] -->|&getallweights| HANDLER
-    HANDLER["getallweights(params, fHelp)<br/>stream_weight_registry.cpp"] --> METHOD["StreamWeightRegistry(pwalletTxsMain).GetAllNodesWeights()"]
+    HANDLER["getallweights(params, fHelp)<br/>rpc/rpcwpoa.cpp"] --> METHOD["StreamWeightRegistry(pwalletTxsMain).GetAllNodesWeights()"]
     METHOD --> READ["ReadAllRecords() → mc_ParseWeightRecordJson()<br/>weight_record.h"]
 ```
 
-- **`stream_weight_registry.h`** → provides the handler prototypes (via `#include`).
-- **`stream_weight_registry.cpp`** → contains the real handler definitions.
+- **`rpc/rpcserver.h`** → provides the handler prototypes (via `#include`).
+- **`rpc/rpcwpoa.cpp`** → contains the real handler definitions.
+- **`stream_weight_registry.h/.cpp`** → the registry API the handlers call; no RPC code.
 - There is no link to `init.cpp`: RPC registration and the launch of the write thread are
   independent paths. The RPCs read the current state whatever it is (even empty).
 

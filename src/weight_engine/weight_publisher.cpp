@@ -1,7 +1,8 @@
 // Copyright (c) 2014-2019 Coin Sciences Ltd
 // MultiChain code distributed under the GPLv3 license, see COPYING file.
 //
-// Weight-management layer — Stage W3: WeightPublisher + input-stream RPCs.
+// Weight-management layer — Stage W3: WeightPublisher, the validated write path
+// behind the two input-stream RPCs (which live in rpc/rpcweightengine.cpp).
 // See weight_publisher.h. Publication reuses the in-process publishfrom handler and
 // the W1 parsers for round-trip validation; permission checks reuse the native
 // MultiChain permission DB (mc_gState->m_Permissions), exactly as the permission /
@@ -21,7 +22,6 @@
 #include "utils/util.h"         // strprintf, LogPrintf
 #include "utils/utiltime.h"     // GetTime
 
-#include <cstdlib>
 #include <stdexcept>
 #include <set>
 #include <boost/variant/get.hpp>
@@ -30,31 +30,8 @@ using namespace std;
 using namespace json_spirit;
 
 // ---------------------------------------------------------------------------
-// Local helpers (file scope)
+// Local helpers, and the caller-address resolution the RPC handlers go through
 // ---------------------------------------------------------------------------
-
-// Accept an int, real, or numeric-string JSON value as a double. (multichain-cli
-// sends arguments for RPCs without a numeric-conversion entry as strings, so a
-// string like "15" must be accepted; a raw JSON-RPC client may send a real number.)
-static double RecordDouble(const Value& v, const char* field)
-{
-    if (v.type() == int_type)  return (double)v.get_int64();
-    if (v.type() == real_type) return v.get_real();
-    if (v.type() == str_type)
-    {
-        const std::string s = v.get_str();
-        if (!s.empty())
-        {
-            char* end = NULL;
-            double d = strtod(s.c_str(), &end);
-            if (end != s.c_str() && *end == '\0')
-            {
-                return d;
-            }
-        }
-    }
-    throw JSONRPCError(RPC_INVALID_PARAMETER, string(field) + " must be a number");
-}
 
 // Resolve this node's own address (mine -> connect -> default key, as the wPoA
 // registry does). No permission requirement: this is the node's cryptographic
@@ -87,7 +64,7 @@ static CKeyID ResolveLocalNodeKeyID()
 // This node's own address, with no permission requirement. Used by the SELF-WRITE
 // path: the caller can only ever publish a record about itself, so no privilege is
 // needed beyond `<stream>.write` (checked on-chain in WeightPublishTo).
-static std::string ResolveLocalNodeAddress()
+std::string WeightPublisher::ResolveLocalNodeAddress()
 {
     return CBitcoinAddress(ResolveLocalNodeKeyID()).ToString();
 }
@@ -158,7 +135,7 @@ static bool ChainSupportsCustomPermissions()
 // The write-permission half of the decision is left to WeightPublishTo, which owns
 // the per-stream CanWrite check for every stream; passing `true` here reflects that
 // division of labour rather than skipping the check.
-static std::string ResolveLocalCertificationAuthorityAddress()
+std::string WeightPublisher::ResolveLocalCertificationAuthorityAddress()
 {
     CKeyID keyID = ResolveLocalNodeKeyID();
 
@@ -289,73 +266,4 @@ std::string WeightPublisher::PublishMembership(const std::string& from_address,
     // Item key = node_address (the declaring node), so all of a node's successive
     // declarations share one key and last-confirmed-wins picks its current cluster.
     return WeightPublishTo(from_address, MC_WEIGHT_MEMBERSHIP_STREAM_NAME, node_address, data_obj);
-}
-
-// ---------------------------------------------------------------------------
-// RPCs
-// ---------------------------------------------------------------------------
-
-Value weightsetesg(const Array& params, bool fHelp)
-{
-    if (fHelp || params.size() != 2)
-    {
-        throw runtime_error(
-            "weightsetesg \"node_address\" score\n"
-            "\nCertification-Authority only. Publishes a certified ESG score for a node\n"
-            "to the weight-engine-esg stream (round-trip validated before publishing).\n"
-            "\nAn ESG score is an attestation of TRUST: no peer can verify it\n"
-            "cryptographically, so the only defence is to restrict who may assert it.\n"
-            "The writer must therefore hold the Certification Authority role, which the\n"
-            "global administrator delegates per address and may revoke:\n"
-            "\n  grant  <address> " MC_WEIGHT_CA_PERMISSION_NAME
-            "     # confer CA status (requires admin)\n"
-            "  revoke <address> " MC_WEIGHT_CA_PERMISSION_NAME
-            "     # withdraw it\n"
-            "\nBeing a global administrator is NOT sufficient: the administrator confers\n"
-            "the role, it does not hold it automatically. This keeps 'who administers the\n"
-            "network' distinguishable on chain from 'who certifies ESG scores'.\n"
-            "\nAlso requires: weight-engine-esg.write on this node's address.\n"
-            "\nArguments:\n"
-            "1. \"node_address\"  (string, required) company or miner address\n"
-            "2. score            (numeric, required) certified ESG score, strictly > 0\n"
-            "\nResult:\n"
-            "\"txid\"  (string) the publish transaction id\n");
-    }
-
-    std::string from = ResolveLocalCertificationAuthorityAddress();
-    std::string node_address = params[0].get_str();
-    double esg = RecordDouble(params[1], "score");
-    return WeightPublisher::PublishEsg(from, node_address, esg);
-}
-
-// PUBLIC (not admin). Any node may call it, and it can only ever publish a record
-// about the CALLING node itself — there is deliberately no parameter for "whose"
-// membership to declare. This replaces the former admin-proxy `weightsetmembership`,
-// which is gone rather than deprecated: under the self-attestation rule a record
-// published by an admin on a third party's behalf is discarded by every reader, so
-// keeping that RPC would only offer a way to pay for a transaction with no effect.
-Value weightregistermembership(const Array& params, bool fHelp)
-{
-    if (fHelp || params.size() != 1)
-    {
-        throw runtime_error(
-            "weightregistermembership \"miner_address\"\n"
-            "\nDeclares THIS node's membership of a miner's cluster on the\n"
-            "weight-engine-membership stream, signed by this node's own address.\n"
-            "\nOpen to every node: joining a cluster is a voluntary, autonomous choice,\n"
-            "and the record is self-attested — the reader accepts it only because the\n"
-            "signer matches the declared node_address, so nobody can declare membership\n"
-            "on another node's behalf. Call it again with a different miner to change\n"
-            "cluster: the latest confirmed declaration wins. A miner calls it with its\n"
-            "OWN address to register itself as a cluster head.\n"
-            "\nRequires: weight-engine-membership.write on this node's address.\n"
-            "\nArguments:\n"
-            "1. \"miner_address\"  (string, required) the cluster to join\n"
-            "\nResult:\n"
-            "\"txid\"  (string) the publish transaction id\n");
-    }
-
-    std::string own = ResolveLocalNodeAddress();
-    std::string miner = params[0].get_str();
-    return WeightPublisher::PublishMembership(own, own, miner);
 }

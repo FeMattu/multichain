@@ -1,0 +1,426 @@
+// Copyright (c) 2010 Satoshi Nakamoto
+// Copyright (c) 2014-2016 The Bitcoin Core developers
+// Original code was distributed under the MIT software license.
+// Copyright (c) 2014-2019 Coin Sciences Ltd
+// MultiChain code distributed under the GPLv3 license, see COPYING file.
+//
+// wPoA RPC surface — the "wpoa" command category.
+// ---------------------------------------------------------------------------
+// Read access to the two registries the protocol maintains, plus the one write
+// path into the open one:
+//
+//   getlocalweight / getallweights / getnodeweight   wpoa-weights        (read)
+//   getallmalus    / getnodemalus                    wpoa-weights-malus  (read)
+//   reportmalus                                      wpoa-weights-malus  (write)
+//
+// These are handlers only: every decision lives behind StreamWeightRegistry
+// (wpoa/stream_weight_registry.h) and MalusRegistry (wpoa/malus_registry.h), so
+// this file marshals parameters, calls the registries and shapes the JSON. That
+// separation is what lets the registries be driven from the consensus path and
+// the background threads without dragging the RPC surface along.
+
+
+#include "rpc/rpcwallet.h"
+
+#include "wpoa/stream_weight_registry.h"    // StreamWeightRegistry
+#include "wpoa/malus_registry.h"            // MalusRegistry, the malus runtime globals
+#include "wpoa/malus_record.h"              // MalusAccumulator, mc_MalusKind*
+#include "weight_engine/weight_engine.h"    // HeightToEpoch (shared height->epoch map)
+#include "weight_engine/weight_streams.h"   // MC_WEIGHT_MEMBERSHIP_STREAM_NAME
+#include "weight_engine/weight_verifier.h"  // WeightEngineRecomputeWeightForEpoch
+#include "core/init.h"                      // pwalletTxsMain
+#include "core/main.h"                      // chainActive, cs_main
+
+// ---------------------------------------------------------------------------
+// Weight registry
+// ---------------------------------------------------------------------------
+
+Value getlocalweight(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() != 0)
+    {
+        throw runtime_error(
+            "getlocalweight\n"
+            "\nReturns the wPoA weight registered on-chain for this node.\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"address\": \"...\",   (string) this node's address\n"
+            "  \"weight\": n,          (numeric) latest confirmed weight, 0 if none\n"
+            "  \"registered\": bool    (boolean) whether a confirmed record exists\n"
+            "}\n");
+    }
+    if (pwalletTxsMain == NULL)
+    {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Wallet not available");
+    }
+
+    StreamWeightRegistry registry(pwalletTxsMain);
+
+    Object obj;
+    obj.push_back(Pair("address", registry.GetLocalAddress()));
+    obj.push_back(Pair("weight", (int64_t)registry.GetLocalWeight()));
+    obj.push_back(Pair("registered", registry.IsLocalWeightRegistered()));
+    return obj;
+}
+
+Value getallweights(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() != 0)
+    {
+        throw runtime_error(
+            "getallweights\n"
+            "\nReturns the current wPoA weight of every validator on the stream.\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"validators\": n,   (numeric) number of validators\n"
+            "  \"total\": n,        (numeric) sum of all weights\n"
+            "  \"weights\": { \"address\": weight, ... }\n"
+            "}\n");
+    }
+    if (pwalletTxsMain == NULL)
+    {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Wallet not available");
+    }
+
+    StreamWeightRegistry registry(pwalletTxsMain);
+    std::map<std::string, uint32_t> weights = registry.GetAllNodesWeights();
+
+    Object weights_obj;
+    uint64_t total = 0;
+    for (std::map<std::string, uint32_t>::const_iterator it = weights.begin(); it != weights.end(); ++it)
+    {
+        weights_obj.push_back(Pair(it->first, (int64_t)it->second));
+        total += it->second;
+    }
+
+    Object obj;
+    obj.push_back(Pair("validators", (int)weights.size()));
+    obj.push_back(Pair("total", (int64_t)total));
+    obj.push_back(Pair("weights", weights_obj));
+    return obj;
+}
+
+Value getnodeweight(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "getnodeweight \"address\"\n"
+            "\nReturns the current wPoA weight for a specific validator address.\n"
+            "\nArguments:\n"
+            "1. \"address\"   (string, required) the validator address\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"address\": \"...\",  (string) the queried address\n"
+            "  \"weight\": n          (numeric) latest confirmed weight, 0 if none\n"
+            "}\n");
+    }
+    if (pwalletTxsMain == NULL)
+    {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Wallet not available");
+    }
+
+    string address = params[0].get_str();
+
+    StreamWeightRegistry registry(pwalletTxsMain);
+
+    Object obj;
+    obj.push_back(Pair("address", address));
+    obj.push_back(Pair("weight", (int64_t)registry.GetNodeWeight(address)));
+    return obj;
+}
+
+// ---------------------------------------------------------------------------
+// Malus registry
+// ---------------------------------------------------------------------------
+
+// The epoch whose accumulators currently govern selection, i.e. the one before the
+// tip's epoch (see WPoAApplyMalus). 0 when there is no previous epoch yet.
+static uint32_t GoverningMalusEpoch()
+{
+    int height = 0;
+    {
+        LOCK(cs_main);
+        if (chainActive.Tip() != NULL)
+        {
+            height = chainActive.Height();
+        }
+    }
+    uint32_t epoch = HeightToEpoch(height);
+    return (epoch >= 2) ? (epoch - 1) : 0;
+}
+
+Value getallmalus(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() != 0)
+    {
+        throw runtime_error(
+            "getallmalus\n"
+            "\nReturns the behavioural malus currently applied to every validator:\n"
+            "the accumulator M, the correction factor Psi and the resulting effective\n"
+            "weight w_eff = w * Psi that the proposer election consumes.\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"epoch\": n,        (numeric) epoch whose accumulators govern selection\n"
+            "  \"enabled\": bool,   (boolean) whether the malus registry is active\n"
+            "  \"validators\": {\n"
+            "     \"address\": { \"malus\": x, \"psi\": x, \"weight\": n, \"effective\": n,\n"
+            "                    \"excluded\": bool, \"epochs_to_clear\": n }\n"
+            "  }\n"
+            "}\n");
+    }
+    if (pwalletTxsMain == NULL)
+    {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Wallet not available");
+    }
+
+    const uint32_t epoch = GoverningMalusEpoch();
+
+    StreamWeightRegistry wregistry(pwalletTxsMain);
+    std::map<std::string, uint32_t> weights = wregistry.GetAllNodesWeights();
+
+    std::map<std::string, double> accumulators;
+    if (epoch >= 1)
+    {
+        MalusRegistry mregistry(pwalletTxsMain);
+        mregistry.GetAccumulators(epoch, accumulators);
+    }
+
+    Object validators;
+    for (std::map<std::string, uint32_t>::const_iterator it = weights.begin();
+         it != weights.end(); ++it)
+    {
+        std::map<std::string, double>::const_iterator mi = accumulators.find(it->first);
+        double M   = (mi != accumulators.end()) ? mi->second : 0.0;
+        double psi = MalusAccumulator::CorrectionFactor(M, g_wpoa_malus_max);
+        uint32_t eff = MalusAccumulator::EffectiveWeight(it->second, psi);
+
+        Object entry;
+        entry.push_back(Pair("malus", M));
+        entry.push_back(Pair("psi", psi));
+        entry.push_back(Pair("weight", (int64_t)it->second));
+        entry.push_back(Pair("effective", (int64_t)eff));
+        entry.push_back(Pair("excluded", eff == 0));
+        entry.push_back(Pair("epochs_to_clear",
+                             MalusAccumulator::EpochsToClear(M, g_wpoa_malus_max, g_wpoa_malus_mu)));
+        validators.push_back(Pair(it->first, entry));
+    }
+
+    Object obj;
+    obj.push_back(Pair("epoch", (int64_t)epoch));
+    obj.push_back(Pair("enabled", g_wpoa_malus_enabled));
+    obj.push_back(Pair("validators", validators));
+    return obj;
+}
+
+Value getnodemalus(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "getnodemalus \"address\"\n"
+            "\nReturns the behavioural malus of one validator.\n"
+            "\nArguments:\n"
+            "1. \"address\"  (string, required) the validator address\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"address\": \"...\",     (string) the queried address\n"
+            "  \"epoch\": n,             (numeric) epoch governing selection\n"
+            "  \"malus\": x,             (numeric) accumulator M\n"
+            "  \"psi\": x,               (numeric) correction factor in [0,1]\n"
+            "  \"weight\": n,            (numeric) raw registry weight\n"
+            "  \"effective\": n,         (numeric) w * Psi, consumed by the election\n"
+            "  \"excluded\": bool,       (boolean) whether Psi has reached 0\n"
+            "  \"epochs_to_clear\": n    (numeric) clean epochs needed to become eligible\n"
+            "}\n");
+    }
+    if (pwalletTxsMain == NULL)
+    {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Wallet not available");
+    }
+
+    const std::string address = params[0].get_str();
+    const uint32_t epoch = GoverningMalusEpoch();
+
+    StreamWeightRegistry wregistry(pwalletTxsMain);
+    uint32_t weight = wregistry.GetNodeWeight(address);
+
+    double M = 0.0;
+    if (epoch >= 1)
+    {
+        MalusRegistry mregistry(pwalletTxsMain);
+        M = mregistry.GetAccumulator(address, epoch);
+    }
+    double psi = MalusAccumulator::CorrectionFactor(M, g_wpoa_malus_max);
+    uint32_t eff = MalusAccumulator::EffectiveWeight(weight, psi);
+
+    Object obj;
+    obj.push_back(Pair("address", address));
+    obj.push_back(Pair("epoch", (int64_t)epoch));
+    obj.push_back(Pair("malus", M));
+    obj.push_back(Pair("psi", psi));
+    obj.push_back(Pair("weight", (int64_t)weight));
+    obj.push_back(Pair("effective", (int64_t)eff));
+    obj.push_back(Pair("excluded", eff == 0));
+    obj.push_back(Pair("epochs_to_clear",
+                       MalusAccumulator::EpochsToClear(M, g_wpoa_malus_max, g_wpoa_malus_mu)));
+    return obj;
+}
+
+Value reportmalus(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() < 4 || params.size() > 5)
+    {
+        throw runtime_error(
+            "reportmalus \"kind\" \"address\" height \"evidence\" [\"blockhash2\"]\n"
+            "\nPublishes a misbehaviour report to the open wpoa-weights-malus stream.\n"
+            "Any node may report: the evidence is re-verified independently by every\n"
+            "peer, so a false report is discarded and changes nothing. This node runs\n"
+            "the same check BEFORE broadcasting and refuses to publish evidence that\n"
+            "does not hold locally.\n"
+            "\nFOUR KINDS, in two families. Both are proved from public chain data; they\n"
+            "differ in what the evidence is and what the offence damages.\n"
+            "\n  Consensus-behavioural — evidence is a BLOCK:\n"
+            "    equiv      two distinct blocks at one height from one key (safety)\n"
+            "    delay      a block timestamped earlier than its own score allowed\n"
+            "\n  Published-data integrity — evidence is the publishing TRANSACTION:\n"
+            "    selfwrite  a record on a self-attested stream (wpoa-weights or\n"
+            "               weight-engine-membership) naming a node_address other than\n"
+            "               the signer. Readers discard it, so the attempt is the offence\n"
+            "    badweight  a wpoa-weights value that fails independent recomputation\n"
+            "               from the public pipeline inputs\n"
+            "\nArguments:\n"
+            "1. \"kind\"       (string, required) equiv | delay | selfwrite | badweight\n"
+            "2. \"address\"    (string, required) the accused node (for the data-integrity\n"
+            "                   kinds: the SIGNER of the offending transaction)\n"
+            "3. height         (numeric, required) the height the accusation refers to;\n"
+            "                   for the data-integrity kinds, the height that CONFIRMED\n"
+            "                   the offending transaction\n"
+            "4. \"evidence\"   (string, required) the offending block hash, or — for the\n"
+            "                   data-integrity kinds — the offending transaction id\n"
+            "5. \"blockhash2\" (string, optional) the competing block, for \"equiv\" only\n"
+            "\nThe data-integrity kinds take no further arguments: what they allege is\n"
+            "derived from the referenced transaction, so a caller cannot mis-state it.\n"
+            "\nResult:\n"
+            "\"txid\"  (string) the publish transaction id\n");
+    }
+    if (pwalletTxsMain == NULL)
+    {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Wallet not available");
+    }
+
+    MalusKind kind = mc_MalusKindFromString(params[0].get_str());
+    if (kind == MALUS_NONE)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER,
+                           "kind must be \"equiv\", \"delay\", \"selfwrite\" or "
+                           "\"badweight\"");
+    }
+
+    const std::string address = params[1].get_str();
+
+    int64_t height = 0;
+    if (params[2].type() == int_type)
+    {
+        height = params[2].get_int64();
+    }
+    else if (params[2].type() == str_type)   // the CLI sends numbers as strings
+    {
+        const std::string hs = params[2].get_str();
+        char* end = NULL;
+        long long v = strtoll(hs.c_str(), &end, 10);
+        if (hs.empty() || end == hs.c_str() || *end != '\0')
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "height must be an integer");
+        }
+        height = (int64_t)v;
+    }
+    else
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "height must be an integer");
+    }
+    if (height < 1 || height > (int64_t)0x7fffffff)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "height out of range");
+    }
+
+    std::vector<std::string> blocks;
+    blocks.push_back(params[3].get_str());
+    if (params.size() == 5)
+    {
+        blocks.push_back(params[4].get_str());
+    }
+
+    MalusRegistry registry(pwalletTxsMain);
+
+    // The DATA-INTEGRITY kinds need no extra arguments from the caller: everything they
+    // allege is derivable from the referenced transaction, so the RPC derives it here
+    // rather than asking. That is deliberate — a caller cannot mis-state the accusation,
+    // and the published record still carries the derived fields so a third party can
+    // audit it without re-searching. Argument 4 is the offending TRANSACTION id for
+    // these kinds, not a block hash.
+    MalusDataDetail detail;
+    if (mc_MalusKindIsDataIntegrity(kind))
+    {
+        if (params.size() != 4)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER,
+                               "a data-integrity report takes exactly one evidence txid");
+        }
+
+        if (kind == MALUS_SELF_WRITE)
+        {
+            // Try both self-attested streams: the caller supplies a txid, and which
+            // stream it belongs to is a fact about the transaction, not a choice.
+            const char* candidates[2] = { MC_WPOA_WEIGHTS_STREAM_NAME,
+                                          MC_WEIGHT_MEMBERSHIP_STREAM_NAME };
+            bool found = false;
+            std::string last_reason = "evidence transaction carries no self-attested item";
+            for (int ci = 0; ci < 2 && !found; ci++)
+            {
+                MalusRegistry::AccusedItem probe;
+                std::string why;
+                if (MalusRegistry::LoadAccusedItem(pwalletTxsMain, blocks[0], candidates[ci],
+                                                   probe, &why))
+                {
+                    detail.stream = candidates[ci];
+                    detail.declared_address = probe.declared;
+                    found = true;
+                }
+                else
+                {
+                    last_reason = why;
+                }
+            }
+            if (!found)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, last_reason);
+            }
+        }
+        else   // MALUS_INVALID_WEIGHT
+        {
+            MalusRegistry::AccusedItem probe;
+            std::string why;
+            if (!MalusRegistry::LoadAccusedItem(pwalletTxsMain, blocks[0],
+                                                MC_WPOA_WEIGHTS_STREAM_NAME, probe, &why))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, why);
+            }
+            uint32_t recomputed = 0;
+            bool is_cluster = false;
+            if (!WeightEngineRecomputeWeightForEpoch(probe.epoch, address, is_cluster,
+                                                     recomputed))
+            {
+                throw JSONRPCError(RPC_MISC_ERROR,
+                                   "this node cannot recompute that epoch (inputs "
+                                   "unreadable, epoch not buried, or the weight engine is "
+                                   "off), so it cannot substantiate the report");
+            }
+            detail.epoch      = probe.epoch;
+            detail.declared   = probe.weight;
+            detail.recomputed = is_cluster ? recomputed : 0;
+        }
+    }
+
+    return registry.PublishReport(kind, address, (int)height, blocks, detail);
+}

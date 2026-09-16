@@ -16,8 +16,9 @@ This file is only a map of the directory and its tests.
 | `weight_records.h` | **Pure core**: parsers and accumulators for the input records, plus the chain-derived reconciliation rules (`mc_ValuePaidToTreasury`, `mc_AccumulateReconciliation`). |
 | `weight_reader.cpp/.h` | Stream reading, subscription, and the single block/undo pass that derives `tau`, `R_k` and the per-address flows (`ComputeEpochFacts`). |
 | `weight_verifier.h` | **Pure core**: `mc_VerifyPublishedWeights` — compare published weights against an independent recomputation, epoch-scoped. |
-| `weight_verifier.cpp` | The node-coupled half plus the `weightverifyweights` RPC. |
-| `weight_publisher.cpp/.h` | The write path: `weightsetesg` (Certification Authority only), `weightregistermembership` (public self-write). |
+| `weight_verifier.cpp` | The node-coupled half: run the recomputation, compare, cache the verdicts. |
+| `weight_publisher.cpp/.h` | The write path behind the two input RPCs: caller-address resolution (including the Certification Authority gate), round-trip validation and publication. |
+| [`../rpc/rpcweightengine.cpp`](../rpc/rpcweightengine.cpp) | The RPC handlers themselves: `weightsetesg` (Certification Authority only), `weightregistermembership` (public self-write), `weightverifyweights` (open read). |
 | `weight_authorization.h` | **Pure core**: per-stream write policy. |
 | `weight_streams.h` | Stream names and the **default** parameter values (`MC_WEIGHT_DEFAULT_*`, the stability and setup-publish margins). |
 

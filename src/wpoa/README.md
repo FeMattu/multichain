@@ -326,14 +326,15 @@ current status lives only in
 
 | File | Role |
 |------|------|
-| [`stream_weight_registry.h`](stream_weight_registry.h) / [`.cpp`](stream_weight_registry.cpp) | Phase 1: registry API and implementation, background thread, RPC handlers. |
+| [`stream_weight_registry.h`](stream_weight_registry.h) / [`.cpp`](stream_weight_registry.cpp) | Phase 1: registry API and implementation, background thread. |
 | [`weight_record.h`](weight_record.h) | Phase 1: pure parsing/aggregation helpers (json_spirit only, unit-testable). |
 | [`wpoa_selector.h`](wpoa_selector.h) / [`.cpp`](wpoa_selector.cpp) | Phase 2: pure Efraimidis–Spirakis selector core + node glue (flag, activation predicate, registry-backed election). |
 | [`vrf_wrapper.h`](vrf_wrapper.h) / [`.cpp`](vrf_wrapper.cpp) | Phase 3a: pure `WPoAVRF` ECVRF/DLEQ core over secp256k1 (`Prove`/`Verify`). |
 | [`randao_accumulator.h`](randao_accumulator.h) / [`.cpp`](randao_accumulator.cpp) | Phase 3b: pure `RandaoAccumulator` core + node glue (memoized walk, `WPoARandaoSelectionSeed`). |
 | [`private_sortition.h`](private_sortition.h) / [`.cpp`](private_sortition.cpp) | Phase 4: pure `PrivateSortition` core (`VRFInput` / `ScoreFromVRFOutput` / `NormalizedScore` / `MiningDelay`) + node glue. |
 | [`malus_record.h`](malus_record.h) | Malus: pure record parsing + accumulator core (`Fold` / `CorrectionFactor` / `EffectiveWeight` / `EpochsToClear`). |
-| [`malus_registry.h`](malus_registry.h) / [`.cpp`](malus_registry.cpp) | Malus: the open report stream, the `Valid(e)` predicate, `WPoAApplyMalus` (the single consensus entry point), the RPCs. |
+| [`malus_registry.h`](malus_registry.h) / [`.cpp`](malus_registry.cpp) | Malus: the open report stream, the `Valid(e)` predicate, `WPoAApplyMalus` (the single consensus entry point). |
+| [`../rpc/rpcwpoa.cpp`](../rpc/rpcwpoa.cpp) | The RPC handlers over both registries: `getlocalweight`, `getallweights`, `getnodeweight`, `getallmalus`, `getnodemalus`, `reportmalus`. |
 | [`../weight_engine/`](../weight_engine/) | The weight-production layer. See [weight-engine.md](docs/weight-engine.md). |
 
 Unit suites live in [`test/`](test/) and run node-free:

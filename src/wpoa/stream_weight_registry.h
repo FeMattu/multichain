@@ -17,8 +17,6 @@
 #include <string>
 #include <stdint.h>
 
-#include "json/json_spirit_value.h"
-
 struct mc_WalletTxs;
 struct mc_EntityDetails;
 
@@ -170,9 +168,8 @@ extern uint32_t g_node_weight;
  */
 extern bool g_wpoa_weights_enabled;
 
-/* --- RPC commands (registered in src/rpc/rpclist.cpp) --- */
-json_spirit::Value getlocalweight(const json_spirit::Array& params, bool fHelp);
-json_spirit::Value getallweights(const json_spirit::Array& params, bool fHelp);
-json_spirit::Value getnodeweight(const json_spirit::Array& params, bool fHelp);
+/* The RPC surface over this registry (getlocalweight / getallweights /
+   getnodeweight) lives in src/rpc/rpcwpoa.cpp, with every other RPC handler; the
+   prototypes are declared in rpc/rpcserver.h. */
 
 #endif // STREAM_WEIGHT_REGISTRY_H

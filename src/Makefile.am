@@ -301,6 +301,8 @@ libbitcoin_wallet_a_SOURCES = \
   rpc/rpclibraries.cpp \
   rpc/rpclicense.cpp \
   rpc/rpcexplorer.cpp \
+  rpc/rpcwpoa.cpp \
+  rpc/rpcweightengine.cpp \
   wallet/wallet.cpp \
   wallet/walletcoins.cpp \
   wallet/wallettxs.cpp \

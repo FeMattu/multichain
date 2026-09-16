@@ -73,7 +73,6 @@
 #include <vector>
 #include <stdint.h>
 
-#include "json/json_spirit_value.h"
 #include "wpoa/malus_record.h"
 
 struct mc_WalletTxs;
@@ -190,6 +189,35 @@ public:
                      const MalusDataDetail& detail, double psi_prev,
                      std::string* reason_out);
 
+    /** One decoded weight-pipeline stream item, as read back from its publishing tx. */
+    struct AccusedItem
+    {
+        std::string              stream;       //!< the stream the item belongs to
+        std::string              declared;     //!< the node_address its payload declares
+        std::vector<std::string> publishers;   //!< the addresses that SIGNED the tx
+        uint32_t                 weight;       //!< wpoa-weights only: the published value
+        uint32_t                 epoch;        //!< wpoa-weights only: the epoch it claims
+        int                      height;       //!< confirming height, -1 when unknown
+
+        AccusedItem() : weight(0), epoch(0), height(-1) {}
+    };
+
+    /**
+     * Load the item published by `txid_hex` on `stream_name`, if that transaction is
+     * one. Reads through the wallet-tx store, exactly as every other confirmed-item
+     * read does, so it observes only CONFIRMED state and requires this node to be
+     * subscribed to the stream. Not being subscribed is reported through `reason_out`
+     * rather than as a false accusation: it means this node cannot decide, not that
+     * the report is wrong.
+     *
+     * Public, and static, because the report RPC probes the referenced transaction
+     * with it to DERIVE what it is about to allege instead of asking the caller — so
+     * a caller cannot mis-state the accusation (see reportmalus, rpc/rpcwpoa.cpp).
+     */
+    static bool LoadAccusedItem(mc_WalletTxs* pwallet, const std::string& txid_hex,
+                                const char* stream_name, AccusedItem& out,
+                                std::string* reason_out);
+
 private:
     mc_WalletTxs* m_pWalletTxs;   //!< borrowed pointer, not owned
     std::string   m_StreamName;   //!< "wpoa-weights-malus"
@@ -291,9 +319,8 @@ std::map<std::string, uint32_t> WPoAApplyMalus(const std::map<std::string, uint3
  */
 void ThreadMalusRegistry();
 
-/* --- RPC commands (registered in src/rpc/rpclist.cpp) --- */
-json_spirit::Value getallmalus(const json_spirit::Array& params, bool fHelp);
-json_spirit::Value getnodemalus(const json_spirit::Array& params, bool fHelp);
-json_spirit::Value reportmalus(const json_spirit::Array& params, bool fHelp);
+/* The RPC surface over this registry (getallmalus / getnodemalus / reportmalus)
+   lives in src/rpc/rpcwpoa.cpp, with every other RPC handler; the prototypes are
+   declared in rpc/rpcserver.h. */
 
 #endif // MC_WPOA_MALUS_REGISTRY_H

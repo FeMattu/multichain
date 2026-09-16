@@ -4,22 +4,19 @@
 // Weight-management layer — node-coupled half of the published-weight verification.
 // See weight_verifier.h for the rationale, the fail-open/fail-closed asymmetry and
 // the cost argument. This file holds only the orchestration: run the recomputation,
-// compare, cache the verdicts, and expose them.
+// compare, cache the verdicts, and expose them. The RPC that reports them,
+// weightverifyweights, lives in rpc/rpcweightengine.cpp.
 
 #include "weight_engine/weight_verifier.h"
 
 #include "weight_engine/weight_engine.h"   // HeightToEpoch, g_weight_engine_enabled
 #include "weight_engine/weight_reader.h"   // WeightStreamReader
 
-#include "rpc/rpcwallet.h"      // JSONRPCError, RPC error codes
 #include "core/init.h"          // pwalletTxsMain
 #include "utils/util.h"         // LogPrintf
 #include "utils/sync.h"         // CCriticalSection, LOCK
 
-#include <stdexcept>
-
 using namespace std;
-using namespace json_spirit;
 
 // ---------------------------------------------------------------------------
 // Verdict cache
@@ -171,95 +168,4 @@ uint32_t WeightEngineLastVerifiedEpoch()
 {
     LOCK(cs_weightVerdicts);
     return g_verified_epoch;
-}
-
-// ---------------------------------------------------------------------------
-// RPC
-// ---------------------------------------------------------------------------
-
-Value weightverifyweights(const Array& params, bool fHelp)
-{
-    if (fHelp || params.size() > 0)
-    {
-        throw runtime_error(
-            "weightverifyweights\n"
-            "\nReports this node's INDEPENDENT verification of the weights published on\n"
-            "wpoa-weights, for the most recent epoch it has verified.\n"
-            "\nEvery input of the weight pipeline is public and deterministic — activity\n"
-            "and reconciliation are chain-derived, membership and ESG are published — so\n"
-            "any node can re-run the identical pipeline and check each published value.\n"
-            "A value that does not match the recomputation is provably wrong and is\n"
-            "dropped from the weight map the election consumes.\n"
-            "\nESG is the one input that cannot be recomputed: it is an attestation, so\n"
-            "this check verifies that a publisher applied the pipeline honestly to the\n"
-            "published inputs, not that the ESG scores themselves are truthful. That\n"
-            "rests on the Certification Authority role instead.\n"
-            "\nVerification runs once per buried epoch in the weight-engine thread, so an\n"
-            "epoch of 0 simply means it has not run yet on this node.\n"
-            "\nResult:\n"
-            "{\n"
-            "  \"epoch\": n,               (numeric) the epoch verified, 0 if none yet\n"
-            "  \"verified\": true|false,   (boolean) whether the recomputation succeeded\n"
-            "  \"records\": n,             (numeric) published records examined\n"
-            "  \"invalid\": n,             (numeric) records that failed verification\n"
-            "  \"entries\": [\n"
-            "    {\n"
-            "      \"address\": \"...\",     (string)  the cluster the record is about\n"
-            "      \"published\": n,       (numeric) the value found on chain\n"
-            "      \"published_epoch\": n, (numeric) the epoch it was published FOR, 0 if unstated\n"
-            "      \"recomputed\": n,      (numeric) the value this node derived\n"
-            "      \"verdict\": \"...\"      (string)  ok | mismatch | not-a-cluster |\n"
-            "                                       other-epoch | unverified\n"
-            "    }, ...\n"
-            "  ]\n"
-            "}\n");
-    }
-
-    if (!g_weight_engine_enabled)
-    {
-        throw JSONRPCError(RPC_NOT_SUPPORTED,
-                           "The weight engine is disabled on this node, so there is no "
-                           "pipeline to recompute and nothing to verify. Published "
-                           "weights are accepted on the self-publication rule alone "
-                           "(signer == node_address). Enable -enableweightengine to "
-                           "verify values as well.");
-    }
-
-    const uint32_t epoch = WeightEngineLastVerifiedEpoch();
-    std::map<std::string, WeightVerificationEntry> verdicts = WeightEngineGetVerdicts(epoch);
-
-    // "verified" is false when nothing has been verified yet AND when the last run
-    // could not recompute — in the latter case every entry is UNVERIFIED, so the two
-    // are distinguishable from `records`/`entries` without a third state.
-    bool any_decided = false;
-    size_t invalid = 0;
-    Array entries;
-    for (std::map<std::string, WeightVerificationEntry>::const_iterator it = verdicts.begin();
-         it != verdicts.end(); ++it)
-    {
-        if (it->second.verdict != MC_WEIGHT_VERDICT_UNVERIFIED)
-        {
-            any_decided = true;
-        }
-        if (mc_WeightVerdictIsInvalid(it->second.verdict))
-        {
-            invalid++;
-        }
-
-        Object e;
-        e.push_back(Pair("address", it->first));
-        e.push_back(Pair("published", (int64_t)it->second.published));
-        e.push_back(Pair("published_epoch", (int64_t)it->second.published_epoch));
-        e.push_back(Pair("recomputed", (int64_t)it->second.recomputed));
-        e.push_back(Pair("verdict", string(mc_WeightVerdictToString(it->second.verdict))));
-        entries.push_back(e);
-    }
-
-    Object out;
-    out.push_back(Pair("epoch", (int64_t)epoch));
-    out.push_back(Pair("verified", any_decided));
-    out.push_back(Pair("records", (int64_t)verdicts.size()));
-    out.push_back(Pair("invalid", (int64_t)invalid));
-    out.push_back(Pair("entries", entries));
-    return out;
 }

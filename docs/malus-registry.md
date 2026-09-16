@@ -377,6 +377,9 @@ the node logs a note, because on such a chain those reports are refused network-
 
 ## 9. RPC surface
 
+Implemented in [`rpc/rpcwpoa.cpp`](../src/rpc/rpcwpoa.cpp), registered in
+`rpc/rpclist.cpp` under the `wpoa` category.
+
 | Command | What it does |
 |---|---|
 | `getallmalus` | `M`, `Psi`, raw weight, `w_eff`, exclusion flag and epochs-to-clear for every validator. |
@@ -416,4 +419,5 @@ the node logs a note, because on such a chain those reports are refused network-
 |---|---|
 | [`../malus_record.h`](../malus_record.h) | Pure core: the four kinds and their families, record parsing (including the data-integrity payloads), the `MalusScores` dispatch, `Fold`, `CorrectionFactor`, `EffectiveWeight`, `EpochsToClear`, `ApplyToWeights`. Node-free and unit-tested in isolation. |
 | [`../malus_registry.h`](../malus_registry.h) | The `MalusRegistry` facade, the runtime parameters and `WPoAApplyMalus`. |
-| [`../malus_registry.cpp`](../malus_registry.cpp) | Stream provisioning (open), confirmed-only reads, `ValidReport` and `ValidDataIntegrityReport`, the per-epoch fold, publication, the provisioning thread and the RPCs. |
+| [`../malus_registry.cpp`](../malus_registry.cpp) | Stream provisioning (open), confirmed-only reads, `ValidReport` and `ValidDataIntegrityReport`, the per-epoch fold, publication and the provisioning thread. |
+| [`rpc/rpcwpoa.cpp`](../src/rpc/rpcwpoa.cpp) | The RPC handlers listed in §9, alongside the weight-registry ones. |

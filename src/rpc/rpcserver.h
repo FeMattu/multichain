@@ -377,8 +377,18 @@ extern json_spirit::Value explorerlistassetaddresses(const json_spirit::Array& p
 extern json_spirit::Value explorerlistaddressassettransactions(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value explorergetrawtransaction(const json_spirit::Array& params, bool fHelp);
 
+/* wPoA — the two on-chain registries (implemented in rpc/rpcwpoa.cpp) */
+extern json_spirit::Value getlocalweight(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value getallweights(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value getnodeweight(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value getallmalus(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value getnodemalus(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value reportmalus(const json_spirit::Array& params, bool fHelp);
 
-
+/* WeightEngine — published inputs and verification (implemented in rpc/rpcweightengine.cpp) */
+extern json_spirit::Value weightsetesg(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value weightregistermembership(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value weightverifyweights(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value purehelpitem(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value purehelpitem_nomethod(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value purehelpitem_onlyfilter(const json_spirit::Array& params, bool fHelp);

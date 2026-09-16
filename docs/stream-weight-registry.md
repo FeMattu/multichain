@@ -15,7 +15,7 @@ and are documented together because they are tightly coupled:
 
 | File | Role |
 |------|------|
-| `stream_weight_registry.h` | **Public interface** (declarations): the `StreamWeightRegistry` class, the constants, the global variable `g_node_weight`, the thread entry point `ThreadRegisterNodeWeight` and the prototypes of the three RPC functions. This is what the other files (`init.cpp`, `rpclist.cpp`) include in order to "see" the weight registry. |
+| `stream_weight_registry.h` | **Public interface** (declarations): the `StreamWeightRegistry` class, the constants, the global variable `g_node_weight` and the thread entry point `ThreadRegisterNodeWeight`. This is what the other files (`init.cpp`, `rpc/rpcwpoa.cpp`) include in order to "see" the weight registry. |
 | `stream_weight_registry.cpp` | **Implementation** (definitions): all the real logic for stream creation, subscription, publishing, reading and decoding of weight records. |
 
 ### Why the `.h` / `.cpp` split?
@@ -62,7 +62,7 @@ entire wallet subsystem.
   - [2.7 Reading records — the most delicate path](#27-reading-records-—-the-most-delicate-path)
   - [2.8 The public read methods (thin wrappers over ReadAllRecords)](#28-the-public-read-methods-thin-wrappers-over-readallrecords)
   - [2.9 The deferred registration thread](#29-the-deferred-registration-thread)
-  - [2.10 The three RPC functions (defined here, registered in rpclist.cpp)](#210-the-three-rpc-functions-defined-here-registered-in-rpclistcpp)
+  - [2.10 The three RPC functions (defined in rpc/rpcwpoa.cpp)](#210-the-three-rpc-functions-defined-in-rpcrpcwpoacpp)
 - [3. How this file connects to the others](#3-how-this-file-connects-to-the-others)
 - [Related documents](#related-documents)
 
@@ -904,7 +904,12 @@ void ThreadRegisterNodeWeight(uint32_t weight)
 - After a successful `RegisterLocalWeight`, it waits for on-chain confirmation and prints
   the dump.
 
-### 2.10 The three RPC functions (defined here, registered in `rpclist.cpp`)
+### 2.10 The three RPC functions (defined in `rpc/rpcwpoa.cpp`)
+
+They are **not** in this file: like every other handler in the node they live under
+`src/rpc/`, in [`rpc/rpcwpoa.cpp`](../src/rpc/rpcwpoa.cpp), and are registered in
+`rpclist.cpp`. They are documented here because they are thin callers of the class
+above — each one builds a `StreamWeightRegistry` and reads it.
 
 Common structure (example `getlocalweight`):
 
@@ -957,7 +962,7 @@ flowchart TD
     THREAD -->|writes| WR[createcmd / subscribe / publish<br/>rpcwallet.h — RPC handlers]
     THREAD -->|reads and parsing| WREC[weight_record.h<br/>mc_ParseWeightRecordJson<br/>mc_AccumulateLatestWeight]
 
-    RPCLIST[rpc/rpclist.cpp registers the 3 RPC handlers] -.->|getlocalweight / getallweights / getnodeweight| THREAD
+    RPCLIST[rpc/rpcwpoa.cpp handlers, registered by rpc/rpclist.cpp] -.->|getlocalweight / getallweights / getnodeweight| THREAD
 ```
 
 - **`core/init.h`** declares `pwalletMain`, `pwalletTxsMain`, `ShutdownRequested()` that
@@ -965,7 +970,8 @@ flowchart TD
   `ThreadRegisterNodeWeight`. → see [node-startup.md](node-startup.md).
 - **`weight_record.h`** provides the two pure parsing/aggregation helpers used by
   `DecodeWeightRecord`/`ReadAllRecords`. → see [weight-record.md](weight-record.md).
-- **`rpc/rpclist.cpp`** registers the three RPC functions in the server dispatcher. →
+- **`rpc/rpcwpoa.cpp`** defines the three RPC handlers over this class, and
+  **`rpc/rpclist.cpp`** registers them in the server dispatcher. →
   see [rpc-registration.md](rpc-registration.md).
 - **`rpcwallet.h`** provides the `createcmd`/`subscribe`/`publish` handlers reused for
   writes. → see [multichain-internals.md](multichain-internals.md) §6.

@@ -10,10 +10,6 @@
 
 
 #include "rpc/rpcserver.h"
-#include "wpoa/stream_weight_registry.h"
-#include "wpoa/malus_registry.h"
-#include "weight_engine/weight_publisher.h"
-#include "weight_engine/weight_verifier.h"
 
 
 /* MCHN START */

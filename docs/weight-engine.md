@@ -874,7 +874,7 @@ owning thread (see the note in
 | [`weight_engine.cpp`](../../weight_engine/weight_engine.cpp) | W3: `HeightToEpoch`, `ThreadWeightEngine`, node glue, configuration globals. |
 | [`weight_reader.h`](../../weight_engine/weight_reader.h) / [`.cpp`](../../weight_engine/weight_reader.cpp) | W3: `WeightStreamReader` — lifecycle of the two published streams, confirmed reads with publisher extraction, and the single-pass `ComputeActivityAndReconciliationForEpoch`. |
 | [`weight_publisher.h`](../../weight_engine/weight_publisher.h) / [`.cpp`](../../weight_engine/weight_publisher.cpp) | W3: the single validated write path, the CA-gated ESG RPC and the public self-write membership RPC. No reconciliation write path exists — the quantity is derived. |
-| [`weight_verifier.h`](../../weight_engine/weight_verifier.h) / [`.cpp`](../../weight_engine/weight_verifier.cpp) | Universal verification of the published weights: the pure compare/filter, the per-epoch verdict cache and the `weightverifyweights` RPC. |
+| [`weight_verifier.h`](../../weight_engine/weight_verifier.h) / [`.cpp`](../../weight_engine/weight_verifier.cpp) | Universal verification of the published weights: the pure compare/filter and the per-epoch verdict cache. The `weightverifyweights` RPC that reports it lives in [`rpc/rpcweightengine.cpp`](../src/rpc/rpcweightengine.cpp). |
 
 ### 9.1 Tests
 

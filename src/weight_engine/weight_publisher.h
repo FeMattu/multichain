@@ -60,8 +60,6 @@
 #include <string>
 #include <stdint.h>
 
-#include "json/json_spirit_value.h"
-
 /**
  * WeightPublisher — validated publication of the two published input streams. Static
  * methods; each returns the publish txid or throws JSONRPCError. `from_address` is the
@@ -84,15 +82,34 @@ public:
                                         const std::string& node_address,
                                         const std::string& miner_address);
 
+    /**
+     * This node's own address (mining key -> connect key -> wallet default key), with
+     * NO permission requirement: it is the node's cryptographic identity, and the
+     * address the publishing transaction will be signed with. The acting address of
+     * the SELF-WRITE path — the caller can only ever publish a record about itself,
+     * so nothing beyond `<stream>.write` is needed (checked in WeightPublishTo).
+     */
+    static std::string ResolveLocalNodeAddress();
+
+    /**
+     * The same address, additionally required to hold the Certification Authority
+     * role; throws JSONRPCError when it does not, or when the chain cannot express
+     * the role at all (fail closed). The acting address of the ESG path.
+     *
+     * Deliberately NOT an admin address: administering the chain and certifying ESG
+     * scores are separate competences, and keeping them distinct on chain is the
+     * whole point of the delegated role (weight_authorization.h).
+     */
+    static std::string ResolveLocalCertificationAuthorityAddress();
 };
 
-// RPCs (registered in src/rpc/rpclist.cpp, category "weight").
+// The RPC surface over this publisher (weightsetesg / weightregistermembership)
+// lives in src/rpc/rpcweightengine.cpp, with every other RPC handler; the prototypes
+// are declared in rpc/rpcserver.h.
 //
 // weightsetesg is CERTIFICATION-AUTHORITY-only: it carries an external attestation
 // about a third party that no peer can verify, so restricting the writer is the only
 // defence. weightregistermembership is PUBLIC: it can only ever write a record about
 // the calling node itself, which the reader verifies cryptographically.
-json_spirit::Value weightsetesg(const json_spirit::Array& params, bool fHelp);
-json_spirit::Value weightregistermembership(const json_spirit::Array& params, bool fHelp);
 
 #endif // MC_WEIGHT_PUBLISHER_H
