@@ -53,25 +53,35 @@ flowchart TD
         UW[src/wpoa/test/run_unit_tests.sh<br/>weight / malus / selector<br/>vrf / randao / sortition]
         UE[src/weight_engine/test/run_unit_tests.sh<br/>records / authorization<br/>engine / verifier]
     end
+    subgraph harness [Node-free -- checks the tooling, not the chain]
+        LINT[lib/lint_lib.sh<br/>script syntax / epoch geometry / setup budget<br/>every recorder, against stubbed RPCs]
+        STAT[lib/we_stats.py --selfcheck<br/>chi-square p-values / Gini / entropy / Wilson<br/>Cor. 5.4 + a negative control]
+    end
     subgraph func [Requires a built node -- test/functional/]
-        F[run_functional_tests.sh<br/>suite selection + per-suite timeout]
         SYS[wpoa/functional_test_wpoa_system.sh<br/>ONE full-stack network, warmed up once]
         C[checks on the shared run: weight / stream permissions<br/>malus / consistency / diversity / vrf / randao<br/>randao seed convention / sortition / distribution]
         WE[weight_engine/functional_test_weight_engine.sh<br/>publish side, closed streams, epoch-scoped verdicts]
         WB[weight_engine/..._bootstrap.sh<br/>bootstrap ordering, setup-first-blocks floor]
-        WL[weight_engine/..._large_network.sh<br/>33 nodes, 50 epochs -- NOT in the default set]
+        WL[weight_engine/..._large_network.sh<br/>33 nodes, 50 epochs -- NOT in the default set<br/>records itself to test/output/ and analyses it]
         MAN[Manual tests<br/>single node §4 / three nodes §5]
     end
+    F[run_functional_tests.sh<br/>suite selection + per-suite timeout]
     ALL[src/wpoa/test/run_all_tests.sh<br/>unit then functional] --> UW
     ALL --> F
+    F -->|default, FIRST| LINT
+    F -->|default| STAT
     F -->|default| SYS
     F -->|default| WE
     F -->|default| WB
     F -.--suite weight-engine-large.-> WL
     SYS --> C
+    WL --> OUT[(test/output/&lt;run&gt;/<br/>report.md + summary.txt + CSVs)]
+    OUT --> STAT
     BUILD[make: multichaind / multichain-cli / multichain-util] --> func
     UW -.no build needed.-> UOK([pure logic verified])
     UE -.no build needed.-> UOK
+    LINT -.no build needed.-> UOK
+    STAT -.no build needed.-> UOK
 ```
 
 The functional suites live at the **project level**, not under a module: a functional run
@@ -368,18 +378,26 @@ Notes:
 
 ## 7. Automated functional tests
 
-There are **four** suites under [`test/functional/`](../../../test/functional/), three of
-them in the default set:
+There are **six** suites under [`test/functional/`](../../../test/functional/), five of
+them in the default set. The first two need **no node at all**, which makes them the
+cheapest thing to run before committing to a suite that mines thousands of blocks:
 
-| Suite | Default | What it covers |
-|---|---|---|
-| `wpoa` | yes | the system-level run described below |
-| `weight-engine` | yes | publish side, closed streams, epoch-scoped verdicts (single node) |
-| `weight-engine-bootstrap` | yes | bootstrap ordering, the `setup-first-blocks` floor |
-| `weight-engine-large` | **no** | 33 nodes, 100-block epochs, ≥ 50 epochs; hours |
+| Suite | Default | Node? | What it covers |
+|---|---|---|---|
+| `lib-lint` | yes | no | the harness itself: script syntax, the epoch-geometry and setup-budget helpers, and every per-epoch recorder driven against stubbed RPCs |
+| `stats-selfcheck` | yes | no | the statistical layer: chi-square p-values against textbook criticals, Gini and entropy against closed forms, Cor. 5.4, and a negative control |
+| `wpoa` | yes | yes | the system-level run described below |
+| `weight-engine` | yes | yes | publish side, closed streams, epoch-scoped verdicts (single node) |
+| `weight-engine-bootstrap` | yes | yes | bootstrap ordering, the `setup-first-blocks` floor |
+| `weight-engine-large` | **no** | yes | 33 nodes, 100-block epochs, ≥ 50 epochs; hours. Records itself to `test/output/` and runs the statistical analysis |
+
+`lib-lint` runs first deliberately. The per-epoch recorders fire for the first time at
+the **first epoch rollover**, so before it existed a typo in one of them was reported
+only after the network was up and hundreds of blocks deep — see §13 of the ADR.
 
 ```bash
-./test/functional/run_functional_tests.sh                    # the default three
+./test/functional/run_functional_tests.sh --suite lib-lint   # ~1s, no node
+./test/functional/run_functional_tests.sh                    # the default five
 ./test/functional/run_functional_tests.sh --list             # suites, defaults marked
 ./test/functional/run_functional_tests.sh --suite wpoa       # just one
 ./test/functional/run_functional_tests.sh --suite weight-engine-large --fast

@@ -12,6 +12,13 @@
 > [../../src/wpoa/docs/weight-engine.md](../../src/wpoa/docs/weight-engine.md).
 > Sibling ADRs: [../../src/wpoa/docs/adr/reconciliation-onchain.md](../../src/wpoa/docs/adr/reconciliation-onchain.md),
 > [../../src/wpoa/docs/adr/randao-fold-bare-xor.md](../../src/wpoa/docs/adr/randao-fold-bare-xor.md).
+>
+> **On the paths cited in §1–§4.** Those sections were written *before* the move and cite
+> files at the locations they occupied then, with line numbers referring to their content
+> at that moment. Such citations are marked *as audited* and are deliberately plain text
+> rather than links: after the move and the alignment edits, a link would resolve to a file
+> whose line numbers no longer match what the surrounding text claims — worse than no
+> link. §5 onward cites the current tree and links normally.
 
 ---
 
@@ -21,7 +28,7 @@ The test tree grew module by module. `src/wpoa/test/` and `src/weight_engine/tes
 hold unit tests *and* functional tests, and the functional ones are not module-scoped at
 all: `functional_test_weight_engine_bootstrap.sh` already reaches across the boundary and
 sources `src/wpoa/test/functional_lib.sh`
-([functional_test_weight_engine_bootstrap.sh:50](../../src/weight_engine/test/functional_test_weight_engine_bootstrap.sh#L50)).
+(`src/weight_engine/test/functional_test_weight_engine_bootstrap.sh:50`, as audited).
 A functional run exercises wPoA, the weight engine, the malus registry and the streams as
 one system, so filing those scripts under one module's directory misstates what they test.
 
@@ -182,7 +189,7 @@ src/weight_engine/test/functional_test_weight_engine.sh:174
 ```
 
 and its assertion is **negative** — it asserts the RPC is *gone*
-([lines 170–177](../../src/weight_engine/test/functional_test_weight_engine.sh#L170)):
+(`functional_test_weight_engine.sh:170-177`, as audited):
 
 ```bash
 echo "$r" | grep -qiE 'method not found|unknown command|help' \
@@ -202,11 +209,11 @@ Line-by-line verification of the current payload model in both scripts: **no tes
 or expects `tau`, `reconciled` or an `epoch` field on a reconciliation payload**, because no
 such payload exists in either file. The stream-count assertion is already
 `-eq 2`, with a comment naming the reason
-([functional_test_weight_engine.sh:87-89](../../src/weight_engine/test/functional_test_weight_engine.sh#L87)).
+(`functional_test_weight_engine.sh:87-89`, as audited).
 
 **One real defect found, and it is cosmetic.** The script's own header still says *"the
 **three** input streams are auto-created"*
-([line 6](../../src/weight_engine/test/functional_test_weight_engine.sh#L6)) while the
+(`functional_test_weight_engine.sh:6`, as audited) while the
 assertion at line 88 correctly demands two. Header comment vs. code, in the same file.
 Also line 3 still describes the module as *"WeightEngine publish side (admin
 attestations)"*, which is the pre-ADR model. Both are one-line fixes.
@@ -238,7 +245,7 @@ is **not** invalid: `mc_WeightVerdictIsInvalid` returns true only for `MISMATCH`
 not-invalid property (413). Those are the "fake maps" cases the mandate refers to.
 
 **Functional coverage is effectively nil.** The only functional touch is
-[functional_test_weight_engine.sh:228-231](../../src/weight_engine/test/functional_test_weight_engine.sh#L228):
+`functional_test_weight_engine.sh:228-231` (as audited):
 
 ```bash
 r=$(mcli weightverifyweights 2>&1)
@@ -340,7 +347,7 @@ refuses false `selfwrite` and `badweight` reports across a height sweep at lines
 and asserts the wire spellings are advertised at 248.
 
 **The terminology trap.** The header comment at
-[line 19](../../src/wpoa/test/functional_test_wpoa_system.sh#L19) reads *"(both malus
+`functional_test_wpoa_system.sh:19` (as audited) reads *"(both malus
 families)"* — which the mandate read as "only the two original kinds". It is **correct as
 written**: two families, four kinds, all exercised. I propose sharpening it to *"both malus
 families, all four kinds"* to remove the ambiguity that caused this item, but **no test
@@ -373,7 +380,7 @@ Notes that bear on the new test:
   what you intend, because it is an unusual regime.
 - All four are consensus-critical. They belong in `params.dat`, not on the command line —
   `FL_PARAM_OVERRIDES` is the mechanism
-  ([functional_lib.sh:244](../../src/wpoa/test/functional_lib.sh#L244)), and
+  (`functional_lib.sh:244`, as audited), and
   `functional_test_weight_engine_bootstrap.sh:64-73` documents precisely why.
   `-weighttreasuryaddress` is the exception, by necessity: the address does not exist until
   the genesis node has a wallet, so it arrives as a runtime flag on every node (§5.2).
@@ -1046,3 +1053,129 @@ drawn **uniformly**, a node at zero balance and an epoch carrying real mismatche
 **FAIL**, exit 1, with `chi2 = 1767.099, df = 9, p = 0.0000` on the empirical test while
 every Monte Carlo scenario still passed — the fault-localisation signature above, produced
 on demand.
+
+---
+
+## 13. The large run crashed in the harness — 2026-09-16
+
+### 13.1 What happened
+
+The first real execution of `weight-engine-large` on a host with a working node got
+**further than any previous attempt**, then died:
+
+```
+▶ CHECK: registry_ready_before_wpoa
+  waiting for >= 5 validator(s) with a non-zero weight (timeout 650s)...
+  registry ready: 11 scoreable validator(s) at height 108
+  ✔ the registry carries scoreable weights with the chain still at 108 < 325
+  → registry_ready_before_wpoa: PASS
+...
+  reached height 331.
+functional_lib.sh: line 1104: from: unbound variable
+```
+
+Two separate facts, and they should not be conflated:
+
+1. **The stall fix in §12 works.** The readiness gate reports 11 scoreable validators at
+   height 108, against a setup budget of 325 — the registry was populated with 217 blocks
+   of margin. Under the old geometry-only floor of 109 that margin was **one block**, and
+   losing the race is what produced the dead chain. This is the first direct confirmation;
+   §12 could only argue it from the numbers.
+2. **The harness itself had a bug**, in the recording layer added by the same change.
+
+### 13.2 The bug
+
+```bash
+fl_record_proposers() {
+    local from=$1 to=$2 h=$from        # <-- $from is the OUTER, unset variable
+```
+
+`local` is a **builtin**, so every one of its arguments is word-expanded *before* any
+assignment takes effect. `h=$from` therefore reads the caller's `from`, not the one being
+declared on the same line. Under `set -uo pipefail` that is fatal.
+
+Three properties made it expensive, and they are the interesting part:
+
+* **`bash -n` accepts it.** It is valid syntax; only the semantics are wrong. Syntax
+  checking was the only static gate this tree had, and it cannot see this class at all.
+* **It only executes at the first epoch rollover.** `fl_record_proposers` is not called
+  during setup, bootstrap or the readiness gate — so the failure arrives *after* the
+  expensive part has already succeeded.
+* **No other suite records.** `wpoa`, `weight-engine` and `weight-engine-bootstrap` never
+  call it, so the whole default set passes with the bug present.
+
+A repository-wide scan for the same pattern found **exactly one** instance, the one above.
+The three apparent hits in `functional_test_wpoa_system.sh` are the safe idiom
+`local cur; cur="$(...)"; cur="${cur:-0}"` — three separate commands, where the assignment
+genuinely precedes the read.
+
+### 13.3 The fix, and one more defect found while fixing it
+
+`fl_record_proposers` now declares and assigns separately, and takes each row's height
+**from the block object** instead of from a counter seeded at `$from`:
+
+```bash
+fl_cli 0 listblocks "$from-$to" | python3 -c '... print("%s,%s" % (b["height"], b["miner"]))'
+```
+
+The counter was a second, latent defect. `listblocks` makes no ordering guarantee, and any
+mismatch between the blocks returned and the width of the requested range would have
+shifted every following row — mislabelling the proposer of each block while still producing
+a well-formed CSV. That corrupts a statistical result **silently**, which is strictly worse
+than crashing. The regression check drives the recorder with deliberately out-of-order
+blocks; a counter-based implementation gets all three rows wrong and fails it.
+
+### 13.4 The real conclusion: the harness needed its own tests
+
+Fixing one line does not address why it cost hours to find. The gap was structural: **the
+harness had no tests of its own**, so functions that run only deep inside an expensive suite
+were first exercised by that suite. The response is a new `lib-lint` suite,
+[`test/functional/lib/lint_lib.sh`](../../test/functional/lib/lint_lib.sh) — **no node, about
+one second, first in the default set**:
+
+| Group | What it checks |
+|---|---|
+| Static | every script under `test/functional/` parses; and a targeted scan for the same-statement `local` self-reference, which nothing else can see (shellcheck is not installed here) |
+| Pure helpers | the epoch geometry against known values (floor = `len + 9`; epoch 50 buried at 5005) **and as inverse functions** over 15 (length, epoch) pairs; the setup budget at or above the floor for every size tried and **non-decreasing in the node count**, since a non-monotonic budget is how the stall returns; `fl_lt` / `fl_is_zero` / `fl_is_txid` / diversity spacing |
+| Recorders | every `fl_record_*` driven against **stubbed RPCs**: headers written, epoch stamped, role resolved, decimal balances preserved, `meta.json` valid; inert when recording is disabled; survivable on empty, malformed and field-less RPC answers; and heights taken from the block, not a counter |
+| Contract | `we_stats.py` consumes what the recorders wrote without raising, and exits one of the documented 0/1/2; every raw file the harness writes is documented in `test/output/README.md` |
+
+15 checks, all passing.
+
+**Validated by negative control**, because a guard that can only pass is worth nothing. The
+pre-fix function was reinstated in a scratch copy of the tree: `bash -n` still passed — the
+point — while `lib-lint` failed it **twice over**, once in the static scan and once at
+runtime with the user's own error text:
+
+```
+no_self_reference_in_a_single_local: FAIL
+  functional_lib.sh:1114: local from=$1 to=$2 h=$from   <-- "h=$from" reads $from ...
+record_proposers_does_not_crash_under_set_u: FAIL
+  ✗ fl_record_proposers read an unbound variable: line 1114: from: unbound variable
+```
+
+### 13.5 Audit for the same class elsewhere
+
+The CHECKS section of the large suite also runs only at the very end of a multi-hour run, so
+it carries the same risk profile. Two sweeps:
+
+* Every accumulator it reads (`REFUELS`, `STALLED`, `MAX_VERIFIED_EPOCH`, `VERIFY_*`,
+  `EPOCH_*`, `LAST_RECORDED_HEIGHT`) is initialised **unconditionally** before the drive
+  loop, so no path through the loop can leave one unset.
+* A cross-file scan for reads of variables never assigned in either the script or the
+  library: **0 unresolved references** across all five functional scripts.
+
+### 13.6 Consequence
+
+The immediate one: `weight-engine-large` can now get past its first epoch rollover.
+
+The one worth keeping: **the harness is code, and it was the only code here without tests.**
+Its most expensive functions were also its least exercised, which is exactly backwards. The
+cost of `lib-lint` is about a second per run; the cost of not having it was measured in
+hours of mining.
+
+One honest limit. §12 stated that the stall fix was *diagnosed, not observed*. That is now
+resolved: the readiness gate is confirmed working on a real network, at height 108 of a
+325-block budget. What remains unobserved is everything **after** the first epoch — the
+50-epoch coverage, the restitution feedback moving, and the statistics over real data. Those
+need a full run to make any claim about.

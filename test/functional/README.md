@@ -20,7 +20,9 @@ single module's artifact. The unit tests stay with their modules. Rationale:
 test/functional/
 ├── run_functional_tests.sh      ← the runner: suite selection, per-suite timeout
 ├── lib/
-│   └── functional_lib.sh        ← shared helpers (sourced, never executed)
+│   ├── functional_lib.sh        ← shared helpers (sourced, never executed)
+│   ├── lint_lib.sh              ← checks the harness itself, stubbed RPCs, no node
+│   └── we_stats.py              ← the statistical layer + its own self-check
 ├── wpoa/
 │   ├── functional_test_wpoa_system.sh   ← ONE full-stack network, every feature check
 │   └── analyze_distribution.py          ← chi-square proposer-distribution analyzer
@@ -34,6 +36,7 @@ test/functional/
 
 | Suite | Default? | What it does |
 |---|---|---|
+| `lib-lint` | **yes** | Checks the **harness**, not the chain: every script parses, the epoch-geometry and setup-budget helpers return their known values, and every per-epoch recorder is driven against **stubbed RPCs**. **Needs no node** and takes about a second. It runs first for a reason — the recorders fire for the first time at the first epoch rollover, so a typo there used to surface hours into the large run. |
 | `stats-selfcheck` | **yes** | Validates the statistical machinery itself — chi-square p-values against textbook critical values, Gini and entropy against closed forms, Cor. 5.4, and a negative control confirming an unweighted draw is rejected. **Needs no node**, so it is the one suite that runs where `multichaind` does not build. |
 | `wpoa` | **yes** | One full-stack network (weights + VRF + RANDAO + sortition), warmed up once, then every feature check against that shared run: weight registry, stream permissions, malus, multi-node consistency, mining-diversity, VRF, RANDAO, sortition, distribution. |
 | `weight-engine` | **yes** | Single genesis node: the two published input streams auto-create CLOSED, ESG is Certification-Authority-only, membership is self-written, reconciliation has no write path, the closed-stream guard bites, verification is reachable. |
@@ -43,6 +46,7 @@ test/functional/
 ## Run
 
 ```bash
+./test/functional/run_functional_tests.sh --suite lib-lint # check the harness (~1s, no node)
 ./test/functional/run_functional_tests.sh                  # the default (fast) set
 ./test/functional/run_functional_tests.sh --list           # show suites, mark the defaults
 ./test/functional/run_functional_tests.sh --suite wpoa     # one suite
@@ -63,8 +67,9 @@ WE_LARGE_LAMBDA=0.3 ./test/functional/run_functional_tests.sh --suite weight-eng
 Every script is also runnable directly. The runner adds suite selection, a
 per-suite hard timeout and a **per-suite** summary table.
 
-Requires a built node (`./autogen.sh && ./configure && make`). The unit suites do
-not — see [`src/wpoa/test/`](../../src/wpoa/test/) and
+Requires a built node (`./autogen.sh && ./configure && make`) — except `lib-lint`
+and `stats-selfcheck`, which need none and are therefore worth running before any
+long suite is paid for. The unit suites do not either — see [`src/wpoa/test/`](../../src/wpoa/test/) and
 [`src/weight_engine/test/`](../../src/weight_engine/test/).
 
 ## ⚠ These drive a live distributed system
