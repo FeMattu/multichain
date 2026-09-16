@@ -35,7 +35,7 @@
 import time
 
 import config
-from helpers.chain_setup import looks_txid as _looks_txid
+from test.experimental.helpers.chain_setup import looks_txid as _looks_txid
 
 
 class StreamWriter(object):

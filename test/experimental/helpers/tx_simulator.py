@@ -32,7 +32,7 @@ import random
 import time
 
 import config
-from helpers.chain_setup import looks_txid
+from test.experimental.helpers.chain_setup import looks_txid
 
 
 class TxSimulator(object):

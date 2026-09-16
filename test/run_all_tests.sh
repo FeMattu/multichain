@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 #
 # Run the ENTIRE test suite: wPoA unit tests first, then the project functional suites.
 #
