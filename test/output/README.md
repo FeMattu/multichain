@@ -13,15 +13,23 @@ test/output/<experiment-name>/
 ├── epochs.csv         epoch, height, verified_epoch, mismatch, not_a_cluster, other_epoch, refuels
 ├── gas.csv            epoch, node, role, balance — every node, per epoch
 ├── refuels.csv        epoch, node, role, before, after, amount, txid
+│                      (smoke-network only — the economic observations)
+├── informative.csv    epoch, node, address, drawn, published — company activity
+├── restitution.csv    epoch, node, role, address, amount, txid — miner -> treasury
+├── malus.csv          epoch, address, kind, family, points — from the malus stream
+├── malus_psi.csv      epoch, address, malus, psi — the per-node aggregate
 │
 ├── montecarlo.csv     one row per scenario per candidate: expected vs observed
 ├── distribution.csv   per validator: weight, share, expected, observed, deviation, 95% CI
 ├── concentration.csv  Gini / normalised entropy / max share, for weights and for proposals
 ├── epoch_stats.csv    per-epoch aggregates incl. weight dispersion (CV, Gini)
-└── gas_stats.csv      per-node balance trajectory: first/last/min/mean/sd, refuels, ran-dry
+├── gas_stats.csv      per-node balance trajectory: first/last/min/mean/sd, refuels, ran-dry
+│
+└── plots/             static figures (PNG), with plots/README.md naming each source table
 ```
 
-The first six are **raw observations**, streamed out during the run. The last five are
+The raw observations are streamed out during the run. The `*_stats` / `distribution` /
+`concentration` / `montecarlo` tables are
 **derived** by [`../functional/lib/we_stats.py`](../functional/lib/we_stats.py), which can
 be re-run over the raw files at any time without touching the network:
 
@@ -30,6 +38,23 @@ python3 test/functional/lib/we_stats.py test/output/<experiment-name>
 python3 test/functional/lib/we_stats.py test/output/<experiment-name> --draws 500000
 python3 test/functional/lib/we_stats.py test/output/<experiment-name> --alpha 0.05
 ```
+
+The figures are drawn separately, and deliberately so:
+
+```bash
+python3 test/functional/lib/stats/plots.py test/output/<experiment-name>
+```
+
+`we_stats.py` is **standard-library only**, which is what lets it run on a bare node host
+where matplotlib is absent — that is also the one host where `stats-selfcheck` is the only
+runnable suite. Plotting must not be able to take the analysis down with it, so a missing
+matplotlib is **not a failure**: `plots.py` reports that it cannot draw and exits 0, and the
+verdicts live in `report.md` either way. A figure whose input table is absent is reported as
+skipped, by name, rather than silently omitted.
+
+`restitution.csv` carries a **zero row** for a miner that restituted nothing in an epoch,
+rather than no row at all: `R_k = 0` is a real observation, and an absent row and a zero row
+mean different things to the analysis.
 
 Recording happens **during** the drive loop, not at the end: a run that stalls at epoch 12
 still leaves twelve epochs of evidence, which is the case where the evidence matters most.
