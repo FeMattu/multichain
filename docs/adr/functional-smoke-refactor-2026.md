@@ -576,33 +576,200 @@ silently. The existing `gas_seeded` check does exactly this and should be kept.
 
 ---
 
-## 8. What the refactor will do, once §7 is settled
+## 8. What was built
 
-Stated here so the plan is on record, not as work already done.
+### 8.1 The tree
 
 ```
 test/functional/
 ├── lib/
-│   ├── functional_lib.sh       repaired; economic helpers reworked per §3.2
-│   ├── lint_lib.sh             unchanged + new checks for the new helpers
-│   └── stats/
-│       ├── catalogue.py        NEW — §4's table, observed/derived/unavailable
-│       ├── extractors.py       NEW — admin-as-explorer polling, atomic writes
-│       ├── analysis.py         we_stats.py's analysis, intact
-│       ├── plots.py            NEW — matplotlib, degrades when absent
-│       └── reporting.py        report.md / summary.txt
-├── smoke_network.sh            NEW — the main suite, the mandate's §3 economics
-├── weight_engine/ wpoa/        kept
-└── run_functional_tests.sh     + the new suite
+│   ├── functional_lib.sh       + the economic helpers and recorders
+│   ├── lint_lib.sh             + no_duplicate_function_definitions
+│   ├── audit_transfers.py      NEW — the horizontal-transfer audit, from the chain
+│   ├── we_stats.py             unchanged: standard library only, by design
+│   └── stats/plots.py          NEW — six figures, matplotlib, degrades when absent
+├── smoke_network.sh            NEW — the thesis' economic model on a real network
+├── weight_engine/  wpoa/       kept; the duplicate block removed (§3.4)
+└── run_functional_tests.sh     + the `smoke-network` suite
 ```
 
-Commits, separated as the mandate requires: (a) communication/bug fixes on the existing
-suite, (b) structural consolidation, (c) the transactional/economic model, (d) the
-stats/report/plot pipeline.
+`we_stats.py` was **not** split into `lib/stats/analysis.py` as the mandate sketched. Its
+analysis is one coherent module with a self-check that exercises it end to end, and
+splitting it would have meant re-proving that self-check for no behavioural gain — the
+mandate's own "do not rename for the sake of renaming". The new work went into new files
+beside it. `lib/stats/` exists and holds what is genuinely new.
+
+### 8.2 The economic model, as implemented
+
+| rule | implementation |
+|---|---|
+| GAS premined to the admin | `first-block-reward` = 1e14 raw, `initial-block-reward` = **0**, asserted on chain |
+| companies spend only on fees | informative transactions are **stream publications** on a dedicated `supply-chain-events` stream — never GAS transfers |
+| transaction volume is drawn | `fl_rand_between TX_MIN TX_MAX` per company **per epoch**, independently |
+| miners restitute | random `0..5` transfers per miner per epoch, each a **distinct** amount (`fl_distinct_amount`) |
+| no horizontal GAS | `fl_smoke_assert_no_horizontal_gas` → `audit_transfers.py` |
+| refuel ≠ reconciliation | asserted with a positive control **from a miner**, the actor whose `R_k` is read |
+
+Two details worth naming, because both were wrong first:
+
+* **The informative transactions go to their own stream.** Publishing test payloads onto
+  `weight-engine-membership` would feed the engine's own input with noise and make `tau`
+  indistinguishable from a malformed-record test.
+* **The horizontal-transfer assertion reads the chain, not the generator.** A generator
+  that only issues legitimate flows proves nothing about the ones it did not mean to
+  issue; the claim is about every transfer that happened, and the only witness is the
+  ledger. `audit_transfers.py` reconstructs each transaction's signers from its inputs'
+  previous outputs, over **buried** heights only.
+
+### 8.3 Two unbound-variable defects found in the new code before it ran
+
+Both of the class that `bash -n` cannot see, and both fatal on the first epoch:
+
+* `fl_record_malus_snapshot` referenced `$MC_WPOA_MALUS_STREAM`, which nothing defined —
+  the stream names are now mirrored from the headers as guarded variables;
+* `fl_distinct_amount` did `local -a already=("${!1}")`, and an **empty** caller array
+  through indirect expansion is an unbound variable under `set -u`. That is the *first*
+  restitution of every miner-epoch, i.e. every run.
+
+It is the same class as
+[test-restructure-2026.md §13.2](test-restructure-2026.md)'s `local from=$1 … h=$from`,
+found this time by exercising the helpers under `set -u` without a node rather than by
+losing hours of mining to it.
+
+### 8.4 `rho_k` is not observable, and is declared rather than approximated
+
+No RPC exposes it. `weight_verifier.cpp:251-254` emits `published`, `published_epoch`,
+`recomputed` and `verdict`; `getnodemalus` emits the malus aggregate. Neither carries
+`rho`, `saldo` or `W_k`.
+
+So, following `catalogue.py`'s three states: `w_k` is **observed**, `R_k` is **derived**
+(from the miner → treasury transfers, chain-verified), and `rho_k` is **unavailable** —
+recorded as such, with the reason, instead of being reconstructed from a balance
+difference and presented as a measurement. `restitution_over_time` and
+`weights_over_time` together still make the feedback falsifiable: `R_k` moving while
+`w_k` does not is a broken pipeline, and both flat is an inert one.
+
+### 8.5 Commit separation
+
+As the mandate requires: (a) `test(functional): un-shadow five checks, and stop racing
+the tip`; (b) folded into (a) — no structural move was needed, since §6 found the layout
+already close; (c) the economic model; (d) `test(functional): draw the figures the
+analysis never had`. The ADR is its own commit, first.
 
 ---
 
 ## 9. Test results
 
-Recorded in §6 and completed as runs finish. Nothing in this document reports a passing
-test that was not executed; anything not run says so.
+Everything below was executed in the `mcsim` container against a node rebuilt from this
+tree (`mc-build --clean`). Nothing here is inferred.
+
+### 9.1 Node-free suites
+
+| suite | result |
+|---|---|
+| `lib-lint` | **PASS** — 17/17, including three new checks |
+| `stats-selfcheck` | **PASS** — 14/14, incl. the negative control |
+
+### 9.2 Node-backed suites
+
+| suite | before | after |
+|---|---|---|
+| `wpoa` | `randao_seed_convention` **FAIL**, 10 others PASS | **PASS** — and the tip+1 discriminator runs for the first time |
+| `weight-engine` | **PASS** 22/22 | unchanged |
+| `weight-engine-bootstrap` | **PASS** | unchanged |
+| `smoke-network` | did not exist | §9.4 |
+
+### 9.3 An open anomaly: the empirical chi-square over-rejects
+
+**Not fixed, not caused by this work, and worth more than a footnote.**
+
+`check_distribution` compares the observed proposer counts against `w_k/W_tot` over an
+80-block window with 3 validators. Four runs of the *same* configuration:
+
+| run | chi² (df = 2) | verdict at α = 0.001 |
+|---|---|---|
+| 1 | 2.900 | PASS |
+| 2 | 20.050 | **FAIL** |
+| 3 | 7.812 | PASS (would fail at α = 0.05) |
+
+Under the null, a chi² with 2 degrees of freedom has **mean 2**. The observed mean is
+**10.3**, and one draw sits at p ≈ 4·10⁻⁵. That is over-dispersion, not a run of bad luck:
+the counts vary substantially more than independent multinomial sampling allows.
+
+The most likely explanation is that **the test's independence assumption does not hold**.
+It treats 80 consecutive blocks as 80 independent draws, but consecutive selections on one
+host share timing, scheduling and a chained beacon, so the effective sample size is smaller
+than 80 and the chi-square is correspondingly over-confident. If that is right the test has
+an inflated false-positive rate and the fix is a wider window or a test that does not
+assume independence — **not** a looser α, which would only hide it.
+
+What this is **not**: a weighted-selection fault. `stats-selfcheck` passes its Monte Carlo
+against the same algorithm at 20 000 draws, including the negative control that rejects an
+unweighted draw against 90/10 weights. That is the fault-localisation signature
+[test-restructure-2026.md §12.2](test-restructure-2026.md) describes, reading the way that
+says *design sound, measurement under-powered*.
+
+**Left open deliberately.** Characterising it needs a run count this work did not have the
+budget for, and an unexplained statistic is more useful recorded than quietly re-tuned.
+
+### 9.4 `smoke-network`, and the four defects running it exposed
+
+The first execution of the new suite got through bootstrap, parameters, treasury, seeding
+and the direction rule, and then found four defects **in the new code** — every one of a
+class `bash -n` cannot see, and every one found by running rather than by reading.
+
+| # | defect | how it showed |
+|---|---|---|
+| 1 | `minimum-relay-fee` 0.2 GAS/KB exceeds the wallet's `maxTxFee` of 0.1 GAS | all 13 nodes: `error -6 Transaction too large for fee policy`, while holding 2592 GAS and the right permission |
+| 2 | `fl_distinct_amount` took an array **by name** | `line 1222: !1: unbound variable` on every miner's first restitution |
+| 3 | the per-company `published` counter never reset | `informative.csv` recorded 49, 104, 148, 187, 221, 266 — a running total in every row |
+| 4 | `MAXTXFEE` referenced in the PLAN before assignment | the plan block truncated at that line under `set -u` |
+
+**(1) is the substantive one.** `GetMinimumFee` caps the fee at `maxTxFee`
+(`wallet.cpp:3266`), and the caller then rejects the transaction precisely because the
+capped value is below the relay fee (`walletcoins.cpp:2463`). So once
+`minimum-relay-fee × nBytes/1000 > maxTxFee`, the cap **guarantees** the comparison that
+rejects it. At 0.2 GAS/KB that is every transaction above 500 bytes — which is why a
+474-byte transfer worked in the isolated probe while a membership record did not. Fixed by
+passing `-maxtxfee`, derived from the configured fee: it is **wallet policy, not
+consensus**, so it may sit on the command line and differ per node without forking
+anything.
+
+**(2) and (3) both corrupt silently rather than crash**, which is worse. (3) in particular
+writes a well-formed CSV whose per-company activity is wrong — the same failure mode as
+the counter-based proposer recorder of
+[test-restructure-2026.md §13.3](test-restructure-2026.md). Both now have lint checks:
+`no_array_name_indirect_expansion` caught **two further instances** in the same library
+when it was added.
+
+### 9.5 Verified on a live 13-node network
+
+| check | result |
+|---|---|
+| `chain_parameters_in_force` | **PASS** — incl. `initial-block-reward is 0: the currency is premined` |
+| `network_up_with_treasury` | **PASS** — 13/13 back up, treasury distinct from admin |
+| `gas_seeded` | **PASS** — admin holds 1 000 000 GAS from the premine; 12/12 nodes funded |
+| `reconciliation_direction` | **PASS** — `admin -> node pays the treasury 0`; `miner -> treasury pays the treasury 7` |
+| `registry_ready_before_wpoa` | **PASS** — 2 scoreable validators at height 107 < 265 |
+| informative generation | per-company draws 49, 55, 44, 39, 34, 45 — independent, all within [20, 60] |
+| all ten recorded files | written incrementally during the run |
+
+The premine decision of §7.1 is therefore confirmed end to end on a 13-node network, not
+just on the single-node probe: **`initial-block-reward = 0` with a premine gives a working
+economy**, which is what the thesis specifies and what
+[test-restructure-2026.md §6.2](test-restructure-2026.md) said was impossible.
+
+### 9.6 What remains unverified
+
+Stated plainly, because the whole point of §0 is that this suite's history is full of
+claims nobody had executed:
+
+* **A complete `smoke-network` run to its final verdict.** The economics, recording and
+  every setup check are verified above; the end-of-run block — `no_horizontal_gas_transfers`
+  (and with it `audit_transfers.py` against a real chain), `restitution_reached_the_engine`,
+  the statistics and the figures over real data — had not returned a verdict when this was
+  written. The figures are verified on synthetic data covering every code path, and the
+  analyser is verified by `stats-selfcheck`, but neither is the same as a real run.
+* **`weight-engine-large`** was not re-run. Its economics are the ones §3.2 condemns; it is
+  superseded by `smoke-network` rather than repaired, and deleting it is a decision for you.
+* **The over-dispersion of §9.3**, which needs a run count this work did not have.
