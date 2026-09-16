@@ -679,38 +679,90 @@ tree (`mc-build --clean`). Nothing here is inferred.
 | `weight-engine-bootstrap` | **PASS** | unchanged |
 | `smoke-network` | did not exist | §9.4 |
 
-### 9.3 An open anomaly: the empirical chi-square over-rejects
+### 9.3 An open anomaly: one validator wins far more than its weight — FLAGGED, not fixed
 
-**Not fixed, not caused by this work, and worth more than a footnote.**
+**This is the one finding that may reach production code, so it is reported rather than
+acted on, per the mandate's stop-and-ask clause. No production code was modified.**
 
-`check_distribution` compares the observed proposer counts against `w_k/W_tot` over an
-80-block window with 3 validators. Four runs of the *same* configuration:
+#### What was observed
 
-| run | chi² (df = 2) | verdict at α = 0.001 |
-|---|---|---|
-| 1 | 2.900 | PASS |
-| 2 | 20.050 | **FAIL** |
-| 3 | 7.812 | PASS (would fail at α = 0.05) |
+`check_distribution` and `we_stats.py`'s empirical chi-square both compare observed
+proposer counts against the share `w_k/W_tot` predicts. Across four `wpoa` runs of one
+static-weight configuration, and one 13-node `smoke-network` run:
 
-Under the null, a chi² with 2 degrees of freedom has **mean 2**. The observed mean is
-**10.3**, and one draw sits at p ≈ 4·10⁻⁵. That is over-dispersion, not a run of bad luck:
-the counts vary substantially more than independent multinomial sampling allows.
+| run | validators | blocks | chi² | df | verdict |
+|---|---|---|---|---|---|
+| `wpoa` 1 | 3 | 80 | 2.900 | 2 | PASS |
+| `wpoa` 2 | 3 | 80 | **20.050** | 2 | **FAIL** |
+| `wpoa` 3 | 3 | 80 | 7.812 | 2 | PASS (fails at α = 0.05) |
+| `smoke-network` | 4 | 156 | **28.806** | 3 | **FAIL** (p ≈ 4·10⁻⁶) |
 
-The most likely explanation is that **the test's independence assumption does not hold**.
-It treats 80 consecutive blocks as 80 independent draws, but consecutive selections on one
-host share timing, scheduling and a chained beacon, so the effective sample size is smaller
-than 80 and the chi-square is correspondingly over-confident. If that is right the test has
-an inflated false-positive rate and the fix is a wider window or a test that does not
-assume independence — **not** a looser α, which would only hide it.
+Under the null a chi² has mean `df`. The `wpoa` runs average **10.3 against an expected
+2**, and `smoke-network` fails on a different topology, a different node count and nearly
+twice the sample.
 
-What this is **not**: a weighted-selection fault. `stats-selfcheck` passes its Monte Carlo
-against the same algorithm at 20 000 draws, including the negative control that rejects an
-unweighted draw against 90/10 weights. That is the fault-localisation signature
-[test-restructure-2026.md §12.2](test-restructure-2026.md) describes, reading the way that
-says *design sound, measurement under-powered*.
+The `smoke-network` detail is the sharpest evidence, because it names a single validator:
 
-**Left open deliberately.** Characterising it needs a run count this work did not have the
-budget for, and an unexplained statistic is more useful recorded than quietly re-tuned.
+```
+1aFZN2ks   expected 41.1   observed 30   ratio 0.73
+1DreuUiw   expected 40.1   observed 29   ratio 0.72
+1WY4FnK8   expected 39.0   observed 68   ratio 1.74   <-- 43.6% of blocks on a 25% weight
+1AR3WcTZ   expected 35.6   observed 29   ratio 0.81
+```
+
+One validator takes **1.74×** its expected share while all three others sit uniformly
+below expectation — the shape of one participant absorbing the others' turns, not of noise
+scattering around a mean.
+
+#### A hypothesis raised and REFUTED, recorded because it was tested
+
+The obvious explanation was that the expectation is wrong: `we_stats.py` uses
+`final_weights()`, the **last** epoch's weight vector, while the restitution feedback moves
+the weights every epoch. On this run they moved a great deal — `1AR3WcTZ` went from 41.9%
+of total weight in epoch 1 to 22.8% in epoch 4.
+
+So the test was redone attributing **each block to the weight vector actually in force at
+its height**:
+
+```
+chi2 (time-varying weights) = 28.851   df = 3
+chi2 (final weights, as we_stats.py does) = 28.806
+```
+
+**Essentially identical.** The shares happened to average out, so the fixed-weight
+expectation is not what is failing here, and the methodological explanation is dead. It is
+recorded because a hypothesis that was tested and refuted is worth more to the next reader
+than one that was never raised.
+
+#### What this does and does not license concluding
+
+**Points toward the implementation.** All six Monte Carlo scenarios PASS, including
+`this-run-weights` (chi² = 9.016, df = 4, p = 0.0607) — the same weight vector, the same
+Efraimidis–Spirakis transformation, re-implemented in Python and drawn 50 000 times. Monte
+Carlo PASS with empirical FAIL is precisely the fault-localisation signature
+[test-restructure-2026.md §12.2](test-restructure-2026.md) built the pair of tests to
+produce, and it reads *the design is right and the implementation may not be*.
+
+**Does not yet establish a bug.** Three alternatives are not excluded:
+
+1. **Sampling.** 156 blocks over 4 validators is small, and the runs are few.
+2. **Non-independence.** The test treats consecutive blocks as independent draws; on one
+   host, timing, scheduling and a chained beacon could correlate them, shrinking the
+   effective sample and inflating the false-positive rate. This would explain the `wpoa`
+   variance as well.
+3. **Mining diversity.** The native spacing rule can bar a recent proposer and redistribute
+   turns; it is inert at spacing 1 but the interaction with weighted selection was not
+   isolated here.
+
+**Recommended next step, for your decision:** repeat `smoke-network` several times with a
+fixed `FL_RANDOM_SEED` and a longer window, and check whether the *same address* or the
+*same position* over-wins. Same address across independent chains points at the weight
+pipeline; same position points at timing. That is a measurement campaign, not a code
+change, and it is the cheapest thing that discriminates between a real selector fault and
+an under-powered test.
+
+Until then the suite **fails honestly** on this check rather than being tuned to pass:
+loosening α would convert a signal into silence.
 
 ### 9.4 `smoke-network`, and the four defects running it exposed
 
@@ -742,34 +794,65 @@ the counter-based proposer recorder of
 `no_array_name_indirect_expansion` caught **two further instances** in the same library
 when it was added.
 
-### 9.5 Verified on a live 13-node network
+### 9.5 The complete `smoke-network` run — 14 of 15 checks PASS
+
+Ran to its final verdict on a live 13-node network: 1 admin, 4 miners, 6 companies, 2 CAs;
+`--fast`, 3 epochs of 100 blocks, driven to height **422**, 4 buried epochs.
 
 | check | result |
 |---|---|
-| `chain_parameters_in_force` | **PASS** — incl. `initial-block-reward is 0: the currency is premined` |
+| `chain_parameters_in_force` | **PASS** — incl. *"initial-block-reward is 0: the currency is premined, per thesis 4.2.1"* |
 | `network_up_with_treasury` | **PASS** — 13/13 back up, treasury distinct from admin |
-| `gas_seeded` | **PASS** — admin holds 1 000 000 GAS from the premine; 12/12 nodes funded |
-| `reconciliation_direction` | **PASS** — `admin -> node pays the treasury 0`; `miner -> treasury pays the treasury 7` |
-| `registry_ready_before_wpoa` | **PASS** — 2 scoreable validators at height 107 < 265 |
-| informative generation | per-company draws 49, 55, 44, 39, 34, 45 — independent, all within [20, 60] |
-| all ten recorded files | written incrementally during the run |
+| `gas_seeded` | **PASS** — admin holds 1 000 000 GAS from the premine; 12/12 funded |
+| `reconciliation_direction` | **PASS** — `admin -> node` pays the treasury 0; `miner -> treasury` pays 7 |
+| `registry_ready_before_wpoa` | **PASS** — 5 scoreable validators at height 108 < 265 |
+| `covered_the_required_epochs` | **PASS** — 4 buried epochs, 0 stalls |
+| `economic_activity_generated` | **PASS** — 685 informative tx, 25 restitutions (482.70 GAS) |
+| `no_horizontal_gas_transfers` | **PASS** — 416 buried heights audited from the chain |
+| `restitution_reached_the_engine` | **PASS** — treasury holds 489.7 GAS |
+| `verification_clean_across_epochs` | **PASS** — 0 mismatch, 0 not-a-cluster, 12 other-epoch |
+| `no_malus_false_positives` | **PASS** |
+| `weights_agree_across_nodes` | **PASS** — every miner agrees, total 3001 |
+| `no_persistent_fork` | **PASS** — all 13 agree at buried height 416 |
+| `gas_never_ran_out` | **PASS** — 0 refuels needed, 0 failures |
+| `statistical_tests` | **FAIL** — §9.3 |
 
-The premine decision of §7.1 is therefore confirmed end to end on a 13-node network, not
-just on the single-node probe: **`initial-block-reward = 0` with a premine gives a working
-economy**, which is what the thesis specifies and what
-[test-restructure-2026.md §6.2](test-restructure-2026.md) said was impossible.
+**The economics close, and the arithmetic proves it.** 482.70 GAS of restitution was issued
+by miners and the treasury ended holding **489.70** — the difference is exactly the 7 GAS
+of the direction check's positive control. Every GAS that reached the treasury is
+accounted for, and `no_horizontal_gas_transfers` confirms from the ledger that none moved
+between two ordinary nodes.
+
+**The premine decision of §7.1 is confirmed end to end.** `initial-block-reward = 0` with a
+premine gives a working economy on a 13-node network — companies published 685 fee-paying
+informative transactions, miners earned and returned GAS, and **no node ever needed a
+refuel** because the derived seed covered the run. This is what the thesis specifies and
+what [test-restructure-2026.md §6.2](test-restructure-2026.md) asserted was impossible.
+
+**All six figures were generated** from the real run:
+`weights_over_time`, `election_share_vs_weight`, `gas_by_role`, `weight_dispersion`,
+`restitution_over_time`, `malus_by_family`, with `plots/README.md` mapping each to its
+source table. The degradation path was exercised too: run mid-flight, before the derived
+tables existed, `plots.py` drew the four raw-data figures and reported the other two
+skipped **by name**.
+
+`restitution_over_time` was checked against the raw rows: epoch 1 shows 82.62 / 40.06 /
+33.66 / 9.12 GAS per miner, which are exactly the sums of that epoch's recorded transfers.
 
 ### 9.6 What remains unverified
 
-Stated plainly, because the whole point of §0 is that this suite's history is full of
-claims nobody had executed:
+Stated plainly, because §0's whole point is that this suite's history is full of claims
+nobody had executed:
 
-* **A complete `smoke-network` run to its final verdict.** The economics, recording and
-  every setup check are verified above; the end-of-run block — `no_horizontal_gas_transfers`
-  (and with it `audit_transfers.py` against a real chain), `restitution_reached_the_engine`,
-  the statistics and the figures over real data — had not returned a verdict when this was
-  written. The figures are verified on synthetic data covering every code path, and the
-  analyser is verified by `stats-selfcheck`, but neither is the same as a real run.
+* **The over-winning validator of §9.3.** Flagged, not fixed, and not attributed to
+  production code without the repeat campaign §9.3 recommends.
+* **A full-length (non-`--fast`) `smoke-network` run.** 3 epochs exercise every mechanism
+  and close the economic loop, but the restitution feedback is defined *across* epochs and
+  12+ epochs would show whether `w_k` trajectories separate in the way Def. 6.10 predicts.
+  `weights.csv` already shows the weights moving substantially (`1AR3WcTZ` from 41.9% of
+  total weight in epoch 1 to 22.8% in epoch 4), so the feedback is demonstrably **not
+  inert** — which is the defect §3.2 found in the suite this replaces — but three epochs
+  are too few to characterise its shape.
 * **`weight-engine-large`** was not re-run. Its economics are the ones §3.2 condemns; it is
-  superseded by `smoke-network` rather than repaired, and deleting it is a decision for you.
-* **The over-dispersion of §9.3**, which needs a run count this work did not have.
+  superseded by `smoke-network` rather than repaired, and whether to delete it is your
+  decision.
