@@ -70,6 +70,7 @@ suite_script() {
         weight-engine)           echo "$SCRIPT_DIR/weight_engine/functional_test_weight_engine.sh" ;;
         weight-engine-bootstrap) echo "$SCRIPT_DIR/weight_engine/functional_test_weight_engine_bootstrap.sh" ;;
         weight-engine-large)     echo "$SCRIPT_DIR/weight_engine/functional_test_weight_engine_large_network.sh" ;;
+        smoke-network)           echo "$SCRIPT_DIR/smoke_network.sh" ;;
         *)                       echo "" ;;
     esac
 }
@@ -82,6 +83,7 @@ suite_desc() {
         weight-engine)           echo "weight-engine publish side + closed streams (single node)" ;;
         weight-engine-bootstrap) echo "weight-engine bootstrap ordering on a clean network" ;;
         weight-engine-large)     echo "LARGE network, 100-block epochs, >= 50 epochs (heavy)" ;;
+        smoke-network)           echo "the thesis economic model on a real network (premined GAS, informative tx, miner restitution)" ;;
         *)                       echo "" ;;
     esac
 }
@@ -96,12 +98,13 @@ suite_timeout() {
         lib-lint)            echo 300 ;;
         stats-selfcheck)     echo 300 ;;
         weight-engine-large) [ "$FAST_LARGE" = "1" ] && echo 3600 || echo 28800 ;;
+        smoke-network)       [ "$FAST_LARGE" = "1" ] && echo 3600 || echo 14400 ;;
         *)                   echo 1800 ;;
     esac
 }
 
 DEFAULT_SUITES="lib-lint stats-selfcheck wpoa weight-engine weight-engine-bootstrap"
-ALL_SUITES="lib-lint stats-selfcheck wpoa weight-engine weight-engine-bootstrap weight-engine-large"
+ALL_SUITES="lib-lint stats-selfcheck wpoa weight-engine weight-engine-bootstrap smoke-network weight-engine-large"
 
 # Print the whole leading comment block, rather than a hardcoded line range that
 # silently truncates the help text every time the header grows.
@@ -144,9 +147,15 @@ while [ "$#" -gt 0 ]; do
 done
 [ -n "$SELECTED" ] || SELECTED="$DEFAULT_SUITES"
 
-# --fast is the large suite's own knob; export it so the script sees it however it was
-# selected (flag or environment).
-[ "$FAST_LARGE" = "1" ] && export WE_LARGE_FAST=1
+# --fast is the heavy suites' own knob; export it so each script sees it however it was
+# spelled. BOTH names are set: the flag is one user-facing option, and forwarding it to
+# only one of the two suites that understand it makes `--suite smoke-network --fast`
+# silently run the FULL 12-epoch configuration -- which is exactly what happened the first
+# time this suite was run.
+if [ "$FAST_LARGE" = "1" ]; then
+    export WE_LARGE_FAST=1
+    export SMOKE_FAST=1
+fi
 
 # ---- run --------------------------------------------------------------------
 echo "══════════════════════════════════════════════════════════════════════"

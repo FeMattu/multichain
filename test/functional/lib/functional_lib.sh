@@ -1178,3 +1178,219 @@ fl_record_analyse() {
     fl_log "summary: $FL_RUN_DIR/summary.txt"
     return "$rc"
 }
+
+# ---- stream names, mirrored from the code ------------------------------------
+# Kept as variables rather than inlined so a rename in the node shows up as one edit
+# here. Values from wpoa/malus_registry.h and wpoa/stream_weight_registry.h.
+MC_WPOA_MALUS_STREAM="${MC_WPOA_MALUS_STREAM:-wpoa-weights-malus}"   # MC_WPOA_MALUS_STREAM_NAME
+MC_WPOA_WEIGHTS_STREAM="${MC_WPOA_WEIGHTS_STREAM:-wpoa-weights}"     # MC_WPOA_WEIGHTS_STREAM_NAME
+
+# ---- randomness for the economic model ---------------------------------------
+# The model is explicit that the transaction counts are DRAWN, not fixed: a constant
+# count gives tau no variance across epochs, so the weight pipeline has nothing to
+# respond to and a run measures a constant while appearing to measure a system.
+#
+# $RANDOM is bash's own PRNG, which is fine here: nothing about the statistical claims
+# depends on the quality of the harness's randomness, only on the counts genuinely
+# varying. Seeded from FL_RANDOM_SEED when set, so a run can be reproduced exactly.
+[ -n "${FL_RANDOM_SEED:-}" ] && RANDOM="$FL_RANDOM_SEED"
+
+# fl_rand_between MIN MAX -> an integer in [MIN, MAX], inclusive at both ends.
+fl_rand_between() {
+    local lo=$1 hi=$2 span
+    span=$(( hi - lo + 1 ))
+    [ "$span" -le 0 ] && { echo "$lo"; return; }
+    echo $(( lo + RANDOM % span ))
+}
+
+# fl_distinct_amount "<amounts already used, space-separated>" -> a new decimal amount.
+#
+# The model requires that two restitutions by the same miner in the same epoch carry
+# DIFFERENT amounts. That is not fussiness: a repeated constant is indistinguishable from
+# a harness that computed one value and sent it twice, so a reader cannot tell a varying
+# quantity from a stuck one. Drawing until the value is new makes the variation a
+# property of the data rather than a claim in a comment.
+#
+# TAKES A STRING, NOT AN ARRAY NAME, and that is the whole point of this signature.
+# The obvious `fl_distinct_amount used[@]` + `local -a a=("${!1}")` shape FAILS under
+# `set -u` the moment the caller's array is empty -- which is the FIRST restitution of
+# every miner-epoch, i.e. always:
+#
+#     functional_lib.sh: line 1222: !1: unbound variable
+#
+# and it fails only from inside a function with a `local` array, so it survives a
+# top-level smoke test of the helper. Observed on a real run; a plain string has no
+# indirect expansion to get wrong.
+#
+# Two decimal places, in [1.00, 40.99]: large enough that a run's R_k stands out against
+# the fees, small enough that a miner's float covers RESTIT_MAX of them per epoch.
+fl_distinct_amount() {
+    local already=" ${1:-} "
+    local attempt candidate
+    for ((attempt = 0; attempt < 50; attempt++)); do
+        candidate="$(awk -v r1="$RANDOM" -v r2="$RANDOM" \
+            'BEGIN{printf "%.2f", 1 + (r1 % 40) + (r2 % 100)/100}')"
+        case "$already" in *" $candidate "*) continue ;; esac
+        echo "$candidate"; return
+    done
+    # 50 collisions in a 4000-value space will not happen, but returning nothing would
+    # make the caller send an empty amount, so fall back to something valid.
+    echo "$candidate"
+}
+
+# ---- the economic recorders --------------------------------------------------
+# Separate from fl_record_begin so that the suites which do NOT model economics do not
+# grow empty files they never write: an empty CSV with a header reads as "measured, found
+# nothing", which is a different claim from "not measured here".
+
+fl_smoke_record_begin() {
+    [ -n "$FL_RUN_DIR" ] || return 0
+    echo "epoch,node,address,drawn,published"          > "$FL_RUN_DIR/informative.csv"
+    echo "epoch,node,role,address,amount,txid"         > "$FL_RUN_DIR/restitution.csv"
+    echo "epoch,address,kind,family,points"            > "$FL_RUN_DIR/malus.csv"
+    echo "epoch,address,malus,psi"                     > "$FL_RUN_DIR/malus_psi.csv"
+    fl_log "recording the economic observations to $FL_RUN_DIR"
+}
+
+# fl_record_informative <epoch> <node> <address> <drawn> <published>
+# Both the DRAWN count and the PUBLISHED count are kept. They should be equal; when they
+# are not, the gap is the number of transactions the node could not issue (out of gas, a
+# missing permission), and that is exactly the diagnosis a low tau would otherwise hide.
+fl_record_informative() {
+    [ -n "$FL_RUN_DIR" ] || return 0
+    printf '%s,%s,%s,%s,%s\n' "$1" "$2" "$3" "$4" "$5" >> "$FL_RUN_DIR/informative.csv"
+}
+
+# fl_record_restitution <epoch> <node> <address> <amount> <txid>
+fl_record_restitution() {
+    [ -n "$FL_RUN_DIR" ] || return 0
+    printf '%s,%s,%s,%s,%s,%s\n' "$1" "$2" "${FL_ROLE[$2]:-?}" "$3" "$4" "$5" \
+        >> "$FL_RUN_DIR/restitution.csv"
+}
+
+# A miner that restituted NOTHING this epoch is a real observation (R_k = 0 legitimately,
+# and rho with it), so it is recorded as a zero rather than left as an absent row. An
+# absent row and a zero row mean different things to the analysis, and only one of them
+# is true.
+fl_record_restitution_none() {
+    [ -n "$FL_RUN_DIR" ] || return 0
+    printf '%s,%s,%s,%s,0,\n' "$1" "$2" "${FL_ROLE[$2]:-?}" "$3" >> "$FL_RUN_DIR/restitution.csv"
+}
+
+# fl_record_malus_snapshot <epoch> MINER_IDX[@] ADDR[@]
+#
+# TWO SOURCES, because neither alone answers the question.
+#
+# getnodemalus returns the AGGREGATE per node -- address, epoch, malus, psi, weight,
+# effective, excluded, epochs_to_clear. It has NO per-record breakdown, so it cannot say
+# which KIND of violation produced a malus, and the mandate asks for a histogram by
+# family. The per-kind detail lives in the malus STREAM, where each record carries its
+# `kind` field (MC_WPOA_MALUS_FIELD_KIND).
+#
+# So the scalar comes from the RPC and the kinds from the stream. On an honest run both
+# are empty, which is the expected result and is recorded as such rather than skipped.
+# Takes SPACE-SEPARATED LISTS, not array names -- see fl_distinct_amount for why
+# `${!name}` is not used anywhere in this library.
+# fl_record_malus_snapshot <epoch> "<node indices>" "<addresses, same order as nodes>"
+fl_record_malus_snapshot() {
+    [ -n "$FL_RUN_DIR" ] || return 0
+    local epoch=$1
+    local -a idxs=() addrs=()
+    read -r -a idxs  <<< "${2:-}"
+    read -r -a addrs <<< "${3:-}"
+    local idx a psi m
+
+    # The aggregate, per miner: a non-unity psi on an honest run is itself the finding.
+    for idx in ${idxs[@]+"${idxs[@]}"}; do
+        a="${addrs[idx]:-}"
+        [ -n "$a" ] || continue
+        local j; j="$(fl_cli 0 getnodemalus "$a" 2>/dev/null)"
+        m="$(  printf '%s' "$j" | sed -nE 's/.*"malus"[[:space:]]*:[[:space:]]*([0-9.]+).*/\1/p' | head -n1)"
+        psi="$(printf '%s' "$j" | sed -nE 's/.*"psi"[[:space:]]*:[[:space:]]*([0-9.]+).*/\1/p' | head -n1)"
+        printf '%s,%s,%s,%s\n' "$epoch" "$a" "${m:-0}" "${psi:-1}" >> "$FL_RUN_DIR/malus_psi.csv"
+    done
+
+    # The per-kind detail, from the stream that actually carries it.
+    fl_cli 0 liststreamitems "$MC_WPOA_MALUS_STREAM" 2>/dev/null | python3 -c '
+import sys, json
+try:
+    items = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+if not isinstance(items, list):
+    sys.exit(0)
+for it in items:
+    if not isinstance(it, dict):
+        continue
+    d = it.get("data")
+    # A stream item carries its payload as hex, or already parsed as json.
+    rec = None
+    if isinstance(d, dict):
+        rec = d.get("json") if isinstance(d.get("json"), dict) else d
+    elif isinstance(d, str):
+        try:
+            rec = json.loads(bytes.fromhex(d).decode("utf-8", "replace"))
+        except Exception:
+            rec = None
+    if not isinstance(rec, dict):
+        continue
+    kind = rec.get("kind") or "?"
+    fam = "data-integrity" if kind in ("selfwrite", "badweight") else "behavioural"
+    print("%s,%s,%s,%s" % (rec.get("address", "?"), kind, fam, rec.get("points", 0)))
+' 2>/dev/null | while IFS= read -r r; do
+        [ -n "$r" ] && printf '%s,%s\n' "$epoch" "$r" >> "$FL_RUN_DIR/malus.csv"
+    done
+}
+
+# ---- the horizontal-transfer assertion ---------------------------------------
+# fl_smoke_assert_no_horizontal_gas <admin> <treasury> ADDR[@]
+#
+# The model permits exactly two GAS directions: admin -> node (seed, refuel) and
+# node -> treasury (restitution). A transfer between two ordinary nodes is forbidden, and
+# asserting it over the CHAIN rather than over the generator is the whole point: a
+# generator that only issues legal flows proves nothing about the ones it did not mean to
+# issue. This walks the confirmed transactions and reports any output paying a known
+# non-admin, non-treasury address in a transaction that address did not receive from the
+# admin.
+#
+# Implemented against listblocks + getrawtransaction, i.e. entirely through the
+# admin-as-explorer path, and deliberately NOT against the wallet: a wallet only knows its
+# own transactions, and the claim is about every pair of nodes.
+# fl_smoke_assert_no_horizontal_gas <admin> <treasury> "<every node address, space-separated>"
+fl_smoke_assert_no_horizontal_gas() {
+    local admin=$1 treasury=$2
+    local -a addrs=()
+    read -r -a addrs <<< "${3:-}"
+    local tip from to
+    tip="$(fl_tip_height 0)"; tip="${tip:-0}"
+    from=1; to=$(( tip - FL_STABILITY_MARGIN ))
+    [ "$to" -lt "$from" ] && { fl_log "chain too short to audit transfers"; fl_ok "no horizontal transfer found (nothing buried yet)"; return; }
+
+    local known; known="$(printf '%s\n' "${addrs[@]}" | paste -sd, -)"
+    local report
+    report="$(fl_cli 0 listblocks "$from-$to" 2>/dev/null | python3 -c '
+import json, sys, subprocess, os
+try:
+    blocks = json.load(sys.stdin)
+except Exception:
+    print("PARSE_FAIL"); sys.exit(0)
+print("BLOCKS %d" % (len(blocks) if isinstance(blocks, list) else 0))
+' 2>/dev/null)"
+    fl_log "auditing GAS flows over buried heights $from..$to  ($report)"
+
+    # The per-transaction walk is done in one python pass over the range, calling the CLI
+    # for each block. Kept simple deliberately: this runs once, at the end of a run.
+    local violations
+    violations="$(FL_AUDIT_ADMIN="$admin" FL_AUDIT_TREASURY="$treasury" \
+                  FL_AUDIT_KNOWN="$known" FL_AUDIT_FROM="$from" FL_AUDIT_TO="$to" \
+                  FL_AUDIT_BIN="$BINDIR" FL_AUDIT_DD="${FL_DATADIRS[0]}" \
+                  FL_AUDIT_PORT="${FL_RPCPORTS[0]}" FL_AUDIT_CHAIN="$FL_CHAIN" \
+                  python3 "$FL_LIB_DIR/audit_transfers.py" 2>/dev/null)"
+    local n; n="$(printf '%s' "$violations" | grep -c . 2>/dev/null)"; n="${n:-0}"
+    if [ "$n" -eq 0 ]; then
+        fl_ok "no GAS transfer between two non-admin, non-treasury addresses"
+    else
+        printf '%s\n' "$violations" | sed 's/^/      /'
+        fl_bad "horizontal GAS transfers found ($n) -- only admin->node and node->treasury are legitimate"
+    fi
+}

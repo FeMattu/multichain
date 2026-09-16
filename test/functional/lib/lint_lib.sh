@@ -142,6 +142,35 @@ fl_check_begin "no_duplicate_function_definitions" 1
     fl_assert_zero "$dups" "files defining the same function more than once"
 fl_check_end || true
 
+fl_check_begin "no_array_name_indirect_expansion" 1
+    # `local -a a=("${!1}")`, with the caller passing `myarr[@]`, is the idiomatic bash
+    # way to take an array by name -- and it ABORTS under `set -u` whenever the caller's
+    # array is empty:
+    #
+    #     functional_lib.sh: line 1222: !1: unbound variable
+    #
+    # What makes it expensive is where it fails. It only breaks from inside a function
+    # whose array is `local`, so the helper passes a top-level smoke test, and the empty
+    # case is usually the FIRST call -- so it surfaces deep in a run, not in the test of
+    # the helper. That is exactly what happened to fl_distinct_amount, which took an
+    # array name and died on every miner's first restitution.
+    #
+    # The fix is a signature, not a guard: pass a string. This check keeps the shape from
+    # coming back.
+    hits=0
+    while IFS= read -r f; do
+        # Comment lines are skipped: this very file, and the helper that documents the
+        # trap, both describe the shape in prose, and a lint that fires on its own
+        # explanation teaches people to ignore it.
+        found="$(grep -nE '^[[:space:]]*(local|declare|typeset)[[:space:]]+(-a[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*=\(\"\$\{!' "$f" 2>/dev/null)"
+        if [ -n "$found" ]; then
+            hits=$(( hits + 1 ))
+            printf '%s\n' "$found" | sed "s|^|      $(basename "$f"):|"
+        fi
+    done < <(find "$FUNC_DIR" -name '*.sh' -type f | sort)
+    fl_assert_zero "$hits" "helpers taking an array BY NAME through \${!x} (fails on an empty array under set -u)"
+fl_check_end || true
+
 # =============================================================================
 # B — PURE HELPERS  (epoch geometry and the setup budget: no RPC, exact answers)
 # =============================================================================
