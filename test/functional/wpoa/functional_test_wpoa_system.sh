@@ -152,6 +152,15 @@ check_weight() {
 # every node re-deriving the evidence, not from restricting who may speak.
 check_stream_permissions() {
     local w_write m_write unauth
+    # WAIT FOR BOTH STREAMS FIRST. The engine creates them from a background thread, so
+    # reading their properties the instant the check runs is a race: liststreams returns
+    # nothing, fl_stream_write_restricted yields "", and "" compared against "false"
+    # fails an assertion about a policy that is entirely correct. Observed on a slower
+    # run, where wpoa-weights existed and wpoa-weights-malus did not yet.
+    fl_wait_stream 0 wpoa-weights 60 \
+        || fl_bad "wpoa-weights does not exist after 60s -- the engine never created it"
+    fl_wait_stream 0 wpoa-weights-malus 60 \
+        || fl_bad "wpoa-weights-malus does not exist after 60s -- the malus registry never created it"
     w_write="$(fl_stream_write_restricted 0 wpoa-weights)"
     m_write="$(fl_stream_write_restricted 0 wpoa-weights-malus)"
     fl_log "wpoa-weights       restrict.write = $w_write (expect true  = closed)"

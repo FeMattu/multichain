@@ -124,6 +124,23 @@ fl_native_diversity_spacing() {
     }'
 }
 
+# Wait until <stream> exists on node i, up to <timeout> seconds. Prints nothing; returns
+# non-zero on timeout so the caller can say what the absence means.
+#
+# The engine creates its streams from a background thread, so "does this stream exist" is
+# a question with a TIME in it. A check that reads a stream's properties the moment it is
+# asked gets an empty answer whenever the run is a little slower than usual, and an empty
+# answer compared against "false" fails an assertion about a policy that is perfectly
+# correct -- the failure is a stopwatch, not a permission.
+fl_wait_stream() {
+    local i=$1 name=$2 timeout=${3:-60} t
+    for ((t = 0; t < timeout; t += 2)); do
+        fl_cli "$i" liststreams "$name" 2>/dev/null | grep -q "\"$name\"" && return 0
+        sleep 2
+    done
+    return 1
+}
+
 # "true" / "false" — whether publishing to <stream> needs a write permission.
 # Reads the "write" flag of the stream's "restrict" object (liststreams verbose).
 fl_stream_write_restricted() {

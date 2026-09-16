@@ -690,12 +690,14 @@ acted on, per the mandate's stop-and-ask clause. No production code was modified
 proposer counts against the share `w_k/W_tot` predicts. Across four `wpoa` runs of one
 static-weight configuration, and one 13-node `smoke-network` run:
 
-| run | validators | blocks | chi² | df | verdict |
-|---|---|---|---|---|---|
-| `wpoa` 1 | 3 | 80 | 2.900 | 2 | PASS |
-| `wpoa` 2 | 3 | 80 | **20.050** | 2 | **FAIL** |
-| `wpoa` 3 | 3 | 80 | 7.812 | 2 | PASS (fails at α = 0.05) |
-| `smoke-network` | 4 | 156 | **28.806** | 3 | **FAIL** (p ≈ 4·10⁻⁶) |
+| run | validators | blocks | chi² | df | verdict | who over-won |
+|---|---|---|---|---|---|---|
+| `wpoa` 1 | 3 | 80 | 2.900 | 2 | PASS | heaviest, 1.18× |
+| `wpoa` 2 | 3 | 80 | **20.050** | 2 | **FAIL** | **lightest, 2.03×** |
+| `wpoa` 3 | 3 | 80 | 7.812 | 2 | PASS (fails at α = 0.05) | heaviest, 1.25× |
+| `wpoa` 4 | 3 | 80 | — | 2 | PASS | — |
+| `wpoa` 5 | 3 | 80 | **14.862** | 2 | **FAIL** | **heaviest, 1.38×** |
+| `smoke-network` | 4 | 156 | **28.806** | 3 | **FAIL** (p ≈ 4·10⁻⁶) | middle, 1.74× |
 
 Under the null a chi² has mean `df`. The `wpoa` runs average **10.3 against an expected
 2**, and `smoke-network` fails on a different topology, a different node count and nearly
@@ -713,6 +715,16 @@ The `smoke-network` detail is the sharpest evidence, because it names a single v
 One validator takes **1.74×** its expected share while all three others sit uniformly
 below expectation — the shape of one participant absorbing the others' turns, not of noise
 scattering around a mean.
+
+**And the over-winner is not the same validator each time.** That is the most useful thing
+in the table. Across six runs the excess lands on the heaviest validator three times, on
+the **lightest** once (2.03× its expected share, on a 100/200/300 static weight vector) and
+on a middle one once. A systematic weight-pipeline bias would favour the same weight class
+every time; a run-level *streak*, landing on whichever validator happens to catch it, is
+what this looks like. That argues **away** from a weight-computation fault and **toward**
+the non-independence of consecutive selections — which is also the only hypothesis that
+explains the `wpoa` variance, since those runs use static `-weight` flags and have no
+feedback at all.
 
 #### A hypothesis raised and REFUTED, recorded because it was tested
 
@@ -746,18 +758,23 @@ produce, and it reads *the design is right and the implementation may not be*.
 **Does not yet establish a bug.** Three alternatives are not excluded:
 
 1. **Sampling.** 156 blocks over 4 validators is small, and the runs are few.
-2. **Non-independence.** The test treats consecutive blocks as independent draws; on one
-   host, timing, scheduling and a chained beacon could correlate them, shrinking the
-   effective sample and inflating the false-positive rate. This would explain the `wpoa`
-   variance as well.
+2. **Non-independence — now the leading hypothesis.** The test treats consecutive blocks as
+   independent draws; on one host, timing, scheduling and a chained beacon could correlate
+   them, shrinking the effective sample and inflating the false-positive rate. It is the
+   only candidate that accounts for *both* the `smoke-network` failure and the `wpoa`
+   variance under static weights, and for the over-winner moving between weight classes.
 3. **Mining diversity.** The native spacing rule can bar a recent proposer and redistribute
    turns; it is inert at spacing 1 but the interaction with weighted selection was not
    isolated here.
 
-**Recommended next step, for your decision:** repeat `smoke-network` several times with a
-fixed `FL_RANDOM_SEED` and a longer window, and check whether the *same address* or the
-*same position* over-wins. Same address across independent chains points at the weight
-pipeline; same position points at timing. That is a measurement campaign, not a code
+**Recommended next step, for your decision:** the six runs above already show the
+over-winner moving between weight classes, so the discriminating measurement is now about
+*runs of consecutive blocks* rather than about identity. Record the proposer sequence and
+test it for autocorrelation — the length distribution of same-proposer streaks against what
+independent weighted draws predict. If streaks are longer than chance, the test's
+independence assumption is what is broken and the remedy is a wider window or a test that
+does not assume it. `proposers.csv` already records exactly the sequence this needs, so it
+is an analysis over data the harness now collects. That is a measurement campaign, not a code
 change, and it is the cheapest thing that discriminates between a real selector fault and
 an under-powered test.
 
