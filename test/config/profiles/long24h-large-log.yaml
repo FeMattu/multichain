@@ -1,0 +1,71 @@
+# Statistical long-run, large size: 1 admin, 3 CAs, 10 miners, 20 companies -> 34 nodes
+# (identical node mix to large.yaml). 144 epochs of 60 blocks -> 8640 configured blocks
+# at 10 s/block = 24h00m of pure mining time exactly. large.yaml's own overhead was
+# ~12.5% on top of its configured block count (see ../schema.md 3) -- expect the real
+# run to land closer to 26-27h once the harness's auto-derived setup-first-blocks are
+# added.
+#
+# Format and defaults: ../schema.md
+# The wPoA/WeightEngine activation flags are NOT configurable here: every chain this
+# harness creates runs the full stack (weights -> selection -> vrf -> randao ->
+# sortition -> malus) plus the weight engine.
+#
+# Part of a none/log/sqrt triplet (same seed, same node mix, same everything else)
+# isolating the effect of the wpoa dump-function on the weight-selection feedback loop.
+# Disjoint port ranges: run the three in parallel instead of costing you 72h sequential.
+
+seed: 20260905
+chain_name: wpoa-long24h-large-log
+
+nodes:
+  ca_count: 3
+  miner_count: 10
+  company_count: 20
+
+network:
+  host: 127.0.0.1
+  base_port: 10420
+  base_rpc_port: 20420
+
+epochs:
+  count: 144
+  length_blocks: 60
+
+chain:
+  target-block-time: 10
+  mining-diversity: 0.0
+  mine-empty-rounds: -1
+  mining-requires-peers: false
+  first-block-reward: 100000000000000
+  initial-block-reward: 0
+  minimum-relay-fee: 20000000
+  anyone-can-connect: false
+
+wpoa:
+  dump-function: log
+  wpoa-sortition-delta: 0.5
+  wpoa-sortition-lambda: 0.3
+  wpoa-malus-mu: 0.5
+  wpoa-malus-max: 4.0
+  wpoa-malus-equiv-points: 4.0
+  wpoa-malus-delay-points: 0.25
+  wpoa-malus-selfwrite-points: 1.0
+  wpoa-malus-badweight-points: 2.0
+
+weight_engine:
+  weight-kappa: 100.0
+  weight-alpha: 0.2
+  weight-lambda: 0.5
+
+traffic:
+  event_stream: supply-chain-events
+  company_tx_per_epoch_range: [30, 60]
+  miner_gas_returns_per_epoch_range: [0, 5]
+  esg_score_range: [1, 100]
+  restitution_amount_range: [1.0, 9.0]
+
+runtime:
+  bindir: src
+  rpc_timeout_s: 30
+  startup_timeout_s: 120
+  wpoa_debug: false

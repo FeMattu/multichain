@@ -1,0 +1,71 @@
+# Statistical long-run, medium size: 1 admin, 2 CAs, 5 miners, 10 companies -> 18 nodes
+# (identical node mix to medium.yaml). 86 epochs of 60 blocks -> 5160 configured blocks
+# at 7 s/block ~= 10h02m of pure mining time. medium.yaml's own overhead was ~6.7% on
+# top of its configured block count (see ../schema.md 3) -- expect the real run to land
+# a little past 10h once the harness's auto-derived setup-first-blocks are added.
+#
+# Format and defaults: ../schema.md
+# The wPoA/WeightEngine activation flags are NOT configurable here: every chain this
+# harness creates runs the full stack (weights -> selection -> vrf -> randao ->
+# sortition -> malus) plus the weight engine.
+#
+# Part of a none/log/sqrt triplet (same seed, same node mix, same everything else)
+# isolating the effect of the wpoa dump-function on the weight-selection feedback loop
+# (cf. beta1_logw > 1, the undamped case). Disjoint port ranges: run the three in
+# parallel instead of paying for them sequentially.
+
+seed: 20260905
+chain_name: wpoa-long10h-medium-none
+
+nodes:
+  ca_count: 2
+  miner_count: 5
+  company_count: 10
+
+network:
+  host: 127.0.0.1
+  base_port: 10180
+  base_rpc_port: 20180
+
+epochs:
+  count: 86
+  length_blocks: 60
+
+chain:
+  target-block-time: 7
+  mining-diversity: 0.0
+  mine-empty-rounds: -1
+  mining-requires-peers: false
+  first-block-reward: 100000000000000
+  initial-block-reward: 0
+  minimum-relay-fee: 20000000
+  anyone-can-connect: false
+
+wpoa:
+  dump-function: none
+  wpoa-sortition-delta: 0.5
+  wpoa-sortition-lambda: 0.3
+  wpoa-malus-mu: 0.5
+  wpoa-malus-max: 4.0
+  wpoa-malus-equiv-points: 4.0
+  wpoa-malus-delay-points: 0.25
+  wpoa-malus-selfwrite-points: 1.0
+  wpoa-malus-badweight-points: 2.0
+
+weight_engine:
+  weight-kappa: 100.0
+  weight-alpha: 0.2
+  weight-lambda: 0.5
+
+traffic:
+  event_stream: supply-chain-events
+  company_tx_per_epoch_range: [30, 60]
+  miner_gas_returns_per_epoch_range: [0, 5]
+  esg_score_range: [1, 100]
+  restitution_amount_range: [1.0, 9.0]
+
+runtime:
+  bindir: src
+  rpc_timeout_s: 30
+  startup_timeout_s: 120
+  wpoa_debug: false
