@@ -113,8 +113,34 @@ def b(value: Any) -> Optional[bool]:
     return str(value).strip().lower() in ("true", "1", "yes")
 
 
+#: address -> node name, read from ``<run-dir>/addresses.json``. Labels are what a reader
+#: decodes a figure with, and "miner-3" decodes where "1HqUHFL3w6" does not, so every label
+#: goes through :func:`short`, which prefers the name and falls back to the address.
+NODE_NAMES: Dict[str, str] = {}
+
+
+def load_node_names(run_dir: Path) -> Dict[str, str]:
+    """Invert ``addresses.json`` into address -> name. Missing or malformed is not fatal:
+    the figures then label by address exactly as they did before."""
+    path = Path(run_dir) / "addresses.json"
+    if not path.is_file():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    names: Dict[str, str] = {}
+    for name, address in raw.items():
+        if isinstance(address, str) and address and address not in names:
+            names[address] = str(name)
+    return names
+
+
 def short(address: str, width: int = 10) -> str:
-    return (address or "")[:width]
+    name = NODE_NAMES.get(address or "")
+    return name if name else (address or "")[:width]
 
 
 def _fmt(value: Any, digits: int = 4) -> str:
@@ -161,6 +187,8 @@ def empty(path: Path, title: str, reason: str) -> Path:
 class Plotter:
     def __init__(self, run_dir: Path) -> None:
         self.run_dir = Path(run_dir)
+        global NODE_NAMES
+        NODE_NAMES = load_node_names(self.run_dir)
         self.phase2 = self.run_dir / "analysis" / "phase2"
         self.phase3 = self.run_dir / "analysis" / "phase3"
         self.out = self.run_dir / "analysis" / "plots"
