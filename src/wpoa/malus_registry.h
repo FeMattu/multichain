@@ -74,6 +74,7 @@
 #include <stdint.h>
 
 #include "wpoa/malus_record.h"
+#include "wpoa/stream_setup_state.h"  // mc_StreamSetupState
 
 struct mc_WalletTxs;
 struct mc_EntityDetails;
@@ -222,8 +223,8 @@ private:
     mc_WalletTxs* m_pWalletTxs;   //!< borrowed pointer, not owned
     std::string   m_StreamName;   //!< "wpoa-weights-malus"
 
-    bool m_CreateAttempted;       //!< guards against issuing >1 create tx
-    bool m_SubscribeAttempted;    //!< guards against redundant subscribe calls
+    mc_StreamSetupState m_Create;      //!< see wpoa/stream_setup_state.h
+    mc_StreamSetupState m_Subscribe;
 
     bool GetStreamEntity(mc_EntityDetails* entity);
     bool EnsureStreamExists();

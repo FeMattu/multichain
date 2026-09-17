@@ -1172,8 +1172,21 @@ double GetMinerAndExpectedMiningStartTime(CWallet *pwallet,CPubKey *lpkMiner,set
         double dScore=0.0,dDelay=0.0;
         if(!WPoASortitionLocalScoreDelay(pindexTip,sLocalAddr,kMinerSecret.begin(),&dScore,&dDelay))
         {
-            // Seed / weight map not yet available, or this node carries no weight:
-            // cannot self-elect this round. Wait for the tip to advance.
+            // DEFERRED ACTIVATION -- the same bootstrap window as the Phase-2 branch
+            // below, and with sortition on this is the branch that actually stalls.
+            //
+            // Scoring needs a weight, the weight needs the engine to have published, and
+            // the engine cannot publish until an epoch buries -- which needs the blocks
+            // this decision is refusing to produce. Waiting here stops a clean chain one
+            // block short of setup-first-blocks, for ever.
+            if(WPoAShouldFallBackToNative(false,WPoAEverElectable()))
+            {
+                LogPrint("wpoa","mchn-miner: wPoA-sortition height=%d not yet activated (no "
+                                "positive weight confirmed); falling back to native mining so "
+                                "the chain can advance\n",nHeight);
+                goto wpoa_native_fallback;
+            }
+            // Activated before, unscoreable now: a real outcome, left alone.
             *lpdMiningStartTime=mc_TimeNowAsDouble()+3600;
             LogPrint("wpoa","mchn-miner: wPoA-sortition height=%d cannot score (unsynced or unweighted), waiting\n",nHeight);
             return *lpdMiningStartTime;
@@ -1226,7 +1239,23 @@ double GetMinerAndExpectedMiningStartTime(CWallet *pwallet,CPubKey *lpkMiner,set
         }
         std::string sProposer=WPoASelectProposer(hWPoASeed.begin(),hWPoASeed.size(),nWPoAHeight);
 
-        if(!sProposer.empty() && sProposer==sLocalAddr)
+        // DEFERRED ACTIVATION. wPoA governs this height by the clock, but the registry
+        // may still be empty: the weight engine cannot publish before its first epoch
+        // buries, and that epoch needs blocks that only this decision produces. Waiting
+        // here is the deadlock -- the chain stops one block short of setup-first-blocks
+        // and never recovers, because the thing it waits for is the thing it prevents.
+        //
+        // So while no weight has EVER been electable, hand the round back to the native
+        // rules and let wPoA take over by itself once the first weight confirms. Once it
+        // has, an empty election is a real outcome of the sortition and is left alone.
+        if(WPoAShouldFallBackToNative(!sProposer.empty(),WPoAEverElectable()))
+        {
+            LogPrint("wpoa","mchn-miner: wPoA height=%d not yet activated (no positive weight "
+                            "confirmed); falling back to native mining so the chain can advance\n",
+                             nWPoAHeight);
+            goto wpoa_native_fallback;
+        }
+        else if(!sProposer.empty() && sProposer==sLocalAddr)
         {
             // Elected: mine now. Phase 2 is deterministic (one proposer per
             // height, chained via the prev-block hash), so there is no proposer
@@ -1234,17 +1263,34 @@ double GetMinerAndExpectedMiningStartTime(CWallet *pwallet,CPubKey *lpkMiner,set
             *lpdMiningStartTime=mc_TimeNowAsDouble();
             LogPrint("wpoa","mchn-miner: wPoA height=%d elected LOCAL proposer %s, mining now\n",
                              nWPoAHeight,sLocalAddr.c_str());
+            return *lpdMiningStartTime;
         }
         else
         {
+            if(sProposer.empty())
+            {
+                // Activated before, nobody eligible now. Legitimate: a weighted sortition
+                // in which every validator has been zeroed elects nobody. Said out loud,
+                // because from the outside it is indistinguishable from a hang.
+                LogPrintf("[wPoA] height %d: wPoA is active but NO validator is eligible "
+                          "(every effective weight is 0, or none is valid for this round). "
+                          "The chain will not advance until a positive weight is published. "
+                          "This is the protocol, not a stall to route around.\n",nWPoAHeight);
+            }
             // Not our slot this height — wait for the tip to advance.
             *lpdMiningStartTime=mc_TimeNowAsDouble()+3600;
             LogPrint("wpoa","mchn-miner: wPoA height=%d proposer=%s (local=%s), waiting\n",
                              nWPoAHeight,sProposer.empty()?"(none)":sProposer.c_str(),sLocalAddr.c_str());
+            return *lpdMiningStartTime;
         }
-        return *lpdMiningStartTime;
     }
 /* MCHN END */
+
+// Both wPoA branches above jump here while the protocol has not activated yet, so a clean
+// chain keeps producing blocks under the native rules until the first weight confirms.
+// A label rather than restructuring the function: the two branches sit inside separate
+// scopes and everything below is exactly the native path they need.
+wpoa_native_fallback:
 
     nMiningStatus &= MC_MST_PROC_MASK;
     

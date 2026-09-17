@@ -535,6 +535,24 @@ int mc_MultichainParams::Create(const char* name,int version)
                                     sprintf(ptrData,"0.25");
                                     size=strlen(ptrData)+1;
                                 }
+                                // These two used to be omitted here, so a generated
+                                // params.dat carried them BLANK while every other real in
+                                // the group carried its default. Runtime was still correct
+                                // -- ResolveWeightRealStr falls back to the compiled value
+                                // -- but the parameter hash covers the STORED BYTES, so
+                                // "blank" and "1" are different chains. Two writers that
+                                // disagreed about which to emit would fork a network whose
+                                // nodes all believed they were configured identically.
+                                if(strcmp(param->m_Name,"wpoamalusselfwritepoints") == 0)  // MC_WPOA_DEFAULT_MALUS_P_SELFWRITE
+                                {
+                                    sprintf(ptrData,"1");
+                                    size=strlen(ptrData)+1;
+                                }
+                                if(strcmp(param->m_Name,"wpoamalusbadweightpoints") == 0)  // MC_WPOA_DEFAULT_MALUS_P_BADWEIGHT
+                                {
+                                    sprintf(ptrData,"2");
+                                    size=strlen(ptrData)+1;
+                                }
                                 if(strcmp(param->m_Name,"weightkappa") == 0)      // MC_WEIGHT_DEFAULT_KAPPA
                                 {
                                     sprintf(ptrData,"100");

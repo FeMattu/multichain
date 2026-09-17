@@ -53,6 +53,8 @@
 #include <vector>
 #include <stdint.h>
 
+#include "wpoa/stream_setup_state.h"  // mc_StreamSetupState
+
 #include "json/json_spirit_value.h"
 
 struct mc_WalletTxs;
@@ -234,12 +236,19 @@ private:
     mc_WalletTxs* m_pWalletTxs;   //!< borrowed pointer, not owned
 
     /** One managed input stream: its name and the once-only create/subscribe guards. */
+    /** Per-stream setup state.
+     *
+     *  `*_broadcast` latches ONLY on a transaction that was really sent, so a create that
+     *  threw is retried instead of being remembered as done. `*_failures` bounds that
+     *  retry: a node with no `create` permission would otherwise try once per tick for
+     *  the life of the process. Cfr. StreamWeightRegistry, which has always worked this
+     *  way -- this struct used to latch before the attempt, and a single failure left the
+     *  stream uncreatable for the lifetime of the node. */
     struct InputStream
     {
-        std::string name;
-        bool        create_attempted;
-        bool        subscribe_attempted;
-        InputStream() : create_attempted(false), subscribe_attempted(false) {}
+        std::string          name;
+        mc_StreamSetupState  create;      //!< see wpoa/stream_setup_state.h
+        mc_StreamSetupState  subscribe;
     };
     /** The PUBLISHED input streams — two, not four. `weight-engine-activity` never
      *  existed as a mechanism (the name was defined but never created, written or read)

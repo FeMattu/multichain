@@ -16,6 +16,10 @@
 #include "chainparams/state.h"           // mc_gState, IsProtocolMultichain,
                                          //   GetInt64Param, MCP_ANYONE_CAN_MINE
 #include "permissions/permission.h"      // mc_WPoAGovernsMiningHook (diversity gate)
+#include "structs/base58.h"              // (chainActive via main.h below)
+#include "core/main.h"                   // chainActive -- the activation height must
+                                         // be invalidated when a reorg removes it
+#include "utils/sync.h"                  // LOCK, CCriticalSection
 
 using namespace std;
 
@@ -66,10 +70,17 @@ bool WPoAActiveAtHeight(int height)
         return false;
     }
     // Engage only at/after the setup period, so the chain still bootstraps with
-    // native rules (admin establishes permissions and the weight stream). This
-    // predicate is a pure function of the height and chain params, so the miner
-    // (next height) and the validator (received-block height) always agree on
-    // whether a given block is governed by wPoA.
+    // native rules (admin establishes permissions and the weight stream).
+    // Engage only at/after the setup period, so the chain still bootstraps with native
+    // rules (admin establishes permissions and the weight stream). This predicate is a
+    // pure function of the height and the chain params -- deliberately so, and it must
+    // stay that way: it is called from the mining-diversity permission hook, deep inside
+    // permission checks that already hold locks. An earlier version of the deferred
+    // activation read the weight registry here, and the wallet read under those locks
+    // hung the node at exactly the height it was meant to rescue.
+    //
+    // "Can the registry actually elect anybody" is therefore answered where the registry
+    // is already being read -- WPoASelectProposer below, and the miner that calls it.
     int setup_blocks = (int)mc_gState->m_NetworkParams->GetInt64Param("setupfirstblocks");
     return height >= setup_blocks;
 }
@@ -94,7 +105,13 @@ bool WPoAActiveAtHeight(int height)
 
 static int WPoAGovernsMiningThunk(uint32_t block)
 {
-    return WPoAActiveAtHeight((int)block) ? 1 : 0;
+    // ...and only once wPoA has actually activated. While the registry has never carried
+    // a positive weight the chain is running under the native rules, and the native
+    // round-robin spacing is part of those rules: bypassing it during the bootstrap
+    // window would let a single miner take every block of it. Reading the latch is a
+    // plain bool load, which is what this hook -- called from inside permission checks --
+    // can afford.
+    return (WPoAActiveAtHeight((int)block) && WPoAEverElectable()) ? 1 : 0;
 }
 
 namespace {
@@ -125,6 +142,7 @@ std::string WPoASelectProposer(const unsigned char* seed, size_t seed_len, int h
 
     StreamWeightRegistry registry(pwalletTxsMain);
     std::map<std::string, uint32_t> weights = registry.GetAllNodesWeights();
+
 
     // The election consumes the EFFECTIVE weight w_eff = w * Psi (Def. 5.22): the
     // raw registry weight corrected by the behavioural malus accumulated on-chain.

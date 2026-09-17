@@ -295,7 +295,56 @@ extern bool g_wpoa_enabled;
  * (not anyone-can-mine), and a height at or past the setup period — so both the
  * miner and the validator agree, from the height alone, on when wPoA engages.
  */
+/** Should the miner hand this round back to the native MultiChain rules?
+ *
+ *  `setup-first-blocks` is a height, and a height cannot know whether the weight engine
+ *  has managed to publish anything yet. If wPoA takes over an empty registry the selector
+ *  can only answer "nobody": the miner waits, no block is produced, no epoch buries, no
+ *  weight is ever computed, and the chain stops -- a deadlock three layers from its
+ *  symptom. Observed on a clean chain, which stopped one block short of
+ *  setup-first-blocks and never recovered.
+ *
+ *  So the two ways of having no proposer are separated:
+ *
+ *    - **never electable yet** -- the registry has never carried a positive weight. This
+ *      is the bootstrap window. Fall back to native mining so the chain keeps advancing,
+ *      and let wPoA take over by itself once the first weight confirms.
+ *
+ *    - **electable before, not now** -- wPoA has already governed. Every validator being
+ *      ineligible is then a legitimate outcome of a weighted sortition (all weights at
+ *      zero, or nobody valid this round), NOT a bootstrap problem. The chain stopping is
+ *      the protocol working; do not route around it.
+ *
+ *  Pure, so the distinction can be unit-tested directly rather than only observed on a
+ *  live chain: src/wpoa/test/wpoa_activation_tests.cpp. */
+inline bool WPoAShouldFallBackToNative(bool proposer_found, bool ever_electable)
+{
+    if (proposer_found)
+    {
+        return false;   // wPoA elected somebody: use it
+    }
+    return !ever_electable;   // no proposer AND never activated -> native rules
+}
+
+/** True once this node has seen a registry carrying at least one positive weight.
+ *
+ *  Latched, never cleared: wPoA does not lapse back to native because a later round
+ *  happens to have nobody eligible. Defined in stream_weight_registry.cpp, which owns the
+ *  single read path every weight consumer goes through. */
+bool WPoAEverElectable();
+
 bool WPoAActiveAtHeight(int height);
+
+/** Height of the block that activated wPoA, or -1 if it has not activated yet.
+ *
+ *  wPoA does not take over at `setup-first-blocks` alone. A height cannot know whether
+ *  the weight engine has published anything, and taking over with an empty registry means
+ *  SelectProposer can only answer "nobody": the chain then stops, having never produced
+ *  the epoch that would have produced the weight. Activation is therefore deferred to the
+ *  first block confirming a weight > 0, and until then the native MultiChain rules apply.
+ *
+ *  Derived from the confirmed chain prefix, so every synced node agrees on it. */
+int WPoAActivationBlock();
 
 /**
  * Registry-backed convenience wrapper: reads the current confirmed weight map

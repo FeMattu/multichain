@@ -17,6 +17,8 @@
 #include <string>
 #include <stdint.h>
 
+#include "wpoa/stream_setup_state.h"  // mc_StreamSetupState
+
 struct mc_WalletTxs;
 struct mc_EntityDetails;
 
@@ -101,6 +103,12 @@ public:
     /** address -> latest confirmed weight, for every validator on the stream. */
     std::map<std::string, uint32_t> GetAllNodesWeights();
 
+    /** Height of the first block confirming a positive weight, or -1 if none yet.
+     *
+     *  Chain-derived and therefore identical on every synced node, which is what lets it
+     *  gate consensus: see WPoAActiveAtHeight in wpoa_selector.h. */
+    int FirstPositiveWeightBlock();
+
     /** As GetAllNodesWeights, but also reports the epoch each record was published FOR
      *  (0 when the record does not say). Used by the weight layer to verify a value
      *  against the recomputation of its own epoch rather than of whichever epoch happens
@@ -134,18 +142,23 @@ private:
     std::string   m_StreamName;   //!< "wpoa-weights"
     std::string   m_LocalAddress; //!< cached node address
 
-    bool m_CreateBroadcast;       //!< a create tx IS in flight: never issue a second one
-    int  m_CreateFailures;        //!< failed create attempts; bounded retry, see the .cpp
-    bool m_SubscribeIssued;       //!< subscribe accepted: never re-issue (would rescan)
-    int  m_SubscribeFailures;     //!< failed subscribe attempts; bounded retry
+    mc_StreamSetupState m_Create;      //!< see wpoa/stream_setup_state.h
+    mc_StreamSetupState m_Subscribe;
 
     void ResolveLocalAddress();
     bool GetStreamEntity(mc_EntityDetails* entity);
     bool EnsureStreamExists();
     bool EnsureSubscribed();
     bool PublishWeightRecord(uint32_t weight, uint32_t epoch);
+    /** Read every confirmed record; newest per address wins.
+     *
+     *  `out_first_positive_block`, when given, receives the height of the FIRST block
+     *  that confirmed a record with weight > 0, or -1 if there is none. That height is
+     *  the activation point of wPoA: before it the registry cannot elect anybody, so the
+     *  chain runs under the native MultiChain rules instead of stalling. */
     bool ReadAllRecords(std::map<std::string, uint32_t>& out_latest,
-                        std::map<std::string, uint32_t>* out_epochs = NULL);
+                        std::map<std::string, uint32_t>* out_epochs = NULL,
+                        int* out_first_positive_block = NULL);
 };
 
 /**

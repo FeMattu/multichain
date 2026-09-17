@@ -67,9 +67,10 @@ bool WeightStreamReader::EnsureOneStream(InputStream& s)
     mc_EntityDetails entity;
     if (!GetStreamEntity(s.name, &entity))
     {
-        if (s.create_attempted)
+        const mc_StreamSetupAction action = s.create.Next();
+        if (action != MC_SSA_ACT)
         {
-            return false; // create tx already broadcast, waiting for confirmation
+            return false;   // a create tx is in flight, or we have given up on this node
         }
 
         // create ["stream", <name>, false]  -> CLOSED (write permission required).
@@ -78,21 +79,33 @@ bool WeightStreamReader::EnsureOneStream(InputStream& s)
         params.push_back(s.name);
         params.push_back(false);
 
-        s.create_attempted = true;
         try
         {
             Value result = createcmd(params, false);
-            LogPrintf("[WeightEngine] Input stream '%s' created (closed): %s\n",
+            // Latch ONLY on a real broadcast. Setting this before the call -- which is
+            // what this code used to do -- turned any transient failure into a permanent
+            // one: the node never tried again, the stream never appeared, and the engine
+            // waited for an input that could no longer arrive. Observed on a live chain,
+            // where a single admin produced weight-engine-esg and neither of the others.
+            s.create.RecordBroadcast();
+            LogPrintf("[WeightEngine] Input stream '%s' create tx broadcast (closed): %s\n",
                       s.name.c_str(), result.get_str().c_str());
         }
         catch (const Object& objError)
         {
-            LogPrintf("[WeightEngine] ERROR creating stream '%s' (create permission required?)\n",
-                      s.name.c_str());
+            s.create.RecordFailure();
+            LogPrintf("[WeightEngine] could not create input stream '%s' (attempt %d/%d): "
+                      "create permission required, or the wallet has no spendable output yet; "
+                      "will retry\n",
+                      s.name.c_str(), s.create.failures, MC_WPOA_STREAM_SETUP_MAX_FAILURES);
         }
         catch (const std::exception& e)
         {
-            LogPrintf("[WeightEngine] ERROR creating stream '%s': %s\n", s.name.c_str(), e.what());
+            s.create.RecordFailure();
+            LogPrintf("[WeightEngine] could not create input stream '%s' (attempt %d/%d): %s; "
+                      "will retry\n",
+                      s.name.c_str(), s.create.failures, MC_WPOA_STREAM_SETUP_MAX_FAILURES,
+                      e.what());
         }
         return false; // not usable until confirmed
     }
@@ -106,27 +119,32 @@ bool WeightStreamReader::EnsureOneStream(InputStream& s)
         return true; // already subscribed
     }
 
-    if (s.subscribe_attempted)
+    if (s.subscribe.Next() != MC_SSA_ACT)
     {
-        return false;
+        return false;   // gave up
     }
 
     Array params;
     params.push_back(s.name);
-    s.subscribe_attempted = true;
     try
     {
         subscribe(params, false);
+        s.subscribe.RecordBroadcast();
         LogPrintf("[WeightEngine] Subscribed to input stream '%s'\n", s.name.c_str());
         return m_pWalletTxs != NULL && m_pWalletTxs->WRPFindEntity(&entStat);
     }
     catch (const Object& objError)
     {
-        LogPrintf("[WeightEngine] ERROR subscribing to '%s'\n", s.name.c_str());
+        s.subscribe.RecordFailure();
+        LogPrintf("[WeightEngine] could not subscribe to '%s' (attempt %d/%d); will retry\n",
+                  s.name.c_str(), s.subscribe.failures, MC_WPOA_STREAM_SETUP_MAX_FAILURES);
     }
     catch (const std::exception& e)
     {
-        LogPrintf("[WeightEngine] ERROR subscribing to '%s': %s\n", s.name.c_str(), e.what());
+        s.subscribe.RecordFailure();
+        LogPrintf("[WeightEngine] could not subscribe to '%s' (attempt %d/%d): %s; will retry\n",
+                  s.name.c_str(), s.subscribe.failures, MC_WPOA_STREAM_SETUP_MAX_FAILURES,
+                  e.what());
     }
     return false;
 }

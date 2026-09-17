@@ -40,7 +40,8 @@ static const int MC_WPOA_CONFIRM_ATTEMPTS  = 20;    // 20 * 3s = up to ~60s
 // case for every non-admin node). Retrying a bounded number of times rides out the former
 // without logging forever about the latter. Previously a single attempt -- successful or
 // not -- latched permanently, so ONE transient error wedged the node for its whole run.
-static const int MC_WPOA_STREAM_SETUP_MAX_ATTEMPTS = 20;   // 20 * 3s = up to ~60s
+// The bound now lives with the state machine it belongs to:
+// MC_WPOA_STREAM_SETUP_MAX_FAILURES in wpoa/stream_setup_state.h.
 
 // ---------------------------------------------------------------------------
 // Construction
@@ -51,10 +52,8 @@ StreamWeightRegistry::StreamWeightRegistry(mc_WalletTxs* pwalletIn)
     m_pWalletTxs       = pwalletIn;
     m_StreamName       = MC_WPOA_WEIGHTS_STREAM_NAME;
     m_LocalAddress     = "";
-    m_CreateBroadcast    = false;
-    m_CreateFailures     = 0;
-    m_SubscribeIssued    = false;
-    m_SubscribeFailures  = 0;
+    m_Create.Zero();
+    m_Subscribe.Zero();
     ResolveLocalAddress();
 }
 
@@ -132,17 +131,12 @@ bool StreamWeightRegistry::EnsureStreamExists()
         return true;
     }
 
-    if (m_CreateBroadcast)
+    if (m_Create.Next() != MC_SSA_ACT)
     {
         // create tx already broadcast, still waiting for confirmation. Never issue a
         // second one: it would at best be rejected as a duplicate name and at worst race
         // the first.
         return false;
-    }
-
-    if (m_CreateFailures >= MC_WPOA_STREAM_SETUP_MAX_ATTEMPTS)
-    {
-        return false;   // gave up; almost certainly no `create` permission on this node
     }
 
     // create ["stream", "wpoa-weights", false] -> CLOSED (write permission
@@ -159,22 +153,22 @@ bool StreamWeightRegistry::EnsureStreamExists()
     try
     {
         Value result = createcmd(params, false);
-        m_CreateBroadcast = true;   // latch ONLY on a real broadcast
+        m_Create.RecordBroadcast();   // latch ONLY on a real broadcast
         LogPrintf("[StreamWeightRegistry] Stream '%s' create tx broadcast: %s\n",
                   m_StreamName.c_str(), result.get_str().c_str());
     }
     catch (const Object& objError)
     {
-        m_CreateFailures++;
+        m_Create.RecordFailure();
         LogPrintf("[StreamWeightRegistry] could not create stream '%s' (attempt %d/%d): "
                   "create permission required, or the wallet has no spendable output yet\n",
-                  m_StreamName.c_str(), m_CreateFailures, MC_WPOA_STREAM_SETUP_MAX_ATTEMPTS);
+                  m_StreamName.c_str(), m_Create.failures, MC_WPOA_STREAM_SETUP_MAX_FAILURES);
     }
     catch (const std::exception& e)
     {
-        m_CreateFailures++;
+        m_Create.RecordFailure();
         LogPrintf("[StreamWeightRegistry] could not create stream '%s' (attempt %d/%d): %s\n",
-                  m_StreamName.c_str(), m_CreateFailures, MC_WPOA_STREAM_SETUP_MAX_ATTEMPTS, e.what());
+                  m_StreamName.c_str(), m_Create.failures, MC_WPOA_STREAM_SETUP_MAX_FAILURES, e.what());
     }
     return false; // not usable until confirmed
 }
@@ -198,14 +192,14 @@ bool StreamWeightRegistry::EnsureSubscribed()
         return true;
     }
 
-    if (m_SubscribeIssued)
+    if (m_Subscribe.Next() != MC_SSA_ACT)
     {
         // subscribe already issued, the import is still catching up. Do not re-issue: a
         // redundant subscribe would restart the rescan of the stream on every tick.
         return false;
     }
 
-    if (m_SubscribeFailures >= MC_WPOA_STREAM_SETUP_MAX_ATTEMPTS)
+    if (m_Subscribe.Next() != MC_SSA_ACT)
     {
         return false;
     }
@@ -216,22 +210,22 @@ bool StreamWeightRegistry::EnsureSubscribed()
     try
     {
         subscribe(params, false);
-        m_SubscribeIssued = true;   // latch ONLY on a call that did not throw
+        m_Subscribe.RecordBroadcast();   // latch ONLY on a call that did not throw
         LogPrintf("[StreamWeightRegistry] Subscribed to stream '%s'\n", m_StreamName.c_str());
         // Re-check: subscription import may complete synchronously for a short stream.
         return m_pWalletTxs != NULL && m_pWalletTxs->WRPFindEntity(&entStat);
     }
     catch (const Object& objError)
     {
-        m_SubscribeFailures++;
+        m_Subscribe.RecordFailure();
         LogPrintf("[StreamWeightRegistry] could not subscribe to '%s' (attempt %d/%d)\n",
-                  m_StreamName.c_str(), m_SubscribeFailures, MC_WPOA_STREAM_SETUP_MAX_ATTEMPTS);
+                  m_StreamName.c_str(), m_Subscribe.failures, MC_WPOA_STREAM_SETUP_MAX_FAILURES);
     }
     catch (const std::exception& e)
     {
-        m_SubscribeFailures++;
+        m_Subscribe.RecordFailure();
         LogPrintf("[StreamWeightRegistry] could not subscribe to '%s' (attempt %d/%d): %s\n",
-                  m_StreamName.c_str(), m_SubscribeFailures, MC_WPOA_STREAM_SETUP_MAX_ATTEMPTS, e.what());
+                  m_StreamName.c_str(), m_Subscribe.failures, MC_WPOA_STREAM_SETUP_MAX_FAILURES, e.what());
     }
     return false;
 }
@@ -518,8 +512,26 @@ static bool DecodeWeightRecord(const CWalletTx& wtx, const unsigned char* stream
 // Reads every record on the stream (oldest -> newest) and keeps, per address,
 // the newest weight seen. Returns false only when the stream is unavailable
 // (does not exist yet, or this node is not subscribed).
+// Has this node ever seen a registry that could elect somebody?
+//
+// Latched once, never cleared, and set from the ONE place every consumer of the weights
+// goes through -- so it is maintained whether the round is decided by Phase-2 selection,
+// by private sortition, or only ever inspected by an audit RPC.
+//
+// A plain bool on purpose. The predicate that consumes it (the miner's fallback, and the
+// mining-diversity hook) sits on paths that already hold locks; an earlier version asked
+// the chain this question directly and the wallet read under those locks hung the node at
+// exactly the height it was meant to rescue.
+static bool g_wpoa_ever_electable = false;
+
+bool WPoAEverElectable()
+{
+    return g_wpoa_ever_electable;
+}
+
 bool StreamWeightRegistry::ReadAllRecords(std::map<std::string, uint32_t>& out_latest,
-                                          std::map<std::string, uint32_t>* out_epochs)
+                                          std::map<std::string, uint32_t>* out_epochs,
+                                          int* out_first_positive_block)
 {
     // Verbose, per-read tracing of the stream read path. Off by default; enable
     // with -wpoadebug for troubleshooting (see src/wpoa/TESTING.md).
@@ -529,6 +541,10 @@ bool StreamWeightRegistry::ReadAllRecords(std::map<std::string, uint32_t>& out_l
     if (out_epochs != NULL)
     {
         out_epochs->clear();
+    }
+    if (out_first_positive_block != NULL)
+    {
+        *out_first_positive_block = -1;
     }
 
     if (m_pWalletTxs == NULL)
@@ -666,9 +682,48 @@ bool StreamWeightRegistry::ReadAllRecords(std::map<std::string, uint32_t>& out_l
             {
                 (*out_epochs)[addr] = rec_epoch;            // same newest-wins record
             }
+            // The activation point of wPoA (Def. attivazione-differita): the FIRST block
+            // that confirmed a usable, positive weight. Tracked here rather than derived
+            // later because this is the one pass that already decodes every record, and
+            // because it must be read off the CONFIRMED prefix -- a mempool record would
+            // make two nodes disagree about when the protocol took over.
+            //
+            // A negative m_Block means "not in a block", which the confirmed prefix should
+            // not contain; skipped rather than trusted.
+            if (w > 0 && !g_wpoa_ever_electable)
+            {
+                // Efraimidis-Spirakis cannot draw a zero-weight key, so a registry of
+                // zeros elects nobody just as surely as an empty one: only a POSITIVE
+                // weight counts as activation.
+                g_wpoa_ever_electable = true;
+                LogPrintf("[wPoA] ACTIVATED: the registry now carries a positive weight "
+                          "(%s = %u, confirmed in block %d). Until now the chain ran under "
+                          "the native MultiChain rules.\n", addr.c_str(), w, er->m_Block);
+            }
+            if (out_first_positive_block != NULL && w > 0 && er->m_Block >= 0)
+            {
+                if (*out_first_positive_block < 0 || er->m_Block < *out_first_positive_block)
+                {
+                    *out_first_positive_block = er->m_Block;
+                }
+            }
         }
     }
     return true;
+}
+
+int StreamWeightRegistry::FirstPositiveWeightBlock()
+{
+    std::map<std::string, uint32_t> weights;
+    int first_block = -1;
+    if (!ReadAllRecords(weights, NULL, &first_block))
+    {
+        // The stream does not exist, is not subscribed, or could not be read. That is
+        // indistinguishable from "no weight yet" for activation purposes, and the safe
+        // reading is the conservative one: wPoA has not taken over.
+        return -1;
+    }
+    return first_block;
 }
 
 uint32_t StreamWeightRegistry::GetNodeWeight(const std::string& node_address)

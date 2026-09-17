@@ -76,8 +76,8 @@ MalusRegistry::MalusRegistry(mc_WalletTxs* pwalletIn)
 {
     m_pWalletTxs         = pwalletIn;
     m_StreamName         = MC_WPOA_MALUS_STREAM_NAME;
-    m_CreateAttempted    = false;
-    m_SubscribeAttempted = false;
+    m_Create.Zero();
+    m_Subscribe.Zero();
 }
 
 MalusRegistry::~MalusRegistry()
@@ -106,9 +106,9 @@ bool MalusRegistry::EnsureStreamExists()
         return true;
     }
 
-    if (m_CreateAttempted)
+    if (m_Create.Next() != MC_SSA_ACT)
     {
-        return false; // create tx already broadcast, still waiting for confirmation
+        return false;   // a create tx is in flight, or we have given up on this node
     }
 
     // create ["stream", "wpoa-weights-malus", true] -> OPEN, by design (Def. 5.17).
@@ -120,21 +120,28 @@ bool MalusRegistry::EnsureStreamExists()
     params.push_back(m_StreamName);
     params.push_back(true);
 
-    m_CreateAttempted = true;
     try
     {
         Value result = createcmd(params, false);
+        // Latch ONLY on a real broadcast: latching before the attempt made one transient
+        // failure permanent, and the report stream then never existed on that node.
+        m_Create.RecordBroadcast();
         LogPrintf("[MalusRegistry] Stream '%s' create tx broadcast (open): %s\n",
                   m_StreamName.c_str(), result.get_str().c_str());
     }
     catch (const Object& objError)
     {
-        LogPrintf("[MalusRegistry] ERROR creating stream '%s' (create permission required?)\n",
-                  m_StreamName.c_str());
+        m_Create.RecordFailure();
+        LogPrintf("[MalusRegistry] could not create stream '%s' (attempt %d/%d): create "
+                  "permission required, or the wallet has no spendable output yet; will retry\n",
+                  m_StreamName.c_str(), m_Create.failures, MC_WPOA_STREAM_SETUP_MAX_FAILURES);
     }
     catch (const std::exception& e)
     {
-        LogPrintf("[MalusRegistry] ERROR creating stream '%s': %s\n", m_StreamName.c_str(), e.what());
+        m_Create.RecordFailure();
+        LogPrintf("[MalusRegistry] could not create stream '%s' (attempt %d/%d): %s; will retry\n",
+                  m_StreamName.c_str(), m_Create.failures,
+                  MC_WPOA_STREAM_SETUP_MAX_FAILURES, e.what());
     }
     return false; // not usable until confirmed
 }
@@ -156,28 +163,34 @@ bool MalusRegistry::EnsureSubscribed()
         return true;
     }
 
-    if (m_SubscribeAttempted)
+    if (m_Subscribe.Next() != MC_SSA_ACT)
     {
-        return false; // subscribe issued, import still catching up
+        return false;   // gave up
     }
 
     Array params;
     params.push_back(m_StreamName);
 
-    m_SubscribeAttempted = true;
     try
     {
         subscribe(params, false);
+        m_Subscribe.RecordBroadcast();
         LogPrintf("[MalusRegistry] Subscribed to stream '%s'\n", m_StreamName.c_str());
         return m_pWalletTxs != NULL && m_pWalletTxs->WRPFindEntity(&entStat);
     }
     catch (const Object& objError)
     {
-        LogPrintf("[MalusRegistry] ERROR subscribing to '%s'\n", m_StreamName.c_str());
+        m_Subscribe.RecordFailure();
+        LogPrintf("[MalusRegistry] could not subscribe to '%s' (attempt %d/%d); will retry\n",
+                  m_StreamName.c_str(), m_Subscribe.failures,
+                  MC_WPOA_STREAM_SETUP_MAX_FAILURES);
     }
     catch (const std::exception& e)
     {
-        LogPrintf("[MalusRegistry] ERROR subscribing to '%s': %s\n", m_StreamName.c_str(), e.what());
+        m_Subscribe.RecordFailure();
+        LogPrintf("[MalusRegistry] could not subscribe to '%s' (attempt %d/%d): %s; will retry\n",
+                  m_StreamName.c_str(), m_Subscribe.failures,
+                  MC_WPOA_STREAM_SETUP_MAX_FAILURES, e.what());
     }
     return false;
 }

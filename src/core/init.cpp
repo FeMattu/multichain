@@ -3326,6 +3326,36 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
         bool p_randao    = (np != NULL) && (np->GetInt64Param("enablewpoarandao")    != 0);
         bool p_sortition = (np != NULL) && (np->GetInt64Param("enablewpoasortition") != 0);
 
+        // The MASTER SWITCH, read from params.dat as well as from the command line.
+        //
+        // It used to expand only in mc_MultichainParams::Read, i.e. only when it arrived
+        // as a flag to `multichain-util create`. Written straight into params.dat by hand
+        // it was parsed, hashed, echoed by getblockchainparams -- and inert. A file
+        // carrying `enable-wpoa = true` and nothing else produced a chain running native
+        // MultiChain mining, and the only symptom was the weight engine refusing to start
+        // with "-enableweightengine requires the wPoA weights stream", which names a flag
+        // the operator never touched.
+        //
+        // So the file's master now expands here too, to every phase still at its default.
+        // A phase the file turns ON is explicit and wins -- the expansion only ever adds.
+        //
+        // The one case the file cannot express: a phase written explicitly as `false`
+        // alongside a true master is indistinguishable from an absent one, because both
+        // read as the default. Such a file is self-contradictory; the master wins, and
+        // a per-node exception is what the command-line flags are for.
+        const bool p_master = (np != NULL) && (np->GetInt64Param("enablewpoa") != 0);
+        if (p_master)
+        {
+            const bool any_phase_explicit = p_weights || p_selection || p_vrf ||
+                                            p_randao  || p_sortition;
+            p_weights = p_selection = p_vrf = p_randao = p_sortition = true;
+            LogPrintf("[wPoA] params.dat sets enable-wpoa=true: expanding the master switch "
+                      "to weights, selection, vrf, randao and sortition%s\n",
+                      any_phase_explicit
+                          ? " (phases already enabled in the file are unchanged)"
+                          : "");
+        }
+
         // Runtime master flag. Present-and-true forces every phase on (unless a specific
         // phase flag overrides); present-and-false forces the baseline off; absent leaves
         // the inherited params.dat baseline untouched.
@@ -3457,7 +3487,11 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
         // switches above (params.dat baseline, CLI override). They gate w_eff = w * Psi,
         // so a node holding different values scores different weights and forks.
         {
+            // p_master is the params.dat master switch resolved above; the creation-time
+            // expansion covers malus too, so the in-file one has to as well or the two
+            // paths would produce different chains from the same file.
             bool p_malus = (np != NULL) && (np->GetInt64Param("enablewpoamalus") != 0);
+            if (p_master) p_malus = true;
             bool malus_enabled = mapArgs.count("-enablewpoamalus")
                                    ? GetBoolArg("-enablewpoamalus", p_malus)
                                    : (master_cli_present ? master_cli : p_malus);
@@ -3653,6 +3687,49 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
                 if (!treasury.empty() && !CBitcoinAddress(treasury).IsValid())
                 {
                     return InitError(strprintf(_("Invalid -weighttreasuryaddress value '%s': must be a valid address, or empty to disable the reconciliation term (R_k = 0)."), treasury));
+                }
+
+                // A treasury that cannot RECEIVE silently zeroes the whole feedback loop.
+                //
+                // R_k is the value miners transfer to this address. Without `receive` on
+                // it every such transfer is rejected with "-704 Destination address
+                // doesn't have receive permission", so R_k = 0 for every cluster, rho
+                // stays 0, and w_k = W_k * (1 - lambda) for ever. That reads exactly like
+                // a correctly configured chain whose restitution channel happens to be
+                // inert -- the failure has no symptom of its own.
+                //
+                // The usual cause is ordering: the grant was broadcast but had not been
+                // MINED when the node restarted to install this very parameter, so it
+                // died in the mempool with the node. Warn, do not refuse: the grant may
+                // legitimately be arriving in a block this node has not seen yet.
+                if (!treasury.empty() && mc_gState != NULL && mc_gState->m_Permissions != NULL)
+                {
+                    CBitcoinAddress addr(treasury);
+                    CKeyID key_id;
+                    CScriptID script_id;
+                    unsigned char hash[20];
+                    bool have_hash = false;
+                    if (addr.GetKeyID(key_id))
+                    {
+                        memcpy(hash, &key_id, 20);
+                        have_hash = true;
+                    }
+                    else if (addr.GetScriptID(script_id))
+                    {
+                        memcpy(hash, &script_id, 20);
+                        have_hash = true;
+                    }
+                    if (have_hash && mc_gState->m_Permissions->CanReceive(NULL, hash) == 0)
+                    {
+                        LogPrintf("[WeightEngine] WARNING: the treasury address %s does NOT hold "
+                                  "`receive` in the confirmed permission database. Every miner "
+                                  "restitution to it will fail with -704 and R_k will be 0 for "
+                                  "every cluster, which is indistinguishable from an inert "
+                                  "restitution channel. Grant it and WAIT FOR THE GRANT TO BE "
+                                  "MINED before restarting a node with -weighttreasuryaddress: "
+                                  "a grant still in the mempool dies with the node.\n",
+                                  treasury.c_str());
+                    }
                 }
             }
 
