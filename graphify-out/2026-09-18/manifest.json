@@ -5394,9 +5394,9 @@
     "semantic_hash": ""
   },
   "test/config/profiles/malicious.yaml": {
-    "mtime": 1789679468.2329092,
-    "seen": 1789680121.0085154,
-    "ast_hash": "9ad622edd6d9475c7de9f2095f1b8439",
+    "mtime": 1789680336.4521332,
+    "seen": 1789681281.5751898,
+    "ast_hash": "50e94099d7539db6b3aa2f76a4722741",
     "semantic_hash": ""
   },
   "test/docs/malicious-miners.md": {

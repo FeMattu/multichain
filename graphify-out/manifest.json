@@ -5232,9 +5232,9 @@
     "semantic_hash": ""
   },
   "test/plotting/generate_plots.py": {
-    "mtime": 1789679938.1067963,
-    "seen": 1789680121.0083756,
-    "ast_hash": "0fd38bc29da32efa8b5ff1b2a1aa4d67",
+    "mtime": 1789682459.2585816,
+    "seen": 1789682518.641929,
+    "ast_hash": "9306235c690385d9b41fb575e6d5c306",
     "semantic_hash": ""
   },
   "test/shutdown/stop_network.py": {
@@ -5394,9 +5394,9 @@
     "semantic_hash": ""
   },
   "test/config/profiles/malicious.yaml": {
-    "mtime": 1789679468.2329092,
-    "seen": 1789680121.0085154,
-    "ast_hash": "9ad622edd6d9475c7de9f2095f1b8439",
+    "mtime": 1789680336.4521332,
+    "seen": 1789681281.5751898,
+    "ast_hash": "50e94099d7539db6b3aa2f76a4722741",
     "semantic_hash": ""
   },
   "test/docs/malicious-miners.md": {

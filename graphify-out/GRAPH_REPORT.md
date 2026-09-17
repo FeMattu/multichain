@@ -1,23 +1,23 @@
-# Graph Report - multichain  (2026-09-17)
+# Graph Report - multichain  (2026-09-18)
 
 ## Corpus Check
-- 849 files · ~1,244,999 words
+- 849 files · ~1,245,149 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 157 file(s) not represented in the graph (top: .mk 40, (none) 30, .csv 21)
 
 ## Summary
-- 16586 nodes · 36488 edges · 674 communities (607 shown, 56 thin omitted)
-- Extraction: 84% EXTRACTED · 16% INFERRED · 0% AMBIGUOUS · INFERRED: 5741 edges (avg confidence: 0.85)
+- 16593 nodes · 36480 edges · 690 communities (613 shown, 66 thin omitted)
+- Extraction: 84% EXTRACTED · 16% INFERRED · 0% AMBIGUOUS · INFERRED: 5750 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `bdcf97af`
+- Built from commit: `71deb2e5`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - AppInit2
-- main.cpp
+- LogPrint
 - CKey
 - CWallet
 - asset.cpp
@@ -25,19 +25,19 @@
 - CNode
 - rpcwpoa.cpp
 - wallettxs.cpp
-- secp256k1_rand_bits
+- test_schnorr_threshold
 - DBImpl
 - permission.cpp
 - env_win.cc
 - netbase.cpp
 - CreateNewBlock
 - tests.c
-- rpcutils.cpp
+- mc_GetLE
 - rpcstreams.cpp
 - utility.cpp
 - wallettxdb.cpp
 - rpcserver.cpp
-- Manifest
+- memcpy
 - PosixEnv
 - Repairer
 - group_impl.h
@@ -47,7 +47,7 @@
 - weight_reader.cpp
 - DB
 - CWalletDB
-- memcpy
+- TEST
 - dbflat.cpp
 - wPoA Weighted Miner Selection — Implementation Guide (Phase 2)
 - wallet.h
@@ -57,12 +57,12 @@
 - net.cpp
 - BOOST_AUTO_TEST_CASE
 - EnvironmentError_
-- netprotocol.cpp
+- CAddress
 - params.cpp
 - secp256k1.c
 - Orchestrator
 - random.cpp
-- CBitcoinAddress
+- rpcmisc.cpp
 - CChainParams
 - mc_EnterpriseFeatures
 - Profile
@@ -74,37 +74,37 @@
 - CDataStream
 - JSONRPCError
 - chunkcollector.cpp
-- TEST
+- Env
 - json_spirit_value.h
-- DBIter
-- SkipList
+- NetnsFabric
+- Key
 - TEST
 - Collector
 - chunkdb.cpp
 - main.h
 - wPoA VRF Randomness Beacon — Implementation Guide (Phase 3a)
 - v8_win.cpp
-- EnsureWalletIsUnlocked
+- testfilter
 - rpcweightengine.cpp
-- set
+- pair_
 - RPCTestLibraryUpdate
 - CPubKey
 - mc_MinerInfo
-- HTTPRequest
+- CTxOut
 - TEST
 - Benchmark
 - CBlockIndex
 - malus_registry.cpp
 - CScript
 - CCryptoKeyStore
-- Version::LevelFileNumIterator
+- Slice
 - secp256k1_context_create
 - TxToJSON
 - session.py
 - wPoA RANDAO Beacon Seed — Implementation Guide (Phase 3b)
 - ui_interface.h
 - RpcClient
-- num_gmp_impl.h
+- bench_internal.c
 - MaliciousInjector
 - BOOST_AUTO_TEST_CASE
 - CBasicKeyStore
@@ -114,7 +114,7 @@
 - rpchelp.cpp
 - BOOST_AUTO_TEST_CASE
 - VersionEdit
-- rpcprotocol.cpp
+- string_
 - Private Proposer Sortition for Weighted Proof-of-Authority: A Thesis Overview
 - BOOST_AUTO_TEST_CASE
 - implementation-status.md
@@ -127,43 +127,43 @@
 - 2. The implementation `stream_weight_registry.cpp`
 - build_topology
 - V8Filter
-- WeightEngine
+- base58.cpp
 - Prove
-- NetnsFabric
+- CValidationState
 - CBufferedFile
-- bench_internal.c
+- RoleScheduler
 - hash_impl.h
 - txmempool.cpp
 - runtime/cli.py
-- CMultiChainTxDetails
+- CCoins
 - cs_Database::Open
 - generator.py
-- tests/conftest.py
+- mc_Coin
 - Options
-- ecmult_impl.h
+- group.h
 - base_uint
 - CScriptCompressor
 - mc_FilterEngine
 - dbwrap.h
 - StreamWeightRegistry
-- ShardedLRUCache
+- ExperimentPlan
 - BOOST_AUTO_TEST_CASE
-- Env
+- dumpfile.cc
 - CPartialMerkleTree
 - CBloomFilter
 - LockedPageManagerBase
-- Env
+- version_set.cc
 - CLicenseRequest
 - field_10x26_impl.h
 - CacheTest
 - c.cc
 - test_no_time_simulation.py
-- net.h
+- PushMessage
 - scalar_4x64_impl.h
 - scalar_8x32_impl.h
 - tinyformat.h
 - CUnsignedAlert
-- ExperimentPlan
+- ChainParams
 - wPoA Weight Registry — Implementation Guide (Phase 1)
 - Serialize
 - utilwrapper.cpp
@@ -171,29 +171,29 @@
 - V8Engine
 - BloomTest
 - limitedmap
-- rpcmining.cpp
+- signal
 - Benchmark
 - CCheckQueue
-- db_bench.cc
+- .Run
 - CNodeStats
-- multichaintx.cpp
+- CMultiChainTxDetails
 - BOOST_AUTO_TEST_CASE
 - test_core_gate.py
 - json_spirit_reader_template.h
 - NodeRunner
 - Version
 - Blob
-- dbformat.cc
+- DBIter
 - LogTest
 - test/analysis/pipeline/stat/__init__.py
 - 8. Facts verified on a live node
 - MemTableIterator
-- string_
+- BOOST_AUTO_TEST_CASE
 - test_plots_robustness.py
-- CDB
+- CDBEnv
 - CHash256
-- V8Engine
-- malus_record.h
+- CMCAddrMan
+- BOOST_AUTO_TEST_CASE
 - BOOST_AUTO_TEST_CASE
 - format.h
 - CTxMemPoolEntry
@@ -213,54 +213,54 @@
 - properties
 - RpcClient
 - ParseEntityIdentifier
-- TEST
+- FilterBlockBuilder
 - build_plan
 - dbwrap_com.cpp
 - dbwrap_ent.cpp
 - mc_WalletCachedAddTx
 - EnvPosixTest
-- write_compat_inputs
+- CPubKey
 - RoleContext
 - ADR — `R_k^(e)` becomes chain-derived, and the reconciliation stream is removed
 - Histogram
-- ParseMultichainTxOutToBuffer
+- TableCache
 - mruset
-- TEST
+- table_test.cc
 - TwoLevelIterator
-- mcd_DebugRequest
+- InjectorTest
 - MergingIterator
-- main
+- exit_codes.py
 - CMedianFilter
 - common.py
-- BOOST_AUTO_TEST_CASE
+- map
 - wPoA Weight Registry — Testing Guide
 - test/analysis/pipeline/stat/timer_race.py
-- leveldb/db.h
+- CDB
 - properties
 - TEST
 - RoleController
 - VersionSet
 - rpcnet.cpp
-- CKeyStore
+- Iterator
 - Mutex
 - Plotter
 - BOOST_AUTO_TEST_CASE
 - Checker
 - SignSignature
-- as_float
+- analizza_esperimenti.py
 - test_binary_resolution.py
 - IsMine
 - test_explorer.py
 - MalusDetector
 - mcsim
-- CChain
+- test/analysis/pipeline/stat/concentration.py
 - CFeeRate
-- V8.md
+- mc_RelayManager
 - OFF_CreateSignatureScripts
 - CHMAC_SHA256
-- addrman.cpp
-- DaemonSupervisor
-- State
+- CMCAddrInfo
+- CValidationInterface
+- Watchdog
 - SnapshotImpl
 - 3. `vrf_wrapper.cpp` — the implementation
 - AtomicPointer
@@ -270,16 +270,16 @@
 - main
 - CCoinControl
 - Behavioural malus registry (`malus_record.h` + `malus_registry.{h,cpp}`)
-- WPoASortitionVerifyProposer
+- write_compat_inputs
 - Value
 - TableBuilder
 - Stream_reader_thrower
 - MinerGasDaemon
 - init.h
 - LRUHandle
-- mc_OffchainMessageID
+- legacy.py
 - test_malus_stats.py
-- txdb.cpp
+- CheckInputs
 - BlockBuilder
 - Arena
 - `wpoa_selector.h` + `wpoa_selector.cpp`
@@ -290,7 +290,7 @@
 - V8Filter
 - 4. Schema delle tabelle
 - DIAGNOSI — raccolta dati, summary, grafici, modello temporale
-- definition
+- Iter_type
 - extractors.py
 - chainparamsbase.cpp
 - ADR — the RANDAO fold returns to the bare XOR of Definition 5.3
@@ -302,75 +302,75 @@
 - wPoA — Protocol parameter catalogue
 - properties
 - 1. The pure core (`randao_accumulator.h`)
-- mc_RelayManager
-- GetScriptForDestination
-- CTxOut
+- relay.cpp
+- malus_record.h
+- CTransaction
+- CAddrMan
 - CAddrInfo
-- netbase.h
-- AccusedItem
+- MemTable
 - leveldb_t
 - RpcExplorer
-- v8/v8ubjson.cpp
-- ClusterInput
-- common.h
-- TestState
-- Sampler
-- Benchmark
-- LogPrint
+- WPoARandaoSelectionSeed
+- VerifyBlockMinerWPoA
+- v8/v8blob.cpp
+- multichainfilter.cpp
+- sampler.py
+- ThreadState
+- handshake.cpp
 - 2. Field reference
 - serialize.h
 - LRUCache
 - BOOST_AUTO_TEST_CASE
 - LevelDB sorted tables (SST) and levels
-- BOOST_AUTO_TEST_CASE
+- WeightVerificationEntry
 - TestValidate
 - BloomFilterPolicy
 - reporting.py
 - AdminDaemon
 - 2. The node glue (`private_sortition.cpp`)
-- ProcessRelay
+- Version::LevelFileNumIterator
 - wpoa/test/run_unit_tests.sh
 - txmempool.h
 - properties
-- Slice
+- Reader
 - Block
-- v8_win/v8ubjson.cpp
+- addrman.cpp
 - `weight_record.h`
 - IteratorWrapper
 - AtomicPointer
 - 2. The integration in `init.cpp`
 - glibcxx_compat.cpp
 - leveldb_iterator_t
-- weight_records.h
+- txdb.cpp
 - define.h
 - test/analysis/pipeline/stat/gof.py
 - wPoA Phase 3a: VRF randomness beacon
 - FilterCallback
 - 4. The schema of every table
-- CBlockHeader
+- bitcoinconsensus.cpp
 - test/analysis/pipeline/stat/wilson.py
 - core-daemon.sh
 - Java_org_bitcoin_NativeSecp256k1_secp256k1_1ecdsa_1verify
 - CLevelDBWrapper
 - Capitolo 8 — Experimental Evaluation: report generale
-- mc_TxEntity
+- json_spirit::write
 - test_summary_format.py
 - Slice
 - interpreter.h
-- VersionSet::Builder
-- bitcoinconsensus.cpp
-- wallet/db.h
+- LogAndApply
+- inspect_schema
+- test/analysis/pipeline/phase2_aggregate.py
 - markdown.py
 - derive
 - MultiChain RPC command reference
-- CheckLibrariesInternal
+- net.h
 - mc_MultiChainFilter
 - CORE network emulator (9.2.1)
 - Semantic_actions
-- sha256.cpp
-- sha512.cpp
+- CCoinsStats
+- rpcmining.cpp
 - test_metrics.py
-- table_builder.cc
+- mc_DBFlatPos
 - resolve
 - properties
 - properties
@@ -381,7 +381,7 @@
 - collectors/rpc.py
 - Comparator
 - port_posix.h
-- table.cc
+- .Corruption
 - version.cpp
 - CHMAC_SHA512
 - CBlockFileInfo
@@ -389,7 +389,7 @@
 - Stats
 - c_test.c
 - MultiChain Internals Used by the wPoA Weight Registry
-- SSLIOStreamDevice
+- mcd_DebugRequest
 - id
 - CCoinsViewDB
 - extract_all
@@ -398,8 +398,8 @@
 - chi2_sf
 - test_csv_contract.py
 - The chain
-- sha1.cpp
-- __US_SemCreate
+- AccusedItem
+- Sampler
 - TEST
 - weight_engine/test/run_unit_tests.sh
 - Cache
@@ -408,8 +408,8 @@
 - preflight.sh
 - properties
 - NativeSecp256k1
-- FED_EventTx
-- TableCache
+- WriteBatch
+- BytewiseComparatorImpl
 - json_spirit_writer_template.h
 - SharedState
 - glibc_sanity.cpp
@@ -421,22 +421,23 @@
 - Entrypoint starts and waits on core-daemon
 - MultiChain build toolchain (GCC 11, Boost 1.74)
 - host-tune.sh
-- VerifyBlockMinerWPoA
+- Lock
 - LevelDB benchmark results (Google, July 2011)
 - LevelDB key-value library overview
 - test_prompt_schema.py
+- ClusterResult
 - test/analysis/pipeline/stat/streak.py
-- CBaseChainParams
-- CBlockLocator
+- Benchmark
+- ShardedLRUCache
 - Create a Blockchain (MultiChain)
 - `protocol/multichainblock.cpp` (wPoA Phase 3b — the RANDAO seed on the validator side)
 - glibcxx_sanity_test
 - Fixes changelog — from harness findings to protocol fixes
 - merger.h
-- process_run
+- mc_RelayResponse
 - fixture.js
 - Table
-- FilterBlockBuilder
+- testharness.cc
 - 2. The added branch, line by line
 - 2. The added branch, line by line
 - 4.1 `fogli-di-analisi/` — le tabelle globali
@@ -449,7 +450,7 @@
 - LevelDB Contributor License Agreement
 - FilterPolicy / Bloom filter
 - Env
-- Lock
+- Slice
 - secp256k1 Travis CI build matrix
 - secp256k1/autogen.sh
 - secp256k1 group operations
@@ -457,7 +458,7 @@
 - pipeline/make_report.py
 - 2. The VRF check in `VerifyBlockMinerWPoA`
 - roles
-- RPCThreadLoad
+- CChain
 - CBlock
 - port_posix.cc
 - `rpc/rpclist.cpp` (wPoA parts only)
@@ -475,16 +476,16 @@
 - isminetype
 - CAutoFile
 - `protocol/multichainscript.h` + `multichainscript.cpp` (wPoA Phase 3a parts)
+- filter_win.cpp
 - mc_MultiChainLibrary
-- wPoA / WeightEngine RPCs — what each one actually returns
 - rpcserver.h
-- CScriptNum
-- weight_engine_inputs
+- .build_epoch_traffic
+- CTxInUndo
 - CModifiableParams
 - CMutexLock
-- mc_RelayResponse
+- test/analysis/pipeline/__init__.py
 - weight_engine.cpp
-- CUnitTestParams
+- mc_TxEntity
 - leveldb_comparator_t
 - Iterator
 - Environment
@@ -492,14 +493,14 @@
 - CondVar
 - experiments/analysis/pipeline/phase3_analyze.py
 - topology.schema.json
-- relay.cpp
+- mc_Limiter
 - 6. The new large-network test — and the one place the mandate cannot be implemented as written
 - admin
 - Migration from Shadow
-- mc_DBFlatPos
+- Popen
 - summaries.py
-- analizza_esperimenti.py
-- walletdb.h
+- as_float
+- stdint.h
 - catalogue.py
 - compute_weight_reconciliation
 - properties
@@ -507,23 +508,23 @@
 - properties
 - Metrics
 - V8_win.md
-- ParsedInternalKey
+- EventLog
 - Le colonne, tabella per tabella
 - properties
 - is_convertible
 - longitudinal.py
-- mc_RelayRequest
+- mc_OffchainMessageID
 - build_inequality
 - Historical results — the Shadow campaign
-- WeightBlkSnap
-- v8_data_lib.py
+- EventLog
+- test_run_script.py
 - Valutazione sperimentale della wPoA — campagna Shadow a 20 run
 - ca_count
 - shadow
 - diagnostics.py
 - POESIA / wPoA — real network emulation
-- StringSource
-- CLevelDBBatch
+- TEST
+- mc_RelayRequest
 - experiments/README.md
 - valida_sortition_montecarlo.py
 - timer_race.py
@@ -539,16 +540,16 @@
 - Architecture
 - Network model
 - scripts/_common.sh
-- CFlatData
+- definition
 - Prompt di analisi — Capitolo 8 della tesi wPoA
 - Shadow experimental pipeline — wPoA + Weight Engine
 - RunData
-- weight_records_tests.cpp
+- CMultiChainParams
 - CMasterKey
 - 4.3 Le altre tabelle per esperimento
 - _effective_weight
-- EnvWrapper
-- custom_accept_transacton
+- Env
+- common.h
 - concentration.py
 - Reproducibility
 - Topology model
@@ -560,7 +561,7 @@
 - queue
 - node.schema.json
 - CompanyController
-- Malicious miners and the behavioural malus
+- test/README.md
 - Error_position
 - Schema reale di `metrics/`
 - compare_levels.py
@@ -572,12 +573,12 @@
 - companies
 - `test/` — functional harness for wPoA + WeightEngine
 - Analysis
-- filtercallback_cold.cpp
+- mc_NodeFullAddress
 - name
 - nodes
 - Topologies
 - check_topology.py
-- CNode
+- wallet/db.h
 - nodes
 - mode
 - reconcile_rate
@@ -590,11 +591,11 @@
 - The run
 - campaign_0fab23a2.md
 - wPoA Implementation Guide — Master Index
-- json_spirit_utils.h
-- test_malus_pipeline.py
+- mc_CoinCSDetails
+- PipelineTest
 - builder.h
-- miner.h
-- FilterBlockReader
+- CNetMessage
+- MinerController
 - CDiskTxPos
 - leveldb_seqfile_t
 - burst_size
@@ -612,8 +613,8 @@
 - latency_model
 - legacy_gml_id
 - lon
-- CRIPEMD160
-- CSHA1
+- sha1.cpp
+- sha256.cpp
 - CExchangeStatus
 - 4. Schema di ogni tabella
 - name
@@ -654,31 +655,46 @@
 - 12. The stall, and the statistics the suites were missing
 - poesia-experiments
 - 5. Decisions on the restructuring
-- Destroy
+- sha512.cpp
 - wPoA — Weighted Proof-of-Authority
 - Results
 - Berkeley DB 4.8
-- CompactionStats
+- .SnappyCompress
 - log_test.cc
-- CSizeComputer
-- TestHashFilter
-- InputStream
+- CCheckpointData
+- PutFixed32
+- rpc_explorer.py
 - WeightEngine integration (weight-engine.md pipeline)
-- format
-- multichainfilter.cpp
-- STR_GetSubscriptions
+- _AppendCsv
+- mc_MultiChainFilterParams
+- bloom.h
 - port_win.h
-- time
-- gen.cpp
-- SerializationOp
+- checkpoints.cpp
+- CNode
+- CRIPEMD160
 - 2. Inventory and classification
-- build_tx_index
+- CSHA1
 - FilterPolicy
 - leveldb_randomfile_t
+- Destroy
+- CompactionStats
+- StringSource
 - extract_delays
-- weight_publisher.cpp
-- leveldb_writablefile_t
+- AddTxsInFlight
+- BIP32Hash
+- test_tick_receives_the_elapsed_wall_clock_time
+- RandomGenerator
+- migrate_legacy_outputs
+- FED_EventTx
+- __US_FlushFile
+- Destroy
+- CInv
 - SerializationOp
+- FED_EventPurgeChunk
+- weight_publisher.cpp
+- Any
+- Path
+- leveldb_writablefile_t
 
 ## God Nodes (most connected - your core abstractions)
 1. `string_` - 1171 edges
@@ -695,14 +711,14 @@
 ## Surprising Connections (you probably didn't know these)
 - `multichain-v8 Windows CMake build` --semantically_similar_to--> `MultiChain build toolchain (GCC 11, Boost 1.74)`  [INFERRED] [semantically similar]
   src/v8_win/CMakeLists.txt → docker/README.md
+- `storenode()` --calls--> `CNetAddr`  [INFERRED]
+  src/rpc/rpcnet.cpp → src/rpc/rpcserver.h
 - `LogPrintStr()` --calls--> `AreBaseParamsConfigured()`  [INFERRED]
   src/utils/util.cpp → src/chainparams/chainparamsbase.cpp
-- `mc_MultichainParams::AdjustSetupFirstBlocks()` --calls--> `mc_PutLE()`  [INFERRED]
-  src/chainparams/params.cpp → src/utils/utility.cpp
-- `AES256CBCDecrypt::AES256CBCDecrypt()` --calls--> `memcpy()`  [INFERRED]
-  src/crypto/aes.cpp → src/compat/glibc_compat.cpp
-- `AES256CBCEncrypt::AES256CBCEncrypt()` --calls--> `memcpy()`  [INFERRED]
-  src/crypto/aes.cpp → src/compat/glibc_compat.cpp
+- `AppInit2()` --calls--> `SetLimited()`  [INFERRED]
+  src/core/init.cpp → src/net/net.cpp
+- `ReceiveFloodSize()` --calls--> `GetArg()`  [INFERRED]
+  src/net/net.cpp → src/utils/util.cpp
 
 ## Import Cycles
 - None detected.
@@ -711,35 +727,35 @@
 - **wPoA phased consensus protocol** — src_wpoa_readme_phase1_weight_registry, src_wpoa_readme_phase2_weighted_selection, src_wpoa_readme_phase3a_vrf_beacon, src_wpoa_readme_phase3b_randao_beacon, src_wpoa_readme_phase4_private_sortition, src_wpoa_readme_malus_registry [EXTRACTED 1.00]
 - **LevelDB on-disk file format documentation set** — src_leveldb_doc_impl_sorted_tables, src_leveldb_doc_impl_log_files, src_leveldb_doc_log_format_record_format, src_leveldb_doc_table_format_file_layout [INFERRED 0.85]
 
-## Communities (674 total, 56 thin omitted)
+## Communities (690 total, 66 thin omitted)
 
 ### Community 0 - "AppInit2"
-Cohesion: 0.02
-Nodes (127): Callable, FileSystem, HelpMessageMode, raii_evhttp, InitializeMultiChainParams(), AppInit2(), BlockNotifyCallback(), CImportingNow (+119 more)
-
-### Community 1 - "main.cpp"
 Cohesion: 0.04
-Nodes (143): FlushStateMode, CDiskBlockPos, nFile, nPos, check, AcceptBlock(), AcceptBlockHeader(), AcceptToMemoryPool() (+135 more)
+Nodes (101): FileSystem, HelpMessageMode, SelectMultiChainParams(), AppInit2(), Bind(), BlockNotifyCallback(), CImportingNow, AppInit2_Cold() (+93 more)
+
+### Community 1 - "LogPrint"
+Cohesion: 0.05
+Nodes (109): ActivateBestChain(), ActivateBestChainStep(), AddOrphanTx(), AddToBlockIndex(), AlreadyHave(), ToString, CBlockIndex::BuildSkip(), CBlockIndex::GetAncestor() (+101 more)
 
 ### Community 2 - "CKey"
 Cohesion: 0.09
-Nodes (37): CExtKey, chaincode, Decode, Derive, Encode, key, nChild, nDepth (+29 more)
+Nodes (36): CExtKey, chaincode, Decode, Derive, Encode, key, nChild, nDepth (+28 more)
 
 ### Community 3 - "CWallet"
 Cohesion: 0.03
-Nodes (133): MasterKeyMap, CKeyPool::CKeyPool(), SetMerkleBranch, CBlock, CBlockLocator, CEncryptionKey, CKeyPool, CLicenseRequest (+125 more)
+Nodes (127): MasterKeyMap, set, SetMerkleBranch, CAmount, CBlock, CBlockLocator, CCoinControl, CEncryptionKey (+119 more)
 
 ### Community 4 - "asset.cpp"
 Cohesion: 0.03
-Nodes (56): mc_EntityLedgerRow, mc_Buffer, mc_EntityDetails, mc_AssetDB::AddToMemPool(), mc_AssetDB::ClearMemPoolInternal(), mc_AssetDB::Commit(), mc_AssetDB::FindActiveUpdate(), mc_AssetDB::FindEntityByFollowOn() (+48 more)
+Nodes (65): mc_EntityLedgerRow, mc_Buffer, mc_EntityDetails, mc_AssetDB::AddToMemPool(), mc_AssetDB::Commit(), mc_AssetDB::FindActiveUpdate(), mc_AssetDB::FindEntityByFollowOn(), mc_AssetDB::FindEntityByFollowOnInternal() (+57 more)
 
 ### Community 5 - "CallRPC"
 Cohesion: 0.07
-Nodes (35): event_callback_fn, raii_event, raii_event_base, raii_evhttp_connection, raii_evhttp_request, AppInitRPC(), CallRPC(), CConnectionFailed (+27 more)
+Nodes (32): Callable, event_callback_fn, raii_event, raii_event_base, raii_evhttp, raii_evhttp_connection, raii_evhttp_request, CallRPC() (+24 more)
 
 ### Community 6 - "CNode"
 Cohesion: 0.02
-Nodes (111): CNode, addr, addrFromVersion, addrLocal, addrName, AddTxsInFlight, CancelSubscribe, cleanSubVer (+103 more)
+Nodes (111): CNode, addr, addrFromVersion, addrLocal, addrName, CancelSubscribe, cleanSubVer, ClearBanned (+103 more)
 
 ### Community 7 - "rpcwpoa.cpp"
 Cohesion: 0.12
@@ -747,127 +763,127 @@ Nodes (46): Array, CBlockIndex, DumpingFunction, Object, getallweights(), getloc
 
 ### Community 8 - "wallettxs.cpp"
 Cohesion: 0.04
-Nodes (107): mc_TxDB, mc_AssetDB::RollBack(), mc_EntityDB::SetName(), mc_EntityLedger::SetName(), mc_PermissionDB::SetName(), mc_PermissionLedger::SetName(), mc_Permissions::RollBack(), SetRPCWRPReadLockFlag() (+99 more)
+Nodes (109): mc_TxDB, mc_GetCompoundHash160(), mc_EntityDB::SetName(), mc_EntityLedger::SetName(), mc_PermissionDB::SetName(), mc_PermissionLedger::SetName(), SetRPCWRPReadLockFlag(), uint160 (+101 more)
 
-### Community 9 - "secp256k1_rand_bits"
-Cohesion: 0.12
-Nodes (29): benchmark_schnorr_verify(), secp256k1_ecmult_gen_context_is_built(), secp256k1_context, secp256k1_nonce_function, secp256k1_pubkey, secp256k1_schnorr_generate_nonce_pair(), secp256k1_schnorr_partial_combine(), secp256k1_schnorr_partial_sign() (+21 more)
+### Community 9 - "test_schnorr_threshold"
+Cohesion: 0.23
+Nodes (17): secp256k1_ecmult_gen_context_is_built(), secp256k1_context, secp256k1_nonce_function, secp256k1_pubkey, secp256k1_schnorr_generate_nonce_pair(), secp256k1_schnorr_partial_combine(), secp256k1_schnorr_partial_sign(), secp256k1_schnorr_recover() (+9 more)
 
 ### Community 10 - "DBImpl"
-Cohesion: 0.04
-Nodes (92): CompactionState, CondVar, Iterator, ReadOptions, Slice, Snapshot, WriteBatch, WriteOptions (+84 more)
+Cohesion: 0.03
+Nodes (106): CompactionState, CondVar, Iterator, ReadOptions, SequenceNumber, Slice, Snapshot, vector (+98 more)
 
 ### Community 11 - "permission.cpp"
 Cohesion: 0.03
-Nodes (43): mc_PermissionLedgerRow, mc_Buffer, mc_PermissionDetails, mc_IsNullEntity(), mc_IsUpgradeEntity(), mc_MemcmpCheckSize(), mc_PermissionLedger::GetRow(), mc_PermissionLedger::SetRow() (+35 more)
+Nodes (44): mc_PermissionLedgerRow, mc_Buffer, mc_PermissionDetails, mc_IsNullEntity(), mc_IsUpgradeEntity(), mc_MemcmpCheckSize(), mc_PermissionLedger::GetRow(), mc_PermissionLedger::SetRow() (+36 more)
 
 ### Community 12 - "env_win.cc"
 Cohesion: 0.04
-Nodes (98): BOOL, DWORD, LPCWSTR, LPVOID, ScheduleProc, Env, HANDLE, Logger (+90 more)
+Nodes (92): BOOL, DWORD, LPCWSTR, LPVOID, ScheduleProc, Env, HANDLE, Logger (+84 more)
 
 ### Community 13 - "netbase.cpp"
-Cohesion: 0.07
-Nodes (82): proxyType, socklen_t, CloseSocketDisconnect, CloseSocket(), CNetAddr, CNetAddr::CNetAddr(), GetByte, GetGroup (+74 more)
+Cohesion: 0.05
+Nodes (94): socklen_t, AddWhitelistedRange, CNetAddr, CNetAddr::CNetAddr(), GetByte, GetGroup, GetHash, GetIn6Addr (+86 more)
 
 ### Community 14 - "CreateNewBlock"
 Cohesion: 0.09
 Nodes (44): CBlockTemplate, CheckProofOfWork(), CBlockHeader, CBlockIndex, uint256, GetBlockProof(), GetNextWorkRequired(), CanMineWithLockedBlock() (+36 more)
 
 ### Community 15 - "tests.c"
-Cohesion: 0.08
-Nodes (57): EC_KEY, bench_ecmult_wnaf(), secp256k1_scalar, secp256k1_ecmult_wnaf(), secp256k1_fe_sqrt_var(), secp256k1_rand256(), secp256k1_ecdsa_signature, secp256k1_fe (+49 more)
-
-### Community 16 - "rpcutils.cpp"
 Cohesion: 0.06
-Nodes (77): handshake_type, mc_ExtractAddressFromInputScript(), streamsize, AddressEntries(), AssetArrayFromAmounts(), AssetHistory(), AssetHistoryOld(), AssetIssueEntry() (+69 more)
+Nodes (70): EC_KEY, bench_ecmult_wnaf(), secp256k1_scalar, secp256k1_ecmult_wnaf(), secp256k1_fe_sqrt_var(), secp256k1_context_randomize(), SECP256K1_INLINE, secp256k1_rand256() (+62 more)
+
+### Community 16 - "mc_GetLE"
+Cohesion: 0.06
+Nodes (81): mc_AssetDB::Initialize(), mc_AssetDB::InsertAssetFollowOn(), mc_ExtractAddressFromInputScript(), mc_Script::GetAssetDetails(), getassetinfo(), listassetissues(), AddressEntries(), AssetArrayFromAmounts() (+73 more)
 
 ### Community 17 - "rpcstreams.cpp"
-Cohesion: 0.08
-Nodes (83): mc_GetCompoundHash160(), AddBlockInfo(), Array, mc_EntityDetails, mc_TxEntity, mc_TxEntityStat, Object, vector (+75 more)
+Cohesion: 0.09
+Nodes (84): listassets(), AddBlockInfo(), Array, mc_EntityDetails, mc_TxEntity, mc_TxEntityStat, Object, vector (+76 more)
 
 ### Community 18 - "utility.cpp"
-Cohesion: 0.04
-Nodes (54): mc_MultichainParams::Destroy(), mc_MultichainParams::Init(), Destroy(), mc_AssetDB::Destroy(), mc_AssetDB::Dump(), mc_EntityLedger::GetSize(), rand, mc_Permissions::Dump() (+46 more)
+Cohesion: 0.03
+Nodes (68): mc_MultichainParams::Build(), mc_MultichainParams::Destroy(), mc_MultichainParams::Init(), Destroy(), mc_AssetDB::ClearMemPoolInternal(), mc_AssetDB::Destroy(), mc_AssetDB::Dump(), mc_AssetDB::RollBackInternal() (+60 more)
 
 ### Community 19 - "wallettxdb.cpp"
-Cohesion: 0.05
-Nodes (57): mc_TxEntityRowExtension, mc_Permissions::LogString(), FILE, mc_LogString(), mc_MemoryDumpCharSizeToFile(), sprintf_hex(), mc_ChunkCollector::Dump(), mc_ChunkDB::Dump() (+49 more)
+Cohesion: 0.06
+Nodes (51): mc_TxEntityRowExtension, sprintf_hex(), mc_ChunkCollector::CommitInternal(), mc_ChunkDB::CommitInternal(), Dump, mc_Buffer, mc_TxDefRow, mc_TxEntity (+43 more)
 
 ### Community 20 - "rpcserver.cpp"
-Cohesion: 0.06
-Nodes (51): Object, JSONRPCReply(), JSONRPCReplyObj(), CheckFlagsOnException(), Array, map, Object, uint256 (+43 more)
+Cohesion: 0.02
+Nodes (93): HTTPRequestHandler, RequestMethod, Interrupt_Cold(), Interrupt(), CService, event_base, evhttp_request, HTTPClosure (+85 more)
 
-### Community 21 - "Manifest"
-Cohesion: 0.14
-Nodes (19): _core_version(), _git(), _kernel_modules(), Manifest, _os_pretty(), Path, The run manifest: what ran, on what, with which code. Written early and…, Record a phase boundary. Called even when the phase failed. (+11 more)
+### Community 21 - "memcpy"
+Cohesion: 0.04
+Nodes (60): FDELT_TYPE, mc_MultichainParams, mc_MultichainParams::Clone(), mc_MultichainParams::Create(), mc_MultichainParams::Read(), mc_MultichainParams::Set(), mc_MultichainParams::SetParam(), Init() (+52 more)
 
 ### Community 22 - "PosixEnv"
 Cohesion: 0.03
-Nodes (56): BGQueue, pthread_t, BGItem, arg, AtomicPointer, Env, FILE, Logger (+48 more)
+Nodes (60): BGQueue, pthread_t, mc_EntityLedger::Close(), BGItem, arg, AtomicPointer, Env, FILE (+52 more)
 
 ### Community 23 - "Repairer"
-Cohesion: 0.03
-Nodes (88): Construction, EncodeDecode, Parse, BuildTable(), Env, FileMetaData, Iterator, Options (+80 more)
+Cohesion: 0.04
+Nodes (74): Construction, EncodeDecode, Parse, BuildTable(), Env, FileMetaData, Iterator, Options (+66 more)
 
 ### Community 24 - "group_impl.h"
 Cohesion: 0.07
-Nodes (91): secp256k1_schnorr_msghash, bench_setup(), secp256k1_ecmult_gen_context, secp256k1_ecdsa_sig_sign(), secp256k1_ecmult_context, secp256k1_ge, secp256k1_eckey_pubkey_parse(), secp256k1_eckey_pubkey_serialize() (+83 more)
+Nodes (87): secp256k1_schnorr_msghash, bench_group_double_var(), bench_setup(), secp256k1_ecmult_gen_context, secp256k1_ecdsa_sig_sign(), secp256k1_ecmult_context, secp256k1_ge, secp256k1_eckey_pubkey_parse() (+79 more)
 
 ### Community 25 - "test_roles.py"
-Cohesion: 0.07
-Nodes (37): The workload settings that apply to one node. Global defaults from…, The environment every role script reads. Peers are addressed by their EMULATED…, role_environment(), workload_for(), controller_for(), The controller class for a role, instantiated., _context(), plan() (+29 more)
+Cohesion: 0.09
+Nodes (32): The workload settings that apply to one node. Global defaults from…, workload_for(), controller_for(), The controller class for a role, instantiated., _context(), plan(), fixture, The node controllers: life cycle, workload resolution, supervision. (+24 more)
 
 ### Community 26 - "walletcoins.cpp"
-Cohesion: 0.09
-Nodes (59): mc_GetABRefType(), printf(), LogAssetTxOut(), COutput, coin, fSpendable, GetHashAndTxOut, i (+51 more)
+Cohesion: 0.12
+Nodes (49): mc_GetABRefType(), mc_InitABufferMap(), printf(), LogAssetTxOut(), AvalableCoinsForAddress(), BuildAssetTransaction(), CalculateChangeAmounts(), CAssetGroupTree::Dump() (+41 more)
 
 ### Community 27 - "CWalletTx"
 Cohesion: 0.04
-Nodes (61): CTransaction, RelayTransaction(), MoneyRange(), CMerkleTx, AcceptToMemoryPool, fMerkleVerified, GetBlocksToMaturity, GetDepthInMainChain (+53 more)
+Nodes (60): MoneyRange(), CMerkleTx, AcceptToMemoryPool, fMerkleVerified, GetBlocksToMaturity, GetDepthInMainChain, GetDepthInMainChainINTERNAL, hashBlock (+52 more)
 
 ### Community 28 - "weight_reader.cpp"
-Cohesion: 0.19
-Nodes (21): CWalletTx, map, mc_EntityDetails, mc_WalletTxs, vector, DecodeStreamItem(), ExtractItemPublishers(), mc_WalletTxs (+13 more)
+Cohesion: 0.08
+Nodes (39): CWalletTx, map, mc_EntityDetails, mc_WalletTxs, uint256, vector, DecodeStreamItem(), ExtractItemPublishers() (+31 more)
 
 ### Community 29 - "DB"
 Cohesion: 0.04
-Nodes (68): Basics, DbEnv, LargeWrite, Misc, ReadAll, ReadHalf, AutoCompactTest, db_ (+60 more)
+Nodes (55): Basics, LargeWrite, Misc, ReadAll, ReadHalf, AutoCompactTest, db_, dbname_ (+47 more)
 
 ### Community 30 - "CWalletDB"
 Cohesion: 0.06
-Nodes (67): CAccount, CMasterKey, IncOrderPosNext, BackupWallet(), CAccountingEntry, CAmount, CBlockLocator, CEncryptionKey (+59 more)
+Nodes (68): CAccount, CMasterKey, mc_CopyFile(), SetMinVersion, BackupWallet(), CAccountingEntry, CAmount, CBlockLocator (+60 more)
 
-### Community 31 - "memcpy"
-Cohesion: 0.04
-Nodes (75): FDELT_TYPE, mc_MultichainParams::Build(), mc_MultichainParams, mc_MultichainParams::Clone(), mc_MultichainParams::Create(), mc_MultichainParams::GetParamFromScript(), mc_MultichainParams::Set(), mc_MultichainParams::SetParam() (+67 more)
+### Community 31 - "TEST"
+Cohesion: 0.08
+Nodes (25): ApproximateOffsetOfCompressed, ApproximateOffsetOfPlain, const_reverse_iterator, RandomizedLongDB, SimpleEmptyKey, SimpleMulti, SimpleSingle, SimpleSpecialKey (+17 more)
 
 ### Community 32 - "dbflat.cpp"
 Cohesion: 0.09
-Nodes (53): mc_RemoveBinaryCacheFile(), __US_DeleteFile(), CDBFlat, Close, CloseCursor, Erase, Exists, Flush (+45 more)
+Nodes (52): __US_DeleteFile(), CDBFlat, Close, CloseCursor, Erase, Exists, Flush, GetCursor (+44 more)
 
 ### Community 33 - "wPoA Weighted Miner Selection — Implementation Guide (Phase 2)"
 Cohesion: 0.05
 Nodes (43): 10. Build integration, 11.1 Change when wPoA engages, 11.2 Change the seed derivation, 11.3 Change the tie-break or scoring, 11.4 Document a new flag in `--help`, 11.5 Harden floating-point determinism, 11. How to modify, 12.1 Unit tests (node-free, pure math) (+35 more)
 
 ### Community 34 - "wallet.h"
-Cohesion: 0.03
-Nodes (79): mapValue_t, i64tostr(), CAccount, vchPubKey, CAccountingEntry, mapValue, nCreditDebit, nEntryNo (+71 more)
+Cohesion: 0.04
+Nodes (47): mapValue_t, atoi64(), i64tostr(), CAccount, vchPubKey, CAccountingEntry, mapValue, nCreditDebit (+39 more)
 
 ### Community 35 - "write_batch.cc"
-Cohesion: 0.06
-Nodes (43): Append, MemTable, SequenceNumber, Slice, WriteBatch, Slice, WriteBatch, WriteBatchInternal (+35 more)
+Cohesion: 0.07
+Nodes (38): Append, MemTable, SequenceNumber, Slice, WriteBatch, Slice, WriteBatch, MemTable (+30 more)
 
 ### Community 36 - "malicious.py"
 Cohesion: 0.06
-Nodes (47): action_id(), active_window(), badweight_payload(), choose_action(), derive_seed(), disabled_plan(), falsify_weight(), MaliciousConfigError (+39 more)
+Nodes (48): action_id(), active_window(), badweight_payload(), choose_action(), derive_seed(), disabled_plan(), falsify_weight(), MaliciousConfigError (+40 more)
 
 ### Community 37 - "rpcblockchain.cpp"
-Cohesion: 0.15
-Nodes (26): ClearMemPools(), blockToJSON(), blockToJSONForListBlocks(), clearmempool(), CompareBlocksByHeight, Array, CBlock, CBlockIndex (+18 more)
+Cohesion: 0.10
+Nodes (33): ClearMemPools(), blockToJSON(), blockToJSONForListBlocks(), clearmempool(), CompareBlocksByHeight, Array, CBlock, CBlockIndex (+25 more)
 
 ### Community 38 - "net.cpp"
-Cohesion: 0.05
-Nodes (86): CAddrMan, Bind(), CService, thread_group, DetectShutdownThread(), thread_group, DetectShutdownThread(), AddLocal() (+78 more)
+Cohesion: 0.06
+Nodes (76): CAddrMan, HandleSIGTERM(), AddLocal(), AddOneShot(), AddressCurrentlyConnected(), AdvertizeLocal(), BindListenPort(), CAddrDB (+68 more)
 
 ### Community 39 - "BOOST_AUTO_TEST_CASE"
 Cohesion: 0.05
@@ -875,43 +891,43 @@ Nodes (47): a_proved_badweight_reduces_effective_weight_then_decays, apply_corre
 
 ### Community 40 - "EnvironmentError_"
 Cohesion: 0.03
-Nodes (93): EnvironmentError_, Process exit codes shared by the CLI and the shell scripts. The same table is…, A mandatory external component (CORE, MultiChain, tc, root) is missing., The emulated network or a MultiChain process failed at run time., RuntimeFailure, Rebuild the fabric's in-memory link records from what it wrote to disk.…, _rehydrate(), Fabric (+85 more)
+Nodes (75): EnvironmentError_, A mandatory external component (CORE, MultiChain, tc, root) is missing., Rebuild the fabric's in-memory link records from what it wrote to disk.…, _rehydrate(), Fabric, FabricStatus, LinkEndpoint, Path (+67 more)
 
-### Community 41 - "netprotocol.cpp"
-Cohesion: 0.12
-Nodes (19): CAddress::CAddress(), Init, CInv, CInv::CInv(), GetCommand, hash, IsKnownType, ToString (+11 more)
+### Community 41 - "CAddress"
+Cohesion: 0.08
+Nodes (30): CAddress, CAddress::CAddress(), Init, nLastTry, nServices, nTime, CInv, CInv::CInv() (+22 more)
 
 ### Community 42 - "params.cpp"
 Cohesion: 0.04
-Nodes (17): FILE, mc_OneMultichainParam, mc_MultichainParams::AddressCheckumValue(), mc_MultichainParams::AddressScriptVersion(), mc_MultichainParams::AddressVersion(), mc_MultichainParams::AdjustSetupFirstBlocks(), mc_MultichainParams::CalculateHash(), mc_MultichainParams::FindParam() (+9 more)
+Nodes (18): FILE, mc_OneMultichainParam, mc_MultichainParams::AddressCheckumValue(), mc_MultichainParams::AddressScriptVersion(), mc_MultichainParams::AddressVersion(), mc_MultichainParams::AdjustSetupFirstBlocks(), mc_MultichainParams::CalculateHash(), mc_MultichainParams::FindParam() (+10 more)
 
 ### Community 43 - "secp256k1.c"
-Cohesion: 0.10
-Nodes (52): ec_privkey_export_der(), ChainCode, CPubKey, Decompress, Derive, Verify, secp256k1_context, secp256k1_ecdsa_signature (+44 more)
+Cohesion: 0.09
+Nodes (56): ec_privkey_export_der(), ChainCode, CPubKey, secp256k1_context, secp256k1_ecdsa_signature, vector, CheckLowS, Decompress (+48 more)
 
 ### Community 44 - "Orchestrator"
 Cohesion: 0.06
-Nodes (33): BootstrapError, log_step(), Orchestrator, Any, Popen, RuntimeError, Let the chain confirm what was just broadcast. A grant, a stream creation and a…, A dedicated address, never the admin's. With the admin as treasury a refuel's… (+25 more)
+Nodes (33): Popen, BootstrapError, log_step(), Orchestrator, Any, RuntimeError, Let the chain confirm what was just broadcast. A grant, a stream creation and a…, A dedicated address, never the admin's. With the admin as treasury a refuel's… (+25 more)
 
 ### Community 45 - "random.cpp"
 Cohesion: 0.08
 Nodes (50): RNGLevel, strnlen(), CSHA512, buf, bytes, Finalize, OUTPUT_SIZE, s (+42 more)
 
-### Community 46 - "CBitcoinAddress"
-Cohesion: 0.03
-Nodes (105): mc_Script, swap_bytes(), ubjson_best_int_type(), ubjson_best_negative_int_type(), ubjson_best_type(), ubjson_int64_read(), ubjson_int64_write(), ubjson_read() (+97 more)
+### Community 46 - "rpcmisc.cpp"
+Cohesion: 0.07
+Nodes (50): mc_Script, swap_bytes(), ubjson_best_int_type(), ubjson_best_negative_int_type(), ubjson_best_type(), ubjson_int64_read(), ubjson_int64_write(), ubjson_read() (+42 more)
 
 ### Community 47 - "CChainParams"
 Cohesion: 0.03
 Nodes (36): MessageStartChars, CChainParams, base58Prefixes, bnProofOfWorkLimit, dMineEmptyRounds, dMiningTurnover, fAllowMinDifficultyBlocks, fDefaultCheckMemPool (+28 more)
 
 ### Community 48 - "mc_EnterpriseFeatures"
-Cohesion: 0.08
-Nodes (58): Array, mc_ChunkDBRow, mc_EnterpriseFeatures, DRF_RPCDataRefToBinaryCache, DRF_RPCGetDataRefData, ENT_BuildVersion, ENT_Debug, ENT_Edition (+50 more)
+Cohesion: 0.07
+Nodes (59): Array, mc_Buffer, mc_EnterpriseFeatures, DRF_RPCDataRefToBinaryCache, DRF_RPCGetDataRefData, ENT_BuildVersion, ENT_Debug, ENT_Edition (+51 more)
 
 ### Community 49 - "Profile"
 Cohesion: 0.04
-Nodes (25): _build_nodes(), add(), Node, Profile, One ``multichaind`` process. ``index`` fixes the port assignment, so a given…, A validated profile with every derived quantity the harness needs., What a joining node dials. Loopback explicitly: ``getinfo``'s ``nodeaddress``…, Display units of native currency per 1000 bytes. (+17 more)
+Nodes (26): _build_nodes(), add(), Node, Profile, Random, One ``multichaind`` process. ``index`` fixes the port assignment, so a given…, A validated profile with every derived quantity the harness needs., What a joining node dials. Loopback explicitly: ``getinfo``'s ``nodeaddress``… (+18 more)
 
 ### Community 50 - "ctaes.c"
 Cohesion: 0.07
@@ -919,99 +935,99 @@ Nodes (52): AES128_ctx, AES192_ctx, AES_state, AES256CBCDecrypt, AES256CBCDecryp
 
 ### Community 51 - "__US_ThreadID"
 Cohesion: 0.05
-Nodes (56): mc_RollBackPos, mc_AssetDB::GetRollBackPos(), mc_AssetDB::Lock(), mc_AssetDB::SetRollBackPos(), mc_AssetDB::UnLock(), mc_RollBackPos, mc_Permissions::GetRollBackPos(), mc_Permissions::Lock() (+48 more)
+Nodes (55): mc_RollBackPos, mc_AssetDB::GetRollBackPos(), mc_AssetDB::Lock(), mc_AssetDB::SetRollBackPos(), mc_AssetDB::UnLock(), mc_RollBackPos, mc_Permissions::GetRollBackPos(), mc_Permissions::Lock() (+47 more)
 
 ### Community 52 - "CCoinsViewCache"
 Cohesion: 0.04
-Nodes (79): CCoinsViewErrorCatcher, CCoinsViewErrorCatcher, CCoins, uint256, CCoins, COutPoint, FindPreparedTxOut(), GetTxInputsAsTxOuts() (+71 more)
+Nodes (83): check, CTxUndo, vprevout, ADD_SERIALIZE_METHODS, vector, CCoinsViewErrorCatcher, CCoinsViewErrorCatcher, CCoins (+75 more)
 
 ### Community 53 - "Status"
 Cohesion: 0.03
-Nodes (69): RecordType, Slice, WritableFile, StdoutPrinter, WritableFile, StringDest, contents_, Slice (+61 more)
+Nodes (59): Env, Slice, WritableFile, HandleDumpCommand(), main(), StdoutPrinter, Usage(), WritableFile (+51 more)
 
 ### Community 54 - "ConcurrentTest"
-Cohesion: 0.11
-Nodes (19): Concurrent1, Concurrent2, Concurrent3, Concurrent4, Concurrent5, ConcurrentWithoutThreads, InsertAndLookup, Arena (+11 more)
+Cohesion: 0.07
+Nodes (33): Concurrent1, Concurrent2, Concurrent3, Concurrent4, Concurrent5, ConcurrentWithoutThreads, InsertAndLookup, ReaderState (+25 more)
 
 ### Community 55 - "CDataStream"
-Cohesion: 0.07
-Nodes (26): const_reference, reference, GetNewBucket, GetTriedBucket, vector, CDataStream, nReadPos, nType (+18 more)
+Cohesion: 0.08
+Nodes (20): const_reference, reference, CDataStream, nReadPos, nType, nVersion, vch, GetSerializeSize() (+12 more)
 
 ### Community 56 - "JSONRPCError"
-Cohesion: 0.08
-Nodes (60): JSONRPCError(), ValueFromAmount(), AccountFromValue(), AcentryToJSON(), addmultisigaddress(), backupwallet(), Array, CAccountingEntry (+52 more)
+Cohesion: 0.07
+Nodes (94): VerifyPubKey, Array, DecodeDumpString(), DecodeDumpTime(), dumpprivkey(), dumpwallet(), EncodeDumpString(), EncodeDumpTime() (+86 more)
 
 ### Community 57 - "chunkcollector.cpp"
-Cohesion: 0.05
-Nodes (48): mc_ChunkCollectorRow, mc_ChunkEntityKey, mc_AssetDB::InsertEntity(), mc_Permissions::RequiredForConsensus(), mc_Script::GetCachedScript(), mc_Script::GetChunkDef(), mc_Script::GetParamValue(), mc_ChunkCollector (+40 more)
-
-### Community 58 - "TEST"
 Cohesion: 0.06
-Nodes (35): CompactionInputError, CompactionInputErrorParanoid, CorruptedDescriptor, MissingDescriptor, NewFileErrorDuringWrite, RecoverWriteError, Recovery, SequenceNumberRecovery (+27 more)
+Nodes (40): mc_ChunkCollectorRow, mc_ChunkEntityKey, mc_Script::GetCachedScript(), mc_Script::GetChunkDef(), mc_Script::GetParamValue(), mc_ChunkCollector, mc_GetVarInt(), mc_SwapBytes32() (+32 more)
+
+### Community 58 - "Env"
+Cohesion: 0.05
+Nodes (34): CompactionInputError, CompactionInputErrorParanoid, CorruptedDescriptor, MissingDescriptor, NewFileErrorDuringWrite, RecoverWriteError, Recovery, SequenceNumberRecovery (+26 more)
 
 ### Community 59 - "json_spirit_value.h"
 Cohesion: 0.07
 Nodes (42): Config, Const_str_ptr, Pair_type, Config_map, Config_vector, get_value(), Array, Object (+34 more)
 
-### Community 60 - "DBIter"
-Cohesion: 0.14
-Nodes (27): Comparator, DBImpl, Direction, Iterator, SequenceNumber, Slice, DBIter, bytes_counter_ (+19 more)
+### Community 60 - "NetnsFabric"
+Cohesion: 0.07
+Nodes (24): NetnsFabric, Path, Turn off strict reverse-path filtering in a namespace. With a mesh of hubs a…, Create one veth pair between two namespaces on a fresh /30., One access veth per node, from its namespace to its location's router., Impairment of the hop between a node and its own location's router. The…, Static routes on every router, following the minimum-delay paths., A flat, unimpaired bridge joining the host to every node. (+16 more)
 
-### Community 61 - "SkipList"
-Cohesion: 0.09
-Nodes (33): Arena, AtomicPointer, Comparator, Key, SkipList, arena_, compare_, Contains (+25 more)
+### Community 61 - "Key"
+Cohesion: 0.07
+Nodes (39): Arena, AtomicPointer, Comparator, Key, Valid, SkipList, arena_, compare_ (+31 more)
 
 ### Community 62 - "TEST"
-Cohesion: 0.03
-Nodes (97): ApproximateSizes, ApproximateSizes_MixOfSmallAndLarge, BloomFilter, CompactionsGenerateMultipleFiles, ComparatorCheck, CustomComparator, DBOpen_Options, DeletionMarkers1 (+89 more)
+Cohesion: 0.02
+Nodes (103): ApproximateSizes, ApproximateSizes_MixOfSmallAndLarge, BloomFilter, CompactionsGenerateMultipleFiles, ComparatorCheck, CustomComparator, DBOpen_Options, DeletionMarkers1 (+95 more)
 
 ### Community 63 - "Collector"
 Cohesion: 0.13
 Nodes (18): collect(), Collector, main(), _num(), Phase1Error, Any, Path, RuntimeError (+10 more)
 
 ### Community 64 - "chunkdb.cpp"
-Cohesion: 0.07
-Nodes (40): mc_SubscriptionDBRow, mc_EntityLedger::Close(), mc_EntityLedger::Flush(), mc_PermissionLedger::Close(), mc_PermissionLedger::Flush(), mc_GetParamFromDetailsScriptErr(), close, Save (+32 more)
+Cohesion: 0.08
+Nodes (33): mc_SubscriptionDBRow, mc_Permissions::LogString(), __US_FlushFileWithMode(), FILE, mc_LogString(), mc_MemoryDumpCharSizeToFile(), mc_CreateDir(), mc_ChunkCollector::Dump() (+25 more)
 
 ### Community 65 - "main.h"
-Cohesion: 0.04
-Nodes (52): CTxInUndo, fCoinBase, nHeight, nVersion, txout, CTxUndo, vprevout, ADD_SERIALIZE_METHODS (+44 more)
+Cohesion: 0.09
+Nodes (22): BlockHasher, CBlockIndex, CBlockTemplate, block, vTxFees, vTxSigOps, CBlockTreeDB, CBloomFilter (+14 more)
 
 ### Community 66 - "wPoA VRF Randomness Beacon — Implementation Guide (Phase 3a)"
 Cohesion: 0.05
 Nodes (41): 10. Error handling & edge cases, 11. Build integration, 12.1 Change the VRF input (e.g. consume the Phase 3b RANDAO seed), 12.2 Change the reveal/proof size, 12.3 Swap the VRF construction, 12.4 Change when the VRF is required, 12.5 Make the reveal drive selection (Phase 4 preview), 12. How to modify (+33 more)
 
 ### Community 67 - "v8_win.cpp"
-Cohesion: 0.08
-Nodes (39): IFilterCallback_t, ResetRunningFilter, Array, mc_Filter, vector, mc_Filter::Destroy(), mc_Filter::Initialize(), mc_FilterEngine::CreateFilter() (+31 more)
+Cohesion: 0.11
+Nodes (29): IFilterCallback_t, mc_Filter::Destroy(), mc_Filter::Initialize(), mc_FilterEngine::Destroy(), mc_FilterEngine::Initialize(), mc_FilterEngine::TerminateFilter(), Blob_t, FilterCallback::UbjCallback() (+21 more)
 
-### Community 68 - "EnsureWalletIsUnlocked"
-Cohesion: 0.08
-Nodes (72): mc_SetABQuantity(), issuefromcmd(), issuemorefrom_operation(), importaddress(), Array, mc_Script, uint160, vector (+64 more)
+### Community 68 - "testfilter"
+Cohesion: 0.22
+Nodes (19): Array, mc_Script, uint160, vector, getfiltercode(), getfiltertxid(), listfilters(), liststreamfilters() (+11 more)
 
 ### Community 69 - "rpcweightengine.cpp"
-Cohesion: 0.21
-Nodes (37): Array, map, Object, RpcBalanceEntry(), RpcClusterWeightEntry(), RpcContributionEntry(), RpcContributionFor(), RpcEarningsEntry() (+29 more)
+Cohesion: 0.19
+Nodes (39): Array, map, Object, RecordDouble(), RpcBalanceEntry(), RpcClusterWeightEntry(), RpcContributionEntry(), RpcContributionFor() (+31 more)
 
-### Community 70 - "set"
-Cohesion: 0.07
-Nodes (41): pair_, Array, vector, CRPCConvertParam, methodName, paramIdx, CRPCConvertParamAnyType, methodName (+33 more)
+### Community 70 - "pair_"
+Cohesion: 0.15
+Nodes (17): pair_, CAmount, FormatMoney(), ParseMoney(), ApproximateBestSubset(), CompareValueOnly, CompareValueOnlyHash, CompareValueOnlyIntDesc (+9 more)
 
 ### Community 71 - "RPCTestLibraryUpdate"
 Cohesion: 0.22
 Nodes (9): mc_EntityDetails, RPCTestLibraryUpdate, m_Code, m_Library, m_LibraryName, m_LibraryOnChain, m_UpdateName, m_UpdateOnChain (+1 more)
 
 ### Community 72 - "CPubKey"
-Cohesion: 0.08
-Nodes (28): CExtPubKey, chaincode, Decode, Derive, Encode, nChild, nDepth, pubkey (+20 more)
+Cohesion: 0.09
+Nodes (23): CExtPubKey, chaincode, Decode, Derive, Encode, nChild, nDepth, pubkey (+15 more)
 
 ### Community 73 - "mc_MinerInfo"
 Cohesion: 0.09
-Nodes (39): Array, mc_PermissionDetails, uint160, uint256, grantcmd(), grantfromcmd(), grantoperation(), grantwithmetadata() (+31 more)
+Nodes (41): getdiagnostics(), Array, mc_PermissionDetails, uint160, uint256, grantcmd(), grantfromcmd(), grantoperation() (+33 more)
 
-### Community 74 - "HTTPRequest"
-Cohesion: 0.04
-Nodes (46): HTTPRequestHandler, HTTPClosure, HTTPEvent, deleteWhenTriggered, ev, handler, trigger, HTTPRequest (+38 more)
+### Community 74 - "CTxOut"
+Cohesion: 0.09
+Nodes (45): mc_SetABQuantity(), CTxOut, nValue, scriptPubKey, CAmount, AcceptExchange(), appendrawexchange(), completerawexchange() (+37 more)
 
 ### Community 75 - "TEST"
 Cohesion: 0.06
@@ -1026,60 +1042,60 @@ Cohesion: 0.05
 Nodes (31): CBlockIndex, BuildSkip, dTimeReceived, fPassedMinerPrecheck, GetAncestor, hashMerkleRoot, IsSuperMajority, kMiner (+23 more)
 
 ### Community 78 - "malus_registry.cpp"
-Cohesion: 0.08
-Nodes (43): MalusDataDetail, declared, declared_address, epoch, recomputed, stream, AccusedBlock, address (+35 more)
+Cohesion: 0.07
+Nodes (46): HeightToEpoch(), MalusDataDetail, declared, declared_address, epoch, recomputed, stream, AccusedBlock (+38 more)
 
 ### Community 79 - "CScript"
-Cohesion: 0.15
-Nodes (18): CScript, opcodetype, vector, CScript, GetSigOpCount, HasSmallIntegerInTheBeginning, IsPayToScriptHash, IsPushOnly (+10 more)
+Cohesion: 0.10
+Nodes (24): CScript, opcodetype, vector, CScript, GetSigOpCount, HasSmallIntegerInTheBeginning, IsPayToScriptHash, IsPushOnly (+16 more)
 
 ### Community 80 - "CCryptoKeyStore"
-Cohesion: 0.10
-Nodes (39): CBasicKeyStore, CryptedKeyMap, CCrypter, BytesToKeySHA512AES, chIV, chKey, Decrypt, Encrypt (+31 more)
+Cohesion: 0.08
+Nodes (44): CBasicKeyStore, CryptedKeyMap, GetPrivKey, CCrypter, BytesToKeySHA512AES, chIV, chKey, Decrypt (+36 more)
 
-### Community 81 - "Version::LevelFileNumIterator"
-Cohesion: 0.10
-Nodes (29): SaverState, AfterFile(), BeforeFile(), BySmallestKey, internal_comparator, Comparator, FileMetaData, InternalKeyComparator (+21 more)
+### Community 81 - "Slice"
+Cohesion: 0.15
+Nodes (23): SaverState, AfterFile(), BeforeFile(), BySmallestKey, internal_comparator, Comparator, FileMetaData, InternalKeyComparator (+15 more)
 
 ### Community 82 - "secp256k1_context_create"
-Cohesion: 0.07
-Nodes (33): ECCVerifyHandle::ECCVerifyHandle(), bench_ecdh(), bench_ecdh_setup(), main(), gettimedouble(), bench_context_sign(), bench_context_verify(), print_number() (+25 more)
+Cohesion: 0.08
+Nodes (34): ECCVerifyHandle::ECCVerifyHandle(), bench_ecdh(), bench_ecdh_setup(), main(), gettimedouble(), bench_context_sign(), bench_context_verify(), print_number() (+26 more)
 
 ### Community 83 - "TxToJSON"
-Cohesion: 0.10
-Nodes (43): estimatefee(), AddCacheInputScriptIfNeeded(), appendrawchange(), appendrawmetadata(), appendrawtransaction(), Array, CMutableTransaction, CScript (+35 more)
+Cohesion: 0.08
+Nodes (55): Verify, mc_EntityDetails::NextParam(), mc_FindSpecialParamInDetailsScriptFull(), mc_GetParamFromDetailsScript(), AddCacheInputScriptIfNeeded(), appendrawchange(), appendrawmetadata(), appendrawtransaction() (+47 more)
 
 ### Community 84 - "session.py"
 Cohesion: 0.03
-Nodes (55): datetime, kv(), Any, Render structured fields for a log message: ``kv(host="m1", rc=0)``., EventLog, The harness's own event stream, as JSON lines. The manifest records phases,…, Append-only JSONL, safe to share between threads., Running the real MultiChain binaries: install, initialise, supervise. (+47 more)
+Nodes (73): kv(), Any, Render structured fields for a log message: ``kv(host="m1", rc=0)``., Namespaces belonging to a session, discovered from the system. Reads the live…, _core_version(), _git(), _kernel_modules(), Manifest (+65 more)
 
 ### Community 85 - "wPoA RANDAO Beacon Seed — Implementation Guide (Phase 3b)"
 Cohesion: 0.05
 Nodes (41): 10. Build integration, 11.1 Change the seed formula (e.g. add domain separation), 11.2 Change the lookback default, 11.3 Change the fold / accumulator construction, 11.4 Change when the beacon seed engages, 11.5 Persist / bound the accumulator cache, 11. How to modify, 12.1 Unit tests (node-free, pure math) (+33 more)
 
 ### Community 86 - "ui_interface.h"
-Cohesion: 0.09
-Nodes (22): last_value, CBasicKeyStore, CClientUIInterface, InitMessage, LoadWallet, NotifyAlertChanged, NotifyBlockTip, NotifyNumConnectionsChanged (+14 more)
+Cohesion: 0.11
+Nodes (18): last_value, CBasicKeyStore, CClientUIInterface, InitMessage, LoadWallet, NotifyAlertChanged, NotifyBlockTip, NotifyNumConnectionsChanged (+10 more)
 
 ### Community 87 - "RpcClient"
-Cohesion: 0.07
-Nodes (31): assign(), main(), plan_scores(), EventLog, Path, The Certification Authorities: publish a certified ESG score for every node. A…, Which CA certifies which node, with which score. Miners **and** companies are…, Publish every planned score. Returns a summary for the orchestrator. (+23 more)
+Cohesion: 0.06
+Nodes (35): main(), EventLog, Path, The observer: a separate process bound to the admin node, sampling the chain.…, assign(), main(), plan_scores(), EventLog (+27 more)
 
-### Community 88 - "num_gmp_impl.h"
-Cohesion: 0.15
-Nodes (36): secp256k1_num, secp256k1_num_add(), secp256k1_num_add_abs(), secp256k1_num_cmp(), secp256k1_num_copy(), secp256k1_num_eq(), secp256k1_num_get_bin(), secp256k1_num_is_neg() (+28 more)
+### Community 88 - "bench_internal.c"
+Cohesion: 0.07
+Nodes (55): bench_field_inverse(), bench_field_inverse_var(), bench_field_sqrt_var(), bench_group_add_affine(), bench_group_add_affine_var(), bench_group_add_var(), bench_scalar_inverse(), bench_scalar_inverse_var() (+47 more)
 
 ### Community 89 - "MaliciousInjector"
-Cohesion: 0.07
-Nodes (19): Read back one node's own log, in file order. THE LOG IS THE JOURNAL. A daemon…, replay(), MaliciousInjector, Any, Replay the deficit controller from ``start_epoch`` up to ``epoch``. Pure: no…, The whole epoch's malicious behaviour: decide, record, maybe publish, sweep.…, A second independent draw for the action-choice, so which action is chosen is…, The confirmed item for ``action_id`` on ``stream``, or ``None``. The… (+11 more)
+Cohesion: 0.12
+Nodes (12): MaliciousInjector, Any, Replay the deficit controller from ``start_epoch`` up to ``epoch``. Pure: no…, The whole epoch's malicious behaviour: decide, record, maybe publish, sweep.…, A second independent draw for the action-choice, so which action is chosen is…, The confirmed item for ``action_id`` on ``stream``, or ``None``. The…, A record on a self-attested stream naming an address other than the signer.…, A ``wpoa-weights`` record about this miner, carrying a false value. The stated… (+4 more)
 
 ### Community 90 - "BOOST_AUTO_TEST_CASE"
 Cohesion: 0.05
-Nodes (38): esg_aggregation_newest_wins, esg_duplicate_field_first_wins, esg_reject_nan_and_inf, esg_reject_non_positive, esg_valid_int_and_real, esg_wrapped_formatdata_shape, membership_admin_proxy_declaration_is_rejected, membership_build_clusters_clears_stale_output (+30 more)
+Nodes (63): esg_aggregation_newest_wins, esg_duplicate_field_first_wins, esg_reject_nan_and_inf, esg_reject_non_positive, esg_valid_int_and_real, esg_wrapped_formatdata_shape, membership_admin_proxy_declaration_is_rejected, membership_build_clusters_clears_stale_output (+55 more)
 
 ### Community 91 - "CBasicKeyStore"
-Cohesion: 0.14
-Nodes (20): KeyMap, ScriptMap, CBasicKeyStore, AddCScript, AddKeyPubKey, AddWatchOnly, GetCScript, HaveCScript (+12 more)
+Cohesion: 0.07
+Nodes (37): KeyMap, ScriptMap, CBasicKeyStore, AddCScript, AddKeyPubKey, AddWatchOnly, GetCScript, HaveCScript (+29 more)
 
 ### Community 92 - "test_malicious_logic.py"
 Cohesion: 0.05
@@ -1103,19 +1119,19 @@ Nodes (35): accumulator_algebra_is_known_and_bounded, accumulator_chain_matches_
 
 ### Community 97 - "VersionEdit"
 Cohesion: 0.05
-Nodes (35): DeletedFileSet, ManualCompaction, begin, done, end, level, tmp_storage, InternalKey (+27 more)
+Nodes (29): DeletedFileSet, InternalKey, rep_, FileMetaData, allowed_seeks, file_size, largest, number (+21 more)
 
-### Community 98 - "rpcprotocol.cpp"
-Cohesion: 0.12
-Nodes (31): basic_istream, AvailableDataFormatsString(), map, uint256, vector, HTTPReq_REST(), ParseDataFormat(), ParseHashStr() (+23 more)
+### Community 98 - "string_"
+Cohesion: 0.03
+Nodes (91): basic_istream, Array, mc_Filter, vector, mc_Filter::Initialize(), mc_FilterEngine::CreateFilter(), mc_FilterEngine::Initialize(), mc_FilterEngine::RunFilter() (+83 more)
 
 ### Community 99 - "Private Proposer Sortition for Weighted Proof-of-Authority: A Thesis Overview"
 Cohesion: 0.05
 Nodes (37): 10. References, 1. Abstract, 2. Problem Statement, 3.1 Leader Predictability Attack, 3.2 Permissioned Context: Mitigating but Not Eliminating, 3.3 Other Vulnerabilities Considered, 3. Threat Model & Vulnerabilities, 4. Literature Review Map (+29 more)
 
 ### Community 100 - "BOOST_AUTO_TEST_CASE"
-Cohesion: 0.13
-Nodes (22): max_feedback_is_the_admissibility_ceiling, mining_delay_feedback_shifts_the_whole_band, mining_delay_is_a_band_around_the_target, mining_delay_never_negative_or_nan, normalized_score_is_scale_corrected_and_ordered, score_depends_on_secret_key, score_matches_shared_transform, PrivateSortition (+14 more)
+Cohesion: 0.09
+Nodes (35): max_feedback_is_the_admissibility_ceiling, mining_delay_feedback_shifts_the_whole_band, mining_delay_is_a_band_around_the_target, mining_delay_never_negative_or_nan, normalized_score_is_scale_corrected_and_ordered, score_depends_on_secret_key, score_matches_shared_transform, CBlock (+27 more)
 
 ### Community 102 - "EmptyIterator"
 Cohesion: 0.13
@@ -1126,20 +1142,20 @@ Cohesion: 0.14
 Nodes (31): SECP256K1_INLINE, secp256k1_fe_mul_inner(), secp256k1_fe_sqr_inner(), secp256k1_fe, secp256k1_fe_storage, SECP256K1_INLINE, secp256k1_fe_add(), secp256k1_fe_clear() (+23 more)
 
 ### Community 104 - "Aggregator"
-Cohesion: 0.11
-Nodes (23): aggregate(), Aggregator, b(), _epoch_from_key(), f(), i(), main(), Phase2Error (+15 more)
+Cohesion: 0.18
+Nodes (13): Aggregator, b(), f(), i(), Any, Per malicious miner: target rate against the attempted/sent/confirmed/valid…, CSV cell to float, with empty and unparsable mapping to ``None``. ``None``…, Join the ground-truth logs, the malus samples and the detector's verdicts.… (+5 more)
 
 ### Community 105 - "11. Cleanup pass — residues and structural incoherences"
 Cohesion: 0.29
 Nodes (7): 11.1 Dangling links the first pass missed — 7, all fixed, 11.2 `qa/` — an upstream test tree that never existed here, 11.3 `src/test/` does not exist — an error this ADR introduced, 11.4 `testing.md` had drifted, 11.5 `experimental/` — NOT deleted, and the reason matters, 11.6 Observed but out of scope, 11. Cleanup pass — residues and structural incoherences
 
 ### Community 106 - "EventLog"
-Cohesion: 0.08
-Nodes (20): BaseException, EventLog, _json_default(), Any, Path, ISO-8601 in UTC with a ``Z`` suffix — sortable as text, unambiguous as a…, Append-only JSONL writer for one node process. Thread-safe because…, Write one line. ``epoch_index`` is derived here rather than passed, so that the… (+12 more)
+Cohesion: 0.10
+Nodes (21): BaseException, EventLog, _json_default(), Any, The run's own event log: one JSON Lines file per node process. Deliberately…, ISO-8601 in UTC with a ``Z`` suffix — sortable as text, unambiguous as a…, Append-only JSONL writer for one node process. Thread-safe because…, Write one line. ``epoch_index`` is derived here rather than passed, so that the… (+13 more)
 
 ### Community 107 - "ExtractDestinations"
 Cohesion: 0.17
-Nodes (30): MultiChainTransaction_CheckDestinations(), T, ToByteVector(), CKeyID, CPubKey, CScript, CScriptID, CTxDestination (+22 more)
+Nodes (29): T, ToByteVector(), CKeyID, CPubKey, CScript, CScriptID, CTxDestination, static_visitor<bool> (+21 more)
 
 ### Community 108 - "2. The implementation `stream_weight_registry.cpp`"
 Cohesion: 0.06
@@ -1147,31 +1163,31 @@ Nodes (32): 1.1 Includes and where they come from, 1.2 The two constants (`#defi
 
 ### Community 109 - "build_topology"
 Cohesion: 0.03
-Nodes (102): cmd_topology_generate(), cmd_topology_validate(), parametrize, The migration must be lossless, and this is what proves it. Exporting each…, Archived edge tables key on these ids; renumbering would break them., Each 20-node level must still contain its 10-node ancestor's sites., test_every_legacy_topology_has_ten_locations(), test_export_reproduces_the_historical_gml_byte_for_byte() (+94 more)
+Nodes (103): cmd_topology_generate(), cmd_topology_validate(), Deterministic fixtures: a synthetic run that exercises the whole pipeline., build_synthetic_run(), _chain_snapshot(), _manifest(), Path, Build a synthetic run directory, without root and without MultiChain. It is the… (+95 more)
 
 ### Community 110 - "V8Filter"
-Cohesion: 0.09
-Nodes (26): CallRpcFunction(), FunctionCallbackInfo, callbackFixedName(), TryCatch, V8Engine, vector, Context, Function (+18 more)
+Cohesion: 0.07
+Nodes (44): MaybeLocal, CallRpcFunction(), FunctionCallbackInfo, callbackFixedName(), CallRpcFunction(), FunctionCallbackInfo, TryCatch, V8Engine (+36 more)
 
-### Community 111 - "WeightEngine"
-Cohesion: 0.50
-Nodes (4): Chain parameters, Source layout, Tests, WeightEngine
+### Community 111 - "base58.cpp"
+Cohesion: 0.09
+Nodes (31): BurnAddress(), CBase58Data, CompareTo, SetData, SetString, ToString, vchData, vchVersion (+23 more)
 
 ### Community 112 - "Prove"
-Cohesion: 0.10
+Cohesion: 0.09
 Nodes (34): cross_key_proof_is_rejected, distinct_inputs_give_distinct_outputs, prove_is_deterministic, prove_then_verify_roundtrips, Finalize, secp256k1_ec_seckey_verify(), BOOST_AUTO_TEST_CASE(), vector (+26 more)
 
-### Community 113 - "NetnsFabric"
+### Community 113 - "CValidationState"
 Cohesion: 0.06
-Nodes (34): NetnsFabric, Path, Turn off strict reverse-path filtering in a namespace. With a mesh of hubs a…, Create one veth pair between two namespaces on a fresh /30., One access veth per node, from its namespace to its location's router., Impairment of the hop between a node and its own location's router. The…, Static routes on every router, following the minimum-delay paths., A flat, unimpaired bridge joining the host to every node. (+26 more)
+Nodes (66): FlushStateMode, CDiskBlockPos, nFile, nPos, vector, StartShutdown(), ThreadImport(), AbortNode() (+58 more)
 
 ### Community 114 - "CBufferedFile"
 Cohesion: 0.07
 Nodes (14): CAutoFile, file, nType, nVersion, CBufferedFile, nReadLimit, nReadPos, nRewind (+6 more)
 
-### Community 115 - "bench_internal.c"
-Cohesion: 0.08
-Nodes (19): bench_field_inverse(), bench_field_inverse_var(), bench_field_sqrt_var(), bench_group_add_affine(), bench_group_add_affine_var(), bench_group_add_var(), bench_group_double_var(), bench_scalar_inverse() (+11 more)
+### Community 115 - "RoleScheduler"
+Cohesion: 0.09
+Nodes (14): datetime, EventLog, The harness's own event stream, as JSON lines. The manifest records phases,…, Append-only JSONL, safe to share between threads., SIGTERM the process group, then SIGKILL. Returns what it took. The group, not…, terminate_popen(), ControllerHandle, Path (+6 more)
 
 ### Community 116 - "hash_impl.h"
 Cohesion: 0.16
@@ -1182,12 +1198,12 @@ Cohesion: 0.11
 Nodes (29): CCoinsViewMemPool, CCoinsViewMemPool::CCoinsViewMemPool(), GetCoins, HaveCoins, CAmount, CCoins, CTransaction, list (+21 more)
 
 ### Community 118 - "runtime/cli.py"
-Cohesion: 0.04
-Nodes (90): cmd_analysis_campaign(), cmd_analysis_run(), cmd_report_generate(), _plan_of(), Path, Analysis subcommands: metrics schema, analysis, campaign, reports. Imported…, Compare several runs in one campaign view., Extract the metrics of one run and analyse them. (+82 more)
-
-### Community 119 - "CMultiChainTxDetails"
 Cohesion: 0.05
-Nodes (41): CMultiChainTxDetails, details_script, details_script_size, details_script_type, emergency_disapproval_output, extended_script_row, fAdminMinerGrant, fAssetIssuance (+33 more)
+Nodes (67): cmd_env_check(), cmd_experiment_dry_run(), cmd_experiment_run(), cmd_metrics_collect(), cmd_multichain_initialize(), cmd_multichain_treasury(), cmd_network_apply_profile(), cmd_network_start() (+59 more)
+
+### Community 119 - "CCoins"
+Cohesion: 0.09
+Nodes (20): CCoins, CalcMaskSize, fCoinBase, nHeight, nVersion, Spend, vout, CCoinsCacheEntry (+12 more)
 
 ### Community 120 - "cs_Database::Open"
 Cohesion: 0.09
@@ -1195,23 +1211,23 @@ Nodes (27): Cache, WriteBatch, WriteOptions, leveldb_cache_create_lru(), leveldb
 
 ### Community 121 - "generator.py"
 Cohesion: 0.05
-Nodes (72): apply_override(), apply_profile(), partition(), Path, Applying an impairment to a network that is already running. Separate from the…, Append one impairment change to the run's event log., Install one profile on some or all of the fabric's links. ``links`` selects…, Install a one-off impairment without naming a profile. (+64 more)
+Nodes (78): apply_override(), apply_profile(), partition(), Path, Applying an impairment to a network that is already running. Separate from the…, Put every link back to the impairment its own topology declares. Needed because…, Append one impairment change to the run's event log., Install one profile on some or all of the fabric's links. ``links`` selects… (+70 more)
 
-### Community 122 - "tests/conftest.py"
-Cohesion: 0.10
-Nodes (23): _has_multichain(), fixture, Path, Shared fixtures and capability markers. Three capabilities decide what can run…, A complete synthetic run directory, built fresh for each test., regional_descriptor(), repo_root(), smoke_descriptor() (+15 more)
+### Community 122 - "mc_Coin"
+Cohesion: 0.06
+Nodes (31): COutput, coin, fSpendable, GetHashAndTxOut, i, IsTrusted, IsTrustedNoDepth, nDepth (+23 more)
 
 ### Community 123 - "Options"
 Cohesion: 0.08
 Nodes (27): Cache, Comparator, Env, FilterPolicy, CompressionType, Logger, Options, block_cache (+19 more)
 
-### Community 124 - "ecmult_impl.h"
-Cohesion: 0.14
-Nodes (11): secp256k1_ecmult_context, secp256k1_ge, secp256k1_scalar, secp256k1_der_parse_integer(), secp256k1_der_read_len(), secp256k1_ecdsa_sig_parse(), secp256k1_ecdsa_sig_serialize(), secp256k1_ecdsa_sig_verify() (+3 more)
+### Community 124 - "group.h"
+Cohesion: 0.11
+Nodes (17): secp256k1_ecmult_context, secp256k1_ge, secp256k1_scalar, secp256k1_der_parse_integer(), secp256k1_der_read_len(), secp256k1_ecdsa_sig_parse(), secp256k1_ecdsa_sig_serialize(), secp256k1_ecdsa_sig_verify() (+9 more)
 
 ### Community 125 - "base_uint"
-Cohesion: 0.07
-Nodes (26): BITS, base_uint, bits, base_uint<BITS>::base_uint(), base_uint<BITS>::CompareTo(), base_uint<BITS>::GetHex(), base_uint<BITS>::SetHex(), base_uint<BITS>::ToString() (+18 more)
+Cohesion: 0.06
+Nodes (31): BITS, base_uint, bits, base_uint<BITS>::base_uint(), base_uint<BITS>::CompareTo(), base_uint<BITS>::GetHex(), base_uint<BITS>::SetHex(), base_uint<BITS>::ToString() (+23 more)
 
 ### Community 126 - "CScriptCompressor"
 Cohesion: 0.11
@@ -1222,44 +1238,44 @@ Cohesion: 0.12
 Nodes (24): Array, mc_Filter, vector, mc_Filter, Destroy, Initialize, m_Impl, m_timeout (+16 more)
 
 ### Community 128 - "dbwrap.h"
-Cohesion: 0.09
-Nodes (29): CBlockLocator, CDBWrap, Close, CloseCursor, Erase, Exists, Flush, fReadOnly (+21 more)
+Cohesion: 0.05
+Nodes (48): CBlockLocator, CDBWrap, Close, CloseCursor, Erase, Exists, Flush, fReadOnly (+40 more)
 
 ### Community 129 - "StreamWeightRegistry"
-Cohesion: 0.12
-Nodes (32): CWalletTx, map, mc_EntityDetails, mc_WalletTxs, vector, DecodeWeightRecord(), ExtractItemPublishers(), mc_StreamSetupState (+24 more)
+Cohesion: 0.11
+Nodes (33): CWalletTx, map, mc_EntityDetails, mc_WalletTxs, vector, DecodeWeightRecord(), ExtractItemPublishers(), mc_StreamSetupState (+25 more)
 
-### Community 130 - "ShardedLRUCache"
-Cohesion: 0.18
-Nodes (8): Handle, Cache, Mutex, Slice, ShardedLRUCache, id_mutex_, last_id_, shard_
+### Community 130 - "ExperimentPlan"
+Cohesion: 0.11
+Nodes (8): ExperimentPlan, NodePlan, Everything a run needs, resolved once., Blocks this run can produce AFTER the setup phase. `setup-first-blocks` is a…, Why this run will measure nothing, when it will measure nothing., One MultiChain node, fully addressed., Where the *controlling host* reaches this node's RPC. Deliberately different…, Where *another node* reaches this node's RPC: the emulated address.
 
 ### Community 131 - "BOOST_AUTO_TEST_CASE"
 Cohesion: 0.12
 Nodes (21): deterministic_same_inputs_same_winner, dumping_compresses_whale_dominance, dumping_preserves_ordering_and_never_starves, empty_map_returns_empty, iteration_order_independence, single_validator_always_wins, BOOST_AUTO_TEST_CASE(), distribution_equal_weights (+13 more)
 
-### Community 132 - "Env"
-Cohesion: 0.07
-Nodes (36): Reader::Reporter, Env, Options, DebugString, DebugString, Env, FileType, Slice (+28 more)
+### Community 132 - "dumpfile.cc"
+Cohesion: 0.09
+Nodes (31): Reader::Reporter, GetApproximateSizes, Options, Env, FileType, Slice, WritableFile, CorruptionReporter (+23 more)
 
 ### Community 133 - "CPartialMerkleTree"
 Cohesion: 0.13
 Nodes (26): CMerkleBlock, CMerkleBlock::CMerkleBlock(), header, txn, vMatchedTxn, CPartialMerkleTree, CalcHash, CPartialMerkleTree::CPartialMerkleTree() (+18 more)
 
 ### Community 134 - "CBloomFilter"
-Cohesion: 0.10
-Nodes (26): CBloomFilter, clear, contains, Hash, insert, isEmpty, isFull, IsRelevantAndUpdate (+18 more)
+Cohesion: 0.15
+Nodes (20): CBloomFilter, clear, contains, Hash, insert, isEmpty, isFull, IsRelevantAndUpdate (+12 more)
 
 ### Community 135 - "LockedPageManagerBase"
 Cohesion: 0.08
-Nodes (27): allocator<T>, Locker, once_flag, size_t, SetMaster, ECC_Start(), mutex, T (+19 more)
+Nodes (25): allocator<T>, Locker, once_flag, size_t, ECC_Start(), mutex, T, LockedPageManager (+17 more)
 
-### Community 136 - "Env"
-Cohesion: 0.09
-Nodes (21): Env, CreateDir, Default, DeleteDir, DeleteFile, FileExists, GetChildren, GetFileSize (+13 more)
+### Community 136 - "version_set.cc"
+Cohesion: 0.11
+Nodes (27): Iterator, Options, ReadOptions, TableCache, GetFileIterator(), MaxBytesForLevel(), MaxFileSizeForLevel(), NewestFirst() (+19 more)
 
 ### Community 137 - "CLicenseRequest"
-Cohesion: 0.11
-Nodes (25): CLicenseRequest, GetConfirmationNameHash, GetHash, GetLicenseHash, GetLicenseName, GetParamToEnd, IsZero, m_Data (+17 more)
+Cohesion: 0.13
+Nodes (21): CLicenseRequest, GetConfirmationNameHash, GetHash, GetLicenseHash, GetLicenseName, GetParamToEnd, IsZero, m_Data (+13 more)
 
 ### Community 138 - "field_10x26_impl.h"
 Cohesion: 0.20
@@ -1267,7 +1283,7 @@ Nodes (27): secp256k1_fe, secp256k1_fe_storage, SECP256K1_INLINE, secp256k1_fe_a
 
 ### Community 139 - "CacheTest"
 Cohesion: 0.11
-Nodes (19): EntriesArePinned, Erase, EvictionPolicy, HeavyEntries, HitAndMiss, NewId, CacheTest, cache_ (+11 more)
+Nodes (20): EntriesArePinned, Erase, EvictionPolicy, HeavyEntries, HitAndMiss, NewId, CacheTest, cache_ (+12 more)
 
 ### Community 140 - "c.cc"
 Cohesion: 0.11
@@ -1277,9 +1293,9 @@ Nodes (32): Env, Logger, Options, leveldb_create_default_env(), leveldb_destroy_
 Cohesion: 0.05
 Nodes (55): build(), _chi_square(), _epoch_length_from_manifest(), _epoch_of(), _float(), main(), Path, Per-epoch summary, computed from what the emulation actually observed. The… (+47 more)
 
-### Community 142 - "net.h"
-Cohesion: 0.08
-Nodes (23): CAddrMan, CBlockIndex, AbortMessage, BeginMessage, EndMessage, CTransaction, T1, T2 (+15 more)
+### Community 142 - "PushMessage"
+Cohesion: 0.13
+Nodes (16): AbortMessage, BeginMessage, EndMessage, T1, T2, T3, PushMessage(), T10 (+8 more)
 
 ### Community 143 - "scalar_4x64_impl.h"
 Cohesion: 0.21
@@ -1290,68 +1306,68 @@ Cohesion: 0.21
 Nodes (26): SECP256K1_INLINE, secp256k1_scalar, secp256k1_scalar_add(), secp256k1_scalar_cadd_bit(), secp256k1_scalar_check_overflow(), secp256k1_scalar_clear(), secp256k1_scalar_cond_negate(), secp256k1_scalar_eq() (+18 more)
 
 ### Community 145 - "tinyformat.h"
-Cohesion: 0.13
-Nodes (20): convertToInt, convertToInt<T,true>, formatCStringTruncate(), FormatIterator::accept(), FormatIterator::streamStateFromFormat(), formatValue(), formatValueAsType, formatValueAsType<T,fmtT,true> (+12 more)
+Cohesion: 0.11
+Nodes (23): FormatIterator, convertToInt, convertToInt<T,true>, format(), formatCStringTruncate(), FormatIterator::accept(), FormatIterator::streamStateFromFormat(), formatValue() (+15 more)
 
 ### Community 146 - "CUnsignedAlert"
-Cohesion: 0.10
-Nodes (35): CAlert, AppliesTo, AppliesToMe, Cancels, CheckSignature, getAlertByHash, GetHash, IsInEffect (+27 more)
+Cohesion: 0.08
+Nodes (39): CAlert, AppliesTo, AppliesToMe, Cancels, CheckSignature, getAlertByHash, GetHash, IsInEffect (+31 more)
 
-### Community 147 - "ExperimentPlan"
+### Community 147 - "ChainParams"
 Cohesion: 0.05
-Nodes (39): CompletedProcess, ExperimentPlan, NodePlan, Everything a run needs, resolved once., Blocks this run can produce AFTER the setup phase. `setup-first-blocks` is a…, Why this run will measure nothing, when it will measure nothing., One MultiChain node, fully addressed., Where the *controlling host* reaches this node's RPC. Deliberately different… (+31 more)
+Nodes (59): CompletedProcess, ChainParams, Path, Reading and applying the ``KEY=VALUE`` chain-parameter files. The format is…, Resolve ``SETUP_FIRST_BLOCKS``, honouring ``auto``. The native PoA phase must…, ``multichain-util create`` flags derived from the file., ``(params.dat key, value)`` pairs to write after creation. ``setup-first-…, Read a generated ``params.dat`` into a dict. Used to re-read the *effective*… (+51 more)
 
 ### Community 148 - "wPoA Weight Registry — Implementation Guide (Phase 1)"
 Cohesion: 0.05
 Nodes (41): 10. Build integration, 11.1 Change the stream name or default weight, 11.2 Use the connect address (not the mining address) as node identity, 11.3 Add a field to the record (e.g. a version tag), 11.4 Make the stream read-restricted (only admins may set weights), 11.5 Tune retry pacing / give-up budget, 11.6 Add a new read RPC (e.g. `gettotalweight`), 11.7 Consume the weights elsewhere in the node (Phase 2 starting point) (+33 more)
 
 ### Community 149 - "Serialize"
-Cohesion: 0.26
-Nodes (19): A, basic_string, C, Pred, CScript, GetSerializeSize(), GetSerializeSize_impl(), K (+11 more)
+Cohesion: 0.18
+Nodes (26): A, basic_string, C, Pred, begin_ptr(), CFlatData, pbegin, pend (+18 more)
 
 ### Community 150 - "utilwrapper.cpp"
-Cohesion: 0.04
-Nodes (61): mc_MapStringString, mc_GenerateConfFiles(), mc_RandomEncodedBase58String(), mc_MultichainParams::Read(), mc_MultichainParams::Write(), LicenseInfo(), custom_get_blockchain_default(), mc_MultichainParams (+53 more)
+Cohesion: 0.05
+Nodes (41): mc_MapStringString, mc_GenerateConfFiles(), mc_RandomEncodedBase58String(), mc_MultichainParams::Write(), mc_MultichainParams, main(), mc_ReportSetupFirstBlocksFloor(), mc_SupportedProtocols() (+33 more)
 
 ### Community 151 - "Block::Iter"
 Cohesion: 0.17
 Nodes (13): Block::Iter, comparator_, current_, data_, key_, num_restarts_, restart_index_, restarts_ (+5 more)
 
 ### Community 152 - "V8Engine"
-Cohesion: 0.08
-Nodes (24): IFilterCallback, V8Filter, vector, CreateParams, Isolate, Platform, unique_ptr, V8Engine (+16 more)
+Cohesion: 0.04
+Nodes (52): IFilterCallback, V8Filter, vector, CreateParams, Isolate, unique_ptr, V8Engine, CreateFilter (+44 more)
 
 ### Community 153 - "BloomTest"
-Cohesion: 0.13
-Nodes (14): EmptyFilter, Small, BloomTest, filter_, keys_, policy_, FilterPolicy, Slice (+6 more)
+Cohesion: 0.15
+Nodes (13): EmptyFilter, Small, BloomTest, filter_, keys_, policy_, FilterPolicy, Slice (+5 more)
 
 ### Community 154 - "limitedmap"
 Cohesion: 0.15
 Nodes (14): mapped_type, const_iterator, iterator, K, key_type, map, multimap, size_type (+6 more)
 
-### Community 155 - "rpcmining.cpp"
-Cohesion: 0.07
-Nodes (33): CValidationInterface, BlockChecked, EraseFromWallet, Inventory, ResendWalletTransactions, SetBestChain, SyncTransaction, UpdatedTransaction (+25 more)
+### Community 155 - "signal"
+Cohesion: 0.09
+Nodes (16): signal, CompanyDaemon, main(), EventLog, Path, Publish this epoch's quota, spread across its expected duration., One company node's traffic generator. One OS process per company. A company's…, Publishes informative transactions, epoch by epoch. (+8 more)
 
 ### Community 156 - "Benchmark"
-Cohesion: 0.09
-Nodes (27): sqlite3, Benchmark, bytes_, db_, db_num_, done_, gen_, hist_ (+19 more)
+Cohesion: 0.10
+Nodes (24): sqlite3, Benchmark, bytes_, db_, db_num_, done_, gen_, hist_ (+16 more)
 
 ### Community 157 - "CCheckQueue"
 Cohesion: 0.12
 Nodes (16): CCheckQueue, condMaster, condWorker, fAllOk, fQuit, mutex, nBatchSize, nIdle (+8 more)
 
-### Community 158 - "db_bench.cc"
-Cohesion: 0.14
-Nodes (8): AppendWithSpace(), Slice, WriteOptions, main(), RandomGenerator, data_, pos_, TrimSpace()
+### Community 158 - ".Run"
+Cohesion: 0.31
+Nodes (4): AppendWithSpace(), Slice, WriteOptions, main()
 
 ### Community 159 - "CNodeStats"
 Cohesion: 0.08
 Nodes (24): copyStats, CNodeStats, addrLocal, addrName, cleanSubVer, dPingTime, dPingWait, fEncrypted (+16 more)
 
-### Community 160 - "multichaintx.cpp"
-Cohesion: 0.13
-Nodes (43): AcceptAdminMinerPermissions(), AcceptMultiChainTransaction(), IsRelevantInput, SetAffectedLibrary, SetRelevantEntity, CScript, CTransaction, mc_Buffer (+35 more)
+### Community 160 - "CMultiChainTxDetails"
+Cohesion: 0.05
+Nodes (89): CScript, CTransaction, custom_accept_transacton(), custom_good_for_coin_selection(), AcceptAdminMinerPermissions(), AcceptMultiChainTransaction(), CMultiChainTxDetails, details_script (+81 more)
 
 ### Community 161 - "BOOST_AUTO_TEST_CASE"
 Cohesion: 0.10
@@ -1362,72 +1378,72 @@ Cohesion: 0.12
 Nodes (25): check_core(), CoreStatus, FallbackRefused, Is CORE usable here, and may we proceed without it? Two separate questions,…, Probe CORE and the primitives any fabric needs. Decides nothing., Decide which backend to use, asking the user when CORE is missing. Returns…, What was found, as facts., CORE can actually drive a session here. (+17 more)
 
 ### Community 163 - "json_spirit_reader_template.h"
-Cohesion: 0.13
-Nodes (30): istream, Mp_iter, const_iterator, wmValue, wstring, wValue, json_spirit::read(), json_spirit::read_or_throw() (+22 more)
+Cohesion: 0.14
+Nodes (28): istream, Mp_iter, const_iterator, wmValue, wstring, wValue, json_spirit::read(), json_spirit::read_or_throw() (+20 more)
 
 ### Community 164 - "NodeRunner"
 Cohesion: 0.09
 Nodes (22): NodeHandle, NodeRunner, NodeStartError, Path, RuntimeError, Creating the chain and running the ``multichaind`` processes. Shared by…, ``multichain-util create`` on the admin datadir, then rewrite ``params.dat``.…, Apply ``overrides`` in place, and fail loudly on a key the file does not have.… (+14 more)
 
 ### Community 165 - "Version"
-Cohesion: 0.09
-Nodes (23): GetStats, Iterator, ReadOptions, GetStats, seek_file, seek_file_level, FileMetaData, Version (+15 more)
+Cohesion: 0.10
+Nodes (18): GetStats, GetStats, seek_file, seek_file_level, Version, compaction_level_, compaction_score_, file_to_compact_ (+10 more)
 
 ### Community 166 - "Blob"
-Cohesion: 0.13
+Cohesion: 0.12
 Nodes (17): Blob, Append, Instance, m_allocated, m_buffer, m_instances, m_name, m_size (+9 more)
 
-### Community 167 - "dbformat.cc"
-Cohesion: 0.16
-Nodes (22): AppendInternalKey(), SequenceNumber, Slice, ValueType, ExtractUserKey(), Comparator, FilterPolicy, InternalFilterPolicy (+14 more)
+### Community 167 - "DBIter"
+Cohesion: 0.04
+Nodes (79): Comparator, DBImpl, Direction, Iterator, SequenceNumber, Slice, DBIter, bytes_counter_ (+71 more)
 
 ### Community 168 - "LogTest"
-Cohesion: 0.10
-Nodes (11): last_record_offset_, Writer, LogTest, dest_, initial_offset_last_record_offsets_, initial_offset_record_sizes_, reader_, reading_ (+3 more)
+Cohesion: 0.11
+Nodes (10): Writer, LogTest, dest_, initial_offset_last_record_offsets_, initial_offset_record_sizes_, reader_, reading_, report_ (+2 more)
 
 ### Community 169 - "test/analysis/pipeline/stat/__init__.py"
-Cohesion: 0.06
-Nodes (56): concentration_row(), divergence_row(), gini(), hhi(), n_eff(), nakamoto(), _normalise(), normalized_entropy() (+48 more)
+Cohesion: 0.08
+Nodes (39): _betacf(), betainc(), binom_sf_inclusive(), kolmogorov_sf(), linear_fit(), normal_cdf(), pearson(), _ranks() (+31 more)
 
 ### Community 170 - "8. Facts verified on a live node"
 Cohesion: 0.05
 Nodes (43): 10. Known divergences — and how each was closed, 1. What this harness is, 2. Sources read, 3.1 Answer, 3.2 What actually gates a node's first weight, 3.3 What a miner with no record is worth to the selector, 3.4 Is a self-publish possible at all?, 3.5 Decision implemented in `bootstrap/` (+35 more)
 
 ### Community 171 - "MemTableIterator"
-Cohesion: 0.08
-Nodes (25): InternalKeyComparator, Iterator, Slice, Table, EncodeKey(), GetLengthPrefixedSlice(), InternalKeyComparator, KeyComparator (+17 more)
+Cohesion: 0.13
+Nodes (15): InternalKeyComparator, Iterator, Slice, Table, EncodeKey(), GetLengthPrefixedSlice(), ApproximateMemoryUsage, Get (+7 more)
 
-### Community 172 - "string_"
-Cohesion: 0.02
-Nodes (104): admin_signing_for_another_address_is_not_self_attested, aggregation_end_to_end_three_nodes, aggregation_newest_wins, multi_publisher_accepts_only_the_addresses_that_signed, not_self_attested_when_another_address_signed, parse_field_order_independent, parse_large_weight, parse_valid_record (+96 more)
+### Community 172 - "BOOST_AUTO_TEST_CASE"
+Cohesion: 0.08
+Nodes (28): admin_signing_for_another_address_is_not_self_attested, aggregation_end_to_end_three_nodes, aggregation_newest_wins, multi_publisher_accepts_only_the_addresses_that_signed, not_self_attested_when_another_address_signed, parse_field_order_independent, parse_large_weight, parse_valid_record (+20 more)
 
 ### Community 173 - "test_plots_robustness.py"
 Cohesion: 0.08
 Nodes (48): _block_propagation(), _block_time(), _chi2_vs_tbt(), _close_all(), _finish(), generate(), _heaviest_excess(), _height_per_node() (+40 more)
 
-### Community 174 - "CDB"
+### Community 174 - "CDBEnv"
 Cohesion: 0.10
-Nodes (10): Dbc, DbTxn, CDB, activeTxn, Close, fReadOnly, operator=, pdb (+2 more)
+Nodes (26): DbEnv, Flush, CDBEnv, CheckpointLSN, Close, CloseDb, cs_db, dbenv (+18 more)
 
 ### Community 175 - "CHash256"
 Cohesion: 0.14
 Nodes (14): CHash160, OUTPUT_SIZE, sha, CHash256, OUTPUT_SIZE, sha, CHashWriter, ctx (+6 more)
 
-### Community 176 - "V8Engine"
-Cohesion: 0.13
-Nodes (18): V8Filter, vector, CreateParams, Isolate, unique_ptr, V8Engine, CreateFilter, Initialize (+10 more)
+### Community 176 - "CMCAddrMan"
+Cohesion: 0.08
+Nodes (30): GetMCAddress, CMCAddrMan, cs, Find, GetHash, Load, m_CurRow, m_HashMap (+22 more)
 
-### Community 177 - "malus_record.h"
-Cohesion: 0.16
-Nodes (14): reportmalus(), MalusKind, vector, MalusScores, bad_weight, delay, equiv, self_write (+6 more)
+### Community 177 - "BOOST_AUTO_TEST_CASE"
+Cohesion: 0.09
+Nodes (22): empty_published_map_yields_no_verdicts, empty_verdicts_leave_the_map_unchanged, epoch_scoping_still_catches_a_cheat_for_the_verified_epoch, failed_recomputation_leaves_every_record_untouched, filter_clears_stale_output, matching_values_verify_ok_and_survive_the_filter, mismatching_value_is_rejected_and_dropped, missing_epoch_entry_is_treated_as_unstated (+14 more)
 
 ### Community 178 - "BOOST_AUTO_TEST_CASE"
-Cohesion: 0.06
-Nodes (38): balance_is_the_running_total, boundary_is_exact, contribution_matches_the_definition, epoch_one_has_no_feedback, epoch_two_applies_the_previous_rate, gain_excludes_this_epochs_restitution, gain_may_be_negative, inactive_cluster_has_zero_raw_weight (+30 more)
+Cohesion: 0.05
+Nodes (43): balance_is_the_running_total, boundary_is_exact, contribution_matches_the_definition, epoch_one_has_no_feedback, epoch_two_applies_the_previous_rate, gain_excludes_this_epochs_restitution, gain_may_be_negative, inactive_cluster_has_zero_raw_weight (+35 more)
 
 ### Community 179 - "format.h"
-Cohesion: 0.10
-Nodes (13): Block, BlockContents, cachable, data, heap_allocated, BlockHandle, EncodeTo, Footer (+5 more)
+Cohesion: 0.11
+Nodes (12): Block, BlockContents, cachable, data, heap_allocated, BlockHandle, Footer, index_handle_ (+4 more)
 
 ### Community 180 - "CTxMemPoolEntry"
 Cohesion: 0.09
@@ -1435,47 +1451,47 @@ Nodes (15): CTxMemPoolEntry, dPriority, fFullReplay, nFee, nHeight, nModSize, nP
 
 ### Community 181 - "mc_MultiChainFilterEngine"
 Cohesion: 0.10
-Nodes (24): CTransaction, map, mc_Buffer, mc_Script, uint256, mc_MultiChainFilterEngine, GetAcceptTimeout, GetSendTimeout (+16 more)
+Nodes (21): CTransaction, map, mc_Buffer, mc_Script, uint256, mc_MultiChainFilterEngine, Initialize, m_CallbackNames (+13 more)
 
 ### Community 182 - "ADR — refactoring the functional/smoke suite around the thesis' economic model"
 Cohesion: 0.05
 Nodes (41): 0. The environment this was established in, and why it matters, 1.1 The RPCs exist under these names and no others, 1.2 The streams are four, not three, 1.3 `src/weight_engine/test/experimental/` — confirmed protected, not touched, 1.4 `R_k` is keyed by the **miner address alone** — the decisive finding, 1. What the code actually provides (verified, not assumed), 2. The thesis, read against the code, 3.1 What it is (+33 more)
 
 ### Community 183 - "Random"
-Cohesion: 0.16
-Nodes (12): RandomKey(), Arena, ArenaTest, Empty, Simple, TEST(), Random, seed_ (+4 more)
+Cohesion: 0.15
+Nodes (13): RandomKey(), RandomString(), Arena, ArenaTest, Empty, Simple, TEST(), Random (+5 more)
 
 ### Community 184 - "test/analysis/pipeline/phase3_analyze.py"
 Cohesion: 0.11
 Nodes (26): Analysis, snapshot(), b(), f(), _fmt(), i(), main(), Phase3Error (+18 more)
 
 ### Community 185 - "uint256"
-Cohesion: 0.11
-Nodes (12): MapCheckpoints, CDiskBlockIndex, hashPrev, ADD_SERIALIZE_METHODS, uint256, CBlockIndex, CCheckpointData, fTransactionsPerDay (+4 more)
+Cohesion: 0.20
+Nodes (6): CDiskBlockIndex, hashPrev, ADD_SERIALIZE_METHODS, uint256, operator==(), insecure_rand()
 
 ### Community 186 - "ripemd160.cpp"
 Cohesion: 0.25
 Nodes (20): CRIPEMD160::CRIPEMD160(), f1(), f2(), f3(), f4(), f5(), Initialize(), R11() (+12 more)
 
 ### Community 187 - "CAssetGroupTree"
-Cohesion: 0.11
-Nodes (21): CAssetGroupTree, AddSingleAssetGroup, AssetsPerGroup, Clear, Destroy, FindAndShiftBestGroup, GetGroup, GroupCount (+13 more)
+Cohesion: 0.12
+Nodes (20): CAssetGroupTree, AddSingleAssetGroup, AssetsPerGroup, Clear, Destroy, FindAndShiftBestGroup, GetGroup, GroupCount (+12 more)
 
 ### Community 188 - "test_ecdsa_recovery_end_to_end"
-Cohesion: 0.19
-Nodes (22): secp256k1_ecdsa_recoverable_signature, uint256, RecoverCompact, bench_recover(), secp256k1_context, secp256k1_ecdsa_signature, secp256k1_ecmult_context, secp256k1_ge (+14 more)
+Cohesion: 0.22
+Nodes (19): secp256k1_ecdsa_recoverable_signature, uint256, RecoverCompact, bench_recover(), secp256k1_context, secp256k1_ecdsa_signature, secp256k1_nonce_function, secp256k1_pubkey (+11 more)
 
 ### Community 189 - "CSignatureCache"
 Cohesion: 0.15
 Nodes (16): shared_mutex, sigdata_type, CachingTransactionSignatureChecker, store, VerifySignature, CPubKey, uint256, vector (+8 more)
 
 ### Community 190 - "interpreter.cpp"
-Cohesion: 0.14
-Nodes (34): S, CastToBool(), CheckMinimalPush(), CheckPubKeyEncoding(), CheckSignatureEncoding(), CPubKey, CScript, CTransaction (+26 more)
+Cohesion: 0.16
+Nodes (31): S, CastToBool(), CheckMinimalPush(), CheckPubKeyEncoding(), CheckSignatureEncoding(), CScript, CTransaction, opcodetype (+23 more)
 
 ### Community 191 - "UniValue"
-Cohesion: 0.07
-Nodes (33): map, UniValue, vector, VType, vector, VType, getJsonToken(), hatoui() (+25 more)
+Cohesion: 0.05
+Nodes (43): initJsonEscape(), main(), outputEscape(), map, UniValue, vector, VType, vector (+35 more)
 
 ### Community 193 - "CTxMemPool"
 Cohesion: 0.10
@@ -1486,24 +1502,24 @@ Cohesion: 0.04
 Nodes (47): description, maximum, minimum, type, default, type, default, type (+39 more)
 
 ### Community 195 - "RpcClient"
-Cohesion: 0.07
+Cohesion: 0.08
 Nodes (26): Check, check_consistency(), check_progress(), HealthReport, Readiness checks between the phases of the bootstrap. The bootstrap order is…, ``wpoa-weights`` holds at least one confirmed record. This is the gate that…, The chain advanced by at least ``minimum_blocks`` over ``window_s``., Every node agrees on the hash at a common buried height. The height is absolute… (+18 more)
 
 ### Community 196 - "ParseEntityIdentifier"
-Cohesion: 0.12
-Nodes (46): mc_GetABQuantity(), Array, CWalletTx, mc_Buffer, mc_EntityDetails, mc_Script, Object, getaddressbalances() (+38 more)
+Cohesion: 0.07
+Nodes (67): mc_GetABQuantity(), Array, CWalletTx, mc_Buffer, mc_EntityDetails, mc_Script, Object, getaddressbalances() (+59 more)
 
-### Community 197 - "TEST"
-Cohesion: 0.24
-Nodes (13): EmptyBuilder, MultiChunk, SingleChunk, FilterPolicy, Slice, AddKey, FilterBlockBuilder::FilterBlockBuilder(), Finish (+5 more)
+### Community 197 - "FilterBlockBuilder"
+Cohesion: 0.09
+Nodes (30): EmptyBuilder, MultiChunk, SingleChunk, FilterPolicy, Slice, FilterBlockBuilder, AddKey, filter_offsets_ (+22 more)
 
 ### Community 198 - "build_plan"
-Cohesion: 0.04
-Nodes (96): ChainParams, Path, Reading and applying the ``KEY=VALUE`` chain-parameter files. The format is…, Resolve ``SETUP_FIRST_BLOCKS``, honouring ``auto``. The native PoA phase must…, ``multichain-util create`` flags derived from the file., ``(params.dat key, value)`` pairs to write after creation. ``setup-first-…, Read a generated ``params.dat`` into a dict. Used to re-read the *effective*…, Parsed chain-parameter file. (+88 more)
+Cohesion: 0.06
+Nodes (69): load_document(), load_schema(), load_validated(), Any, Path, Loading and schema validation of every configuration file. YAML and JSON are…, Resolve a configured path. Absolute paths are taken as they are; relative ones…, Load a document and validate it in one step. (+61 more)
 
 ### Community 199 - "dbwrap_com.cpp"
 Cohesion: 0.06
-Nodes (18): CDBWrap::CDBWrap(), CDBWrap::Erase(), CDBWrap::Exists(), CDBWrap::Read(), CDBWrap::ReadAtCursor(), CDBWrap::Write(), CDBWrapEnv::CheckpointLSN(), CDBWrapEnv::CloseDb() (+10 more)
+Nodes (17): CDBWrap::CDBWrap(), CDBWrap::Erase(), CDBWrap::Exists(), CDBWrap::Read(), CDBWrap::ReadAtCursor(), CDBWrap::Write(), CDBWrapEnv::CheckpointLSN(), CDBWrapEnv::CloseDb() (+9 more)
 
 ### Community 200 - "dbwrap_ent.cpp"
 Cohesion: 0.06
@@ -1517,9 +1533,9 @@ Nodes (25): mc_TxEntity, uint160, uint256, vector, mc_TxAddressAssetQuantity, m_
 Cohesion: 0.12
 Nodes (14): RunImmediately, RunMany, Env, Mutex, EnvPosixTest, env_, events_, mu_ (+6 more)
 
-### Community 203 - "write_compat_inputs"
-Cohesion: 0.06
-Nodes (46): Bridges between the new run layout and the migrated analysis pipeline., discover_native_runs(), _gml_ids(), is_native_run(), _label(), _location(), _pairs(), Path (+38 more)
+### Community 203 - "CPubKey"
+Cohesion: 0.10
+Nodes (25): CKeyPool::CKeyPool(), CKeyPool, CPubKey, CReserveKey, GetReservedKey, KeepKey, nIndex, pwallet (+17 more)
 
 ### Community 204 - "RoleContext"
 Cohesion: 0.19
@@ -1533,33 +1549,33 @@ Nodes (19): 1. The problem, 2. Options considered, 3.1 The cost argument that Op
 Cohesion: 0.18
 Nodes (16): Histogram, Add, Average, buckets_, Clear, kBucketLimit, max_, Median (+8 more)
 
-### Community 207 - "ParseMultichainTxOutToBuffer"
-Cohesion: 0.22
-Nodes (19): AppendSpecialRowsToBuffer(), CheckRequiredPermissions(), CAmount, CScript, CTxDestination, map, mc_Buffer, mc_Script (+11 more)
+### Community 207 - "TableCache"
+Cohesion: 0.11
+Nodes (23): Table, Iterator, RandomAccessFile, ReadOptions, Slice, Table, DeleteEntry(), Env (+15 more)
 
 ### Community 208 - "mruset"
 Cohesion: 0.17
 Nodes (8): deque, iterator, key_type, size_type, T, mruset, nMaxSize, queue
 
-### Community 209 - "TEST"
-Cohesion: 0.04
-Nodes (64): ApproximateOffsetOfCompressed, ApproximateOffsetOfPlain, const_reverse_iterator, RandomizedLongDB, SimpleEmptyKey, SimpleMulti, SimpleSingle, SimpleSpecialKey (+56 more)
+### Community 209 - "table_test.cc"
+Cohesion: 0.05
+Nodes (40): Between(), BlockConstructor, block_, comparator_, data_, Block, Comparator, InternalKeyComparator (+32 more)
 
 ### Community 210 - "TwoLevelIterator"
 Cohesion: 0.18
 Nodes (22): BlockFunction, Iterator, ReadOptions, Slice, NewTwoLevelIterator(), TwoLevelIterator, arg_, block_function_ (+14 more)
 
-### Community 211 - "mcd_DebugRequest"
-Cohesion: 0.19
-Nodes (22): mc_Database, appendbinarycache(), Array, createbinarycache(), deletebinarycache(), Object, mcd_AddrMan(), mcd_AddRows() (+14 more)
+### Community 211 - "InjectorTest"
+Cohesion: 0.14
+Nodes (8): Path, Read back one node's own log, in file order. THE LOG IS THE JOURNAL. A daemon…, replay(), FakeRpc, InjectorTest, _plan(), The injector's decision replay, restart safety and on-chain idempotency. Uses a…, Records publishes; answers reads from an in-memory stream keyed by item key.
 
 ### Community 212 - "MergingIterator"
 Cohesion: 0.19
 Nodes (13): Comparator, Direction, Iterator, Slice, MergingIterator, children_, comparator_, current_ (+5 more)
 
-### Community 213 - "main"
-Cohesion: 0.10
-Nodes (32): build_parser(), main(), _resolve(), The CLI surface and its exit codes, which are part of the interface., test_analysis_on_an_unknown_run_returns_one(), test_dry_run_seeds_are_reproducible(), test_dry_run_touches_nothing(), test_env_check_reports_without_an_experiment() (+24 more)
+### Community 213 - "exit_codes.py"
+Cohesion: 0.04
+Nodes (83): cmd_analysis_campaign(), cmd_analysis_run(), cmd_report_generate(), _plan_of(), Path, Analysis subcommands: metrics schema, analysis, campaign, reports. Imported…, Compare several runs in one campaign view., Extract the metrics of one run and analyse them. (+75 more)
 
 ### Community 214 - "CMedianFilter"
 Cohesion: 0.31
@@ -1567,11 +1583,11 @@ Nodes (6): CMedianFilter, nSize, vSorted, vValues, T, vector
 
 ### Community 215 - "common.py"
 Cohesion: 0.06
-Nodes (35): epoch_bounds(), epoch_buried(), fnum(), iter_log_lines(), _next_sample(), normalized_score(), parse_params_dat(), parse_run_metadata() (+27 more)
+Nodes (37): build_tx_index(), epoch_bounds(), epoch_buried(), fnum(), iter_log_lines(), malus_correction(), _next_sample(), normalized_score() (+29 more)
 
-### Community 216 - "BOOST_AUTO_TEST_CASE"
-Cohesion: 0.14
-Nodes (13): a_failed_attempt_is_retried_not_remembered_as_done, a_proposer_is_always_used, a_real_broadcast_latches, broadcast_outranks_the_failure_count, fresh_state_acts, no_proposer_after_activation_does_not_fall_back, no_proposer_and_never_activated_falls_back_to_native, re_arming_recovers_a_broadcast_that_never_confirmed (+5 more)
+### Community 216 - "map"
+Cohesion: 0.05
+Nodes (26): a_failed_attempt_is_retried_not_remembered_as_done, a_proposer_is_always_used, a_real_broadcast_latches, broadcast_outranks_the_failure_count, fresh_state_acts, iostreams::device<boost::iostreams::bidirectional>, Map_t, no_proposer_after_activation_does_not_fall_back (+18 more)
 
 ### Community 217 - "wPoA Weight Registry — Testing Guide"
 Cohesion: 0.10
@@ -1581,9 +1597,9 @@ Nodes (21): 1. Automated unit tests, 2.1 Proof-of-Authority round-robin, 2.2 The
 Cohesion: 0.09
 Nodes (27): Second-order diagnostics on the headline test, all from phase-2/3 tables. Three…, ks_pvalue_one_sample(), ks_pvalue_two_sample(), ks_statistic_against_cdf(), ks_statistic_two_sample(), p-value for a one-sample KS statistic, with the Stephens small-sample…, p-value for a two-sample KS statistic, using the effective sample size., One-sample KS distance between ``sample`` and a callable CDF. (+19 more)
 
-### Community 219 - "leveldb/db.h"
-Cohesion: 0.18
-Nodes (10): GetApproximateSizes, Slice, Options, Range, limit, start, ReadOptions, Snapshot (+2 more)
+### Community 219 - "CDB"
+Cohesion: 0.11
+Nodes (9): Dbc, DbTxn, CDB, activeTxn, Close, fReadOnly, operator=, pdb (+1 more)
 
 ### Community 220 - "properties"
 Cohesion: 0.05
@@ -1598,68 +1614,68 @@ Cohesion: 0.08
 Nodes (18): RpcClient, One node, driven for the whole experiment. ``run()`` is the life cycle:…, Params, short enough to read. A published payload can be huge., Append one structured event. Every event carries both clocks on purpose: the…, RPC client for a node, by its EMULATED address. Node-to-node RPC is part of the…, One RPC. Returns None on failure and counts it, never raises. Every call is…, No wait may outlast the run it is part of. A 900s wait inside a 120s run does…, Append one row, writing the header once. Several controllers share some of… (+10 more)
 
 ### Community 223 - "VersionSet"
-Cohesion: 0.05
-Nodes (54): Mutex, Options, TableCache, VersionEdit, Writer, AddInputDeletions, Env, InternalKeyComparator (+46 more)
+Cohesion: 0.06
+Nodes (28): Env, InternalKeyComparator, Options, Iterator, LevelSummaryStorage, buffer, MemTable, TableBuilder (+20 more)
 
 ### Community 224 - "rpcnet.cpp"
-Cohesion: 0.16
-Nodes (17): addnode(), CopyNodeStats(), Array, vector, getaddednodeinfo(), getconnectioncount(), getnettotals(), getnetworkinfo() (+9 more)
+Cohesion: 0.18
+Nodes (17): proxyType, GetNetworkName(), GetProxy(), addnode(), CopyNodeStats(), Array, vector, getaddednodeinfo() (+9 more)
 
-### Community 225 - "CKeyStore"
+### Community 225 - "Iterator"
 Cohesion: 0.11
-Nodes (17): CKeyStore, AddCScript, AddKeyPubKey, AddWatchOnly, cs_KeyStore, GetCScript, GetKey, GetKeys (+9 more)
+Nodes (18): Cleanup, arg1, arg2, next, CleanupFunction, Iterator, cleanup_, key (+10 more)
 
 ### Community 226 - "Mutex"
 Cohesion: 0.20
 Nodes (10): InitOnce(), Mutex, AssertHeld, cs_, Lock, operator=, Unlock, OnceType (+2 more)
 
 ### Community 227 - "Plotter"
-Cohesion: 0.22
-Nodes (18): b(), colour_map(), empty(), f(), finish(), _fmt(), i(), main() (+10 more)
+Cohesion: 0.20
+Nodes (20): Any, Path, b(), colour_map(), empty(), f(), finish(), _fmt() (+12 more)
 
 ### Community 228 - "BOOST_AUTO_TEST_CASE"
 Cohesion: 0.09
-Nodes (22): cluster_restituting_everything_reaches_rho_one_and_full_weight, company_contribution, compute_epoch1_single_cluster, compute_epoch2_uses_prior_restitution_and_accumulates_saldo, compute_epoch_five_clusters_raw_weights_and_independence, compute_epoch_is_cluster_order_independent, final_weight_bounded_between_1minus_lambda_and_1, final_weight_epoch1_is_raw (+14 more)
+Nodes (23): cluster_restituting_everything_reaches_rho_one_and_full_weight, company_contribution, compute_epoch1_single_cluster, compute_epoch2_uses_prior_restitution_and_accumulates_saldo, compute_epoch_five_clusters_raw_weights_and_independence, compute_epoch_is_cluster_order_independent, final_weight_bounded_between_1minus_lambda_and_1, final_weight_epoch1_is_raw (+15 more)
 
 ### Community 230 - "SignSignature"
 Cohesion: 0.32
 Nodes (16): CombineMultisig(), CombineSignatures(), CKeyID, CKeyStore, CMutableTransaction, CScript, CTransaction, txnouttype (+8 more)
 
-### Community 231 - "as_float"
-Cohesion: 0.12
-Nodes (28): append_schema_notes(), gas(), build_account_ledger(), anchor(), emit(), build_delay_ordering(), build_integrity(), extract_consistency() (+20 more)
+### Community 231 - "analizza_esperimenti.py"
+Cohesion: 0.10
+Nodes (36): build_integrity(), chi_square(), extract_blocks(), extract_chisq_from_summary(), extract_consistency(), extract_epoch_view(), extract_esg(), extract_gas() (+28 more)
 
 ### Community 232 - "test_binary_resolution.py"
-Cohesion: 0.10
-Nodes (31): MultiChainSettings, BinaryInfo, Path, Finding the MultiChain binaries and recording exactly which ones ran. A run…, Resolve the three binaries the harness needs., Resolve, or fail with exit code 2 and the list of places searched., Best-effort version string. ``multichaind --version`` prints and exits;…, Resolve one binary, reporting which rule matched. An EXPLICIT request - the… (+23 more)
+Cohesion: 0.07
+Nodes (41): MultiChainSettings, BinaryInfo, Path, Finding the MultiChain binaries and recording exactly which ones ran. A run…, Resolve the three binaries the harness needs., Resolve, or fail with exit code 2 and the list of places searched., Best-effort version string. ``multichaind --version`` prints and exits;…, Resolve one binary, reporting which rule matched. An EXPLICIT request - the… (+33 more)
 
 ### Community 233 - "IsMine"
-Cohesion: 0.20
-Nodes (14): CKeyStore, CKeyID, CKeyStore, CScript, CScriptID, CTxDestination, isminetype, valtype (+6 more)
+Cohesion: 0.24
+Nodes (13): CKeyID, CKeyStore, CScript, CScriptID, CTxDestination, isminetype, valtype, vector (+5 more)
 
 ### Community 234 - "test_explorer.py"
 Cohesion: 0.20
 Nodes (11): _explorer(), FakeClient, The block explorer: gap-free walking, and noticing when the chain stops., A frozen chain still yields contiguous heights and no measurement. Observed:…, `live` observes from now on; it does not invent a first sighting. A block mined…, The index is the reason a restart neither duplicates nor skips., Answers getblockcount from a scripted sequence of tips., test_a_live_collector_joins_at_the_tip() (+3 more)
 
 ### Community 235 - "MalusDetector"
-Cohesion: 0.17
-Nodes (9): main(), MalusDetector, Any, EventLog, Path, Confirmed items on ``stream`` that are *shaped* like an offence. The shaping…, The ``node_address`` a stream item's payload declares, across item shapes., Reads the self-attested streams and reports what the node proves is… (+1 more)
+Cohesion: 0.19
+Nodes (7): MalusDetector, Any, Path, Confirmed items on ``stream`` that are *shaped* like an offence. The shaping…, The ``node_address`` a stream item's payload declares, across item shapes., Reads the self-attested streams and reports what the node proves is…, Terminal verdicts from this detector's own log, so a restart resumes cleanly.
 
 ### Community 236 - "mcsim"
 Cohesion: 0.29
 Nodes (13): mcsim script, cmd_build(), cmd_cpus(), cmd_exp(), cmd_preflight(), cmd_run(), cmd_shell(), die() (+5 more)
 
-### Community 237 - "CChain"
-Cohesion: 0.16
-Nodes (11): CChain, FindFork, GetLocator, SetTip, vChain, CBlockIndex, CBlockLocator, Operation (+3 more)
+### Community 237 - "test/analysis/pipeline/stat/concentration.py"
+Cohesion: 0.19
+Nodes (17): concentration_row(), divergence_row(), gini(), hhi(), n_eff(), nakamoto(), _normalise(), normalized_entropy() (+9 more)
 
 ### Community 238 - "CFeeRate"
 Cohesion: 0.13
 Nodes (13): CBlockAverage, feeSamples, prioritySamples, CTxMemPool::CTxMemPool(), estimateFee, CFeeRate, GetFee, nSatoshisPerK (+5 more)
 
-### Community 239 - "V8.md"
-Cohesion: 0.11
-Nodes (10): V8Filter, V8Engine, Blob, V8Engine, Blob, Clone Google's depot_tools, Configure and build V8, Fetch V8 (+2 more)
+### Community 239 - "mc_RelayManager"
+Cohesion: 0.10
+Nodes (21): mc_RelayManager, Destroy, GenerateNonce, Initialize, m_LastTime, m_Latency, m_Limiters, m_LockedBy (+13 more)
 
 ### Community 240 - "OFF_CreateSignatureScripts"
 Cohesion: 0.15
@@ -1669,21 +1685,21 @@ Nodes (17): CPubKey, CScript, map, mc_EntityDetails, uint160, vector, DRF_GetDat
 Cohesion: 0.13
 Nodes (12): CHMAC_SHA256, CHMAC_SHA256::CHMAC_SHA256(), Finalize, inner, outer, OUTPUT_SIZE, RFC6979_HMAC_SHA256, Generate (+4 more)
 
-### Community 242 - "addrman.cpp"
-Cohesion: 0.04
-Nodes (113): CAddress, nLastTry, nServices, nTime, CService, storenode(), IsTerrible, CAddrMan (+105 more)
+### Community 242 - "CMCAddrInfo"
+Cohesion: 0.08
+Nodes (30): storenode(), CMCAddrInfo, GetFlags, GetLastRow, GetLastTryInfo, GetPrevRow, Init, IsNet (+22 more)
 
-### Community 243 - "DaemonSupervisor"
-Cohesion: 0.20
-Nodes (7): DaemonSupervisor, main(), Path, Start one ``company_daemon.py`` process per company, and supervise them.…, Starts a set of per-node daemons and keeps them alive until the run ends., main(), Start one ``miner_gas_daemon.py`` process per miner, and supervise them. Same…
+### Community 243 - "CValidationInterface"
+Cohesion: 0.10
+Nodes (19): CValidationInterface, BlockChecked, EraseFromWallet, Inventory, ResendWalletTransactions, SetBestChain, SyncTransaction, UpdatedTransaction (+11 more)
 
-### Community 244 - "State"
-Cohesion: 0.04
-Nodes (68): duration, Period, CBlockReject, chRejectCode, hashBlock, strRejectReason, COrphanTx, fromPeer (+60 more)
+### Community 244 - "Watchdog"
+Cohesion: 0.08
+Nodes (31): duration, Period, Rep, condition_variable, mutex, Watchdog, Destroy, FilterEnded (+23 more)
 
 ### Community 245 - "SnapshotImpl"
-Cohesion: 0.21
-Nodes (8): SequenceNumber, SnapshotImpl, list_, next_, number_, prev_, SnapshotList, list_
+Cohesion: 0.19
+Nodes (9): SequenceNumber, Snapshot, SnapshotImpl, list_, next_, number_, prev_, SnapshotList (+1 more)
 
 ### Community 246 - "3. `vrf_wrapper.cpp` — the implementation"
 Cohesion: 0.10
@@ -1710,32 +1726,32 @@ Cohesion: 0.14
 Nodes (22): ReadOptions, Snapshot, leveldb_cache_destroy(), leveldb_close(), leveldb_create_snapshot(), leveldb_iter_destroy(), leveldb_major_version(), leveldb_minor_version() (+14 more)
 
 ### Community 252 - "CCoinControl"
-Cohesion: 0.08
-Nodes (18): CKeyID, CNoDestination, CScript, operator==(), CCoinControl, destChange, setSelected, COutPoint (+10 more)
+Cohesion: 0.09
+Nodes (17): CKeyID, CNoDestination, CScript, operator==(), CCoinControl, destChange, setSelected, COutPoint (+9 more)
 
 ### Community 253 - "Behavioural malus registry (`malus_record.h` + `malus_registry.{h,cpp}`)"
 Cohesion: 0.10
 Nodes (20): 10. Tests, 11. Files, 1. Why a second registry, 2. The two streams are opposites, on purpose, 3. What can be reported, and why only these, 4. `Valid(e)` — the local decidability predicate, 5. Accumulation, and why exclusion is always temporary, 6. Epoch alignment, and the acyclicity it buys (+12 more)
 
-### Community 254 - "WPoASortitionVerifyProposer"
-Cohesion: 0.10
-Nodes (27): CBlock, CBlockIndex, vector, map, vector, WPoABuildRoundContext(), WPoARoundContext, height (+19 more)
+### Community 254 - "write_compat_inputs"
+Cohesion: 0.17
+Nodes (17): Bridges between the new run layout and the migrated analysis pipeline., discover_native_runs(), _gml_ids(), is_native_run(), _label(), _location(), _pairs(), Path (+9 more)
 
 ### Community 255 - "Value"
-Cohesion: 0.10
-Nodes (57): Value, Array, getchunkqueueinfo(), getchunkqueuetotals(), addtofeed(), Array, createfeed(), datareftobinarycache() (+49 more)
+Cohesion: 0.07
+Nodes (77): write_string(), Value, Array, getchunkqueueinfo(), getchunkqueuetotals(), addtofeed(), Array, createfeed() (+69 more)
 
 ### Community 256 - "TableBuilder"
-Cohesion: 0.15
-Nodes (14): Rep, TableBuilder, Abandon, Add, ChangeOptions, FileSize, Finish, Flush (+6 more)
+Cohesion: 0.08
+Nodes (27): BlockBuilder, BlockBuilder, BlockHandle, Rep, TableBuilder, Abandon, Add, ChangeOptions (+19 more)
 
 ### Community 257 - "Stream_reader_thrower"
 Cohesion: 0.16
 Nodes (10): Mp_iters, Posn_iter_t, Istream_type, Value_type, Stream_reader, iters_, Stream_reader_thrower, iters_ (+2 more)
 
 ### Community 258 - "MinerGasDaemon"
-Cohesion: 0.13
-Nodes (14): The malicious-action injector, driven by an existing miner daemon. One instance…, build_injector(), main(), MinerGasDaemon, EventLog, Path, An amount not yet used in this miner-epoch. Two decimals give enough distinct…, One miner node's restitution generator. One OS process per miner. Miners earn… (+6 more)
+Cohesion: 0.14
+Nodes (13): The malicious-action injector, driven by an existing miner daemon. One instance…, build_injector(), main(), MinerGasDaemon, Path, An amount not yet used in this miner-epoch. Two decimals give enough distinct…, One miner node's restitution generator. One OS process per miner. Miners earn…, This miner's own view of its cluster's economics. Recorded from the miner… (+5 more)
 
 ### Community 259 - "init.h"
 Cohesion: 0.13
@@ -1745,24 +1761,24 @@ Nodes (14): CInitNodeStatus, fInitialized, nSeedPort, sAddress, sLastError, sSee
 Cohesion: 0.15
 Nodes (14): HandleTable, elems_, length_, list_, LRUHandle, charge, hash, key_data (+6 more)
 
-### Community 261 - "mc_OffchainMessageID"
-Cohesion: 0.11
-Nodes (19): CRelayRequestPairs, m_Pairs, CRelayResponsePair, request_id, response_id, map, NodeId, mc_OffchainMessageID (+11 more)
+### Community 261 - "legacy.py"
+Cohesion: 0.21
+Nodes (12): _country_hint(), gml_edge_table(), gml_quantity_ms(), level_json_to_topology(), load_legacy_level(), Path, Import the historical Shadow topology descriptions. Two legacy shapes are…, ``"200 us"`` -> 0.2; ``"3 ms"`` -> 3.0; a bare number is milliseconds. (+4 more)
 
 ### Community 262 - "test_malus_stats.py"
 Cohesion: 0.11
 Nodes (5): The malus-specific statistics and the effective-weight recomputation. The…, TestDetectionMetrics, TestLatency, TestRateConvergence, TestRelativeChange
 
-### Community 263 - "txdb.cpp"
-Cohesion: 0.22
-Nodes (13): CDiskBlockIndex, V, Write(), CBlockTreeDB, operator=, ReadBlockFileInfo, ReadLastBlockFile, ReadReindexing (+5 more)
+### Community 263 - "CheckInputs"
+Cohesion: 0.13
+Nodes (15): CheckInputs(), vector, CScriptCheck, cacheStore, nFlags, nIn, operator(), ptxTo (+7 more)
 
 ### Community 264 - "BlockBuilder"
 Cohesion: 0.13
 Nodes (17): BlockBuilder, Add, BlockBuilder::BlockBuilder(), buffer_, counter_, CurrentSizeEstimate, Finish, finished_ (+9 more)
 
 ### Community 265 - "Arena"
-Cohesion: 0.20
+Cohesion: 0.19
 Nodes (11): Arena, alloc_bytes_remaining_, alloc_ptr_, Allocate, AllocateAligned, AllocateFallback, AllocateNewBlock, blocks_ (+3 more)
 
 ### Community 266 - "`wpoa_selector.h` + `wpoa_selector.cpp`"
@@ -1771,11 +1787,11 @@ Nodes (19): 1. Why is the math in the header and the glue in the `.cpp`?, 2.1 In
 
 ### Community 267 - "chainparams.cpp"
 Cohesion: 0.11
-Nodes (13): CMainParams, CMultiChainParams, convertSeed6(), vector, CRegTestParams, CTestNetParams, SeedSpec6, addr (+5 more)
+Nodes (9): CMainParams, convertSeed6(), vector, CRegTestParams, CTestNetParams, CUnitTestParams, SeedSpec6, addr (+1 more)
 
 ### Community 268 - "Compaction"
-Cohesion: 0.06
-Nodes (30): SequenceNumber, vector, WritableFile, DBImpl::CompactionState, builder, compaction, outfile, outputs (+22 more)
+Cohesion: 0.12
+Nodes (15): Compaction, grandparent_index_, grandparents_, input_version_, inputs_, IsTrivialMove, level_ptrs_, max_output_file_size_ (+7 more)
 
 ### Community 269 - "TableBuilder::Rep"
 Cohesion: 0.12
@@ -1786,8 +1802,8 @@ Cohesion: 0.19
 Nodes (12): LockStack, AssertLockHeldInternal(), CLockLocation, sourceFile, sourceLine, EnterCritical(), LeaveCritical(), LocksHeld() (+4 more)
 
 ### Community 271 - "V8Filter"
-Cohesion: 0.10
-Nodes (26): callbackFixedName(), CallRpcFunction(), FunctionCallbackInfo, TryCatch, V8Engine, vector, Context, Function (+18 more)
+Cohesion: 0.07
+Nodes (40): callbackFixedName(), CallRpcFunction(), FunctionCallbackInfo, CallRpcFunction(), FunctionCallbackInfo, TryCatch, V8Engine, vector (+32 more)
 
 ### Community 272 - "4. Schema delle tabelle"
 Cohesion: 0.06
@@ -1797,17 +1813,17 @@ Nodes (33): 0. Chi sei e cosa devi produrre, 1.1 La rete, 1.2 La catena del peso
 Cohesion: 0.06
 Nodes (33): 0. Sintesi, 10. Verifica, 1.1 Schema atteso, 1.2 Presenza per run — stato **prima** dell'intervento, 1.3 A quale fase è riconducibile ogni lacuna, 1. Task 1 — Inventario: atteso vs presente, 2.1 Race condition / raccolta anticipata — **ESCLUSA come causa dei 3 run**, 2.2 Path/nomi non deterministici — **ESCLUSA** (+25 more)
 
-### Community 274 - "definition"
-Cohesion: 0.11
-Nodes (15): grammar< Json_grammer< Value_type, Iter_type > >, position_iterator, rule, ScannerT, Semantic_actions_t, definition, array_, elements_ (+7 more)
+### Community 274 - "Iter_type"
+Cohesion: 0.31
+Nodes (6): grammar< Json_grammer< Value_type, Iter_type > >, Iter_type, position_iterator, Semantic_actions_t, Json_grammer, throw_error()
 
 ### Community 275 - "extractors.py"
 Cohesion: 0.19
 Nodes (18): copy_observations(), extract_forks(), extract_netem(), extract_propagation(), _height_key(), Path, Turning a finished run's raw artefacts into the catalogued metric tables. Three…, Per-block propagation, from the sightings the sampler recorded. The value is… (+10 more)
 
 ### Community 276 - "chainparamsbase.cpp"
-Cohesion: 0.16
-Nodes (12): Network, SelectParams(), SelectParamsFromCommandLine(), AreBaseParamsConfigured(), CBaseMultiChainParams, CBaseRegTestParams, CBaseTestNetParams, Network (+4 more)
+Cohesion: 0.13
+Nodes (14): Network, SelectParams(), SelectParamsFromCommandLine(), AreBaseParamsConfigured(), CBaseMainParams, CBaseMultiChainParams, CBaseRegTestParams, CBaseTestNetParams (+6 more)
 
 ### Community 277 - "ADR — the RANDAO fold returns to the bare XOR of Definition 5.3"
 Cohesion: 0.12
@@ -1818,12 +1834,12 @@ Cohesion: 0.14
 Nodes (12): CEncryptionKey, Generate, m_Details, m_PrivateKey, m_PublicKey, m_Purpose, m_Type, ADD_SERIALIZE_METHODS (+4 more)
 
 ### Community 279 - "roles/base.py"
-Cohesion: 0.11
-Nodes (13): The administrative node: genesis, permissions, GAS, and the epoch sampler.…, context_from_env(), _env_list(), What every node controller is, and the machinery all four share. The Shadow…, Build the context from POESIA_* variables. Fails loudly if one is missing., The Certification Authority: the only writer of ESG scores. Ported from…, The company: a client that generates the supply-chain workload. Ported from…, Per-node controllers: what each node actually does during a run. The Shadow… (+5 more)
+Cohesion: 0.16
+Nodes (11): The administrative node: genesis, permissions, GAS, and the epoch sampler.…, context_from_env(), _env_list(), What every node controller is, and the machinery all four share. The Shadow…, Build the context from POESIA_* variables. Fails loudly if one is missing., The Certification Authority: the only writer of ESG scores. Ported from…, The company: a client that generates the supply-chain workload. Ported from…, Per-node controllers: what each node actually does during a run. The Shadow… (+3 more)
 
 ### Community 280 - "TEST"
-Cohesion: 0.09
-Nodes (34): EncodingOutput, Fixed32, Fixed64, SequenceNumber, ValueType, Add, Slice, GetInternalKey() (+26 more)
+Cohesion: 0.08
+Nodes (36): EncodingOutput, Fixed32, Fixed64, SequenceNumber, ValueType, Add, Slice, GetInternalKey() (+28 more)
 
 ### Community 281 - "malus.py"
 Cohesion: 0.13
@@ -1845,77 +1861,77 @@ Nodes (33): default, description, enum, type, default, type, additionalPropertie
 Cohesion: 0.11
 Nodes (18): 1.1 Includes and the class shape, 1.2 `Genesis(unsigned char* out32)` — the base of the fold, 1.3 `Fold(...)` — one accumulator step, 1.4 `DeriveSeed(...)` — the selection seed, 1.5 `strlen_const` — the one private helper, 1.6 Glue declarations (bottom of the header), 1. The pure core (`randao_accumulator.h`), 2.1 Includes and globals (+10 more)
 
-### Community 286 - "mc_RelayManager"
-Cohesion: 0.10
-Nodes (21): mc_RelayManager, Destroy, GenerateNonce, Initialize, m_LastTime, m_Latency, m_Limiters, m_LockedBy (+13 more)
+### Community 286 - "relay.cpp"
+Cohesion: 0.25
+Nodes (23): CNode, CPubKey, CScript, vector, mc_MsgTypeStr(), AddRequest, AddResponse, CheckTime (+15 more)
 
-### Community 287 - "GetScriptForDestination"
-Cohesion: 0.22
-Nodes (19): AcceptExchange(), appendrawexchange(), completerawexchange(), Array, CAmount, COutPoint, CTransaction, mc_Buffer (+11 more)
+### Community 287 - "malus_record.h"
+Cohesion: 0.15
+Nodes (15): reportmalus(), MalusKind, vector, MalusScores, bad_weight, delay, equiv, self_write (+7 more)
 
-### Community 288 - "CTxOut"
+### Community 288 - "CTransaction"
 Cohesion: 0.05
-Nodes (55): CMutableTransaction, CMutableTransaction::CMutableTransaction(), GetHash, nLockTime, nVersion, vin, vout, COutPoint (+47 more)
+Nodes (48): CMutableTransaction, CMutableTransaction::CMutableTransaction(), GetHash, nLockTime, nVersion, vin, vout, COutPoint (+40 more)
 
-### Community 289 - "CAddrInfo"
+### Community 289 - "CAddrMan"
+Cohesion: 0.09
+Nodes (35): GetNewBucket, GetTriedBucket, IsTerrible, CAddrMan, Add_, cMCAddrMan, Create, cs (+27 more)
+
+### Community 290 - "CAddrInfo"
 Cohesion: 0.12
 Nodes (14): CAddrInfo, dSCChance, fInTried, fSCDead, fSCInvalid, GetChance, nAttempts, nLastSuccess (+6 more)
 
-### Community 290 - "netbase.h"
-Cohesion: 0.12
-Nodes (16): AddWhitelistedRange, CSubNet, IsValid, Match, netmask, network, ToString, valid (+8 more)
-
-### Community 291 - "AccusedItem"
-Cohesion: 0.12
-Nodes (15): AccusedItem, declared, epoch, height, publishers, stream, weight, MalusKind (+7 more)
+### Community 291 - "MemTable"
+Cohesion: 0.15
+Nodes (10): InternalKeyComparator, KeyComparator, comparator, MemTable, arena_, comparator_, operator=, refs_ (+2 more)
 
 ### Community 292 - "leveldb_t"
 Cohesion: 0.13
 Nodes (14): FilterPolicy, Slice, CopyString(), leveldb_approximate_sizes(), leveldb_compact_range(), leveldb_filterpolicy_create(), leveldb_filterpolicy_create_bloom(), leveldb_filterpolicy_destroy() (+6 more)
 
 ### Community 293 - "RpcExplorer"
-Cohesion: 0.10
-Nodes (18): ExplorerState, Path, Block-explorer-style collection: poll the chain, miss nothing, keep the raw.…, Polls one node as a block explorer, and the others for comparison., Pick up where a previous collector stopped, if there was one., Write the index atomically: a torn index would replay or skip., Map wallet addresses to host names, from runtime/shared/*.addr. Re-read rather…, One call, retried with backoff. Returns None once it gives up. A node… (+10 more)
+Cohesion: 0.13
+Nodes (14): Polls one node as a block explorer, and the others for comparison., Write the index atomically: a torn index would replay or skip., Map wallet addresses to host names, from runtime/shared/*.addr. Re-read rather…, One call, retried with backoff. Returns None once it gives up. A node…, One pass: new blocks first, then the comparative state., Record the first sighting of every pending transaction. Cheap and unmissable…, The live weight map, so a block records the weight AT proposal. Read once per…, One row per transaction in the block. ``tx`` is a list of txids with verbose=1… (+6 more)
 
-### Community 294 - "v8/v8ubjson.cpp"
+### Community 294 - "WPoARandaoSelectionSeed"
+Cohesion: 0.15
+Nodes (16): WPoAMalusActiveAtHeight(), CBlock, CBlockIndex, uint256, ExtractBlockReveal(), GenesisAccumulator(), GetAccumulator(), WPoARandaoSelectionSeed() (+8 more)
+
+### Community 295 - "VerifyBlockMinerWPoA"
+Cohesion: 0.21
+Nodes (17): mc_UpgradedParameter, mc_UpgradeStatus, CheckBlockPermissions(), CBlock, CBlockIndex, CTransaction, vector, CreateUpgradeLists() (+9 more)
+
+### Community 296 - "v8/v8blob.cpp"
+Cohesion: 0.14
+Nodes (4): Blob::Instance(), Blob::Remove(), BlobPtr, V8_WIN_EXPORTS
+
+### Community 297 - "multichainfilter.cpp"
+Cohesion: 0.25
+Nodes (17): uint160, vector, mc_FillFilterLibraries(), mc_LibraryIDForUpdate(), HasRelevantEntity, ActiveUpdateID, AddFilterInternal, CheckLibraries (+9 more)
+
+### Community 298 - "sampler.py"
+Cohesion: 0.18
+Nodes (11): Observing a running experiment: RPC, process, system and log collectors., _Previous, ProcessCollector, Per-process resource sampling, read straight from ``/proc``. No psutil: the…, Disk byte counters, or None when they are not readable. Unreadable is the…, Samples the processes a :class:`ProcessRegistry` owns., Cumulative CPU time and thread count of a pid., read_io() (+3 more)
+
+### Community 299 - "ThreadState"
+Cohesion: 0.15
+Nodes (4): ThreadState, shared, stats, tid
+
+### Community 300 - "handshake.cpp"
 Cohesion: 0.28
-Nodes (14): CallRpcFunction(), FunctionCallbackInfo, BlobPtr, Isolate, Local, swap_bytes(), Ubj2V8(), ubjson_best_int_type() (+6 more)
-
-### Community 295 - "ClusterInput"
-Cohesion: 0.12
-Nodes (13): canonical_cluster(), ClusterInput, companies, credits, debits, esg_miner, miner, restituted (+5 more)
-
-### Community 296 - "common.h"
-Cohesion: 0.22
-Nodes (9): ReadBE32(), ReadBE64(), ReadLE32(), WriteBE32(), WriteBE64(), WriteLE32(), WriteLE64(), Finalize (+1 more)
-
-### Community 297 - "TestState"
-Cohesion: 0.12
-Nodes (14): ReaderState, AtomicPointer, CondVar, Mutex, ConcurrentReader(), State, generation, TestState (+6 more)
-
-### Community 298 - "Sampler"
-Cohesion: 0.08
-Nodes (20): Observing a running experiment: RPC, process, system and log collectors., _Previous, ProcessCollector, Per-process resource sampling, read straight from ``/proc``. No psutil: the…, Disk byte counters, or None when they are not readable. Unreadable is the…, Samples the processes a :class:`ProcessRegistry` owns., Cumulative CPU time and thread count of a pid., read_io() (+12 more)
-
-### Community 299 - "Benchmark"
-Cohesion: 0.11
-Nodes (17): Options, Benchmark, cache_, db_, entries_per_batch_, filter_policy_, heap_counter_, num_ (+9 more)
-
-### Community 300 - "LogPrint"
-Cohesion: 0.05
-Nodes (74): RequestMethod, AddOrphanTx(), AlreadyHave(), Inventory, CompleteProcessVersion(), CInv, CNode, EraseOrphansFor() (+66 more)
+Nodes (13): CNode, MultichainNode_AcceptData(), MultichainNode_CanConnect(), MultichainNode_CollectChunks(), MultichainNode_DisconnectLocal(), MultichainNode_DisconnectRemote(), MultichainNode_IgnoreIncoming(), MultichainNode_IsLocal() (+5 more)
 
 ### Community 301 - "2. Field reference"
 Cohesion: 0.09
 Nodes (23): 1.1 The wPoA / WeightEngine activation flags, 1.2 The statistical constants, 1. Two things the profile deliberately cannot set, 2. Field reference, 3. Derived values, 4. What the profile does *not* describe, 5. Minimal example, `chain_name` *(string, required)* (+15 more)
 
 ### Community 302 - "serialize.h"
-Cohesion: 0.17
-Nodes (10): I, CSerActionSerialize, CSerActionUnserialize, CVarInt, GetSizeOfVarInt(), LimitedString, NCONST_PTR(), ReadVarInt() (+2 more)
+Cohesion: 0.12
+Nodes (14): I, CSerActionSerialize, CSerActionUnserialize, CSizeComputer, nSize, nType, nVersion, CVarInt (+6 more)
 
 ### Community 303 - "LRUCache"
-Cohesion: 0.26
-Nodes (14): LRUCache, capacity_, Erase, Insert, Lookup, lru_, LRU_Append, LRU_Remove (+6 more)
+Cohesion: 0.24
+Nodes (15): Mutex, LRUCache, capacity_, Erase, Insert, Lookup, lru_, LRU_Append (+7 more)
 
 ### Community 304 - "BOOST_AUTO_TEST_CASE"
 Cohesion: 0.14
@@ -1925,29 +1941,29 @@ Nodes (15): admin_that_grants_itself_ca_may_publish, ca_role_uses_a_high_custom_
 Cohesion: 0.18
 Nodes (12): LevelDB write amplification vs compression tradeoff, Bigtable tablet representation (cited), LevelDB compaction algorithm, LevelDB log files and memtable, LevelDB MANIFEST file, LevelDB sorted tables (SST) and levels, LevelDB Open/Put/Get/Delete API, Other Information links (impl/table/log format) (+4 more)
 
-### Community 306 - "BOOST_AUTO_TEST_CASE"
-Cohesion: 0.07
-Nodes (42): empty_published_map_yields_no_verdicts, empty_verdicts_leave_the_map_unchanged, epoch_scoping_still_catches_a_cheat_for_the_verified_epoch, failed_recomputation_leaves_every_record_untouched, filter_clears_stale_output, matching_values_verify_ok_and_survive_the_filter, mismatching_value_is_rejected_and_dropped, missing_epoch_entry_is_treated_as_unstated (+34 more)
+### Community 306 - "WeightVerificationEntry"
+Cohesion: 0.16
+Nodes (20): weightverifyweights(), map, WeightStreamReader, map, mc_CountInvalidVerdicts(), mc_FilterVerifiedWeights(), mc_VerifyPublishedWeights(), mc_WeightVerdictIsInvalid() (+12 more)
 
 ### Community 308 - "BloomFilterPolicy"
-Cohesion: 0.14
-Nodes (11): SignedUnsignedIssue, BloomFilterPolicy, bits_per_key_, k_, BloomHash(), FilterPolicy, Slice, NewBloomFilterPolicy() (+3 more)
+Cohesion: 0.24
+Nodes (7): BloomFilterPolicy, bits_per_key_, k_, BloomHash(), FilterPolicy, Slice, NewBloomFilterPolicy()
 
 ### Community 309 - "reporting.py"
 Cohesion: 0.17
 Nodes (30): _alternation_section(), _block_intervals(), _block_time_section(), _chisq_section(), _delta(), _epoch_section(), _figures_section(), _find_first() (+22 more)
 
 ### Community 310 - "AdminDaemon"
-Cohesion: 0.11
-Nodes (14): AdminDaemon, main(), Any, EventLog, Path, Stop on a signal, on the sentinel file, or once the target height is reached.…, Every block since the last sample, plus its round-level audit. ``listblocks``…, The four round-audit families for the *next* round. ``tip + 1`` is the round… (+6 more)
+Cohesion: 0.14
+Nodes (11): AdminDaemon, Any, Stop on a signal, on the sentinel file, or once the target height is reached.…, Every block since the last sample, plus its round-level audit. ``listblocks``…, The four round-audit families for the *next* round. ``tip + 1`` is the round…, The published weight registry and the malus accumulators., Everything defined per epoch, for the newest buried one. The epoch argument is…, Each stream read whole. ``count`` is always explicit: ``liststreamitems``… (+3 more)
 
 ### Community 311 - "2. The node glue (`private_sortition.cpp`)"
 Cohesion: 0.12
 Nodes (17): 1.1 `VRFInput(seed32, height, out)` — the public VRF input, 1.2 `ScoreFromVRFOutput(vrf_output, weight, dumping)` — the private score, 1.3 `MiningDelay(score, total_eff_weight, scale)` — score-timing / time bar, 1. The pure core (`private_sortition.h`), 2.1 Flags, 2.1b `WPoASortitionFeedback(pindexTip)` — Φ, 2.2 `WPoASortitionActiveAtHeight(height)`, 2.3 `BuildSortitionContext(pindexTip, weights, &Σf(w), seed)` — shared read path (+9 more)
 
-### Community 312 - "ProcessRelay"
-Cohesion: 0.36
-Nodes (13): CNode, CScript, vector, mc_MsgTypeStr(), AddRequest, AddResponse, GetRelayRecord, InitNodeAddress (+5 more)
+### Community 312 - "Version::LevelFileNumIterator"
+Cohesion: 0.23
+Nodes (5): Version::LevelFileNumIterator, flist_, icmp_, index_, value_buf_
 
 ### Community 313 - "wpoa/test/run_unit_tests.sh"
 Cohesion: 0.47
@@ -1961,17 +1977,17 @@ Nodes (7): AllowFree(), AllowFreeThreshold(), CAutoFile, CInPoint, n, ptx, CTran
 Cohesion: 0.06
 Nodes (31): description, oneOf, default, type, default, type, default, type (+23 more)
 
-### Community 316 - "Slice"
-Cohesion: 0.05
-Nodes (44): ExtractValueType(), Slice, LookupKey, end_, kstart_, operator=, space_, start_ (+36 more)
+### Community 316 - "Reader"
+Cohesion: 0.06
+Nodes (38): RecordType, SequentialFile, Slice, Slice, Reader, backing_store_, buffer_, checksum_ (+30 more)
 
 ### Community 317 - "Block"
 Cohesion: 0.16
 Nodes (12): Block, Block::Block(), data_, NewIterator, NumRestarts, operator=, owned_, restart_offset_ (+4 more)
 
-### Community 318 - "v8_win/v8ubjson.cpp"
-Cohesion: 0.27
-Nodes (16): MaybeLocal, CallRpcFunction(), FunctionCallbackInfo, BlobPtr, Isolate, Local, swap_bytes(), Ubj2V8() (+8 more)
+### Community 318 - "addrman.cpp"
+Cohesion: 0.25
+Nodes (15): Attempt_, Connected_, FindWithPort, Good_, SCRecalculate_, SCSetSelected_, SetSC_, GetNetAddress (+7 more)
 
 ### Community 319 - "`weight_record.h`"
 Cohesion: 0.12
@@ -1997,13 +2013,13 @@ Nodes (3): _List_node_base, _M_next, _M_prev
 Cohesion: 0.22
 Nodes (15): Iterator, leveldb_create_iterator(), leveldb_iter_key(), leveldb_iter_next(), leveldb_iter_prev(), leveldb_iter_seek(), leveldb_iter_seek_to_first(), leveldb_iter_seek_to_last() (+7 more)
 
-### Community 325 - "weight_records.h"
-Cohesion: 0.32
-Nodes (12): map, Object, mc_AccumulateLatestEsg(), mc_AccumulateLatestMembership(), mc_AccumulateReconciliation(), mc_BuildClustersFromMembership(), mc_ParseEsgRecordJson(), mc_ParseMembershipRecordJson() (+4 more)
+### Community 325 - "txdb.cpp"
+Cohesion: 0.19
+Nodes (17): CDiskBlockIndex, V, Read(), Write(), CBlockTreeDB, LoadBlockIndexGuts, operator=, ReadBlockFileInfo (+9 more)
 
 ### Community 326 - "define.h"
-Cohesion: 0.12
-Nodes (5): FILE, Logger, va_list, PosixLogger, file_
+Cohesion: 0.07
+Nodes (15): InitDefaults(), FILE, Logger, va_list, PosixLogger, file_, mc_Permissions::Initialize(), mc_TSScriptHeap::Initialize() (+7 more)
 
 ### Community 327 - "test/analysis/pipeline/stat/gof.py"
 Cohesion: 0.16
@@ -2021,9 +2037,9 @@ Nodes (10): Array, exception, Object, FilterCallback, CreateCallbackLog, CreateC
 Cohesion: 0.06
 Nodes (30): 0. What you are reading, and the one thing that changes everything, 1. Where this prompt comes from, and what it overrides, 2. The protocol, enough of it to read the numbers, 3. The files you may read, 4. The schema of every table, 5. What to check, in this order, 6. The report you write, 7. What you must not do (+22 more)
 
-### Community 331 - "CBlockHeader"
+### Community 331 - "bitcoinconsensus.cpp"
 Cohesion: 0.14
-Nodes (8): CBlockHeader, CURRENT_VERSION, hashMerkleRoot, hashPrevBlock, nBits, nNonce, nTime, nVersion
+Nodes (12): bitcoinconsensus_error, ECCVerifyHandle, refcount, bitcoinconsensus_verify_script(), ECCryptoClosure, handle, set_error(), TxInputStream (+4 more)
 
 ### Community 332 - "test/analysis/pipeline/stat/wilson.py"
 Cohesion: 0.20
@@ -2038,16 +2054,16 @@ Cohesion: 0.22
 Nodes (5): jclass, JNICALL, JNIEnv, jobject, Java_org_bitcoin_NativeSecp256k1_secp256k1_1ecdsa_1verify()
 
 ### Community 335 - "CLevelDBWrapper"
-Cohesion: 0.13
-Nodes (13): CLevelDBWrapper, iteroptions, options, pdb, penv, readoptions, syncoptions, writeoptions (+5 more)
+Cohesion: 0.09
+Nodes (22): CLevelDBBatch, batch, CLevelDBWrapper, iteroptions, options, pdb, penv, readoptions (+14 more)
 
 ### Community 336 - "Capitolo 8 — Experimental Evaluation: report generale"
 Cohesion: 0.07
 Nodes (27): 1. Il quadro per livello (medie sulle 5 run), 2. La geografia non tocca gli input del peso, 3. Dove la latenza agisce davvero: il rapporto RTT / margine, 4. Il bias per cella (livello × tbt), 5. Limiti di questa famiglia, Famiglia `livello` — report di dettaglio, 1. Il quadro per `tbt` (medie sui 4 livelli), 2. Il bias di selezione (+19 more)
 
-### Community 337 - "mc_TxEntity"
-Cohesion: 0.15
-Nodes (13): mc_TxEntity, mc_TxImport, STR_CreateAutoSubscription, STR_CreateSubscription, STR_IsIndexSkipped, STR_IsOutOfSync, STR_NoRetrieve, STR_SetSyncFlag (+5 more)
+### Community 337 - "json_spirit::write"
+Cohesion: 0.36
+Nodes (9): ostream, wmValue, wstring, wValue, json_spirit::write(), json_spirit::write_formatted(), write_stream(), m_Value (+1 more)
 
 ### Community 338 - "test_summary_format.py"
 Cohesion: 0.08
@@ -2058,20 +2074,20 @@ Cohesion: 0.13
 Nodes (11): operator==(), Slice, compare, CScript, uint256, UniValue, vector, ParseHashStr() (+3 more)
 
 ### Community 340 - "interpreter.h"
-Cohesion: 0.14
-Nodes (12): BaseSignatureChecker, CPubKey, CScript, CTransaction, CMutableTransaction, vector, MutableTransactionSignatureChecker, txTo (+4 more)
+Cohesion: 0.13
+Nodes (15): BaseSignatureChecker, CPubKey, uint256, CPubKey, CScript, CTransaction, CMutableTransaction, vector (+7 more)
 
-### Community 341 - "VersionSet::Builder"
-Cohesion: 0.20
-Nodes (11): FileSet, Version, LevelState, added_files, deleted_files, ApproximateOffsetOf, VersionSet::Builder, base_ (+3 more)
+### Community 341 - "LogAndApply"
+Cohesion: 0.13
+Nodes (16): FileSet, Mutex, Version, VersionEdit, Writer, AddInputDeletions, LevelState, added_files (+8 more)
 
-### Community 342 - "bitcoinconsensus.cpp"
-Cohesion: 0.14
-Nodes (12): bitcoinconsensus_error, ECCVerifyHandle, refcount, bitcoinconsensus_verify_script(), ECCryptoClosure, handle, set_error(), TxInputStream (+4 more)
+### Community 342 - "inspect_schema"
+Cohesion: 0.12
+Nodes (16): describe_json(), fingerprint(), inspect_schema(), Elenca cosa esiste davvero in ogni metrics/, e con quale schema. E' il passo…, Impronta della run: nomi, dimensioni e mtime dei file sorgente. Se non cambia,…, is_noise(), parse_run_metadata(), parse_shadow_ms() (+8 more)
 
-### Community 343 - "wallet/db.h"
-Cohesion: 0.14
-Nodes (12): CBlockLocator, CDiskBlockIndex, COutPoint, Erase(), Exists(), K, T, Read() (+4 more)
+### Community 343 - "test/analysis/pipeline/phase2_aggregate.py"
+Cohesion: 0.27
+Nodes (7): aggregate(), main(), Phase2Error, Path, RuntimeError, Phase 1 output is missing or unusable., Phase 2 — aggregate. Join the flat tables into the three grains the tests need.…
 
 ### Community 344 - "markdown.py"
 Cohesion: 0.11
@@ -2082,12 +2098,12 @@ Cohesion: 0.19
 Nodes (14): derive(), derive_node(), fnv1a32(), Deterministic seed derivation from one master seed. derived(purpose) = (master…, 32-bit FNV-1a of a UTF-8 string., A stable non-negative 31-bit seed for one purpose., Per-node variant, so two nodes never share a workload seed., Seed derivation must be pure, stable and independent per purpose. (+6 more)
 
 ### Community 346 - "MultiChain RPC command reference"
-Cohesion: 0.12
-Nodes (16): Appendix — the wallet-read table, Blockchain and UTXO, Coin generation, Contents, Control / query, Feeds, Hidden (not listed by `help`), How to read the flag columns (+8 more)
+Cohesion: 0.07
+Nodes (25): Per-RPC detail, Registry and malus, Related, The three shapes, There is no `getround` or `getepoch`, Two traps that are not about shape, WeightEngine epoch audit, wPoA round audit — shape A (+17 more)
 
-### Community 347 - "CheckLibrariesInternal"
-Cohesion: 0.27
-Nodes (12): uint160, vector, mc_FillFilterLibraries(), mc_FillRelevantFilterEntitities(), mc_LibraryIDForUpdate(), HasRelevantEntity, Initialize, ActiveUpdateID (+4 more)
+### Community 347 - "net.h"
+Cohesion: 0.12
+Nodes (15): CAddrMan, CBlockIndex, CNodeSignals, FinalizeNode, GetHeight, InitializeNode, ProcessDataMessage, ProcessGetData (+7 more)
 
 ### Community 348 - "mc_MultiChainFilter"
 Cohesion: 0.12
@@ -2098,24 +2114,24 @@ Cohesion: 0.25
 Nodes (8): install_core.sh host installation script, compose NET_ADMIN/SYS_ADMIN/apparmor flags, Docker capability flags (NET_ADMIN, SYS_ADMIN, apparmor unconfined), CORE network emulator (9.2.1), EMANE wireless emulation (off by default), mcsim helper tool, OSPF-MDR (on by default), Shadow is not involved anywhere
 
 ### Community 350 - "Semantic_actions"
-Cohesion: 0.14
-Nodes (12): Iter_type, begin_compound(), Char_type, vector, hex_str_to_char(), hex_to_num(), is_eq(), Semantic_actions (+4 more)
+Cohesion: 0.13
+Nodes (11): begin_compound(), Char_type, vector, hex_str_to_char(), hex_to_num(), is_eq(), Semantic_actions, current_p_ (+3 more)
 
-### Community 351 - "sha256.cpp"
-Cohesion: 0.39
-Nodes (8): Ch(), CSHA256::CSHA256(), Initialize(), Maj(), Round(), Sigma0(), Sigma1(), Transform()
+### Community 351 - "CCoinsStats"
+Cohesion: 0.13
+Nodes (13): CCoinsKeyHasher, salt, CCoinsStats, hashBlock, hashSerialized, nHeight, nSerializedSize, nTotalAmount (+5 more)
 
-### Community 352 - "sha512.cpp"
-Cohesion: 0.39
-Nodes (8): Ch(), CSHA512::CSHA512(), Initialize(), Maj(), Round(), Sigma0(), Sigma1(), Transform()
+### Community 352 - "rpcmining.cpp"
+Cohesion: 0.20
+Nodes (13): Array, estimatefee(), estimatepriority(), getgenerate(), gethashespersec(), getmininginfo(), GetNetworkHashPS(), prioritisetransaction() (+5 more)
 
 ### Community 353 - "test_metrics.py"
 Cohesion: 0.11
 Nodes (19): Whether the validator may fail a run over this table's header. Only the tables…, Table, Metric catalogue, extractors, validators and the generated schema report., check_run(), check_table(), Path, Checking that a produced table still matches its declared schema. The point is…, Problems with one produced table. Empty means it matches. (+11 more)
 
-### Community 354 - "table_builder.cc"
-Cohesion: 0.19
-Nodes (10): BlockBuilder, WriteRawBlock, BlockHandle, CompressionType, Slice, TableBuilder::Add(), TableBuilder::Finish(), TableBuilder::status() (+2 more)
+### Community 354 - "mc_DBFlatPos"
+Cohesion: 0.13
+Nodes (12): CDBConstEnv, cs_dbwrap, CCriticalSection, mc_DBFlatPos, m_Flags, m_KeyLen, m_Offset, m_ValLen (+4 more)
 
 ### Community 355 - "resolve"
 Cohesion: 0.12
@@ -2138,7 +2154,7 @@ Cohesion: 0.13
 Nodes (23): blocco_epoca(), build(), delays_per_epoca(), fmt(), head(), main(), make_run(), motore_pesi_per_epoca() (+15 more)
 
 ### Community 360 - "Weight-engine refactor — permission model before and after"
-Cohesion: 0.14
+Cohesion: 0.15
 Nodes (13): 0. Restitution rate — the feedback denominator changed, 1. The four inputs at a glance, 2.1 `weight-engine-membership` — from admin attestation to self-attestation, 2.2 `weight-engine-esg` — from administrator to delegated certifier, 2.3 `weight-engine-reconciliation` — from attestation to derivation, 2.4 `weight-engine-activity` — a name, not a mechanism, 2.5 `wpoa-weights` — from a trusted publisher to a verified one, 2. Per stream, in detail (+5 more)
 
 ### Community 361 - "wPoA — Implementation status"
@@ -2157,28 +2173,28 @@ Nodes (6): Comparator, Compare, FindShortestSeparator, FindShortSuccessor, Name,
 Cohesion: 0.15
 Nodes (9): CondVar, cv_, mu_, pthread_cond_t, pthread_mutex_t, Mutex, mu_, operator= (+1 more)
 
-### Community 365 - "table.cc"
-Cohesion: 0.08
-Nodes (32): Footer, ReadFilter, BlockContents, BlockHandle, RandomAccessFile, ReadOptions, ReadBlock(), Block (+24 more)
+### Community 365 - ".Corruption"
+Cohesion: 0.07
+Nodes (35): Footer, ReadFilter, DecodeFrom, BlockContents, BlockHandle, RandomAccessFile, ReadOptions, Slice (+27 more)
 
 ### Community 366 - "version.cpp"
 Cohesion: 0.14
 Nodes (3): custom_set_runtime_defaults(), custom_version_info(), mc_State::VersionInfo()
 
 ### Community 367 - "CHMAC_SHA512"
-Cohesion: 0.15
-Nodes (11): CHMAC_SHA512, CHMAC_SHA512::CHMAC_SHA512(), Finalize, inner, outer, OUTPUT_SIZE, BIP32Hash(), ChainCode (+3 more)
+Cohesion: 0.22
+Nodes (7): CHMAC_SHA512, CHMAC_SHA512::CHMAC_SHA512(), Finalize, inner, outer, OUTPUT_SIZE, SetMaster
 
 ### Community 368 - "CBlockFileInfo"
-Cohesion: 0.17
-Nodes (9): CBlockFileInfo, nBlocks, nHeightFirst, nHeightLast, nSize, nTimeFirst, nTimeLast, nUndoSize (+1 more)
+Cohesion: 0.18
+Nodes (8): CBlockFileInfo, nBlocks, nHeightFirst, nHeightLast, nSize, nTimeFirst, nTimeLast, nUndoSize
 
 ### Community 369 - "`protocol/multichainblock.cpp` (wPoA Phase 2 parts)"
 Cohesion: 0.15
 Nodes (13): 1.1 The other diversity gate: `CheckBlockPermissions`, 1. The role of `VerifyBlockMiner`, 2. The delegation in `VerifyBlockMiner`, 3.1 Obtain the block data (with native leniency), 3.2 Recover the signer address, 3.3 Recompute the election, 3.4 Empty-registry leniency, 3.5 The enforcement check (+5 more)
 
 ### Community 370 - "Stats"
-Cohesion: 0.15
+Cohesion: 0.14
 Nodes (10): Stats, bytes_, done_, finish_, hist_, last_op_finish_, message_, next_report_ (+2 more)
 
 ### Community 371 - "c_test.c"
@@ -2189,17 +2205,17 @@ Nodes (8): CheckDel(), CheckEqual(), CheckGet(), CheckPut(), FilterCreate(), Fre
 Cohesion: 0.15
 Nodes (13): 1. Global objects & how includes reach them, 2. Streams are entities (`mc_AssetDB` / `mc_EntityDetails`), 3. Writing to a stream = a transaction, 4. Reading a stream = the wallet-tx store (`mc_WalletTxs`, non-WRP API), 5. Decoding an item's data (`mc_Script` + `OpReturnFormatEntry`), 6. Reusing RPC handlers in-process (writes), 7. Permissions & node address, 8. Mining (why reads lag writes) (+5 more)
 
-### Community 373 - "SSLIOStreamDevice"
-Cohesion: 0.33
-Nodes (5): iostreams::device<boost::iostreams::bidirectional>, stream, SSLIOStreamDevice, fNeedHandshake, fUseSSL
+### Community 373 - "mcd_DebugRequest"
+Cohesion: 0.09
+Nodes (38): handshake_type, mc_Database, streamsize, appendbinarycache(), Array, createbinarycache(), deletebinarycache(), Array (+30 more)
 
 ### Community 374 - "id"
 Cohesion: 0.09
 Nodes (25): description, pattern, type, properties, node, description, pattern, $ref (+17 more)
 
 ### Community 375 - "CCoinsViewDB"
-Cohesion: 0.23
-Nodes (13): BatchWriteCoins(), BatchWriteHashBestChain(), LoadBlockIndexGuts, CCoinsViewDB, BatchWrite, db, GetBestBlock, GetCoins (+5 more)
+Cohesion: 0.21
+Nodes (13): BatchWriteCoins(), BatchWriteHashBestChain(), CCoins, CCoinsViewDB, BatchWrite, db, GetBestBlock, GetCoins (+5 more)
 
 ### Community 376 - "extract_all"
 Cohesion: 0.15
@@ -2225,13 +2241,13 @@ Nodes (8): The CSV column contract: what downstream readers are allowed to rely 
 Cohesion: 0.20
 Nodes (10): `cannot score (unsynced or unweighted)`, and the chain stops at setup, `Corrupted block database detected`, `Could not parse entity key` on a grant, Every derived CSV is empty on a run that clearly worked, Every miner produces almost exactly the same number of blocks, `no local mining key, waiting`, over and over, `Not subscribed to this stream` in the final snapshot, The chain (+2 more)
 
-### Community 382 - "sha1.cpp"
-Cohesion: 0.39
-Nodes (8): CSHA1::CSHA1(), f1(), f2(), f3(), Initialize(), left(), Round(), Transform()
+### Community 382 - "AccusedItem"
+Cohesion: 0.12
+Nodes (15): AccusedItem, declared, epoch, height, publishers, stream, weight, MalusKind (+7 more)
 
-### Community 383 - "__US_SemCreate"
-Cohesion: 0.18
-Nodes (11): InitDefaults(), mc_InitABufferMap(), mc_Permissions::Initialize(), mc_TSScriptHeap::Initialize(), __US_RWLockCreate(), __US_SemCreate(), mc_TSHeap::Initialize(), mc_ChunkDB (+3 more)
+### Community 383 - "Sampler"
+Cohesion: 0.19
+Nodes (6): One round of sampling and flushing. Never raises., One explorer pass. Never raises: it must not kill the run., Whether each node's daemon and controller were alive at this sample. A node can…, Move whatever the explorer accumulated onto disk. Flushing every tick rather…, Periodic observation of a live run., Sampler
 
 ### Community 384 - "TEST"
 Cohesion: 0.27
@@ -2242,7 +2258,7 @@ Cohesion: 0.47
 Nodes (5): build_and_run(), FAILED, PASSED, run_unit_tests.sh script, usage()
 
 ### Community 386 - "Cache"
-Cohesion: 0.17
+Cohesion: 0.15
 Nodes (11): Cache, Erase, Insert, Lookup, LRU_Append, LRU_Remove, operator=, Release (+3 more)
 
 ### Community 387 - "Native MultiChain PoA — Block-Creation Delay: Formula, Convergence, Edge Cases"
@@ -2250,8 +2266,8 @@ Cohesion: 0.15
 Nodes (13): 1. Where it lives, 2.1 Constants ([`miner.cpp`](../src/miner/miner.cpp)), 2.2 Target-time anchor ([`miner.cpp`](../src/miner/miner.cpp)), 2.3 Pool sizing and membership ([`miner.cpp`](../src/miner/miner.cpp)), 2.4 Active-miner estimate and pool admission ([`miner.cpp`](../src/miner/miner.cpp)), 2.5 Start-time assignment ([`miner.cpp`](../src/miner/miner.cpp)), 2. The formula, transcribed from the code, 3. Relationship between the per-proposer delay, `n`, and `T` (+5 more)
 
 ### Community 388 - "config_loader.py"
-Cohesion: 0.08
-Nodes (38): PathLike, signal, The observer: a separate process bound to the admin node, sampling the chain.…, main(), Path, phase 1 -> phase 2 -> phase 3 -> plots, in the one process that owns the run.…, The orchestrator: brings up a wPoA network, drives it, and tears it down. One…, run() (+30 more)
+Cohesion: 0.11
+Nodes (27): PathLike, main(), Path, phase 1 -> phase 2 -> phase 3 -> plots, in the one process that owns the run.…, The orchestrator: brings up a wPoA network, drives it, and tears it down. One…, run(), run_analysis(), _as_param_string() (+19 more)
 
 ### Community 389 - "preflight.sh"
 Cohesion: 0.70
@@ -2261,17 +2277,17 @@ Nodes (4): bad(), note(), ok(), preflight.sh script
 Cohesion: 0.09
 Nodes (24): type, type, description, pattern, type, additionalProperties, properties, required (+16 more)
 
-### Community 392 - "FED_EventTx"
-Cohesion: 0.50
-Nodes (4): CTransaction, uint256, FED_EventInvalidateTx, FED_EventTx
+### Community 392 - "WriteBatch"
+Cohesion: 0.25
+Nodes (7): Slice, WriteBatch, Clear, Delete, Iterate, Put, rep_
 
-### Community 393 - "TableCache"
-Cohesion: 0.12
-Nodes (22): Iterator, Options, RandomAccessFile, ReadOptions, Slice, Table, DeleteEntry(), Env (+14 more)
+### Community 393 - "BytewiseComparatorImpl"
+Cohesion: 0.32
+Nodes (3): BytewiseComparatorImpl, Comparator, Slice
 
 ### Community 394 - "json_spirit_writer_template.h"
-Cohesion: 0.10
-Nodes (27): Array_type, Obj_member_type, Object_type, Ostream_type, ostream, wmValue, wstring, wValue (+19 more)
+Cohesion: 0.13
+Nodes (18): Array_type, Obj_member_type, Object_type, Ostream_type, add_esc_char(), add_esc_chars(), codepoint_to_string(), Generator (+10 more)
 
 ### Community 395 - "SharedState"
 Cohesion: 0.15
@@ -2313,9 +2329,9 @@ Nodes (4): emu docker-compose service definition, MultiChain build toolchain (GC
 Cohesion: 1.00
 Nodes (3): check(), report(), host-tune.sh script
 
-### Community 405 - "VerifyBlockMinerWPoA"
-Cohesion: 0.11
-Nodes (28): mc_UpgradedParameter, mc_UpgradeStatus, CheckBlockPermissions(), CBlock, CBlockIndex, CTransaction, vector, CreateUpgradeLists() (+20 more)
+### Community 405 - "Lock"
+Cohesion: 0.25
+Nodes (15): Array, CTransaction, mc_Filter, uint256, AddFilter, Lock, NoStreamFilters, Reset (+7 more)
 
 ### Community 406 - "LevelDB benchmark results (Google, July 2011)"
 Cohesion: 0.50
@@ -2329,20 +2345,24 @@ Nodes (4): LevelDB key-value library overview, Snappy compression library depend
 Cohesion: 0.11
 Nodes (19): The schema section of the analysis prompt, generated from the catalogue. The…, Every catalogued table, with the six facts the brief requires., Replace whatever sits between the markers with the current schema., render_tables(), _row(), splice(), fixture, The analysis prompt and the real schemas must not drift apart. The prompt is… (+11 more)
 
+### Community 409 - "ClusterResult"
+Cohesion: 0.25
+Nodes (7): ClusterResult, gain, integer_weight, raw_weight, restitution, saldo, weight
+
 ### Community 410 - "test/analysis/pipeline/stat/streak.py"
 Cohesion: 0.19
 Nodes (12): _longest_runs(), mc_streaks(), observed_streaks(), ndarray, Streaks: are runs of consecutive wins explicable by weighted sortition alone?…, Observed statistics and their simulated null, in one row., Turn phase-2 round rows into ``(winner_sequence, share_matrix)``. Rounds with…, ``L_max`` and the repeat rate of an observed winner sequence. The sequence must… (+4 more)
 
-### Community 411 - "CBaseChainParams"
-Cohesion: 0.18
-Nodes (7): CBaseChainParams, networkID, nRPCPort, strDataDir, CBaseMainParams, CBaseUnitTestParams, Network
+### Community 411 - "Benchmark"
+Cohesion: 0.15
+Nodes (12): Benchmark, cache_, db_, entries_per_batch_, filter_policy_, heap_counter_, num_, reads_ (+4 more)
 
-### Community 412 - "CBlockLocator"
+### Community 412 - "ShardedLRUCache"
 Cohesion: 0.22
-Nodes (8): CBlockLocator, vHave, ADD_SERIALIZE_METHODS, Operation, Stream, uint256, vector, SerializationOp()
+Nodes (6): Handle, Slice, ShardedLRUCache, id_mutex_, last_id_, shard_
 
 ### Community 413 - "Create a Blockchain (MultiChain)"
-Cohesion: 0.10
+Cohesion: 0.09
 Nodes (21): 1. Prerequisites, 2. Add Binaries to the PATH, 3. Functional Test: Single-Node Test Blockchain, 4. Multi-Node Network Test (WSL, localhost, different ports), 5. Connecting additional nodes, 6. Permission model, 7. Transaction and block test, 8. Useful Management Commands (+13 more)
 
 ### Community 414 - "`protocol/multichainblock.cpp` (wPoA Phase 3b — the RANDAO seed on the validator side)"
@@ -2357,17 +2377,17 @@ Nodes (4): glibcxx_sanity_test(), sanity_test_list(), sanity_test_range_fmt(), s
 Cohesion: 0.17
 Nodes (12): A.1 — The `enable-wpoa` master switch was inert in `params.dat`, A.2 — Stream auto-creation was one-shot and never retried, A.3 — wPoA took over an empty registry and the chain stopped, A.4 — `grant` before `create` reports `-708`, and the symptom surfaces later, A.5 — The treasury's `receive` grant died with the admin restart, A.6 — Two malus keys were emitted blank instead of their defaults, A.7 — "MultiChain writes no pid file" — the claim was wrong, A.8 — A double very close to 1 renders as `0` in JSON *(found during Phase B)* (+4 more)
 
-### Community 418 - "process_run"
-Cohesion: 0.27
-Nodes (11): extract_blocks(), extract_verify_and_malus(), extract_weights(), process_run(), Traiettoria dei pesi per epoca dallo stream wpoa-weights., Indirizzi di `admin` e `ca`, che non compaiono in `esg_scores.csv`.…, resolve_special_addresses(), extract_meta() (+3 more)
+### Community 418 - "mc_RelayResponse"
+Cohesion: 0.13
+Nodes (15): mc_RelayResponse, m_Flags, m_HopCount, m_LastTryTimestamp, m_MsgID, m_MsgType, m_NodeFrom, m_Payload (+7 more)
 
 ### Community 420 - "Table"
 Cohesion: 0.11
 Nodes (17): Block, BlockHandle, Footer, Rep, Options, RandomAccessFile, ReadOptions, Table (+9 more)
 
-### Community 421 - "FilterBlockBuilder"
-Cohesion: 0.20
-Nodes (10): FilterBlockBuilder, filter_offsets_, keys_, operator=, policy_, result_, start_, tmp_keys_ (+2 more)
+### Community 421 - "testharness.cc"
+Cohesion: 0.29
+Nodes (4): RandomSeed(), Test, base, name
 
 ### Community 422 - "2. The added branch, line by line"
 Cohesion: 0.18
@@ -2381,10 +2401,6 @@ Nodes (11): 1. Where the change lives and why there, 2. The added branch, line b
 Cohesion: 0.10
 Nodes (21): 4.1 `fogli-di-analisi/` — le tabelle globali, `alternanze.csv`, `block_times.csv` — una riga per run, `chisq.csv` — chi-quadro di sintesi sull'intera run, `correlazioni.csv` — Sez. 4.9.1, una riga per (run, host con peso), `disuguaglianza_pesi.csv` — aggregato di tutte le run, `epoch_shares.csv` — vista "per epoca marcata", `esg.csv` (+13 more)
 
-### Community 435 - "Lock"
-Cohesion: 0.26
-Nodes (14): Array, CTransaction, mc_Filter, uint256, Lock, NoStreamFilters, Reset, RunFilter (+6 more)
-
 ### Community 440 - "pipeline/make_report.py"
 Cohesion: 0.21
 Nodes (20): commentary(), epoch_key(), f2(), f3(), fp(), integer(), main(), num() (+12 more)
@@ -2397,13 +2413,13 @@ Nodes (11): 1. `FindBlockVRF` — extract the reveal from the coinbase, 2. The V
 Cohesion: 0.10
 Nodes (21): additionalProperties, description, type, additionalProperties, description, type, additionalProperties, description (+13 more)
 
-### Community 443 - "RPCThreadLoad"
-Cohesion: 0.22
-Nodes (9): RPCThreadLoad, Calculate, end, last, load, size, start, total (+1 more)
+### Community 443 - "CChain"
+Cohesion: 0.24
+Nodes (7): CChain, FindFork, GetLocator, SetTip, vChain, CBlockIndex, CBlockLocator
 
 ### Community 444 - "CBlock"
-Cohesion: 0.19
-Nodes (14): CBlock, BuildMerkleTree, CheckMerkleBranch, GetMerkleBranch, nMerkleTreeType, nSigHashType, ToString, vMerkleTree (+6 more)
+Cohesion: 0.07
+Nodes (30): CBlock, BuildMerkleTree, CheckMerkleBranch, GetMerkleBranch, nMerkleTreeType, nSigHashType, ToString, vMerkleTree (+22 more)
 
 ### Community 445 - "port_posix.cc"
 Cohesion: 0.33
@@ -2433,25 +2449,25 @@ Nodes (6): CAutoFile, circular_buffer, buf2vec(), T, ReadFeeEstimates, WriteFeeE
 Cohesion: 0.22
 Nodes (9): 1. Background: how `mc_Script` stores an element, 2. Why a suffix of the signature element (not a new element/output), 3. `multichainscript.h` — the declarations, 4. `SetBlockVRF` — append the reveal to the current element, 5. `GetBlockVRF` — decode the suffix, 6. The `GetBlockSignature` relaxation, 7. Connections to the other files, `protocol/multichainscript.h` + `multichainscript.cpp` (wPoA Phase 3a parts) (+1 more)
 
-### Community 464 - "mc_MultiChainLibrary"
-Cohesion: 0.12
-Nodes (16): mc_EntityDetails, uint160, Destroy, Zero, mc_MultiChainLibrary, Destroy, Initialize, m_ActiveUpdate (+8 more)
+### Community 464 - "filter_win.cpp"
+Cohesion: 0.21
+Nodes (10): ResetRunningFilter, Array, mc_Filter, vector, mc_FilterEngine::CreateFilter(), mc_FilterEngine::RunFilter(), mc_FilterEngine::RunFilterWithCallbackLog(), mc_FilterEngine::SetRunningFilter() (+2 more)
 
-### Community 465 - "wPoA / WeightEngine RPCs — what each one actually returns"
-Cohesion: 0.22
-Nodes (9): Per-RPC detail, Registry and malus, Related, The three shapes, There is no `getround` or `getepoch`, Two traps that are not about shape, WeightEngine epoch audit, wPoA round audit — shape A (+1 more)
+### Community 465 - "mc_MultiChainLibrary"
+Cohesion: 0.14
+Nodes (14): mc_EntityDetails, uint160, mc_MultiChainLibrary, Destroy, Initialize, m_ActiveUpdate, m_Code, m_CreateError (+6 more)
 
 ### Community 466 - "rpcserver.h"
 Cohesion: 0.07
 Nodes (26): rpcfn_type, vector, mc_InitRPCList(), vector, mc_InitRPCList(), CBlockIndex, CNetAddr, CRPCCommand (+18 more)
 
-### Community 467 - "CScriptNum"
-Cohesion: 0.33
-Nodes (4): CScriptNum, m_value, nMaxNumSize, vector
+### Community 467 - ".build_epoch_traffic"
+Cohesion: 0.50
+Nodes (3): _epoch_from_key(), The epoch a company was generating for, read back off the chain., Planned vs sent vs on-chain, per node per epoch. The on-chain count is the one…
 
-### Community 468 - "weight_engine_inputs"
-Cohesion: 0.25
-Nodes (8): Confirmation height of a txid, or None if never confirmed., wpoa-weights records with the REAL height at which they became readable. The…, Public inputs of the weight engine from plain tuples (no file access).…, Legacy adapter: the same inputs from the event tables of extract_event_tables., tx_height(), weight_engine_inputs(), weight_engine_inputs_pure(), _weight_records()
+### Community 468 - "CTxInUndo"
+Cohesion: 0.18
+Nodes (10): CTxInUndo, fCoinBase, nHeight, nVersion, txout, Operation, Stream, SerializationOp() (+2 more)
 
 ### Community 469 - "CModifiableParams"
 Cohesion: 0.14
@@ -2461,21 +2477,21 @@ Nodes (12): CDNSSeedData, host, name, CModifiableParams, setAllowMinDifficultyBl
 Cohesion: 0.43
 Nodes (5): CMutexLock, lock, mutex, Mutex, unique_lock
 
-### Community 471 - "mc_RelayResponse"
-Cohesion: 0.13
-Nodes (15): mc_RelayResponse, m_Flags, m_HopCount, m_LastTryTimestamp, m_MsgID, m_MsgType, m_NodeFrom, m_Payload (+7 more)
-
 ### Community 472 - "weight_engine.cpp"
-Cohesion: 0.29
-Nodes (12): ComputeLocalWeightForEpoch(), map, WeightStreamReader, HeightToEpoch(), LookupDouble(), LookupTau(), NodeReadyForWeight(), ThreadWeightEngine() (+4 more)
+Cohesion: 0.32
+Nodes (11): ComputeLocalWeightForEpoch(), map, WeightStreamReader, LookupDouble(), LookupTau(), NodeReadyForWeight(), ThreadWeightEngine(), WeightEngineActiveAtHeight() (+3 more)
+
+### Community 473 - "mc_TxEntity"
+Cohesion: 0.15
+Nodes (13): mc_TxEntity, mc_TxImport, STR_CreateAutoSubscription, STR_CreateSubscription, STR_IsIndexSkipped, STR_IsOutOfSync, STR_NoRetrieve, STR_SetSyncFlag (+5 more)
 
 ### Community 474 - "leveldb_comparator_t"
 Cohesion: 0.22
 Nodes (5): Comparator, leveldb_comparator_create(), leveldb_comparator_destroy(), leveldb_comparator_t, state_
 
 ### Community 475 - "Iterator"
-Cohesion: 0.17
-Nodes (12): Iterator, list_, Next, node_, Prev, Seek, SeekToFirst, SeekToLast (+4 more)
+Cohesion: 0.25
+Nodes (8): Iterator, list_, Next, node_, Prev, Seek, SeekToFirst, SeekToLast
 
 ### Community 476 - "Environment"
 Cohesion: 0.10
@@ -2497,9 +2513,9 @@ Nodes (16): analyze_run(), campaign(), load_phase2(), main(), methodology_notes(
 Cohesion: 0.10
 Nodes (19): additionalProperties, description, type, $id, pattern, type, minItems, type (+11 more)
 
-### Community 481 - "relay.cpp"
+### Community 481 - "mc_Limiter"
 Cohesion: 0.14
-Nodes (24): CPubKey, mc_Limiter, CheckTime, Disallowed, Increment, Initialize, m_Event, m_Limits (+16 more)
+Nodes (14): mc_Limiter, CheckTime, Disallowed, Increment, Initialize, m_Event, m_Limits, m_MeasureCount (+6 more)
 
 ### Community 482 - "6. The new large-network test — and the one place the mandate cannot be implemented as written"
 Cohesion: 0.29
@@ -2513,29 +2529,25 @@ Nodes (19): description, items, maxItems, minItems, type, description, items, ma
 Cohesion: 0.11
 Nodes (19): Chain parameters — values asserted unchanged, Comparing a new run with the archive, Deliberate Shadow references that remain, Migration from Shadow, Role scripts — migrated with their protocol knowledge, Summary, The analysis pipeline — migrated with `git mv`, verified against the archive, The figures (+11 more)
 
-### Community 485 - "mc_DBFlatPos"
-Cohesion: 0.22
-Nodes (9): mc_DBFlatPos, m_Flags, m_KeyLen, m_Offset, m_ValLen, NextOffset, SetSizeFlags, ValueOffset (+1 more)
-
 ### Community 486 - "summaries.py"
 Cohesion: 0.19
 Nodes (15): _export_embedded_tables(), _Exported, publish_to_reports(), Path, The two textual summaries the Shadow suite produced, for a native run.…, Produce ``summary_epoche.txt``: the same analysis, epoch by epoch., Render both summaries into ``reports/`` as real Markdown. `metrics/` is where…, Write the pasted-in CSV sections out as `.csv` files. The analyser truncates… (+7 more)
 
-### Community 487 - "analizza_esperimenti.py"
-Cohesion: 0.08
-Nodes (37): build_prop518_fit(), chi_square(), describe_json(), extract_chisq_from_summary(), extract_epoch_view(), extract_esg(), extract_proposers(), fingerprint() (+29 more)
+### Community 487 - "as_float"
+Cohesion: 0.12
+Nodes (22): append_schema_notes(), gas(), build_delay_ordering(), build_prop518_fit(), _final_balances(), _linfit(), main(), host -> saldo GAS a fine run, da node_state.csv. E' l'unica misura del saldo… (+14 more)
 
-### Community 488 - "walletdb.h"
-Cohesion: 0.09
-Nodes (20): CAccount, CAccountingEntry, CBlockLocator, CEncryptionKey, CKeyMetadata, CURRENT_VERSION, nCreateTime, nVersion (+12 more)
+### Community 488 - "stdint.h"
+Cohesion: 0.03
+Nodes (44): vector, CBlockHeader, CBlockIndex, uint256, CBaseChainParams, networkID, nRPCPort, strDataDir (+36 more)
 
 ### Community 489 - "catalogue.py"
 Cohesion: 0.19
 Nodes (15): cmd_metrics_schema(), as_dict(), Column, The authoritative catalogue of every metric the harness produces. One place…, status_counts(), inspect_run(), _observed_section(), Path (+7 more)
 
 ### Community 490 - "compute_weight_reconciliation"
-Cohesion: 0.15
-Nodes (14): compute_weight_reconciliation(), La tabella di riconciliazione del peso: una riga per (epoca, miner). Rifa' la…, apply_dumping(), effective_after_malus(), _inforce_shares(), malus_correction(), g(.) of Def. 5.9, as in wpoa_selector.h::ApplyDumping., Psi = max(0, 1 - M / M_max), Def. 5.24 (malus_record.h::CorrectionFactor). (+6 more)
+Cohesion: 0.14
+Nodes (18): build_account_ledger(), anchor(), emit(), compute_weight_reconciliation(), Un movimento per riga, per ogni nodo, admin e ca inclusi (Sez. 4.3). Tre…, La tabella di riconciliazione del peso: una riga per (epoca, miner). Rifa' la…, apply_dumping(), effective_after_malus() (+10 more)
 
 ### Community 491 - "properties"
 Cohesion: 0.12
@@ -2557,10 +2569,6 @@ Nodes (17): Backfill and live, From the explorer alone (the admin node), Metrics
 Cohesion: 0.12
 Nodes (14): Configure and build V8, Fetch V8, Fetching, Building and Installing V8, Get Google's `depot_tools`, Prerequisites, Build Instructions, Build MultiChain and test that it is alive, Build V8 MultiChain additional library (+6 more)
 
-### Community 496 - "ParsedInternalKey"
-Cohesion: 0.33
-Nodes (7): SequenceNumber, ValueType, InternalKeyEncodingLength(), ParsedInternalKey, sequence, type, user_key
-
 ### Community 497 - "Le colonne, tabella per tabella"
 Cohesion: 0.12
 Nodes (15): `alternanze.csv` — la firma dello Spacing, `block_times.csv` — il ritmo della catena, Checklist: leggere una run nuova, `chisq.csv` — il test, Come distinguere un artefatto del simulatore da un effetto del protocollo, Come interpretare il chi-quadro in questo contesto, `forks.csv` — la catena ha tenuto?, `gas.csv`, `esg.csv`, `verify.csv` (+7 more)
@@ -2577,9 +2585,9 @@ Nodes (7): fail, dummy, is_convertible, tryConvert, value, succeed, dummy
 Cohesion: 0.15
 Nodes (13): binomial_logit_glm(), gains(), log_ratio_rows(), monotonicity(), Longitudinal checks across epochs: gains, monotonicity, binomial logit GLM,…, epoch_table: list of dicts with epoch, address, O, B, p_theoretical. For every…, first/last: dicts addr -> (O, B, p_theoretical). Returns rows per validator., series: list of (epoch, w_eff, p_hat) for one validator, epoch-ordered. Counts… (+5 more)
 
-### Community 501 - "mc_RelayRequest"
-Cohesion: 0.09
-Nodes (21): CKeyID, CKeyID, vector, mc_NodeFullAddress, m_Address, m_NetAddresses, Zero, Zero (+13 more)
+### Community 501 - "mc_OffchainMessageID"
+Cohesion: 0.11
+Nodes (19): CRelayRequestPairs, m_Pairs, CRelayResponsePair, request_id, response_id, map, NodeId, mc_OffchainMessageID (+11 more)
 
 ### Community 502 - "build_inequality"
 Cohesion: 0.33
@@ -2589,13 +2597,9 @@ Nodes (6): build_inequality(), Una riga per epoca: quanto e' concentrato il peso
 Cohesion: 0.29
 Nodes (7): A note on the absolute paths inside these files, Historical results — the Shadow campaign, Recovering the raw data, Reproducing these numbers, What is here, What the campaign was, Why the numbers are not directly comparable with a new run
 
-### Community 504 - "WeightBlkSnap"
-Cohesion: 0.29
-Nodes (7): uint256, WeightBlkSnap, blockPos, hasPrev, nStatus, prevHash, undoPos
-
-### Community 505 - "v8_data_lib.py"
-Cohesion: 0.22
-Nodes (12): ArgumentParser, get_options(), main(), process_config_file(), get_options(), main(), process_config_file(), get_bin_type() (+4 more)
+### Community 505 - "test_run_script.py"
+Cohesion: 0.10
+Nodes (27): ArgumentParser, get_options(), main(), process_config_file(), get_options(), main(), process_config_file(), get_bin_type() (+19 more)
 
 ### Community 506 - "Valutazione sperimentale della wPoA — campagna Shadow a 20 run"
 Cohesion: 0.13
@@ -2617,13 +2621,13 @@ Nodes (12): _count_rows(), inventory(), Path, What a run actually produced, agai
 Cohesion: 0.13
 Nodes (15): CORE, and the absence of a silent fallback, Documentation, Exit codes, Five minutes, How a run is driven, Layout, Nodes and roles, One thing to read before comparing anything (+7 more)
 
-### Community 511 - "StringSource"
-Cohesion: 0.25
-Nodes (6): SequentialFile, Slice, StringSource, contents_, force_error_, returned_partial_
+### Community 511 - "TEST"
+Cohesion: 0.19
+Nodes (9): Extend(), LE_LOAD32(), Mask(), CRC, TEST(), Unmask(), Value(), StandardResults (+1 more)
 
-### Community 512 - "CLevelDBBatch"
-Cohesion: 0.28
-Nodes (8): CLevelDBBatch, batch, WriteBatch, Erase(), K, WriteBatch, WriteTxIndex, vector
+### Community 512 - "mc_RelayRequest"
+Cohesion: 0.15
+Nodes (13): mc_RelayRequest, m_DestinationID, m_EFCacheID, m_Flags, m_LastTryTimestamp, m_MsgID, m_MsgType, m_NodeTo (+5 more)
 
 ### Community 513 - "experiments/README.md"
 Cohesion: 0.24
@@ -2685,9 +2689,9 @@ Nodes (12): Asymmetry, Changing conditions during a run, From a profile to the k
 Cohesion: 0.26
 Nodes (9): confirm(), die(), on_error(), require(), require_file(), say(), _common.sh script, wait_for_daemons_to_exit() (+1 more)
 
-### Community 528 - "CFlatData"
-Cohesion: 0.33
-Nodes (7): begin_ptr(), CFlatData, pbegin, pend, end_ptr(), vector, TAl
+### Community 528 - "definition"
+Cohesion: 0.18
+Nodes (10): rule, ScannerT, definition, array_, elements_, json_, members_, number_ (+2 more)
 
 ### Community 529 - "Prompt di analisi — Capitolo 8 della tesi wPoA"
 Cohesion: 0.18
@@ -2701,9 +2705,9 @@ Nodes (10): 1. Running, 2. Hierarchy and identifiers, 3. Phase 1 — raw collect
 Cohesion: 0.40
 Nodes (3): Typed views of the phase-2 tables., (R, n) theoretical shares and (R, n) effective weights, W_tot (R,), phi (R,)., RunData
 
-### Community 532 - "weight_records_tests.cpp"
-Cohesion: 0.33
-Nodes (8): addrs(), Object, vector, membership_obj(), signers(), vals(), wrap_formatdata(), wrap_json()
+### Community 532 - "CMultiChainParams"
+Cohesion: 0.20
+Nodes (5): CMultiChainParams, InitializeMultiChainParams(), SetMultiChainParams(), SetMultiChainRuntimeParams(), mc_BinToHex()
 
 ### Community 533 - "CMasterKey"
 Cohesion: 0.22
@@ -2717,13 +2721,13 @@ Nodes (10): 4.3 Le altre tabelle per esperimento, `account_ledger.csv` — bilan
 Cohesion: 0.36
 Nodes (3): _effective_weight(), Recompute ``w_eff`` exactly as ``MalusAccumulator::EffectiveWeight`` does.…, TestEffectiveWeight
 
-### Community 536 - "EnvWrapper"
-Cohesion: 0.04
-Nodes (35): Env, RandomAccessFile, WritableFile, SpecialEnv, count_random_reads_, data_sync_error_, delay_data_sync_, manifest_sync_error_ (+27 more)
+### Community 536 - "Env"
+Cohesion: 0.03
+Nodes (52): Env, RandomAccessFile, WritableFile, SpecialEnv, count_random_reads_, data_sync_error_, delay_data_sync_, manifest_sync_error_ (+44 more)
 
-### Community 537 - "custom_accept_transacton"
-Cohesion: 0.40
-Nodes (4): CScript, CTransaction, custom_accept_transacton(), custom_good_for_coin_selection()
+### Community 537 - "common.h"
+Cohesion: 0.22
+Nodes (9): ReadBE32(), ReadBE64(), ReadLE32(), WriteBE32(), WriteBE64(), WriteLE32(), WriteLE64(), Finalize (+1 more)
 
 ### Community 538 - "concentration.py"
 Cohesion: 0.39
@@ -2765,9 +2769,9 @@ Nodes (8): queue, default, minimum, type, limit_packets, additionalProperties, p
 Cohesion: 0.25
 Nodes (7): additionalProperties, description, $id, required, $schema, title, type
 
-### Community 549 - "Malicious miners and the behavioural malus"
-Cohesion: 0.25
-Nodes (8): 1. What can be injected, and what cannot, 2. Who misbehaves, and how much, 3. Timing, idempotency, logging, 4. The honest side: detection without ground truth, 5. What the analysis reports, 6. Limits, 7. Files, Malicious miners and the behavioural malus
+### Community 549 - "test/README.md"
+Cohesion: 0.13
+Nodes (12): Chain parameters, Source layout, Tests, WeightEngine, 1. What can be injected, and what cannot, 2. Who misbehaves, and how much, 3. Timing, idempotency, logging, 4. The honest side: detection without ground truth (+4 more)
 
 ### Community 550 - "Error_position"
 Cohesion: 0.29
@@ -2813,9 +2817,9 @@ Nodes (10): A run directory, Layout, Malicious miners (optional), Quick start, R
 Cohesion: 0.33
 Nodes (6): Analysis, Both run layouts, Reports, The legacy analysers, The three-phase pipeline, What is deliberately not here
 
-### Community 561 - "filtercallback_cold.cpp"
-Cohesion: 0.28
-Nodes (8): Array, Blob_t, exception, Object, FilterCallback::CreateCallbackLog(), FilterCallback::CreateCallbackLogError(), FilterCallback::JspCallback(), FilterCallback::UbjCallback()
+### Community 561 - "mc_NodeFullAddress"
+Cohesion: 0.18
+Nodes (8): CKeyID, CKeyID, vector, mc_NodeFullAddress, m_Address, m_NetAddresses, Zero, Zero
 
 ### Community 562 - "name"
 Cohesion: 0.40
@@ -2833,9 +2837,9 @@ Nodes (5): Files, Regenerating and checking, Topologies, Where a link's impairme
 Cohesion: 0.50
 Nodes (4): main(), parse_ms(), Verifica che un .gml sia una topologia valida per Shadow e per l'esperimento.…, Converte una stringa con unita' di Shadow in millisecondi.
 
-### Community 566 - "CNode"
-Cohesion: 0.33
-Nodes (6): CNode, NET_FinalizeHandshake, NET_IsEncrypted, NET_IsFinalized, NET_ProcessHandshakeData, NET_RestoreFromCache
+### Community 566 - "wallet/db.h"
+Cohesion: 0.25
+Nodes (9): CBlockLocator, CDiskBlockIndex, COutPoint, Erase(), Exists(), K, T, Read() (+1 more)
 
 ### Community 567 - "nodes"
 Cohesion: 0.40
@@ -2885,29 +2889,29 @@ Nodes (4): Sheet: algorithm_mc, Sheet: by_family, Sheet: families, Sheet: summar
 Cohesion: 0.40
 Nodes (5): Documentation Maintenance, How the phases fit together, Phases at a glance, Supporting references, wPoA Implementation Guide — Master Index
 
-### Community 579 - "json_spirit_utils.h"
-Cohesion: 0.38
-Nodes (4): Map_t, Obj_t, map_to_obj(), obj_to_map()
+### Community 579 - "mc_CoinCSDetails"
+Cohesion: 0.18
+Nodes (11): COutputEntry, amount, destination, vout, CTxDestination, mc_CoinCSDetails, m_Active, m_CSDestination (+3 more)
 
-### Community 580 - "test_malus_pipeline.py"
-Cohesion: 0.20
-Nodes (4): The three-phase analysis pipeline. Phase 1 collects, phase 2 aggregates, phase…, _line(), PipelineTest, End-to-end of the analysis join, on a fabricated run directory. Exercises the…
+### Community 580 - "PipelineTest"
+Cohesion: 0.25
+Nodes (3): _line(), PipelineTest, End-to-end of the analysis join, on a fabricated run directory. Exercises the…
 
 ### Community 581 - "builder.h"
 Cohesion: 0.33
 Nodes (5): Env, FileMetaData, Iterator, TableCache, VersionEdit
 
-### Community 582 - "miner.h"
-Cohesion: 0.25
-Nodes (7): CBlock, CBlockHeader, CBlockIndex, CBlockTemplate, CReserveKey, CScript, CWallet
+### Community 582 - "CNetMessage"
+Cohesion: 0.20
+Nodes (9): CNetMessage, hdr, hdrbuf, in_data, nDataPos, nHdrPos, nTime, readData (+1 more)
 
-### Community 584 - "FilterBlockReader"
-Cohesion: 0.29
-Nodes (7): FilterBlockReader, base_lg_, data_, num_, offset_, policy_, FilterPolicy
+### Community 584 - "MinerController"
+Cohesion: 0.25
+Nodes (3): MinerController, The miner: cluster head, validator, and source of the reconciliation R_k.…, Record this miner's own view of its weight. getlocalweight is the node's own…
 
 ### Community 585 - "CDiskTxPos"
 Cohesion: 0.33
-Nodes (4): CDiskTxPos, nTxOffset, ADD_SERIALIZE_METHODS, ReadTxIndex
+Nodes (4): CDiskTxPos, nTxOffset, WriteTxIndex, vector
 
 ### Community 586 - "leveldb_seqfile_t"
 Cohesion: 0.67
@@ -2973,13 +2977,13 @@ Nodes (4): description, minimum, type, legacy_gml_id
 Cohesion: 0.50
 Nodes (4): maximum, minimum, type, lon
 
-### Community 602 - "CRIPEMD160"
-Cohesion: 0.33
-Nodes (5): CRIPEMD160, buf, bytes, OUTPUT_SIZE, s
+### Community 602 - "sha1.cpp"
+Cohesion: 0.39
+Nodes (8): CSHA1::CSHA1(), f1(), f2(), f3(), Initialize(), left(), Round(), Transform()
 
-### Community 603 - "CSHA1"
-Cohesion: 0.33
-Nodes (5): CSHA1, buf, bytes, OUTPUT_SIZE, s
+### Community 603 - "sha256.cpp"
+Cohesion: 0.39
+Nodes (8): Ch(), CSHA256::CSHA256(), Initialize(), Maj(), Round(), Sigma0(), Sigma1(), Transform()
 
 ### Community 604 - "CExchangeStatus"
 Cohesion: 0.29
@@ -3053,6 +3057,10 @@ Nodes (5): 12.1 The stall is a race, not an arithmetic error, 12.2 The suites te
 Cohesion: 0.40
 Nodes (5): 5.1 Where the functional tests go, and what stays behind, 5.2 Build system: nothing to update, and that is worth stating explicitly, 5.3 `functional_lib.sh` consolidation, 5.4 Stream creation ordering (mandate point 4), 5. Decisions on the restructuring
 
+### Community 648 - "sha512.cpp"
+Cohesion: 0.39
+Nodes (8): Ch(), CSHA512::CSHA512(), Initialize(), Maj(), Round(), Sigma0(), Sigma1(), Transform()
+
 ### Community 649 - "wPoA — Weighted Proof-of-Authority"
 Cohesion: 0.50
 Nodes (4): Build and test, Configuration model, Where a validator's weight comes from, wPoA — Weighted Proof-of-Authority
@@ -3065,57 +3073,57 @@ Nodes (4): Housekeeping, Layout, Results, Which file answers which question
 Cohesion: 0.67
 Nodes (3): 1. Build Berkeley DB, 2. Configure MultiChain with Berkeley DB, Berkeley DB 4.8
 
-### Community 652 - "CompactionStats"
-Cohesion: 0.33
-Nodes (4): CompactionStats, bytes_read, bytes_written, micros
+### Community 652 - ".SnappyCompress"
+Cohesion: 0.25
+Nodes (4): Options, RandomGenerator, data_, pos_
 
 ### Community 653 - "log_test.cc"
 Cohesion: 0.60
 Nodes (3): BigString(), NumberString(), RandomSkewedString()
 
-### Community 654 - "CSizeComputer"
-Cohesion: 0.40
-Nodes (4): CSizeComputer, nSize, nType, nVersion
+### Community 654 - "CCheckpointData"
+Cohesion: 0.25
+Nodes (7): MapCheckpoints, CBlockIndex, CCheckpointData, fTransactionsPerDay, mapCheckpoints, nTimeLastCheckpoint, nTransactionsLastCheckpoint
 
-### Community 655 - "TestHashFilter"
-Cohesion: 0.33
-Nodes (4): FilterPolicy, FilterBlockTest, policy_, TestHashFilter
+### Community 655 - "PutFixed32"
+Cohesion: 0.13
+Nodes (11): SignedUnsignedIssue, FilterPolicy, Slice, FilterBlockTest, policy_, TestHashFilter, EncodeTo, PutFixed32() (+3 more)
 
-### Community 656 - "InputStream"
-Cohesion: 0.40
-Nodes (5): mc_StreamSetupState, InputStream, create, name, subscribe
-
-### Community 658 - "format"
-Cohesion: 0.67
-Nodes (3): FormatIterator, format(), T1
-
-### Community 659 - "multichainfilter.cpp"
-Cohesion: 0.23
-Nodes (12): AddFilter, InFilter, Initialize, SetCallbackNames, SetCallbackNamesInternal, mc_MultiChainFilterParams, Close, Destroy (+4 more)
-
-### Community 660 - "STR_GetSubscriptions"
-Cohesion: 0.67
-Nodes (3): mc_Buffer, STR_GetSubscriptions, STR_PutSubscriptions
-
-### Community 662 - "time"
+### Community 656 - "rpc_explorer.py"
 Cohesion: 0.29
-Nodes (6): CheckBlock(), CBlockIndex, uint256, GetLastCheckpoint(), GuessVerificationProgress(), time
+Nodes (4): ExplorerState, Path, Block-explorer-style collection: poll the chain, miss nothing, keep the raw.…, Pick up where a previous collector stopped, if there was one.
 
-### Community 663 - "gen.cpp"
-Cohesion: 0.83
-Nodes (3): initJsonEscape(), main(), outputEscape()
+### Community 658 - "_AppendCsv"
+Cohesion: 0.33
+Nodes (3): _AppendCsv, Path, Append rows to a CSV, writing the header exactly once.
 
-### Community 664 - "SerializationOp"
-Cohesion: 0.67
-Nodes (3): Operation, Stream, SerializationOp()
+### Community 659 - "mc_MultiChainFilterParams"
+Cohesion: 0.29
+Nodes (7): mc_MultiChainFilterParams, Close, Destroy, Init, m_Compatibility, m_MaxShownData, Zero
+
+### Community 660 - "bloom.h"
+Cohesion: 0.29
+Nodes (6): COutPoint, CTransaction, Operation, Stream, SerializationOp(), uint256
+
+### Community 662 - "checkpoints.cpp"
+Cohesion: 0.33
+Nodes (5): CheckBlock(), CBlockIndex, uint256, GetLastCheckpoint(), GuessVerificationProgress()
+
+### Community 663 - "CNode"
+Cohesion: 0.33
+Nodes (6): CNode, NET_FinalizeHandshake, NET_IsEncrypted, NET_IsFinalized, NET_ProcessHandshakeData, NET_RestoreFromCache
+
+### Community 664 - "CRIPEMD160"
+Cohesion: 0.33
+Nodes (5): CRIPEMD160, buf, bytes, OUTPUT_SIZE, s
 
 ### Community 665 - "2. Inventory and classification"
 Cohesion: 0.50
 Nodes (4): 2.1 `src/weight_engine/test/`, 2.2 `src/wpoa/test/`, 2.3 `experimental/` — confirmed: leave it exactly where it is, 2. Inventory and classification
 
-### Community 666 - "build_tx_index"
-Cohesion: 0.50
-Nodes (4): build_tx_index(), Confirmation index: txid prefix -> height of the block that confirmed it. The…, `txs.log` lives in `data/<host>/` or `data/<host>/<chain>/`., _txs_logs()
+### Community 666 - "CSHA1"
+Cohesion: 0.33
+Nodes (5): CSHA1, buf, bytes, OUTPUT_SIZE, s
 
 ### Community 667 - "FilterPolicy"
 Cohesion: 0.33
@@ -3125,41 +3133,73 @@ Nodes (5): FilterPolicy, CreateFilter, KeyMayMatch, Name, Slice
 Cohesion: 0.67
 Nodes (3): RandomAccessFile, leveldb_randomfile_t, rep
 
+### Community 671 - "CompactionStats"
+Cohesion: 0.33
+Nodes (4): CompactionStats, bytes_read, bytes_written, micros
+
+### Community 672 - "StringSource"
+Cohesion: 0.33
+Nodes (5): SequentialFile, StringSource, contents_, force_error_, returned_partial_
+
 ### Community 673 - "extract_delays"
 Cohesion: 0.50
 Nodes (4): extract_delays(), Delay di sortition per host e margine G della timer race (Def. 5.15)., find_debug_logs(), debug.log lives in `data/<host>/debug.log` (archived runs) or in…
 
+### Community 674 - "AddTxsInFlight"
+Cohesion: 0.40
+Nodes (6): AddTxsInFlight, IsTxInFlight, RemoveTxInFlight, RemoveTxsInFlight, uint256, vector
+
+### Community 675 - "BIP32Hash"
+Cohesion: 0.40
+Nodes (5): BIP32Hash(), ChainCode, vector, MurmurHash3(), ROTL32()
+
+### Community 677 - "RandomGenerator"
+Cohesion: 0.40
+Nodes (3): RandomGenerator, data_, pos_
+
+### Community 678 - "migrate_legacy_outputs"
+Cohesion: 0.50
+Nodes (4): migrate_legacy_outputs(), _move_into(), Sposta `src` dentro `dst_dir`, sovrascrivendo. Restituisce 1 se mosso., Porta l'output della struttura precedente in quella della Sez. 4. Non ricalcola…
+
+### Community 679 - "FED_EventTx"
+Cohesion: 0.50
+Nodes (4): CTransaction, uint256, FED_EventInvalidateTx, FED_EventTx
+
+### Community 680 - "__US_FlushFile"
+Cohesion: 0.50
+Nodes (4): mc_EntityLedger::Flush(), mc_PermissionLedger::Flush(), __US_FlushFile(), mc_TxDB::FlushDataFile()
+
+### Community 683 - "SerializationOp"
+Cohesion: 0.67
+Nodes (3): Operation, Stream, SerializationOp()
+
 ### Community 685 - "weight_publisher.cpp"
-Cohesion: 0.21
-Nodes (15): RecordDouble(), weightregistermembership(), weightsetesg(), ChainSupportsCustomPermissions(), CKeyID, Object, IsCertificationAuthority(), ResolveLocalNodeKeyID() (+7 more)
+Cohesion: 0.19
+Nodes (14): weightregistermembership(), WeightStreamReader, ChainSupportsCustomPermissions(), CKeyID, Object, IsCertificationAuthority(), ResolveLocalNodeKeyID(), WeightCaPermissionBit() (+6 more)
 
 ### Community 691 - "leveldb_writablefile_t"
 Cohesion: 0.67
 Nodes (3): WritableFile, leveldb_writablefile_t, rep
 
-### Community 692 - "SerializationOp"
-Cohesion: 0.67
-Nodes (3): Operation, Stream, SerializationOp()
-
 ## Knowledge Gaps
-- **3885 isolated node(s):** `autogen.sh script`, `install_core.sh script`, `build-multichain.sh script`, `entrypoint.sh script`, `$schema` (+3880 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 6998 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **56 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **3885 isolated node(s):** `Version`, `VersionEdit`, `CNetAddr`, `CBlock`, `CBlockIndex` (+3880 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 7003 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **66 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `string_` connect `string_` to `AppInit2`, `main.cpp`, `CWallet`, `CallRPC`, `CNode`, `rpcwpoa.cpp`, `wallettxs.cpp`, `secp256k1_rand_bits`, `DBImpl`, `env_win.cc`, `netbase.cpp`, `rpcutils.cpp`, `rpcstreams.cpp`, `rpcserver.cpp`, `weight_records_tests.cpp`, `PosixEnv`, `Repairer`, `EnvWrapper`, `custom_accept_transacton`, `group_impl.h`, `walletcoins.cpp`, `CWalletTx`, `DB`, `CWalletDB`, `weight_reader.cpp`, `dbflat.cpp`, `wallet.h`, `write_batch.cc`, `Error_position`, `net.cpp`, `BOOST_AUTO_TEST_CASE`, `netprotocol.cpp`, `secp256k1.c`, `random.cpp`, `CBitcoinAddress`, `CChainParams`, `mc_EnterpriseFeatures`, `filtercallback_cold.cpp`, `ctaes.c`, `__US_ThreadID`, `CCoinsViewCache`, `Status`, `CNode`, `CDataStream`, `JSONRPCError`, `chunkcollector.cpp`, `TEST`, `json_spirit_value.h`, `DBIter`, `TEST`, `main.h`, `v8_win.cpp`, `EnsureWalletIsUnlocked`, `rpcweightengine.cpp`, `set`, `RPCTestLibraryUpdate`, `HTTPRequest`, `Benchmark`, `malus_registry.cpp`, `CScript`, `CCryptoKeyStore`, `Version::LevelFileNumIterator`, `secp256k1_context_create`, `TxToJSON`, `ui_interface.h`, `num_gmp_impl.h`, `BOOST_AUTO_TEST_CASE`, `rpchelp.cpp`, `BOOST_AUTO_TEST_CASE`, `VersionEdit`, `rpcprotocol.cpp`, `BOOST_AUTO_TEST_CASE`, `field_5x52_impl.h`, `ExtractDestinations`, `V8Filter`, `Prove`, `hash_impl.h`, `txmempool.cpp`, `CMultiChainTxDetails`, `ecmult_impl.h`, `base_uint`, `mc_FilterEngine`, `dbwrap.h`, `StreamWeightRegistry`, `BOOST_AUTO_TEST_CASE`, `Env`, `LockedPageManagerBase`, `CLicenseRequest`, `field_10x26_impl.h`, `c.cc`, `log_test.cc`, `InputStream`, `CUnsignedAlert`, `format`, `port_win.h`, `utilwrapper.cpp`, `Block::Iter`, `gen.cpp`, `BloomTest`, `V8Engine`, `rpcmining.cpp`, `Benchmark`, `FilterPolicy`, `db_bench.cc`, `CNodeStats`, `multichaintx.cpp`, `BOOST_AUTO_TEST_CASE`, `json_spirit_reader_template.h`, `Blob`, `dbformat.cc`, `LogTest`, `MemTableIterator`, `weight_publisher.cpp`, `CDB`, `V8Engine`, `malus_record.h`, `BOOST_AUTO_TEST_CASE`, `format.h`, `mc_MultiChainFilterEngine`, `Random`, `uint256`, `ripemd160.cpp`, `UniValue`, `ParseEntityIdentifier`, `dbwrap_com.cpp`, `dbwrap_ent.cpp`, `EnvPosixTest`, `Histogram`, `ParseMultichainTxOutToBuffer`, `TEST`, `TwoLevelIterator`, `mcd_DebugRequest`, `VersionSet`, `rpcnet.cpp`, `CKeyStore`, `CFeeRate`, `OFF_CreateSignatureScripts`, `CHMAC_SHA256`, `addrman.cpp`, `State`, `WPoASortitionVerifyProposer`, `Value`, `init.h`, `mc_OffchainMessageID`, `txdb.cpp`, `BlockBuilder`, `TableBuilder::Rep`, `sync.cpp`, `V8Filter`, `definition`, `chainparamsbase.cpp`, `TEST`, `GetScriptForDestination`, `CTxOut`, `netbase.h`, `AccusedItem`, `leveldb_t`, `v8/v8ubjson.cpp`, `ClusterInput`, `LogPrint`, `serialize.h`, `BOOST_AUTO_TEST_CASE`, `BOOST_AUTO_TEST_CASE`, `BloomFilterPolicy`, `ProcessRelay`, `Slice`, `v8_win/v8ubjson.cpp`, `weight_records.h`, `define.h`, `FilterCallback`, `mc_TxEntity`, `Slice`, `interpreter.h`, `wallet/db.h`, `mc_MultiChainFilter`, `sha256.cpp`, `sha512.cpp`, `Comparator`, `port_posix.h`, `CHMAC_SHA512`, `CBlockFileInfo`, `Stats`, `c_test.c`, `SSLIOStreamDevice`, `sha1.cpp`, `TEST`, `FED_EventTx`, `TableCache`, `json_spirit_writer_template.h`, `FED_EventBlock`, `VerifyBlockMinerWPoA`, `tools.cpp`, `CBaseChainParams`, `FilterBlockBuilder`, `Lock`, `CBlock`, `port_posix.cc`, `JSONUTF8StringFilter`, `mc_MultiChainLibrary`, `rpcserver.h`, `CModifiableParams`, `weight_engine.cpp`, `leveldb_comparator_t`, `walletdb.h`, `StringSource`?**
-  _High betweenness centrality (0.425) - this node is a cross-community bridge._
-- **Why does `memcpy()` connect `memcpy` to `AppInit2`, `main.cpp`, `CKey`, `asset.cpp`, `wallettxs.cpp`, `secp256k1_rand_bits`, `permission.cpp`, `env_win.cc`, `netbase.cpp`, `CreateNewBlock`, `tests.c`, `rpcutils.cpp`, `rpcstreams.cpp`, `utility.cpp`, `wallettxdb.cpp`, `rpcserver.cpp`, `PosixEnv`, `group_impl.h`, `walletcoins.cpp`, `weight_reader.cpp`, `dbflat.cpp`, `net.cpp`, `netprotocol.cpp`, `secp256k1.c`, `random.cpp`, `CBitcoinAddress`, `ctaes.c`, `__US_ThreadID`, `Status`, `CDataStream`, `JSONRPCError`, `chunkcollector.cpp`, `chunkdb.cpp`, `EnsureWalletIsUnlocked`, `CPubKey`, `mc_MinerInfo`, `malus_registry.cpp`, `CScript`, `CCryptoKeyStore`, `secp256k1_context_create`, `TxToJSON`, `num_gmp_impl.h`, `Prove`, `hash_impl.h`, `ecmult_impl.h`, `base_uint`, `CScriptCompressor`, `StreamWeightRegistry`, `LockedPageManagerBase`, `CLicenseRequest`, `utilwrapper.cpp`, `BloomTest`, `multichaintx.cpp`, `dbformat.cc`, `string_`, `test_ecdsa_recovery_end_to_end`, `ParseEntityIdentifier`, `ParseMultichainTxOutToBuffer`, `CHMAC_SHA256`, `addrman.cpp`, `CCoinControl`, `WPoASortitionVerifyProposer`, `chainparams.cpp`, `TEST`, `GetScriptForDestination`, `leveldb_t`, `LogPrint`, `LRUCache`, `ProcessRelay`, `Slice`, `leveldb_iterator_t`, `CheckLibrariesInternal`, `CHMAC_SHA512`, `c_test.c`, `__US_SemCreate`, `glibc_sanity.cpp`, `VerifyBlockMinerWPoA`?**
-  _High betweenness centrality (0.097) - this node is a cross-community bridge._
-- **Why does `AppInit2()` connect `AppInit2` to `main.cpp`, `config_loader.py`, `CallRPC`, `LockedPageManagerBase`, `wallettxs.cpp`, `chainparams.cpp`, `netbase.cpp`, `CreateNewBlock`, `rpcserver.cpp`, `utilwrapper.cpp`, `rpcmining.cpp`, `memcpy`, `net.cpp`, `string_`, `random.cpp`, `CBitcoinAddress`, `LogPrint`, `__US_ThreadID`, `chunkcollector.cpp`, `main.h`, `rpchelp.cpp`, `rpcnet.cpp`?**
-  _High betweenness centrality (0.061) - this node is a cross-community bridge._
+- **Why does `string_` connect `string_` to `AppInit2`, `LogPrint`, `CWallet`, `CallRPC`, `CNode`, `rpcwpoa.cpp`, `wallettxs.cpp`, `DBImpl`, `env_win.cc`, `netbase.cpp`, `tests.c`, `definition`, `rpcstreams.cpp`, `mc_GetLE`, `rpcserver.cpp`, `PosixEnv`, `Repairer`, `Env`, `group_impl.h`, `walletcoins.cpp`, `CWalletTx`, `weight_reader.cpp`, `DB`, `CWalletDB`, `TEST`, `dbflat.cpp`, `wallet.h`, `write_batch.cc`, `rpcblockchain.cpp`, `Error_position`, `net.cpp`, `BOOST_AUTO_TEST_CASE`, `CAddress`, `secp256k1.c`, `random.cpp`, `rpcmisc.cpp`, `CChainParams`, `mc_EnterpriseFeatures`, `ctaes.c`, `__US_ThreadID`, `CCoinsViewCache`, `Status`, `wallet/db.h`, `CDataStream`, `JSONRPCError`, `chunkcollector.cpp`, `Env`, `json_spirit_value.h`, `TEST`, `main.h`, `v8_win.cpp`, `testfilter`, `rpcweightengine.cpp`, `pair_`, `RPCTestLibraryUpdate`, `CTxOut`, `Benchmark`, `malus_registry.cpp`, `CScript`, `CCryptoKeyStore`, `Slice`, `secp256k1_context_create`, `TxToJSON`, `ui_interface.h`, `bench_internal.c`, `sha1.cpp`, `sha256.cpp`, `CBasicKeyStore`, `BOOST_AUTO_TEST_CASE`, `rpchelp.cpp`, `BOOST_AUTO_TEST_CASE`, `VersionEdit`, `BOOST_AUTO_TEST_CASE`, `field_5x52_impl.h`, `V8Filter`, `base58.cpp`, `Prove`, `CValidationState`, `hash_impl.h`, `txmempool.cpp`, `group.h`, `base_uint`, `mc_FilterEngine`, `dbwrap.h`, `StreamWeightRegistry`, `BOOST_AUTO_TEST_CASE`, `dumpfile.cc`, `LockedPageManagerBase`, `sha512.cpp`, `CLicenseRequest`, `version_set.cc`, `CacheTest`, `c.cc`, `.SnappyCompress`, `log_test.cc`, `PutFixed32`, `field_10x26_impl.h`, `tinyformat.h`, `CUnsignedAlert`, `port_win.h`, `utilwrapper.cpp`, `CNode`, `Block::Iter`, `BloomTest`, `V8Engine`, `FilterPolicy`, `Benchmark`, `.Run`, `CNodeStats`, `CMultiChainTxDetails`, `BOOST_AUTO_TEST_CASE`, `json_spirit_reader_template.h`, `RandomGenerator`, `Blob`, `FED_EventTx`, `DBIter`, `LogTest`, `MemTableIterator`, `BOOST_AUTO_TEST_CASE`, `weight_publisher.cpp`, `CDBEnv`, `BOOST_AUTO_TEST_CASE`, `BOOST_AUTO_TEST_CASE`, `format.h`, `mc_MultiChainFilterEngine`, `Random`, `uint256`, `ripemd160.cpp`, `UniValue`, `ParseEntityIdentifier`, `FilterBlockBuilder`, `dbwrap_com.cpp`, `dbwrap_ent.cpp`, `EnvPosixTest`, `Histogram`, `TableCache`, `table_test.cc`, `TwoLevelIterator`, `map`, `CDB`, `VersionSet`, `rpcnet.cpp`, `BOOST_AUTO_TEST_CASE`, `CFeeRate`, `OFF_CreateSignatureScripts`, `CHMAC_SHA256`, `CValidationInterface`, `Watchdog`, `Value`, `init.h`, `BlockBuilder`, `TableBuilder::Rep`, `sync.cpp`, `V8Filter`, `Iter_type`, `chainparamsbase.cpp`, `TEST`, `relay.cpp`, `malus_record.h`, `CTransaction`, `CAddrMan`, `MemTable`, `leveldb_t`, `WPoARandaoSelectionSeed`, `v8/v8blob.cpp`, `handshake.cpp`, `serialize.h`, `BOOST_AUTO_TEST_CASE`, `WeightVerificationEntry`, `BloomFilterPolicy`, `Reader`, `txdb.cpp`, `define.h`, `FilterCallback`, `CLevelDBWrapper`, `json_spirit::write`, `Slice`, `interpreter.h`, `mc_MultiChainFilter`, `rpcmining.cpp`, `mc_DBFlatPos`, `Comparator`, `port_posix.h`, `CHMAC_SHA512`, `Stats`, `c_test.c`, `mcd_DebugRequest`, `CCoinsViewDB`, `AccusedItem`, `TEST`, `WriteBatch`, `BytewiseComparatorImpl`, `json_spirit_writer_template.h`, `FED_EventBlock`, `Lock`, `testharness.cc`, `Slice`, `CBlock`, `port_posix.cc`, `JSONUTF8StringFilter`, `filter_win.cpp`, `mc_MultiChainLibrary`, `rpcserver.h`, `CModifiableParams`, `weight_engine.cpp`, `mc_TxEntity`, `leveldb_comparator_t`, `stdint.h`, `mc_OffchainMessageID`?**
+  _High betweenness centrality (0.404) - this node is a cross-community bridge._
+- **Why does `AppInit2()` connect `AppInit2` to `dbwrap.h`, `LogPrint`, `LockedPageManagerBase`, `wallettxs.cpp`, `netbase.cpp`, `CreateNewBlock`, `utility.cpp`, `CMultiChainParams`, `memcpy`, `rpcserver.cpp`, `utilwrapper.cpp`, `signal`, `net.cpp`, `CCoinsViewCache`, `pair_`, `rpchelp.cpp`, `string_`, `base58.cpp`, `CValidationState`, `CValidationInterface`?**
+  _High betweenness centrality (0.068) - this node is a cross-community bridge._
+- **Why does `memcpy()` connect `memcpy` to `AppInit2`, `LogPrint`, `CKey`, `CWallet`, `asset.cpp`, `wallettxs.cpp`, `test_schnorr_threshold`, `permission.cpp`, `env_win.cc`, `netbase.cpp`, `CreateNewBlock`, `tests.c`, `mc_GetLE`, `rpcstreams.cpp`, `utility.cpp`, `wallettxdb.cpp`, `rpcserver.cpp`, `PosixEnv`, `group_impl.h`, `walletcoins.cpp`, `weight_reader.cpp`, `dbflat.cpp`, `write_batch.cc`, `net.cpp`, `CAddress`, `secp256k1.c`, `random.cpp`, `rpcmisc.cpp`, `ctaes.c`, `__US_ThreadID`, `CCoinsViewCache`, `Status`, `CDataStream`, `JSONRPCError`, `chunkcollector.cpp`, `chunkdb.cpp`, `testfilter`, `CNetMessage`, `CPubKey`, `mc_MinerInfo`, `CTxOut`, `malus_registry.cpp`, `CScript`, `CCryptoKeyStore`, `secp256k1_context_create`, `TxToJSON`, `bench_internal.c`, `BOOST_AUTO_TEST_CASE`, `base58.cpp`, `Prove`, `CValidationState`, `hash_impl.h`, `group.h`, `base_uint`, `CScriptCompressor`, `StreamWeightRegistry`, `LockedPageManagerBase`, `CLicenseRequest`, `CMultiChainTxDetails`, `DBIter`, `CMCAddrMan`, `test_ecdsa_recovery_end_to_end`, `ParseEntityIdentifier`, `TableCache`, `CHMAC_SHA256`, `CMCAddrInfo`, `chainparams.cpp`, `TEST`, `relay.cpp`, `leveldb_t`, `WPoARandaoSelectionSeed`, `VerifyBlockMinerWPoA`, `multichainfilter.cpp`, `LRUCache`, `leveldb_iterator_t`, `define.h`, `CHMAC_SHA512`, `c_test.c`, `mcd_DebugRequest`, `glibc_sanity.cpp`?**
+  _High betweenness centrality (0.067) - this node is a cross-community bridge._
 - **Are the 392 inferred relationships involving `memcpy()` (e.g. with `mc_GetCompoundHash160()` and `mc_MultichainParams::Build()`) actually correct?**
   _`memcpy()` has 392 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 234 inferred relationships involving `JSONRPCError()` (e.g. with `ENT_RPCVerifyEdition` and `LIC_RPCVerifyFeature`) actually correct?**
   _`JSONRPCError()` has 234 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 3 inferred relationships involving `Status` (e.g. with `leveldb_iter_key()` and `leveldb_iter_value()`) actually correct?**
   _`Status` has 3 INFERRED edges - model-reasoned connections that need verification._
-- **What connects `autogen.sh script`, `install_core.sh script`, `build-multichain.sh script` to the rest of the system?**
+- **What connects `Version`, `VersionEdit`, `CNetAddr` to the rest of the system?**
   _3885 weakly-connected nodes found - possible documentation gaps or missing edges._
