@@ -1,5 +1,5 @@
 # Smallest useful functional run: 1 admin, 1 CA, 3 miners, 5 companies.
-# 10 nodes, 20 epochs of 20 blocks -> ~420 blocks at 2 s/block, roughly 15 minutes.
+# 10 nodes, 20 epochs of 20 blocks -> ~420 blocks at 5 s/block, roughly 35 minutes.
 #
 # Format and defaults: ../schema.md
 # The wPoA/WeightEngine activation flags are NOT configurable here: every chain this
@@ -24,7 +24,7 @@ epochs:
   length_blocks: 20
 
 chain:
-  target-block-time: 2
+  target-block-time: 5
   # 0, not the stock 0.3: at 0.3 with 3 miners the round-robin spacing is binding even
   # under wPoA and the observed distribution collapses onto round robin, which would
   # mask the very thing this harness measures.
@@ -41,7 +41,7 @@ chain:
 wpoa:
   dump-function: none
   wpoa-sortition-delta: 0.5
-  wpoa-sortition-lambda: 0.0
+  wpoa-sortition-lambda: 0.2
   wpoa-malus-mu: 0.5
   wpoa-malus-max: 4.0
   wpoa-malus-equiv-points: 4.0

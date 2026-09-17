@@ -288,12 +288,19 @@ class NodeRunner:
         )
 
     def read_pid(self, node_id: str) -> Optional[int]:
-        """The node's PID, if it wrote one.
+        """The node's PID, from ``<datadir>/<chain>/multichain.pid``.
 
-        MultiChain does not always leave a pid file, so this is a best-effort extra and
-        never the primary signal — :meth:`rpc_open` is.
+        MultiChain does write one — an earlier note here claimed it did not, which was
+        wrong: the check had been made *after* the daemons exited, and the file is
+        correctly removed on a clean shutdown. Verified on a running node.
+
+        It is still not the primary liveness signal, and :meth:`rpc_open` remains that.
+        A pid file says a process was started; it cannot say the process has finished
+        releasing its LevelDB lock, and on a crash it outlives the process entirely. The
+        pid is what lets :meth:`stop` escalate to a signal when the RPC port refuses to
+        close, which is the one thing the port alone cannot do.
         """
-        for name in ("multichaind.pid", "multichain.pid", ".lock"):
+        for name in ("multichain.pid", "multichaind.pid"):
             pid_file = self.datadir(node_id) / self.profile.chain_name / name
             try:
                 return int(pid_file.read_text(encoding="utf-8").strip())

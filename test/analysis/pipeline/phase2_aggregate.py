@@ -21,16 +21,18 @@ Two recomputations happen here, and both are checks rather than conveniences:
 
     D_i = T + delta * T * (2 * score_norm - 1) + lambda * Phi
 
-and this phase recomputes it from the logged ``score_norm``, ``delta``, ``lambda`` and
-``Phi``, then compares. ``delay_recompute_mismatch_rounds = 0`` is a pass condition of the
-functional test: a mismatch means the harness and the node disagree about the mechanism
-itself, which invalidates every timer-race result downstream. ``Phi`` is checked separately
-and only warned about — it is a global feedback term whose value legitimately differs
-between nodes mid-round.
+and this phase recomputes it and compares. ``delay_recompute_mismatch_rounds = 0`` is a
+pass condition of the functional test: a mismatch means the harness and the node disagree
+about the mechanism itself, which invalidates every timer-race result downstream. ``Phi``
+is checked separately and only warned about — it is a global feedback term whose value
+legitimately differs between nodes mid-round.
 
 **The normalised score.** ``score_norm = 1 - exp(-W_tot * score)`` is recomputed from the
-raw score and the total effective weight. It isolates a fault in the transform from a fault
-in the draw.
+raw score and the total effective weight, and the recomputed value — not the reported one
+— is what feeds the delay check. The node's arithmetic is right; its JSON rendering of a
+double very close to 1 is not, and a reported ``score_norm`` of 0 for a true 0.9999999999
+would otherwise read as a protocol fault. Keeping both makes the rendering artefact
+visible as itself, in ``score_norm_mismatch``.
 
 One definition worth stating because it is easy to get wrong: ``p_theoretical`` is built
 from ``effective_weight_after_malus_and_dumping`` — the quantity the **election actually
@@ -246,11 +248,35 @@ class Aggregator:
                 phi = f(delay_row.get("feedback_phi"))
                 total_eff = f(delay_row.get("total_effective_weight")) or w_tot
 
+                # score_norm = 1 - exp(-W_tot * score), recomputed from the two fields
+                # that survive serialisation intact.
+                norm_recomputed = None
+                if score is not None and total_eff:
+                    norm_recomputed = 1.0 - math.exp(-min(total_eff * score, 700.0))
+
                 # D = T + delta*T*(2*score_norm - 1) + lambda*Phi
+                #
+                # Built on the RECOMPUTED score_norm, not the reported one. The node's
+                # arithmetic is correct -- verified directly against
+                # PrivateSortition::NormalizedScore -- but json_spirit renders a double
+                # very close to 1 by stripping the trailing zeros of a 14-decimal
+                # rendering, and 0.99999999999999889 renders as "1.00000000000000" whose
+                # decimals all strip, leaving a reported score_norm of 0. The delay in the
+                # same answer is computed from the true value, so the two disagree by
+                # exactly delta*T*2 and the round looks like a mechanism mismatch when it
+                # is a formatting artefact. Seen in 2 of 415 rounds, only for scores whose
+                # normalised value rounds to 1 at 14 decimals.
+                #
+                # Recomputing from `score` and `total_effective_weight` makes this check
+                # test the delay mechanism, which is what it is for. The reported value is
+                # kept beside it in score_norm / score_norm_mismatch, where the rendering
+                # artefact is visible as itself rather than mistaken for a protocol fault.
+                norm_for_delay = norm_recomputed if norm_recomputed is not None else score_norm
                 delay_recomputed = None
-                if None not in (score_norm, tbt, delta):
+                if None not in (norm_for_delay, tbt, delta):
                     delay_recomputed = (
-                        tbt + delta * tbt * (2.0 * score_norm - 1.0) + (lam or 0.0) * (phi or 0.0)
+                        tbt + delta * tbt * (2.0 * norm_for_delay - 1.0)
+                        + (lam or 0.0) * (phi or 0.0)
                     )
                 delay_mismatch = (
                     None
@@ -261,10 +287,6 @@ class Aggregator:
                 if delay_ok is False:
                     mismatches += 1
 
-                # score_norm = 1 - exp(-W_tot * score)
-                norm_recomputed = None
-                if score is not None and total_eff:
-                    norm_recomputed = 1.0 - math.exp(-min(total_eff * score, 700.0))
                 norm_mismatch = (
                     None
                     if (norm_recomputed is None or score_norm is None)

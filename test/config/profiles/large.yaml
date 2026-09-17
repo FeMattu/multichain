@@ -1,5 +1,5 @@
 # Largest functional run: 1 admin, 3 CAs, 10 miners, 20 companies.
-# 34 nodes, 20 epochs of 40 blocks -> ~860 blocks at 2 s/block, roughly 35 minutes.
+# 34 nodes, 20 epochs of 60 blocks -> ~1350 blocks at 10 s/block, roughly 225 minutes ~3.75 hours ~ 3h:45m.
 # The heaviest profile: 34 daemons contend for one host, so the derived setup-first-blocks
 # budget grows accordingly (../schema.md 3).
 #
@@ -23,10 +23,10 @@ network:
 
 epochs:
   count: 20
-  length_blocks: 40
+  length_blocks: 60
 
 chain:
-  target-block-time: 2
+  target-block-time: 10
   # 0, not the stock 0.3: at 0.3 with 10 miners the round-robin spacing is binding even
   # under wPoA and the observed distribution collapses onto round robin, which would
   # mask the very thing this harness measures.
@@ -43,7 +43,7 @@ chain:
 wpoa:
   dump-function: none
   wpoa-sortition-delta: 0.5
-  wpoa-sortition-lambda: 0.0
+  wpoa-sortition-lambda: 0.3
   wpoa-malus-mu: 0.5
   wpoa-malus-max: 4.0
   wpoa-malus-equiv-points: 4.0

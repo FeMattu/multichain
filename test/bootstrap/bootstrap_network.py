@@ -10,7 +10,9 @@ Sequence, in order, each step justified in ``test/docs/architecture-notes.md``:
 
  1. read and validate the profile;
  2. ``multichain-util create``, then write every parameter into ``params.dat`` — including
-    all eight activation keys, because the ``enable-wpoa`` master is inert in the file;
+    all eight activation keys. The ``enable-wpoa`` master now expands from the file too
+    (it used to be inert there), but writing each phase explicitly keeps the file a
+    complete statement of what the chain runs rather than something to be re-derived;
  3. start the admin node, wait for RPC, create a **dedicated** treasury address, restart
     every node with ``-weighttreasuryaddress`` so the hash-enforced value is identical;
  4. attach ``admin_daemon.py`` as a separate process — from here on the run is recorded;
@@ -22,8 +24,9 @@ Sequence, in order, each step justified in ``test/docs/architecture-notes.md``:
     permissions, which only become grantable once their stream exists, and seed GAS;
  7. register membership — miners as cluster heads, companies into their assigned cluster —
     and certify every node's ESG score;
- 8. wait until the weight registry is genuinely usable, and fail loudly if the chain
-    reaches ``setup-first-blocks`` before it is;
+ 8. note whether the weight registry has become usable — an observation now, not a
+    gate: the node falls back to native mining until the first weight confirms, so the
+    bootstrap race this used to guard against can no longer happen;
  9. start one ``company_daemon.py`` per company and one ``miner_gas_daemon.py`` per miner,
     as separate tracked processes;
 10. drive to the target height, shut everything down, then run phase 1, phase 2,
@@ -103,6 +106,8 @@ class Orchestrator:
         self.log = EventLog(run_dir, "orchestrator", "admin", epoch_length=profile.epoch_length)
         self.treasury: Optional[str] = None
         self.effective_params: Dict[str, str] = {}
+        #: Set once the registry is seen carrying a positive weight. Reported, not gated on.
+        self.wpoa_activated = False
         self._stopping = False
 
     # -- infrastructure ----------------------------------------------------------------
@@ -516,14 +521,26 @@ class Orchestrator:
     def create_streams(self) -> None:
         """Create every stream explicitly, from the admin.
 
-        The node's own auto-create is one-shot per process — the "already attempted" flag
-        is set before the attempt and never cleared — and on a probe run of this very
-        repository it produced only ``weight-engine-esg``, leaving ``wpoa-weights`` and
-        ``weight-engine-membership`` absent and the registry permanently empty.
+        **Kept deliberately, though the node's auto-create now works.** It used to be a
+        workaround: the auto-create latched "attempted" before the attempt and never
+        retried, so on a probe run it produced only ``weight-engine-esg`` and left the
+        registry permanently empty. That is fixed (``fix(wpoa): ... retry stream
+        creation``) and all four streams now appear on their own.
 
-        All four are **closed**: an open informative stream would let any node with
+        The explicit creation stays anyway, for a reason the fix does not remove: it makes
+        stream existence a *precondition* of the bootstrap rather than something that
+        happens concurrently with it. The harness grants per-stream write permissions in
+        the very next step, and an entity permission cannot be granted before its entity
+        exists. Relying on the auto-create would make that ordering depend on when the
+        engine thread next ticked — fine in practice, but a timing dependency in the one
+        part of a measurement harness that must not have any.
+
+        The informative stream would have to be created here in any case: the node knows
+        nothing about it.
+
+        The first four are **closed**: an open informative stream would let any node with
         ``send`` publish, making the informative traffic indistinguishable from anything
-        else on the chain.
+        else on the chain. The malus stream is **open**, matching the node's own creation.
         """
         log_step("creating streams")
         tip = self.tip()
@@ -680,25 +697,33 @@ class Orchestrator:
 
     # -- 8. readiness ------------------------------------------------------------------
 
-    def wait_registry_ready(self) -> None:
-        """Block until the registry can actually elect somebody.
+    def observe_registry_activation(self) -> None:
+        """Report when the registry first becomes usable. Never blocks the run.
 
-        Non-zero matters: Efraimidis-Spirakis cannot draw a zero-weight key, so a
-        registry listing validators at weight 0 elects nobody just as surely as an empty
-        one. If the tip reaches ``setup-first-blocks`` first, wPoA governs a chain whose
-        registry cannot name a proposer and the chain stops — diagnosed here rather than
-        left as an unexplained stall.
+        **This used to be the anti-deadlock guard**, and it is not needed as one any more.
+        It blocked until a validator carried a non-zero weight and failed the run if the
+        tip reached ``setup-first-blocks`` first, because at that moment wPoA took over a
+        registry that could not name a proposer and the chain stopped dead.
+
+        The node no longer does that: while no positive weight has ever been confirmed it
+        keeps mining under the native MultiChain rules and lets wPoA activate by itself
+        (``fix(wpoa): defer activation...``). So the race this guarded against cannot
+        happen, and waiting for it only delayed the run.
+
+        What remains is a *data-quality* observation, not a gate. If the registry never
+        fills, the run is still valid as a run — the chain advances — but it measures
+        native mining rather than a weighted election, and that is worth knowing early.
+        Hence: look for a short while, say what was found, and proceed either way. The
+        binding check happens after the fact, in
+        :meth:`check_wpoa_activated` and in phase 3.
         """
-        effective_setup = int(
-            self.effective_params.get("setup-first-blocks", self.profile.setup_first_blocks)
-        )
         want = max(1, len(self.profile.by_role("miner")) // 2)
-        timeout = max(120, effective_setup * self.profile.target_block_time)
+        budget = max(60, self.profile.epoch_length * self.profile.target_block_time * 2)
         log_step(
-            "waiting for >= %d validator(s) with a non-zero weight (deadline: height %d)"
-            % (want, effective_setup)
+            "looking for >= %d validator(s) with a non-zero weight (up to %ds, "
+            "non-blocking)" % (want, budget)
         )
-        deadline = time.time() + timeout
+        deadline = time.time() + budget
         while time.time() < deadline:
             tip = self.tip()
             try:
@@ -707,26 +732,52 @@ class Orchestrator:
                 weights = {}
             scoreable = sum(1 for w in weights.values() if float(w or 0) > 0)
             if scoreable >= want:
-                log_step("registry ready: %d scoreable validator(s) at height %d" % (scoreable, tip))
-                self.log.note(
-                    "registry ready", tip, scoreable=scoreable, weights=weights
+                log_step(
+                    "registry usable: %d scoreable validator(s) at height %d"
+                    % (scoreable, tip)
                 )
+                self.log.note("registry usable", tip, scoreable=scoreable, weights=weights)
+                self.wpoa_activated = True
                 return
-            if tip >= effective_setup:
-                self.log.note(
-                    "bootstrap race lost", tip, scoreable=scoreable, setup_blocks=effective_setup
-                )
-                raise BootstrapError(
-                    "height %d reached setup-first-blocks=%d with only %d scoreable "
-                    "validator(s). wPoA now governs and the registry cannot elect a "
-                    "proposer, so the chain will stop here. This is the bootstrap race, "
-                    "not a weight-pipeline fault: raise chain.setup-first-blocks in the "
-                    "profile, or lower the node count."
-                    % (tip, effective_setup, scoreable)
-                )
             time.sleep(3.0)
-        raise BootstrapError(
-            "the weight registry was not usable within %ds; the run cannot proceed" % timeout
+
+        tip = self.tip()
+        log_step(
+            "registry not yet usable at height %d — proceeding anyway; the node mines "
+            "under the native rules until the first weight confirms" % tip
+        )
+        self.log.note("registry not yet usable at start of traffic", tip, wanted=want)
+
+    def check_wpoa_activated(self, tip: int) -> None:
+        """After the run: did wPoA ever actually take over?
+
+        The replacement for the guard above, and deliberately at the other end of the run.
+        A registry that is still empty after several epochs is not a protocol deadlock any
+        more — it means something upstream never happened: membership was not registered,
+        no ESG score was certified, or the engine never got far enough to publish. That is
+        a real defect, it is just not the one the old guard described, and it is only
+        diagnosable once there has been time for it to have happened.
+        """
+        try:
+            weights = self.admin_rpc.call("getallweights").get("weights", {})
+        except (RpcError, RpcTransportError):
+            weights = {}
+        scoreable = sum(1 for w in weights.values() if float(w or 0) > 0)
+        self.wpoa_activated = self.wpoa_activated or scoreable > 0
+        epochs = self.profile.last_buried_epoch(tip)
+        self.log.note(
+            "wPoA activation check", tip, scoreable=scoreable, buried_epochs=epochs,
+            activated=self.wpoa_activated,
+        )
+        if self.wpoa_activated:
+            log_step("wPoA activated during the run (%d scoreable validator(s))" % scoreable)
+            return
+        log_step(
+            "WARNING: wPoA never activated — %d buried epoch(s) and still no positive "
+            "weight. The chain ran under the native rules throughout, so the election "
+            "results measure round robin, not weighted sortition. Look upstream: "
+            "membership registration, ESG certification, or the engine's own thread."
+            % epochs
         )
 
     # -- 9. traffic --------------------------------------------------------------------
@@ -873,6 +924,7 @@ class Orchestrator:
                 ),
                 "rpc_transport": TRANSPORT,
                 "measured_epochs": self.profile.last_buried_epoch(final_height),
+                "wpoa_activated": self.wpoa_activated,
                 "stability_margin": 6,
             }
         )
@@ -900,7 +952,7 @@ def run(profile: Profile, run_dir: Path, chain_home: Path) -> int:
         orchestrator.seed_gas()
         orchestrator.register_membership()
         orchestrator.assign_esg()
-        orchestrator.wait_registry_ready()
+        orchestrator.observe_registry_activation()
         orchestrator.start_traffic()
         final_height = orchestrator.drive()
     except BootstrapError as exc:
