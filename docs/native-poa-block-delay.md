@@ -8,12 +8,12 @@
 > never by line number: line anchors rot on every edit, and in an earlier revision they
 > had drifted by 30–90 lines, pointing at closing braces and blank lines. The entry
 > point for everything below is **`GetMinerAndExpectedMiningStartTime()`** in
-> [`miner/miner.cpp`](../../miner/miner.cpp).
+> [`miner/miner.cpp`](../src/miner/miner.cpp).
 
 This documents the **native** (pre-wPoA) MultiChain Proof-of-Authority block-creation
 delay — the round-robin / mining-diversity timing gate that wPoA Phase 2 *replaces* for
 a weighted election (see the `/* MCHN START - wPoA Phase 2 */` comment at
-[`miner/miner.cpp:1184-1185`](../../miner/miner.cpp): *"Replace the
+[`miner/miner.cpp:1184-1185`](../src/miner/miner.cpp): *"Replace the
 round-robin mining-diversity timing gate with a weighted election..."*). It is the
 baseline the wPoA delay formula (`docs/phase4-implementation-guide.md` §4,
 the banded `D = T + δ·T·(2·score_norm − 1) + λ·Φ`, see
@@ -26,11 +26,11 @@ taken whenever wPoA is disabled (`-enablewpoa=0`, the default).
 ## Table of contents
 - [1. Where it lives](#1-where-it-lives)
 - [2. The formula, transcribed from the code](#2-the-formula-transcribed-from-the-code)
-  - [2.1 Constants ([miner.cpp](../../miner/miner.cpp))](#21-constants-minercpp)
-  - [2.2 Target-time anchor ([miner.cpp](../../miner/miner.cpp))](#22-target-time-anchor-minercpp)
-  - [2.3 Pool sizing and membership ([miner.cpp](../../miner/miner.cpp))](#23-pool-sizing-and-membership-minercpp)
-  - [2.4 Active-miner estimate and pool admission ([miner.cpp](../../miner/miner.cpp))](#24-active-miner-estimate-and-pool-admission-minercpp)
-  - [2.5 Start-time assignment ([miner.cpp](../../miner/miner.cpp))](#25-start-time-assignment-minercpp)
+  - [2.1 Constants ([miner.cpp](../src/miner/miner.cpp))](#21-constants-minercpp)
+  - [2.2 Target-time anchor ([miner.cpp](../src/miner/miner.cpp))](#22-target-time-anchor-minercpp)
+  - [2.3 Pool sizing and membership ([miner.cpp](../src/miner/miner.cpp))](#23-pool-sizing-and-membership-minercpp)
+  - [2.4 Active-miner estimate and pool admission ([miner.cpp](../src/miner/miner.cpp))](#24-active-miner-estimate-and-pool-admission-minercpp)
+  - [2.5 Start-time assignment ([miner.cpp](../src/miner/miner.cpp))](#25-start-time-assignment-minercpp)
 - [3. Relationship between the per-proposer delay, n, and T](#3-relationship-between-the-per-proposer-delay-n-and-t)
 - [4. Law of Large Numbers: empirical block time → T](#4-law-of-large-numbers-empirical-block-time--t)
 - [5. Edge cases and their effect on convergence](#5-edge-cases-and-their-effect-on-convergence)
@@ -41,13 +41,13 @@ taken whenever wPoA is disabled (`-enablewpoa=0`, the default).
 
 | Symbol | File : line | Role |
 |---|---|---|
-| `GetMinerAndExpectedMiningStartTime()` | [`miner/miner.cpp:1040`](../../miner/miner.cpp) | The whole delay computation; called once per new tip from the miner thread, cached until the tip or mempool changes. |
-| Native (non-wPoA) branch | [`miner/miner.cpp:1240-1434`](../../miner/miner.cpp) | The round-robin diversity + emergency-miner backoff math analyzed below. |
-| `LastActiveMiners()` | [`miner/miner.cpp:956-1019`](../../miner/miner.cpp) | Scans back over the recent chain to find the set of distinct miners who have proposed recently (the "pool"). |
-| `Params().TargetSpacing()` | [`chainparams/chainparams.h:79`](../../chainparams/chainparams.h) | `T`, the configured target block time, backed by the `targetblocktime` chain parameter ([`chainparams/paramlist.h:29-30`](../../chainparams/paramlist.h), default 15s). |
-| `Params().MiningTurnover()` | [`chainparams/chainparams.h:67`](../../chainparams/chainparams.h) | The `miningturnover` parameter — fraction of active miners rotated into the pool each round. |
-| `GetMaxActiveMinersCount()` | [`miner/miner.cpp:1021-1038`](../../miner/miner.cpp) | `n`, the number of currently-permissioned active miners (`CPermissions::GetActiveMinerCount()`), or effectively unbounded if `-anyonecanmine`. |
-| `mc_gState->m_Permissions->GetMinerCount()` / `GetActiveMinerCount()` | [`permissions/permission.h:349-350`](../../permissions/permission.h) | Total permissioned miners vs. those flagged *active* (recently seen mining). |
+| `GetMinerAndExpectedMiningStartTime()` | [`miner/miner.cpp:1040`](../src/miner/miner.cpp) | The whole delay computation; called once per new tip from the miner thread, cached until the tip or mempool changes. |
+| Native (non-wPoA) branch | [`miner/miner.cpp:1240-1434`](../src/miner/miner.cpp) | The round-robin diversity + emergency-miner backoff math analyzed below. |
+| `LastActiveMiners()` | [`miner/miner.cpp:956-1019`](../src/miner/miner.cpp) | Scans back over the recent chain to find the set of distinct miners who have proposed recently (the "pool"). |
+| `Params().TargetSpacing()` | [`chainparams/chainparams.h:79`](../src/chainparams/chainparams.h) | `T`, the configured target block time, backed by the `targetblocktime` chain parameter ([`chainparams/paramlist.h:29-30`](../src/chainparams/paramlist.h), default 15s). |
+| `Params().MiningTurnover()` | [`chainparams/chainparams.h:67`](../src/chainparams/chainparams.h) | The `miningturnover` parameter — fraction of active miners rotated into the pool each round. |
+| `GetMaxActiveMinersCount()` | [`miner/miner.cpp:1021-1038`](../src/miner/miner.cpp) | `n`, the number of currently-permissioned active miners (`CPermissions::GetActiveMinerCount()`), or effectively unbounded if `-anyonecanmine`. |
+| `mc_gState->m_Permissions->GetMinerCount()` / `GetActiveMinerCount()` | [`permissions/permission.h:349-350`](../src/permissions/permission.h) | Total permissioned miners vs. those flagged *active* (recently seen mining). |
 
 ---
 
@@ -56,7 +56,7 @@ taken whenever wPoA is disabled (`-enablewpoa=0`, the default).
 For the block that follows tip `pindexTip` (protocol = MultiChain, `-anyonecanmine=0`,
 the ordinary PoA configuration):
 
-### 2.1 Constants ([`miner.cpp`](../../miner/miner.cpp))
+### 2.1 Constants ([`miner.cpp`](../src/miner/miner.cpp))
 
 ```
 nMinerPoolSizeMin = 4              nMinerPoolSizeMax = 16
@@ -66,7 +66,7 @@ dEmergencyMinersConvergenceRate = 2.0
 nPastBlocks = 12
 ```
 
-### 2.2 Target-time anchor ([`miner.cpp`](../../miner/miner.cpp))
+### 2.2 Target-time anchor ([`miner.cpp`](../src/miner/miner.cpp))
 
 ```
 T           = Params().TargetSpacing()                       // target-block-time
@@ -81,7 +81,7 @@ the last `nPastBlocks` blocks and re-centers on `T` via the additive `(windowSiz
 term, then the result is clamped back into a `±T/2` band around `parent+T`. This is the
 mechanism that pulls the empirical cadence back toward `T` whenever it drifts (§4).
 
-### 2.3 Pool sizing and membership ([`miner.cpp`](../../miner/miner.cpp))
+### 2.3 Pool sizing and membership ([`miner.cpp`](../src/miner/miner.cpp))
 
 ```
 nStdMinerPoolSize = clamp( round(0.25 · T / dAverageCreateBlockTime), [4, 16] )
@@ -90,14 +90,14 @@ sThisMinerPool    = LastActiveMiners(pindexTip, nStdMinerPoolSize)  // ≤ nStdM
 nMinerPoolSize    = |sThisMinerPool|
 ```
 
-`LastActiveMiners` ([`miner.cpp`](../../miner/miner.cpp)) walks
+`LastActiveMiners` ([`miner.cpp`](../src/miner/miner.cpp)) walks
 `nWindowSize = 5·nMinerPoolSize + nDiversityMiners` blocks back from the tip collecting
 distinct signer pubkeys, where `nDiversityMiners = nTotalMiners - nActiveMiners`
-([`miner.cpp`](../../miner/miner.cpp)) — the count of permissioned-but-
+([`miner.cpp`](../src/miner/miner.cpp)) — the count of permissioned-but-
 currently-inactive miners, which widens the lookback window when many miners are offline
 (edge case, §5).
 
-### 2.4 Active-miner estimate and pool admission ([`miner.cpp`](../../miner/miner.cpp))
+### 2.4 Active-miner estimate and pool admission ([`miner.cpp`](../src/miner/miner.cpp))
 
 ```
 if (fInMinerPool) OR (kLastMiner not in previous pool) OR (n̂ uninitialized):
@@ -109,7 +109,7 @@ if !fInMinerPool and dMinerDrift ≥ ε:
     with prob. dMinerDrift / n̂ :  fInMinerPool = true,  nMinerPoolSize += 1   // random "catch-up" admission
 ```
 
-### 2.5 Start-time assignment ([`miner.cpp`](../../miner/miner.cpp))
+### 2.5 Start-time assignment ([`miner.cpp`](../src/miner/miner.cpp))
 
 ```
 if fInMinerPool:                                           // this node just rotated into the pool
@@ -234,7 +234,7 @@ autocorrelation the moving-average feedback term deliberately introduces.
 **Offline proposers.** `LastActiveMiners` only ever fills `sThisMinerPool` from miners
 who actually appear in the recent chain, and widens its lookback window by
 `nDiversityMiners = nTotalMiners - nActiveMiners`
-([`miner.cpp`](../../miner/miner.cpp)) when many permissioned miners
+([`miner.cpp`](../src/miner/miner.cpp)) when many permissioned miners
 are inactive — so the pool still fills, just from a smaller pool of genuinely live
 signers. The compensating mechanism (§3's out-of-pool geometric backoff) uses
 `n = GetMaxActiveMinersCount()`, i.e. the **permissioned** miner count, not the online
@@ -245,16 +245,16 @@ ergodic-LLN limit in §4 still holds (the process is still stationary given a *f
 active-miner set), but its mean shifts upward until governance updates the permission
 list to match who is actually online. This is the exact structural analogue of the wPoA
 delay's own offline-validator sensitivity: in `PrivateSortition::MiningDelay`
-([`private_sortition.h`](../private_sortition.h), `NormalizedScore` / `MiningDelay`), the delay uses
+([`private_sortition.h`](../src/wpoa/private_sortition.h), `NormalizedScore` / `MiningDelay`), the delay uses
 `total_eff_weight = Σ_j f(w_j)` over the **full registry** (online + offline), while only
 the online subset can actually achieve the minimum score; the winning proposer's
 realized delay then has mean `scale·(W_total/W_online)` instead of `scale`, i.e. inflated
 by exactly the total/online effective-weight ratio.
 
 **Priority shuffling.** The in-pool start-time offset `U·T` (§3) is an independent
-uniform draw *per validator per round* (`mc_RandomDouble()` — [`miner.cpp`](../../miner/miner.cpp)),
+uniform draw *per validator per round* (`mc_RandomDouble()` — [`miner.cpp`](../src/miner/miner.cpp)),
 not a fixed round-robin slot; likewise the "catch-up" pool-admission coin flip
-(`prob = dMinerDrift/n̂`, [`miner.cpp`](../../miner/miner.cpp)) reshuffles which
+(`prob = dMinerDrift/n̂`, [`miner.cpp`](../src/miner/miner.cpp)) reshuffles which
 cooled-down miners re-enter the pool each round. Being i.i.d. across rounds and bounded,
 this randomization only adds **variance** to each `G_k` (already accounted for in
 `σ²_eff` above) — it does not bias the mean away from `T`, since the `-T/(m+1)` centering
@@ -271,7 +271,7 @@ this affects the *variance* of individual gaps, not the LLN limit.
 
 | Quantity | Native PoA (this doc) | wPoA Phase 4 (for contrast) |
 |---|---|---|
-| Delay formula | `dExpectedTime ± jitter(T, n, pool-size)` | `D = T + δ·T·(2·score_norm − 1) + λ·Φ`, a band around the target ([`private_sortition.h`](../private_sortition.h), `MiningDelay`) |
+| Delay formula | `dExpectedTime ± jitter(T, n, pool-size)` | `D = T + δ·T·(2·score_norm − 1) + λ·Φ`, a band around the target ([`private_sortition.h`](../src/wpoa/private_sortition.h), `MiningDelay`) |
 | Role of `n` | Logarithmic liveness-fallback term only | Enters only through `Σf(w)`; steady-state mean delay is `scale`, independent of `n` (proved in `phase4-implementation-guide.md` §5) |
 | Role of `T` | Direct anchor (`dExpectedTime = parent+T`, feedback-corrected) | Direct anchor too: the band is centred on `T` and `lambda*Phi` corrects the realized mean, reusing the native moving-average-plus-clip shape |
 | LLN limit | `\bar G_N \to T` | `\bar G_N \to \text{scale}` (mean of `Exp(1)` scaled by `scale`, since `\min_i \text{score}_i \sim \mathrm{Exp}(\Sigma f(w))` and `\Sigma f(w)\cdot\min_i\text{score}_i \sim \mathrm{Exp}(1)`) |

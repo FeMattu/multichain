@@ -1,5 +1,12 @@
 # wPoA VRF Randomness Beacon — Implementation Guide (Phase 3a)
 
+> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
+> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
+> rebuilt as a Python harness. The references are kept as written because they record the
+> work as it was done; for the current structure see
+> [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
+
+
 > **Register: technical-direct.** A developer reference: APIs, function signatures,
 > data structures and control flow, with code terminology left verbatim. For the
 > theoretical consensus model see
@@ -136,30 +143,30 @@ New files (the module):
 
 | File | Role |
 |------|------|
-| [`vrf_wrapper.h`](../vrf_wrapper.h) | Pure, node-free `WPoAVRF` class: `Prove` / `Verify` for an ECVRF / Chaum–Pedersen DLEQ over secp256k1. Depends only on secp256k1 + SHA256, so it is unit-testable without the node. |
-| [`vrf_wrapper.cpp`](../vrf_wrapper.cpp) | The ECVRF implementation: hash-to-curve, deterministic nonce, DLEQ prove/verify, point/scalar helpers over the core secp256k1 API. |
-| [`test/vrf_wrapper_tests.cpp`](../test/vrf_wrapper_tests.cpp) | Boost.Test unit suite for the pure VRF core (correctness, determinism, tamper/forgery rejection, pseudorandomness sanity). |
-| [`test/run_unit_tests.sh vrf`](../test/run_unit_tests.sh) | Build + run the VRF unit tests (no node build needed; links the prebuilt `libsecp256k1.a`). |
+| [`vrf_wrapper.h`](../src/wpoa/vrf_wrapper.h) | Pure, node-free `WPoAVRF` class: `Prove` / `Verify` for an ECVRF / Chaum–Pedersen DLEQ over secp256k1. Depends only on secp256k1 + SHA256, so it is unit-testable without the node. |
+| [`vrf_wrapper.cpp`](../src/wpoa/vrf_wrapper.cpp) | The ECVRF implementation: hash-to-curve, deterministic nonce, DLEQ prove/verify, point/scalar helpers over the core secp256k1 API. |
+| [`test/vrf_wrapper_tests.cpp`](../src/wpoa/test/vrf_wrapper_tests.cpp) | Boost.Test unit suite for the pure VRF core (correctness, determinism, tamper/forgery rejection, pseudorandomness sanity). |
+| [`test/run_unit_tests.sh vrf`](../src/wpoa/test/run_unit_tests.sh) | Build + run the VRF unit tests (no node build needed; links the prebuilt `libsecp256k1.a`). |
 | [`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh) | Multi-node end-to-end test: reveals produced, verified network-wide, chain live and fork-free under mandatory verification. |
 
 Files **modified** in the host tree (integration points):
 
 | Site | File | Change | Detail doc |
 |------|------|--------|------------|
-| Startup flag | [`../../core/init.cpp`](../../core/init.cpp) | Parse `-enablewpoavrf` into `g_wpoa_vrf_enabled` in `AppInit2`; help lines for `-enablewpoa`/`-enablewpoavrf`. | [node-startup.md](node-startup.md) |
-| Activation glue | [`wpoa_selector.h`](../wpoa_selector.h) / [`.cpp`](../wpoa_selector.cpp) | Declare/define `g_wpoa_vrf_enabled` and `WPoAVRFActiveAtHeight(height)` (= flag AND `WPoAActiveAtHeight`). | [wpoa-selector.md §5](wpoa-selector.md) |
-| Block encoding | [`../../protocol/multichainscript.h`](../../protocol/multichainscript.h) / [`.cpp`](../../protocol/multichainscript.cpp) | `SetBlockVRF` / `GetBlockVRF`: encode/decode the reveal as a suffix of the block-signature element; relax `GetBlockSignature`'s length check to tolerate that suffix. | [block-vrf-encoding.md](block-vrf-encoding.md) |
-| Prover | [`../../miner/miner.cpp`](../../miner/miner.cpp) | In `CreateBlockSignature`, when enabled, compute the VRF reveal over `hashPrevBlock` with the signer key and append it via `SetBlockVRF`. | [vrf-prover.md](vrf-prover.md) |
-| Verifier | [`../../protocol/multichainblock.cpp`](../../protocol/multichainblock.cpp) | `FindBlockVRF` extracts the reveal; `VerifyBlockMinerWPoA` rejects wPoA-VRF blocks whose reveal is missing or fails `WPoAVRF::Verify`. | [vrf-verifier.md](vrf-verifier.md) |
-| Build | [`../../Makefile.am`](../../Makefile.am) | Compile `wpoa/vrf_wrapper.cpp`; track `wpoa/vrf_wrapper.h`. | §11 |
+| Startup flag | [`../../core/init.cpp`](../src/core/init.cpp) | Parse `-enablewpoavrf` into `g_wpoa_vrf_enabled` in `AppInit2`; help lines for `-enablewpoa`/`-enablewpoavrf`. | [node-startup.md](node-startup.md) |
+| Activation glue | [`wpoa_selector.h`](../src/wpoa/wpoa_selector.h) / [`.cpp`](../src/wpoa/wpoa_selector.cpp) | Declare/define `g_wpoa_vrf_enabled` and `WPoAVRFActiveAtHeight(height)` (= flag AND `WPoAActiveAtHeight`). | [wpoa-selector.md §5](wpoa-selector.md) |
+| Block encoding | [`../../protocol/multichainscript.h`](../src/protocol/multichainscript.h) / [`.cpp`](../src/protocol/multichainscript.cpp) | `SetBlockVRF` / `GetBlockVRF`: encode/decode the reveal as a suffix of the block-signature element; relax `GetBlockSignature`'s length check to tolerate that suffix. | [block-vrf-encoding.md](block-vrf-encoding.md) |
+| Prover | [`../../miner/miner.cpp`](../src/miner/miner.cpp) | In `CreateBlockSignature`, when enabled, compute the VRF reveal over `hashPrevBlock` with the signer key and append it via `SetBlockVRF`. | [vrf-prover.md](vrf-prover.md) |
+| Verifier | [`../../protocol/multichainblock.cpp`](../src/protocol/multichainblock.cpp) | `FindBlockVRF` extracts the reveal; `VerifyBlockMinerWPoA` rejects wPoA-VRF blocks whose reveal is missing or fails `WPoAVRF::Verify`. | [vrf-verifier.md](vrf-verifier.md) |
+| Build | [`../../Makefile.am`](../src/Makefile.am) | Compile `wpoa/vrf_wrapper.cpp`; track `wpoa/vrf_wrapper.h`. | §11 |
 
 Depends on:
 
 | File | Used for |
 |------|----------|
 | `secp256k1/include/secp256k1.h` | The curve arithmetic (`pubkey_create/parse/serialize/tweak_mul/combine`, `seckey_verify`, `privkey_tweak_add/mul`) the VRF is built on — the same library the validator keys use. |
-| [`../../crypto/sha256.h`](../../crypto/sha256.h) | `CSHA256` — the hash used for hash-to-curve, the challenge, and the output. |
-| [`wpoa_selector.h`](../wpoa_selector.h) | `WPoAActiveAtHeight` — the Phase 2 height gate the VRF requirement composes with. |
+| [`../../crypto/sha256.h`](../src/crypto/sha256.h) | `CSHA256` — the hash used for hash-to-curve, the challenge, and the output. |
+| [`wpoa_selector.h`](../src/wpoa/wpoa_selector.h) | `WPoAActiveAtHeight` — the Phase 2 height gate the VRF requirement composes with. |
 
 ---
 
@@ -285,7 +292,7 @@ also keeps the miner and validator perfectly symmetric on data they both already
 
 The reveal is carried as a **suffix inside the single block-signature element** in the
 coinbase OP_RETURN — not as its own element or output. Two MultiChain constraints force
-this (see the comment block in [`multichainscript.cpp`](../../protocol/multichainscript.cpp)
+this (see the comment block in [`multichainscript.cpp`](../src/protocol/multichainscript.cpp)
 and [block-vrf-encoding.md](block-vrf-encoding.md)):
 
 1. `MultiChainTransaction_CheckOpReturnScript` rejects a coinbase OP_RETURN with more than
@@ -583,7 +590,7 @@ the weight registry, so it is enforced even on the empty-weight leniency path.
   the wallet lib's include/link path). `miner.cpp` / `multichainblock.cpp` reference
   `WPoAVRF` and `g_wpoa_vrf_enabled` and link against it.
 - The pure core links against only `libsecp256k1.a` + `sha256` for the unit test — no node
-  (see [`test/run_unit_tests.sh vrf`](../test/run_unit_tests.sh)).
+  (see [`test/run_unit_tests.sh vrf`](../src/wpoa/test/run_unit_tests.sh)).
 - Regenerate after the `Makefile.am` change: `./autogen.sh && ./configure && make` (or just
   `make`, which regenerates under maintainer mode).
 - **Verification done:** the VRF unit tests pass (roundtrip, determinism,
@@ -602,17 +609,17 @@ Change it at **both** call sites — the miner's `CreateBlockSignature`
 uses. Currently both pass `hash(h−1)`; they must always match or every block is rejected.
 
 ### 12.2 Change the reveal/proof size
-Adjust `WPoAVRF::OUTPUT_SIZE` / `PROOF_SIZE` in [`vrf_wrapper.h`](../vrf_wrapper.h). The
+Adjust `WPoAVRF::OUTPUT_SIZE` / `PROOF_SIZE` in [`vrf_wrapper.h`](../src/wpoa/vrf_wrapper.h). The
 single-byte length fields in `SetBlockVRF`/`GetBlockVRF` already carry the length, so no
 wire-format constant changes as long as each field stays ≤ 255 bytes.
 
 ### 12.3 Swap the VRF construction
 Reimplement `WPoAVRF::Prove`/`Verify` behind the same interface and re-run
-[`test/run_unit_tests.sh vrf`](../test/run_unit_tests.sh); no caller changes. Keep the
+[`test/run_unit_tests.sh vrf`](../src/wpoa/test/run_unit_tests.sh); no caller changes. Keep the
 domain-separation discipline (distinct role bytes per hash use) if you add hash usages.
 
 ### 12.4 Change when the VRF is required
-Edit `WPoAVRFActiveAtHeight` in [`wpoa_selector.cpp`](../wpoa_selector.cpp). Keep it a
+Edit `WPoAVRFActiveAtHeight` in [`wpoa_selector.cpp`](../src/wpoa/wpoa_selector.cpp). Keep it a
 **pure function of data both the miner and validator share**, or they will disagree on
 which blocks must carry a reveal and fork.
 
@@ -627,8 +634,8 @@ Phase 4 change, not a tweak — see [§14](#14-accepted-properties-risks--phase-
 
 ### 13.1 Unit tests (node-free, pure crypto)
 
-[test/vrf_wrapper_tests.cpp](../test/vrf_wrapper_tests.cpp), run with
-[test/run_unit_tests.sh vrf](../test/run_unit_tests.sh). Links only
+[test/vrf_wrapper_tests.cpp](../src/wpoa/test/vrf_wrapper_tests.cpp), run with
+[test/run_unit_tests.sh vrf](../src/wpoa/test/run_unit_tests.sh). Links only
 `libsecp256k1.a` + SHA256 + Boost.Test. Covers: prove→verify roundtrip (compressed and
 uncompressed keys); determinism; and the soundness/uniqueness guards — a tampered output,
 a bit-flip in any proof field (Gamma, c, s), a wrong public key, a wrong input, and a

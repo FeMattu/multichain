@@ -34,7 +34,7 @@ the intent directly:
 > not here."*
 
 - **The core depends only on secp256k1 + SHA256.** The unit test
-  ([`test/vrf_wrapper_tests.cpp`](../test/vrf_wrapper_tests.cpp)) compiles
+  ([`test/vrf_wrapper_tests.cpp`](../src/wpoa/test/vrf_wrapper_tests.cpp)) compiles
   `vrf_wrapper.cpp` + `crypto/sha256.cpp` and links `libsecp256k1.a` — no wallet, no
   chain, no node runtime. That lets the soundness properties (tamper/forgery/cross-key
   rejection) be validated in milliseconds.

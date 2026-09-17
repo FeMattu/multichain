@@ -1,5 +1,12 @@
 # wPoA RANDAO Beacon Seed — Implementation Guide (Phase 3b)
 
+> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
+> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
+> rebuilt as a Python harness. The references are kept as written because they record the
+> work as it was done; for the current structure see
+> [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
+
+
 > **Register: technical-direct.** A developer reference: APIs, function signatures,
 > data structures and control flow, with code terminology left verbatim. For the
 > theoretical consensus model see
@@ -148,29 +155,29 @@ New files (the module):
 
 | File | Role |
 |------|------|
-| [`randao_accumulator.h`](../randao_accumulator.h) | Header-only pure core `RandaoAccumulator` (`Fold`, `DeriveSeed`, `Genesis`) **plus** the declarations of the node-coupled glue (`g_wpoa_randao_enabled`, `g_wpoa_randao_lookback`, `WPoARANDAOActiveAtHeight`, `WPoARandaoSelectionSeed`). Depends only on `CSHA256`, so the core is unit-testable without the node. |
-| [`randao_accumulator.cpp`](../randao_accumulator.cpp) | Definitions of the node-coupled glue: the runtime flag/lookback, the height activation predicate, the memoized block-index walk (`GetAccumulator`), the thread-local reveal extractor (`ExtractBlockReveal`) and the seed helper (`WPoARandaoSelectionSeed`). |
-| [`test/randao_accumulator_tests.cpp`](../test/randao_accumulator_tests.cpp) | Boost.Test unit suite for the pure core (spec conformance vs. an independent reference, determinism, order/input sensitivity, chain consistency). |
-| [`test/run_unit_tests.sh randao`](../test/run_unit_tests.sh) | Build + run the accumulator unit tests (no node build needed; links only SHA256). |
+| [`randao_accumulator.h`](../src/wpoa/randao_accumulator.h) | Header-only pure core `RandaoAccumulator` (`Fold`, `DeriveSeed`, `Genesis`) **plus** the declarations of the node-coupled glue (`g_wpoa_randao_enabled`, `g_wpoa_randao_lookback`, `WPoARANDAOActiveAtHeight`, `WPoARandaoSelectionSeed`). Depends only on `CSHA256`, so the core is unit-testable without the node. |
+| [`randao_accumulator.cpp`](../src/wpoa/randao_accumulator.cpp) | Definitions of the node-coupled glue: the runtime flag/lookback, the height activation predicate, the memoized block-index walk (`GetAccumulator`), the thread-local reveal extractor (`ExtractBlockReveal`) and the seed helper (`WPoARandaoSelectionSeed`). |
+| [`test/randao_accumulator_tests.cpp`](../src/wpoa/test/randao_accumulator_tests.cpp) | Boost.Test unit suite for the pure core (spec conformance vs. an independent reference, determinism, order/input sensitivity, chain consistency). |
+| [`test/run_unit_tests.sh randao`](../src/wpoa/test/run_unit_tests.sh) | Build + run the accumulator unit tests (no node build needed; links only SHA256). |
 | [`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh) | Multi-node end-to-end test: liveness + no-fork under the beacon seed, beacon-engaged evidence, and weight-proportional distribution under the seed. |
 
 Files **modified** in the host tree (integration points):
 
 | Site | File | Change | Detail doc |
 |------|------|--------|------------|
-| Startup flags | [`../../core/init.cpp`](../../core/init.cpp) | Parse `-enablewpoarandao`/`-wpoarandaolookback` into `g_wpoa_randao_enabled`/`g_wpoa_randao_lookback` in `AppInit2`; validate `k >= 0`; warn if RANDAO set without VRF; help lines. | [node-startup.md](node-startup.md) |
-| Miner | [`../../miner/miner.cpp`](../../miner/miner.cpp) | In `GetMinerAndExpectedMiningStartTime`, when the beacon governs the next height, replace the prev-hash selection seed with `WPoARandaoSelectionSeed(pindexTip)`. | [randao-miner.md](randao-miner.md) (§7.3) |
-| Validator | [`../../protocol/multichainblock.cpp`](../../protocol/multichainblock.cpp) | In `VerifyBlockMinerWPoA`, when the beacon governs the block, replace the prev-hash seed with `WPoARandaoSelectionSeed(pindexNew->pprev)` before the proposer check. | [randao-validator.md](randao-validator.md) (§7.4) |
-| Build | [`../../Makefile.am`](../../Makefile.am) | Compile `wpoa/randao_accumulator.cpp`; track `wpoa/randao_accumulator.h`. | §10 |
+| Startup flags | [`../../core/init.cpp`](../src/core/init.cpp) | Parse `-enablewpoarandao`/`-wpoarandaolookback` into `g_wpoa_randao_enabled`/`g_wpoa_randao_lookback` in `AppInit2`; validate `k >= 0`; warn if RANDAO set without VRF; help lines. | [node-startup.md](node-startup.md) |
+| Miner | [`../../miner/miner.cpp`](../src/miner/miner.cpp) | In `GetMinerAndExpectedMiningStartTime`, when the beacon governs the next height, replace the prev-hash selection seed with `WPoARandaoSelectionSeed(pindexTip)`. | [randao-miner.md](randao-miner.md) (§7.3) |
+| Validator | [`../../protocol/multichainblock.cpp`](../src/protocol/multichainblock.cpp) | In `VerifyBlockMinerWPoA`, when the beacon governs the block, replace the prev-hash seed with `WPoARandaoSelectionSeed(pindexNew->pprev)` before the proposer check. | [randao-validator.md](randao-validator.md) (§7.4) |
+| Build | [`../../Makefile.am`](../src/Makefile.am) | Compile `wpoa/randao_accumulator.cpp`; track `wpoa/randao_accumulator.h`. | §10 |
 
 Depends on:
 
 | File | Used for |
 |------|----------|
-| [`../../crypto/sha256.h`](../../crypto/sha256.h) | `CSHA256` — the hash `H` for the fold, the seed and the genesis constant. |
-| [`wpoa_selector.h`](../wpoa_selector.h) | `WPoAVRFActiveAtHeight` — the beacon gate the RANDAO requirement composes with. |
-| [`../../protocol/multichainscript.h`](../../protocol/multichainscript.h) | `mc_Script::GetBlockVRF` — decoding the Phase-3a reveal out of a block's coinbase OP_RETURN. |
-| [`../../core/main.h`](../../core/main.h) | `CBlockIndex`, `CBlock`, `ReadBlockFromDisk`, `BLOCK_HAVE_DATA` — the block-index walk and per-block reveal reads. |
+| [`../../crypto/sha256.h`](../src/crypto/sha256.h) | `CSHA256` — the hash `H` for the fold, the seed and the genesis constant. |
+| [`wpoa_selector.h`](../src/wpoa/wpoa_selector.h) | `WPoAVRFActiveAtHeight` — the beacon gate the RANDAO requirement composes with. |
+| [`../../protocol/multichainscript.h`](../src/protocol/multichainscript.h) | `mc_Script::GetBlockVRF` — decoding the Phase-3a reveal out of a block's coinbase OP_RETURN. |
+| [`../../core/main.h`](../src/core/main.h) | `CBlockIndex`, `CBlock`, `ReadBlockFromDisk`, `BLOCK_HAVE_DATA` — the block-index walk and per-block reveal reads. |
 
 ---
 
@@ -566,24 +573,24 @@ is identical network-wide.
 ## 11. How to modify
 
 ### 11.1 Change the seed formula (e.g. add domain separation)
-Edit `RandaoAccumulator::DeriveSeed` in [`randao_accumulator.h`](../randao_accumulator.h) and
-add a unit test in [`test/randao_accumulator_tests.cpp`](../test/randao_accumulator_tests.cpp).
+Edit `RandaoAccumulator::DeriveSeed` in [`randao_accumulator.h`](../src/wpoa/randao_accumulator.h) and
+add a unit test in [`test/randao_accumulator_tests.cpp`](../src/wpoa/test/randao_accumulator_tests.cpp).
 It is consumed identically by both call sites via `WPoARandaoSelectionSeed`, so there is a
 single place to change — but it is **consensus-critical**: every node must run the same binary.
 
 ### 11.2 Change the lookback default
-Edit `MC_WPOA_DEFAULT_RANDAO_LOOKBACK` in [`randao_accumulator.h`](../randao_accumulator.h).
+Edit `MC_WPOA_DEFAULT_RANDAO_LOOKBACK` in [`randao_accumulator.h`](../src/wpoa/randao_accumulator.h).
 Operators still override it with `-wpoarandaolookback`; it must match on all nodes.
 
 ### 11.3 Change the fold / accumulator construction
 Reimplement `RandaoAccumulator::Fold` behind the same signature and re-run
-[`test/run_unit_tests.sh randao`](../test/run_unit_tests.sh); no caller changes. Keep it
+[`test/run_unit_tests.sh randao`](../src/wpoa/test/run_unit_tests.sh); no caller changes. Keep it
 deterministic and a pure function of `(R_tot_prev, reveal)` — that is all agreement between
 honest nodes needs. Any change to the fold changes every seed and is therefore a consensus
 break: chains running with `-enablewpoarandao` must restart from genesis.
 
 ### 11.4 Change when the beacon seed engages
-Edit `WPoARANDAOActiveAtHeight` in [`randao_accumulator.cpp`](../randao_accumulator.cpp). Keep it
+Edit `WPoARANDAOActiveAtHeight` in [`randao_accumulator.cpp`](../src/wpoa/randao_accumulator.cpp). Keep it
 a **pure function of data both the miner and validator share**, or they disagree on which blocks
 are beacon-seeded and fork.
 
@@ -598,8 +605,8 @@ up again), or persist `R_tot` in the block index — see §5.4 for the trade-off
 
 ### 12.1 Unit tests (node-free, pure math)
 
-[test/randao_accumulator_tests.cpp](../test/randao_accumulator_tests.cpp), run with
-[test/run_unit_tests.sh randao](../test/run_unit_tests.sh). Links only SHA256 +
+[test/randao_accumulator_tests.cpp](../src/wpoa/test/randao_accumulator_tests.cpp), run with
+[test/run_unit_tests.sh randao](../src/wpoa/test/run_unit_tests.sh). Links only SHA256 +
 Boost.Test. Covers, node-free:
 
 - **spec conformance** — `Fold` and `DeriveSeed` match an *independent* re-implementation of

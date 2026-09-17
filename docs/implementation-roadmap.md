@@ -1,5 +1,12 @@
 # Implementation Roadmap — wPoA Selector with Efraimidis–Spirakis Sortition
 
+> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
+> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
+> rebuilt as a Python harness. The references are kept as written because they record the
+> work as it was done; for the current structure see
+> [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
+
+
 > **Register: mixed, declared per section.** The sections on design rationale and on
 > comparison between consensus mechanisms are in the **formal-academic** register; the
 > sections on components, the phased plan and risks are in the **technical-direct**
@@ -404,7 +411,7 @@ to change.
 
 - **Unit tests**: score computation is pure math given a fixed VRF output and
   weight — testable node-free, following the same Boost.Test pattern as
-  [`wpoa_weight_tests.cpp`](../test/wpoa_weight_tests.cpp).
+  [`wpoa_weight_tests.cpp`](../src/wpoa/test/wpoa_weight_tests.cpp).
 - **Multi-node functional tests**: the `check_sortition` check of
   [`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh)
   asserts that (a) only the winning node's score is ever broadcast under
@@ -464,7 +471,7 @@ That earlier form satisfied everything
 
   * the WINNER's normalized score is exactly `U(0,1)`, for any candidate count and any
     weight distribution (Prop. 5.10) — verified empirically with real VRF keys in
-    [`../test/private_sortition_tests.cpp`](../test/private_sortition_tests.cpp)
+    [`../test/private_sortition_tests.cpp`](../src/wpoa/test/private_sortition_tests.cpp)
     (`winner_delay_uniform_*`: decile occupancy 0.095–0.106, mean 0.497, invariant
     under a 100:1 whale). Hence the winner's delay is uniform over the band and the
     mean realized block time lands on `target-block-time`;

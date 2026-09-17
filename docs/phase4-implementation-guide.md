@@ -1,5 +1,12 @@
 # wPoA Private Sortition — Implementation Guide (Phase 4)
 
+> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
+> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
+> rebuilt as a Python harness. The references are kept as written because they record the
+> work as it was done; for the current structure see
+> [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
+
+
 > **Register: technical-direct.** A developer reference: APIs, function signatures,
 > data structures and control flow, with code terminology left verbatim. For the
 > theoretical consensus model see
@@ -157,31 +164,31 @@ New files (the module):
 
 | File | Role |
 |------|------|
-| [`private_sortition.h`](../private_sortition.h) | Header-only pure core `PrivateSortition` (`VRFInput`, `ScoreFromVRFOutput`, `NormalizedScore`, `MiningDelay`, `MaxFeedback`) **plus** the node-glue declarations (`g_wpoa_sortition_enabled`, `g_wpoa_sortition_delta`, `g_wpoa_sortition_lambda`, `WPoASortitionFeedback`, `WPoASortitionActiveAtHeight`, `WPoASortitionLocalScoreDelay`, `WPoASortitionVRFInputForBlock`, `WPoASortitionVerifyProposer`, the proposed-height guard). The core depends only on the Phase-2 score transform, so it is unit-testable without the node. |
-| [`private_sortition.cpp`](../private_sortition.cpp) | Definitions of the node glue: the runtime flag/scale, the height activation predicate, the shared context builder (seed + weight map + Σf(w)), the miner-side local score/delay, the reveal VRF-input builder, the validator-side eligibility/time-bar verdict, and the miner-loop anti-respin guard. |
-| [`test/private_sortition_tests.cpp`](../test/private_sortition_tests.cpp) | Boost.Test unit suite: VRF-input encoding, score reuse (single source of truth), delay map, key-dependence (privacy), and end-to-end probability preservation with **real** VRF keys. |
-| [`test/run_unit_tests.sh sortition`](../test/run_unit_tests.sh) | Build + run the unit tests (links SHA256 + HMAC + the VRF wrapper + secp256k1; no node build). |
+| [`private_sortition.h`](../src/wpoa/private_sortition.h) | Header-only pure core `PrivateSortition` (`VRFInput`, `ScoreFromVRFOutput`, `NormalizedScore`, `MiningDelay`, `MaxFeedback`) **plus** the node-glue declarations (`g_wpoa_sortition_enabled`, `g_wpoa_sortition_delta`, `g_wpoa_sortition_lambda`, `WPoASortitionFeedback`, `WPoASortitionActiveAtHeight`, `WPoASortitionLocalScoreDelay`, `WPoASortitionVRFInputForBlock`, `WPoASortitionVerifyProposer`, the proposed-height guard). The core depends only on the Phase-2 score transform, so it is unit-testable without the node. |
+| [`private_sortition.cpp`](../src/wpoa/private_sortition.cpp) | Definitions of the node glue: the runtime flag/scale, the height activation predicate, the shared context builder (seed + weight map + Σf(w)), the miner-side local score/delay, the reveal VRF-input builder, the validator-side eligibility/time-bar verdict, and the miner-loop anti-respin guard. |
+| [`test/private_sortition_tests.cpp`](../src/wpoa/test/private_sortition_tests.cpp) | Boost.Test unit suite: VRF-input encoding, score reuse (single source of truth), delay map, key-dependence (privacy), and end-to-end probability preservation with **real** VRF keys. |
+| [`test/run_unit_tests.sh sortition`](../src/wpoa/test/run_unit_tests.sh) | Build + run the unit tests (links SHA256 + HMAC + the VRF wrapper + secp256k1; no node build). |
 | [`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh) | Multi-node end-to-end test: liveness, no persistent fork, private-path-engaged (no public-argmin acceptances), weight-proportional distribution. |
 
 Files **modified** in the host tree (integration points):
 
 | Site | File | Change | Detail doc |
 |------|------|--------|------------|
-| Score transform | [`../wpoa_selector.h`](../wpoa_selector.h) | Factor the `u64 digest → -ln(u)/f(w)` step into `ScoreFromEntropy64` (+ `FoldTop64`) so Phase 2 and Phase 4 share **one** score transform. | [private-sortition.md](private-sortition.md) |
-| Startup flags | [`../../core/init.cpp`](../../core/init.cpp) | Parse `-enablewpoasortition`/`-wpoasortitiondelta`/`-wpoasortitionlambda`; require RANDAO and `k >= 1`; range-check the band; help lines; log. | [node-startup.md](node-startup.md) |
-| Miner | [`../../miner/miner.cpp`](../../miner/miner.cpp) | Sortition branch in `GetMinerAndExpectedMiningStartTime` (score-timed start + anti-respin guard); switch the reveal-embed input to the sortition input in `CreateBlockSignature`; mark the proposed height after `ProcessBlockFound`. | [sortition-miner.md](sortition-miner.md) |
-| Validator | [`../../protocol/multichainblock.cpp`](../../protocol/multichainblock.cpp) | Sortition branch in `VerifyBlockMinerWPoA`: VRF-verify over the sortition input + score recompute + time bar, replacing the argmin equality on sortition heights. | [sortition-validator.md](sortition-validator.md) |
-| Build | [`../../Makefile.am`](../../Makefile.am) | Compile `wpoa/private_sortition.cpp`; track the header. | §10 |
+| Score transform | [`../wpoa_selector.h`](../src/wpoa/wpoa_selector.h) | Factor the `u64 digest → -ln(u)/f(w)` step into `ScoreFromEntropy64` (+ `FoldTop64`) so Phase 2 and Phase 4 share **one** score transform. | [private-sortition.md](private-sortition.md) |
+| Startup flags | [`../../core/init.cpp`](../src/core/init.cpp) | Parse `-enablewpoasortition`/`-wpoasortitiondelta`/`-wpoasortitionlambda`; require RANDAO and `k >= 1`; range-check the band; help lines; log. | [node-startup.md](node-startup.md) |
+| Miner | [`../../miner/miner.cpp`](../src/miner/miner.cpp) | Sortition branch in `GetMinerAndExpectedMiningStartTime` (score-timed start + anti-respin guard); switch the reveal-embed input to the sortition input in `CreateBlockSignature`; mark the proposed height after `ProcessBlockFound`. | [sortition-miner.md](sortition-miner.md) |
+| Validator | [`../../protocol/multichainblock.cpp`](../src/protocol/multichainblock.cpp) | Sortition branch in `VerifyBlockMinerWPoA`: VRF-verify over the sortition input + score recompute + time bar, replacing the argmin equality on sortition heights. | [sortition-validator.md](sortition-validator.md) |
+| Build | [`../../Makefile.am`](../src/Makefile.am) | Compile `wpoa/private_sortition.cpp`; track the header. | §10 |
 
 Depends on:
 
 | File | Used for |
 |------|----------|
-| [`wpoa_selector.h`](../wpoa_selector.h) | `ScoreFromEntropy64`/`FoldTop64` (the shared transform), `ApplyDumping`, `g_dumping_function`. |
-| [`randao_accumulator.h`](../randao_accumulator.h) | `WPoARANDAOActiveAtHeight` (the gate sortition composes with) and `WPoARandaoSelectionSeed` (the beacon seed = the public VRF input). |
-| [`vrf_wrapper.h`](../vrf_wrapper.h) | `WPoAVRF::Prove`/`Verify` — the VRF, unchanged; only the input bytes differ. |
-| [`stream_weight_registry.h`](../stream_weight_registry.h) | `GetAllNodesWeights` — the proposer's weight and the effective-weight sum Σf(w). |
-| [`../../core/main.h`](../../core/main.h) | `CBlockIndex`, `CBlock`, `mapBlockIndex` — the parent lookup and the seed walk. |
+| [`wpoa_selector.h`](../src/wpoa/wpoa_selector.h) | `ScoreFromEntropy64`/`FoldTop64` (the shared transform), `ApplyDumping`, `g_dumping_function`. |
+| [`randao_accumulator.h`](../src/wpoa/randao_accumulator.h) | `WPoARANDAOActiveAtHeight` (the gate sortition composes with) and `WPoARandaoSelectionSeed` (the beacon seed = the public VRF input). |
+| [`vrf_wrapper.h`](../src/wpoa/vrf_wrapper.h) | `WPoAVRF::Prove`/`Verify` — the VRF, unchanged; only the input bytes differ. |
+| [`stream_weight_registry.h`](../src/wpoa/stream_weight_registry.h) | `GetAllNodesWeights` — the proposer's weight and the effective-weight sum Σf(w). |
+| [`../../core/main.h`](../src/core/main.h) | `CBlockIndex`, `CBlock`, `mapBlockIndex` — the parent lookup and the seed walk. |
 
 ---
 
@@ -395,7 +402,7 @@ sequenceDiagram
 
 `wpoa/private_sortition.cpp` is added to `libbitcoin_*` sources and
 `wpoa/private_sortition.h` to the tracked headers in
-[`../../Makefile.am`](../../Makefile.am), next to the Phase 3b entries. Because the tree is
+[`../../Makefile.am`](../src/Makefile.am), next to the Phase 3b entries. Because the tree is
 not built in maintainer mode, after editing `Makefile.am` regenerate the Makefile:
 
 ```bash
@@ -431,8 +438,8 @@ The unit tests do **not** need the node build (see §12).
 
 ### 12.1 Unit tests (node-free)
 
-[test/private_sortition_tests.cpp](../test/private_sortition_tests.cpp), run with
-[test/run_unit_tests.sh sortition](../test/run_unit_tests.sh). Links SHA256 +
+[test/private_sortition_tests.cpp](../src/wpoa/test/private_sortition_tests.cpp), run with
+[test/run_unit_tests.sh sortition](../src/wpoa/test/run_unit_tests.sh). Links SHA256 +
 HMAC-SHA256 + the VRF wrapper + secp256k1. Covers: the VRF-input encoding
 (`seed ‖ "PROPOSER" ‖ BE32(height)`, 44 bytes, height/seed sensitive); score reuse (byte-
 identical to `WPoASelector::ScoreFromEntropy64`); the delay map (zero at score 0, strictly

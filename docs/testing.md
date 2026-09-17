@@ -57,7 +57,7 @@ flowchart TD
         LINT[lib/lint_lib.sh<br/>script syntax / epoch geometry / setup budget<br/>every recorder, against stubbed RPCs]
         STAT[lib/we_stats.py --selfcheck<br/>chi-square p-values / Gini / entropy / Wilson<br/>Cor. 5.4 + a negative control]
     end
-    subgraph func [Requires a built node -- test/functional/]
+    subgraph func [Requires a built node -- now test/, see section 7]
         SYS[wpoa/functional_test_wpoa_system.sh<br/>ONE full-stack network, warmed up once]
         C[checks on the shared run: weight / stream permissions<br/>malus / consistency / diversity / vrf / randao<br/>randao seed convention / sortition / distribution]
         WE[weight_engine/functional_test_weight_engine.sh<br/>publish side, closed streams, epoch-scoped verdicts]
@@ -86,7 +86,7 @@ flowchart TD
 
 The functional suites live at the **project level**, not under a module: a functional run
 exercises wPoA, the weight engine, the malus registry and the streams as one system. See
-[`../../../docs/adr/test-restructure-2026.md`](../../../docs/adr/test-restructure-2026.md).
+[`../../../docs/adr/test-restructure-2026.md`](adr/test-restructure-2026.md).
 
 ---
 
@@ -378,68 +378,74 @@ Notes:
 
 ## 7. Automated functional tests
 
-There are **six** suites under [`test/functional/`](../../../test/functional/), five of
-them in the default set. The first two need **no node at all**, which makes them the
-cheapest thing to run before committing to a suite that mines thousands of blocks:
-
-| Suite | Default | Node? | What it covers |
-|---|---|---|---|
-| `lib-lint` | yes | no | the harness itself: script syntax, the epoch-geometry and setup-budget helpers, and every per-epoch recorder driven against stubbed RPCs |
-| `stats-selfcheck` | yes | no | the statistical layer: chi-square p-values against textbook criticals, Gini and entropy against closed forms, Cor. 5.4, and a negative control |
-| `wpoa` | yes | yes | the system-level run described below |
-| `weight-engine` | yes | yes | publish side, closed streams, epoch-scoped verdicts (single node) |
-| `weight-engine-bootstrap` | yes | yes | bootstrap ordering, the `setup-first-blocks` floor |
-| `weight-engine-large` | **no** | yes | 33 nodes, 100-block epochs, ≥ 50 epochs; hours. Records itself to `test/output/` and runs the statistical analysis |
-
-`lib-lint` runs first deliberately. The per-epoch recorders fire for the first time at
-the **first epoch rollover**, so before it existed a typo in one of them was reported
-only after the network was up and hundreds of blocks deep — see §13 of the ADR.
+The shell suites that used to live under `test/functional/` were replaced by a **Python
+harness** at [`test/`](../test/), which runs a real multi-node network on localhost and
+takes it from bootstrap to a statistical report in one command. Map and entry points:
+[`test/README.md`](../test/README.md).
 
 ```bash
-./test/functional/run_functional_tests.sh --suite lib-lint   # ~1s, no node
-./test/functional/run_functional_tests.sh                    # the default five
-./test/functional/run_functional_tests.sh --list             # suites, defaults marked
-./test/functional/run_functional_tests.sh --suite wpoa       # just one
-./test/functional/run_functional_tests.sh --suite weight-engine-large --fast
+# bootstrap -> traffic -> shutdown -> phase1 -> phase2 -> phase3 -> plots
+./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
+    --config test/config/profiles/small.yaml
+
+# validate a profile and print the derived plan, without touching a chain
+./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
+    --config test/config/profiles/small.yaml --dry-run
 ```
 
-Full reference, including every environment knob:
-[`test/functional/README.md`](../../../test/functional/README.md).
-
-### 7.1 The wPoA system run
-
-`test/functional/wpoa/functional_test_wpoa_system.sh` drives a **real multi-node**
-network end to end. It starts **one** full-stack network (weights + VRF + RANDAO
-+ sortition), waits for weight convergence and a block warm-up **once**, and then
-runs every feature check against that shared run — `check_weight`,
-`check_stream_permissions`, `check_malus`, `check_multinode_consistency`,
-`check_diversity_spacing`, `check_vrf`, `check_randao`,
-`check_randao_seed_convention`, `check_sortition`, `check_distribution` — before
-stopping the nodes and cleaning up. It requires the node to be built first (§1).
-Set `NODES=1` for a single-node run.
+Two node-free checks, still the cheapest thing to run before committing to a run that
+mines thousands of blocks:
 
 ```bash
-cd ./test/functional/wpoa
-./functional_test_wpoa_system.sh                          # 3 nodes, full sample
-QUICK=1 ./functional_test_wpoa_system.sh                  # smaller sample, faster
-NODES=1 ./functional_test_wpoa_system.sh                  # single node
-NODES=5 WEIGHTS="10 20 30 40 50" ./functional_test_wpoa_system.sh
-INCLUDE_PUBLIC_SELECTOR=1 ./functional_test_wpoa_system.sh # + the sortition-off regime
+# the sortition formula itself, no chain involved
+./docker/mcsim run python3 test/analysis/pipeline/tools/valida_sortition_montecarlo.py
+
+# the hand-written statistics against a reference implementation
+./docker/mcsim run python3 test/analysis/pipeline/tools/verify_stat_closed_forms.py
 ```
 
-Each check prints ✔/✗ lines and a final results table; the run exits non-zero if
-any critical check fails. Prefer the wrapper, which adds a warning banner and a
-hard timeout safety-net — see
-[`test/functional/README.md`](../../../test/functional/README.md):
+The harness writes `test/results/run-<chain>-<UTC>/`, ending in
+`analysis/phase3/report.md` (the full report, with its consistency checks) and
+`analysis/phase3/weight_vs_election.md` (weight against observed election probability,
+with Wilson intervals and a goodness-of-fit test). Profiles — `small`, `medium`, `large` —
+are documented in [`../test/config/schema.md`](../test/config/schema.md), and the design
+decisions behind the harness in
+[`../test/docs/architecture-notes.md`](../test/docs/architecture-notes.md).
+
+The unit suites are unchanged and still node-free:
 
 ```bash
-./test/functional/run_functional_tests.sh                 # the default three suites
-./test/functional/run_functional_tests.sh --suite wpoa    # this suite alone
-QUICK=1 ./test/functional/run_functional_tests.sh         # smaller sample, faster
+./src/wpoa/test/run_unit_tests.sh            # weight malus selector vrf randao
+                                             # sortition audit activation
+./src/weight_engine/test/run_unit_tests.sh   # records authorization engine verifier epoch
 ```
 
-Exit code `0` and `FUNCTIONAL TEST PASSED` on success; non-zero with diagnostics
-on failure.
+### 7.1 What the run checks
+
+The harness drives one full-stack network (weights + selection + VRF + RANDAO + sortition
++ malus, with the weight engine on) and records every RPC answer to a per-node
+`events.jsonl`. The checks then run **after** the fact, in phase 3, over that recording
+rather than against a live chain — so a surprising number can be traced back through a
+phase-2 row to a phase-1 row to the single call that produced it.
+
+Six of them are **critical**: the run is reported as failed if any does not hold.
+
+| Check | Critical | What it catches |
+|---|---|---|
+| `registry_weights_finite_and_positive` | yes | a NaN or negative in the published registry |
+| `no_phantom_validator_in_registry` | yes | an address carrying a weight that `listminers` does not know |
+| `malus_finite_and_psi_in_unit_interval` | yes | Ψ outside [0, 1] |
+| `delay_recompute_mismatch_rounds_is_zero` | yes | the harness and the node disagreeing about the delay formula itself, which would invalidate every timer-race result |
+| `every_esg_publication_reached_the_stream` | yes | an ESG score published but never confirmed |
+| `only_miners_pay_the_treasury` | yes | a non-miner paying the treasury, which credits a key no cluster reads and leaves `R_k = 0` |
+| `at_least_one_fully_measured_epoch` | yes | a run too short, or entirely inside the setup phase, to test anything |
+| `phi_consistent` | no | Φ differing across rounds — expected once the feedback gain is non-zero |
+| `certified_scores_reflected_in_the_engine` | no | a certified address the engine still scores at 0 |
+| `traffic_counts_within_configured_range` | no | a company generating outside its configured band |
+
+The statistical tests — Wilson intervals, goodness of fit, concentration, streaks, the
+timer race, the longitudinal checks — run in the same phase and are described in
+[`../test/README.md`](../test/README.md).
 
 ---
 
@@ -484,3 +490,7 @@ wrong `OpReturnFormatEntry` overload (every item `decode=FAIL`). If you ever see
 - [multichain-internals.md](multichain-internals.md) §8 — the mining model referenced
   in §3.
 - [stream-weight-registry.md](stream-weight-registry.md) — the code under test.
+
+---
+
+_Verified against the code and the on-disk layout on 2026-09-17 UTC (commit `7f3eb829`, branch `fix/wpoa-cpp-bugs-and-harness-simplification`). Section 7 was rewritten when the shell functional suites were replaced by the Python harness under `test/`; the diagram above still shows the historical shape of the shell suites._

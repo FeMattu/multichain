@@ -296,6 +296,15 @@ chain stops — the deadlock of §3.3.
 block time and raises `setup-first-blocks` above the protocol floor accordingly.
 Overshooting only wastes blocks; undershooting kills the run.
 
+> **Aggiornamento post-fix (2026-09-17, branch `fix/wpoa-cpp-bugs-and-harness-simplification`).**
+> The *deadlock* described above can no longer happen (A.3): while the registry has never
+> carried a positive weight the node mines under the native MultiChain rules and lets wPoA
+> activate by itself, so reaching `setup-first-blocks` early is no longer fatal. The
+> derived budget is **kept** anyway, for a different reason: a run whose first epochs are
+> spent under native mining measures round robin, not weighted sortition, and those epochs
+> are then excluded from the analysis. The budget buys measurable epochs, not liveness.
+> See [`fixes-changelog.md`](fixes-changelog.md) §A.3.
+
 ## 6. The economic model
 
 Implemented to thesis §4.2.1 / §4.3.1 and Def. 6.6-6.10. Four rules, each load-bearing,
@@ -419,6 +428,13 @@ are emitted **blank** rather than with their compiled defaults (`1` and `2`). Be
 is still correct, because the resolver falls back to the compiled value, but the params
 **hash covers the stored bytes**: blank and `1` are different files. The harness writes
 both keys explicitly on every node so the question cannot arise.
+> **Aggiornamento post-fix (2026-09-17, branch `fix/wpoa-cpp-bugs-and-harness-simplification`).**
+> Fixed at source (A.6): `multichain-util create` now emits both keys with their
+> compiled defaults (`1` and `2`), so a generated file is explicit and the hash is
+> deterministic. The harness still writes them, but as ordinary configurable
+> parameters rather than as a hash workaround. See
+> [`fixes-changelog.md`](fixes-changelog.md) §A.6.
+
 
 ### 8.2 `enable-wpoa = true` alone is refused
 
@@ -430,6 +446,12 @@ Error: weight-engine: -enableweightengine requires the wPoA weights stream (-ena
 ```
 
 This is §4.3 observed rather than read. The fix is to write every per-phase key.
+> **Aggiornamento post-fix (2026-09-17, branch `fix/wpoa-cpp-bugs-and-harness-simplification`).**
+> Fixed at source (A.1): `AppInit2` now expands an in-file `enable-wpoa` to every
+> phase still at its default, so this chain would start. The harness still writes
+> every per-phase key, which keeps `params.dat` a complete statement of what the
+> chain runs. See [`fixes-changelog.md`](fixes-changelog.md) §A.1.
+
 
 ### 8.3 Stream auto-creation is unreliable
 
@@ -446,6 +468,14 @@ weight-engine-esg
 is one-shot per process and does not retry. This is the empirical justification for the
 harness creating all three streams explicitly from the admin before anything else
 happens.
+> **Aggiornamento post-fix (2026-09-17, branch `fix/wpoa-cpp-bugs-and-harness-simplification`).**
+> Fixed at source (A.2): the three registries now share one bounded-retry state
+> machine that latches only on a real broadcast. Verified — all four streams now
+> appear unaided. The harness keeps creating them explicitly, but for a different
+> reason: it grants per-stream permissions in the next step, and an entity
+> permission cannot precede its entity. See
+> [`fixes-changelog.md`](fixes-changelog.md) §A.2.
+
 
 ### 8.4 The premine works, and the effective setup phase is re-readable
 
@@ -507,6 +537,14 @@ implementation that waits on the pid has nothing to wait on and returns immediat
 
 The fix is to treat the **RPC port** as the liveness signal: stop, poll until the port
 closes, settle for two seconds, and retry a launch that reports a held lock.
+> **Aggiornamento post-fix (2026-09-17, branch `fix/wpoa-cpp-bugs-and-harness-simplification`).**
+> **Correction (A.7): the claim that MultiChain writes no pid file was wrong.** It
+> writes `<datadir>/<chain>/multichain.pid` (`src/core/init.cpp:1111`) and removes
+> it on a clean shutdown; the original check was made after the daemons had
+> exited. The RPC port remains the primary signal by choice — a pid file cannot
+> say whether LevelDB has released its lock, and survives a crash — with the pid
+> used to escalate to a signal. See [`fixes-changelog.md`](fixes-changelog.md) §A.7.
+
 
 ### 8.8 An entity permission cannot be granted before its entity exists
 
@@ -521,6 +559,12 @@ symptom was `weightregistermembership` failing with `-704 ... lacks write permis
 several steps later — by which point the cause was three phases back. Grants are therefore
 issued in two passes: global permissions before the peers launch, per-stream permissions
 after the streams are created.
+> **Aggiornamento post-fix (2026-09-17, branch `fix/wpoa-cpp-bugs-and-harness-simplification`).**
+> Reviewed and deliberately not changed (A.4): the ordering is ordinary MultiChain
+> behaviour and `-708` is accurate. Improving the message would mean editing text
+> that other tools parse. Documented instead in `docs/weight-engine.md` §5bis.
+> The two-pass grant stays. See [`fixes-changelog.md`](fixes-changelog.md) §A.4.
+
 
 ### 8.9 The treasury's `receive` grant must confirm before the admin restarts
 
@@ -537,6 +581,14 @@ every cluster — and therefore a perfectly flat `rho` that reads as *"the feedb
 is inert"* rather than as a broken permission. The harness now waits for the grant to
 confirm, re-asserts it after the restart, and **verifies** it with `listpermissions`
 before any traffic starts.
+> **Aggiornamento post-fix (2026-09-17, branch `fix/wpoa-cpp-bugs-and-harness-simplification`).**
+> Partly fixed at source (A.5): the node now warns at startup when the configured
+> treasury lacks a confirmed `receive`. The parameter stays hash-enforced and is
+> deliberately not made runtime-settable — `R_k` is defined as the value paid to
+> that address, so differing values fork the chain. The harness keeps its
+> confirm-and-verify as the fast-failing first line. See
+> [`fixes-changelog.md`](fixes-changelog.md) §A.5.
+
 
 ### 8.10 The audit RPCs must exist in the binary
 
@@ -599,47 +651,33 @@ that container.
 | 17 | `wpoa-weights-malus` is created explicitly, **open**, matching the node's own creation. | Its auto-creation is as unreliable as the others', and the failure is only visible as a missing stream in the logs. |
 | 18 | The first and last epoch of each daemon are marked `full_epoch = False` and excluded from the range check. | Both are partial by construction — the first began before the daemon started, the last was cut short by the shutdown — so their counts cannot be expected to fall in the configured range. |
 
-## 10. Known divergences
+## 10. Known divergences — and how each was closed
 
-Recorded because the next person will hit them too.
+Recorded because the next person will hit them too. Every entry now carries its
+resolution; see [`fixes-changelog.md`](fixes-changelog.md) for the full account.
 
-1. **`src/wpoa/docs/` does not exist.** The brief names `src/wpoa/docs/protocol-parameters.md`,
-   `src/wpoa/docs/weight-engine.md`, `src/wpoa/docs/implementation-status.md` and
-   `src/wpoa/docs/testing.md`. All four live at the repository root under `docs/`.
-   `src/wpoa/README.md` and `src/weight_engine/README.md` still link to the
-   `../wpoa/docs/...` form.
-2. **`docs/protocol-parameters.md` line numbers are stale** by roughly +77 against
-   `src/core/init.cpp`, and it refers to `../../chainparams/paramlist.h` where the real
-   path is `src/chainparams/paramlist.h`.
-3. **`docs/protocol-parameters.md` never states that `enable-wpoa` is inert in
-   `params.dat`** — the single most dangerous gap for anyone writing the file by hand
-   (§4.3, §8.2).
-4. **`MC_WEIGHT_SETUP_PUBLISH_MARGIN = 3` and `AdjustSetupFirstBlocks` are undocumented**
-   there; only the stability margin of 6 is described. The real auto-raise floor is
-   `weight-epoch-length + 9`, applied by rewriting `params.dat` at creation.
-5. **There is no `getround` / `getepoch` RPC.** The commit that "exposed the round and
-   the epoch to read-only audit" added 27 RPCs as *families*: the round is the `height`
-   argument and the `height`/`seed`/`seed_source` fields of every wPoA audit answer, the
-   epoch is the `epoch` argument and field of every WeightEngine one.
-6. **Result shapes are not uniform across the `*list*` families.** `weightlistreturns`
-   and `weightlistbalances` map address → **bare number**; `weightlistcontributions`,
-   `weightlistclusterweights`, `weightlistearnings`, `wpoalistscores`, `wpoalistdelays`,
-   `wpoalisteffectiveweights` and `wpoalistfinalweights` map address → **object**;
-   `getallweights` maps address → bare number; `weightverifyweights` returns an
-   **array**. `phase1_collect.py` normalises all of them, and this is why.
-7. **`liststreamitems` defaults to `count = 10`.** Reading a whole stream requires
-   passing `count` explicitly; the harness always does.
-8. **`docs/testing.md`, `src/wpoa/README.md` and `src/weight_engine/README.md` link to
-   `test/functional/…` and `test/output/…`**, which this rebuild removed. Those links
-   are now dangling. They were left untouched because editing them was outside the
-   brief's scope.
+| # | Divergence | Status |
+|---|---|---|
+| 1 | **`src/wpoa/docs/` does not exist** — the four documents named that way live at the repository root under `docs/`, and both sub-READMEs linked to the non-existent path. | **Closed.** `src/wpoa/README.md` and `src/weight_engine/README.md` now link to `../../docs/`. |
+| 2 | **`docs/protocol-parameters.md` line numbers stale** by roughly +77 against `src/core/init.cpp`, and the path given as `../../chainparams/paramlist.h`. | **Closed.** Every reference re-read from the source and corrected; paths now point at `src/`. The document carries a "verified on" footer so the next drift is datable. |
+| 3 | **Nowhere said `enable-wpoa` is inert in `params.dat`.** | **Closed, and the underlying behaviour fixed.** The master now expands from the file (A.1); `protocol-parameters.md` §1bis documents the expansion, the precedence order, and the one case the file cannot express. |
+| 4 | **`MC_WEIGHT_SETUP_PUBLISH_MARGIN = 3` and `AdjustSetupFirstBlocks` undocumented**; the real floor is `weight-epoch-length + 9`, applied by rewriting `params.dat` at creation. | **Closed.** `protocol-parameters.md` §1ter documents the floor, both compile-time constants, why each exists, and that the effective value must be read back. |
+| 5 | **There is no `getround` / `getepoch` RPC** — the commit added 27 RPCs as *families*. | **Closed.** `docs/rpc-result-shapes.md` says so explicitly and names the closest equivalents. |
+| 6 | **Result shapes are not uniform across the `*list*` families**: address → object, address → bare number, and one array. | **Documented, not changed.** `docs/rpc-result-shapes.md` tabulates all three shapes per RPC. Unifying them would break every existing consumer, which is out of proportion to the problem. |
+| 7 | **`liststreamitems` defaults to `count = 10`** and silently truncates. | **Closed.** Documented in `docs/rpc-result-shapes.md` under the traps that are not about shape. |
+| 8 | **`docs/testing.md` and both sub-READMEs link to `test/functional/…` and `test/output/…`**, removed when `test/` was rebuilt. | **Closed.** §7 of `docs/testing.md` was rewritten around the Python harness, and both READMEs now point at `test/README.md` and the real entry points. |
+| 9 | *(new, found in Phase B)* **A double very close to 1 renders as `0`** in every RPC answer: `json_spirit` formats to 14 decimals and strips trailing zeros, so `0.99999999999999889` becomes `0`. | **Documented, not changed.** The writer serialises every numeric RPC in MultiChain. `docs/rpc-result-shapes.md` records it and says what to do instead; phase 2 of the pipeline recomputes the affected field. See [`fixes-changelog.md`](fixes-changelog.md) §A.8. |
 
 ---
 
 ## Related documents
 
+- [`fixes-changelog.md`](fixes-changelog.md) — the protocol faults these notes recorded,
+  mapped to the commits that fixed them and to what the harness stopped doing as a result.
 - [`../config/schema.md`](../config/schema.md) — the profile format and every validated field.
 - [`../../docs/protocol-parameters.md`](../../docs/protocol-parameters.md) — the parameter catalogue this harness constrains itself to.
 - [`../../docs/weight-engine.md`](../../docs/weight-engine.md) — the pipeline whose output the harness measures.
 - [`../../docs/testing.md`](../../docs/testing.md) — the repository's test conventions.
 - [`RPCLIST.md`](RPCLIST.md) — the node's full RPC reference.
+- [`../../docs/rpc-result-shapes.md`](../../docs/rpc-result-shapes.md) — what each audit RPC
+  actually returns, and the two traps that are not about shape.

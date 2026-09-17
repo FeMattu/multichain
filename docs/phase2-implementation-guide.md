@@ -1,5 +1,12 @@
 # wPoA Weighted Miner Selection — Implementation Guide (Phase 2)
 
+> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
+> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
+> rebuilt as a Python harness. The references are kept as written because they record the
+> work as it was done; for the current structure see
+> [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
+
+
 > **Register: technical-direct.** A developer reference: APIs, function signatures,
 > data structures and control flow, with code terminology left verbatim. For the
 > theoretical consensus model see
@@ -118,10 +125,10 @@ New files (the module):
 
 | File | Role |
 |------|------|
-| [`wpoa_selector.h`](../wpoa_selector.h) | Header-only pure core `WPoASelector` (`ComputeScore`, `SelectProposer`) **plus** the declarations of the node-coupled glue (`g_wpoa_enabled`, `WPoAActiveAtHeight`, `WPoASelectProposer`). Depends only on the C++ stdlib + HMAC-SHA256, so the core is unit-testable without the node. |
-| [`wpoa_selector.cpp`](../wpoa_selector.cpp) | Definitions of the node-coupled glue: the runtime flag, the height activation predicate, and the registry-backed `WPoASelectProposer`. |
-| [`test/wpoa_selector_tests.cpp`](../test/wpoa_selector_tests.cpp) | Boost.Test unit suite for the pure core (determinism, order-independence, degenerate cases, probability preservation). |
-| [`test/run_unit_tests.sh selector`](../test/run_unit_tests.sh) | Build + run the selector unit tests (no node build needed). |
+| [`wpoa_selector.h`](../src/wpoa/wpoa_selector.h) | Header-only pure core `WPoASelector` (`ComputeScore`, `SelectProposer`) **plus** the declarations of the node-coupled glue (`g_wpoa_enabled`, `WPoAActiveAtHeight`, `WPoASelectProposer`). Depends only on the C++ stdlib + HMAC-SHA256, so the core is unit-testable without the node. |
+| [`wpoa_selector.cpp`](../src/wpoa/wpoa_selector.cpp) | Definitions of the node-coupled glue: the runtime flag, the height activation predicate, and the registry-backed `WPoASelectProposer`. |
+| [`test/wpoa_selector_tests.cpp`](../src/wpoa/test/wpoa_selector_tests.cpp) | Boost.Test unit suite for the pure core (determinism, order-independence, degenerate cases, probability preservation). |
+| [`test/run_unit_tests.sh selector`](../src/wpoa/test/run_unit_tests.sh) | Build + run the selector unit tests (no node build needed). |
 | [`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh) | Multi-node end-to-end distribution test. |
 | [`test/functional/wpoa/analyze_distribution.py`](../../../test/functional/wpoa/analyze_distribution.py) | Chi-square goodness-of-fit analysis of the observed proposer distribution. |
 
@@ -129,17 +136,17 @@ Files **modified** in the host tree (integration points):
 
 | File | Change |
 |------|--------|
-| [`../core/init.cpp`](../../core/init.cpp) | Parse `-enablewpoa` into `g_wpoa_enabled` in `AppInit2`; log enabled/disabled. |
-| [`../miner/miner.cpp`](../../miner/miner.cpp) | In `GetMinerAndExpectedMiningStartTime`, add a wPoA branch that replaces the round-robin timing gate with the weighted election. |
-| [`../protocol/multichainblock.cpp`](../../protocol/multichainblock.cpp) | `VerifyBlockMiner` delegates to the new `VerifyBlockMinerWPoA` for wPoA-governed heights. |
-| [`../Makefile.am`](../../Makefile.am) | Compile `wpoa/wpoa_selector.cpp`; track `wpoa/wpoa_selector.h`. |
+| [`../core/init.cpp`](../src/core/init.cpp) | Parse `-enablewpoa` into `g_wpoa_enabled` in `AppInit2`; log enabled/disabled. |
+| [`../miner/miner.cpp`](../src/miner/miner.cpp) | In `GetMinerAndExpectedMiningStartTime`, add a wPoA branch that replaces the round-robin timing gate with the weighted election. |
+| [`../protocol/multichainblock.cpp`](../src/protocol/multichainblock.cpp) | `VerifyBlockMiner` delegates to the new `VerifyBlockMinerWPoA` for wPoA-governed heights. |
+| [`../Makefile.am`](../src/Makefile.am) | Compile `wpoa/wpoa_selector.cpp`; track `wpoa/wpoa_selector.h`. |
 
 Depends on (Phase 1):
 
 | File | Used for |
 |------|----------|
-| [`stream_weight_registry.h/.cpp`](../stream_weight_registry.h) | `StreamWeightRegistry::GetAllNodesWeights()` — the confirmed weight map that the election consumes. |
-| [`../crypto/hmac_sha256.h`](../../crypto/hmac_sha256.h) | `CHMAC_SHA256` — the keyed hash that turns `(seed, address)` into per-node randomness. |
+| [`stream_weight_registry.h/.cpp`](../src/wpoa/stream_weight_registry.h) | `StreamWeightRegistry::GetAllNodesWeights()` — the confirmed weight map that the election consumes. |
+| [`../crypto/hmac_sha256.h`](../src/crypto/hmac_sha256.h) | `CHMAC_SHA256` — the keyed hash that turns `(seed, address)` into per-node randomness. |
 
 ---
 
@@ -553,7 +560,7 @@ block `h` exists, so rounds are serialized and there is never proposer contentio
 ## 11. How to modify
 
 ### 11.1 Change when wPoA engages
-Edit `WPoAActiveAtHeight` in [`wpoa_selector.cpp`](../wpoa_selector.cpp) — e.g. gate on a
+Edit `WPoAActiveAtHeight` in [`wpoa_selector.cpp`](../src/wpoa/wpoa_selector.cpp) — e.g. gate on a
 different chain param, or add a hard minimum height. Keep it a **pure function of data
 both the miner and validator share**, or they will disagree and fork.
 
@@ -565,13 +572,13 @@ change identically. This is the exact hook Phase 3/4 uses to swap in the VRF out
 
 ### 11.3 Change the tie-break or scoring
 Edit `WPoASelector::ComputeScore`/`SelectProposer` in
-[`wpoa_selector.h`](../wpoa_selector.h) and add a unit test in
-[`test/wpoa_selector_tests.cpp`](../test/wpoa_selector_tests.cpp). Because the core is
+[`wpoa_selector.h`](../src/wpoa/wpoa_selector.h) and add a unit test in
+[`test/wpoa_selector_tests.cpp`](../src/wpoa/test/wpoa_selector_tests.cpp). Because the core is
 node-free, you can validate distribution changes without a node.
 
 ### 11.4 Document a new flag in `--help`
 A `strUsage += "  -enablewpoa ..."` line now exists in `HelpMessage` in
-[`../core/init.cpp`](../../core/init.cpp) (added alongside the Phase 3a `-enablewpoavrf`
+[`../core/init.cpp`](../src/core/init.cpp) (added alongside the Phase 3a `-enablewpoavrf`
 line), mirroring the `-weight`/`-dumpfunction` lines. To document any further wPoA flag,
 add one more `strUsage += ...` line next to those; the flag itself is parsed in the
 `#ifdef ENABLE_WALLET` block (see [node-startup.md](node-startup.md)).
@@ -588,8 +595,8 @@ cross-`libm` assumption.
 
 ### 12.1 Unit tests (node-free, pure math)
 
-[test/wpoa_selector_tests.cpp](../test/wpoa_selector_tests.cpp), run with
-[test/run_unit_tests.sh selector](../test/run_unit_tests.sh). Links only
+[test/wpoa_selector_tests.cpp](../src/wpoa/test/wpoa_selector_tests.cpp), run with
+[test/run_unit_tests.sh selector](../src/wpoa/test/run_unit_tests.sh). Links only
 HMAC-SHA256/SHA256 + Boost.Test. Covers: determinism, iteration-order independence,
 single-validator / empty-map / zero-weight degenerate cases, weight-monotonicity, and
 **probability preservation** — over 200 000 distinct seeds the empirical share of each

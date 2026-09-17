@@ -477,7 +477,7 @@ flowchart TD
 
 Phase 3a adds the *randomness-generation* half of the beacon (see
 [phase3a-implementation-guide.md](phase3a-implementation-guide.md)). The VRF **crypto**
-lives in its own pure module ([`vrf_wrapper.{h,cpp}`](../vrf_wrapper.h) →
+lives in its own pure module ([`vrf_wrapper.{h,cpp}`](../src/wpoa/vrf_wrapper.h) →
 [vrf-wrapper.md](vrf-wrapper.md)); the only thing that lands in the selector files is the
 **node-glue activation** — one flag and one predicate, added exactly like the Phase 2
 `g_wpoa_enabled` / `WPoAActiveAtHeight` pair.

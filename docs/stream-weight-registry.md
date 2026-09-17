@@ -633,12 +633,12 @@ node can publish a weight on another cluster's behalf. This is what makes it saf
 
 - `ExtractItemPublishers(...)` recovers the signing addresses from the transaction's
   **input scripts**, mirroring MultiChain's own extraction in `StreamItemEntry1`
-  ([`rpcwalletutils.cpp`](../../rpc/rpcwalletutils.cpp)): for each input it recovers the
+  ([`rpcwalletutils.cpp`](../src/rpc/rpcwalletutils.cpp)): for each input it recovers the
   address embedded in the `scriptSig` and keeps it only when the signature commits to the
   whole transaction (`SIGHASH_ALL`) or to this very output (`SIGHASH_SINGLE` at the same
   index) — a signature committing to neither does not authenticate this item. A payload
   field can claim anything; an input signature cannot.
-- `mc_StreamItemIsSelfAttested(...)` ([`weight_record.h`](../weight_record.h)) is the rule
+- `mc_StreamItemIsSelfAttested(...)` ([`weight_record.h`](../src/wpoa/weight_record.h)) is the rule
   itself, and it is the **same** predicate `weight-engine-membership` applies. One
   implementation, shared by both layers: two copies of a consensus-critical predicate
   could drift into a node discarding a record it does not accuse, or vice versa.

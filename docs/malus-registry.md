@@ -1,5 +1,12 @@
 # Behavioural malus registry (`malus_record.h` + `malus_registry.{h,cpp}`)
 
+> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
+> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
+> rebuilt as a Python harness. The references are kept as written because they record the
+> work as it was done; for the current structure see
+> [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
+
+
 > **Register: technical-direct.** A developer reference: APIs, function signatures,
 > data structures and control flow, with code terminology left verbatim. For the
 > theoretical consensus model see
@@ -168,7 +175,7 @@ else's.
 
 The proof is the exact **negation** of the rule the readers apply: a report is valid
 precisely when the readers discarded the record. Both use the same shared predicate
-(`mc_StreamItemIsSelfAttested`, [`../weight_record.h`](../weight_record.h)), so a node can
+(`mc_StreamItemIsSelfAttested`, [`../weight_record.h`](../src/wpoa/weight_record.h)), so a node can
 never accuse a record it would have accepted, or accept one it would accuse.
 
 Readers discard such a record already, so the attempt gains nothing — and that is exactly
@@ -299,7 +306,7 @@ property of the code and not just of the tuning.
 
 A zero effective weight needs no special handling anywhere downstream: the score transform
 already returns `+inf` for a zero weight
-([`wpoa_selector.h`](../wpoa_selector.h) `ScoreFromEntropy64`), which makes the validator
+([`wpoa_selector.h`](../src/wpoa/wpoa_selector.h) `ScoreFromEntropy64`), which makes the validator
 structurally ineligible without an explicit exclusion branch.
 
 ---
@@ -307,7 +314,7 @@ structurally ineligible without an explicit exclusion branch.
 ## 6. Epoch alignment, and the acyclicity it buys
 
 `M` and `Psi` are per-epoch quantities on the **same** height→epoch map the weight layer
-uses (`HeightToEpoch`, [`../../weight_engine/weight_engine.h`](../../weight_engine/weight_engine.h)) —
+uses (`HeightToEpoch`, [`../../weight_engine/weight_engine.h`](../src/weight_engine/weight_engine.h)) —
 single-sourced deliberately, since two copies of a consensus-critical mapping could drift.
 
 Heights in epoch `e` are governed by `Psi^(e-1)`: a malus proved in an epoch takes effect
@@ -390,7 +397,7 @@ Implemented in [`rpc/rpcwpoa.cpp`](../src/rpc/rpcwpoa.cpp), registered in
 
 ## 10. Tests
 
-- **Unit** ([`../test/wpoa_malus_tests.cpp`](../test/wpoa_malus_tests.cpp), node-free, run
+- **Unit** ([`../test/wpoa_malus_tests.cpp`](../src/wpoa/test/wpoa_malus_tests.cpp), node-free, run
   with `run_unit_tests.sh malus`): record parsing including both `OpReturnFormatEntry`
   wrappings and rejection of every malformed shape; the fold and its decay; `Psi` over its
   whole range; `w_eff`; the map-level transform; and reversibility — that an excluded
@@ -417,7 +424,7 @@ Implemented in [`rpc/rpcwpoa.cpp`](../src/rpc/rpcwpoa.cpp), registered in
 
 | File | Role |
 |---|---|
-| [`../malus_record.h`](../malus_record.h) | Pure core: the four kinds and their families, record parsing (including the data-integrity payloads), the `MalusScores` dispatch, `Fold`, `CorrectionFactor`, `EffectiveWeight`, `EpochsToClear`, `ApplyToWeights`. Node-free and unit-tested in isolation. |
-| [`../malus_registry.h`](../malus_registry.h) | The `MalusRegistry` facade, the runtime parameters and `WPoAApplyMalus`. |
-| [`../malus_registry.cpp`](../malus_registry.cpp) | Stream provisioning (open), confirmed-only reads, `ValidReport` and `ValidDataIntegrityReport`, the per-epoch fold, publication and the provisioning thread. |
+| [`../malus_record.h`](../src/wpoa/malus_record.h) | Pure core: the four kinds and their families, record parsing (including the data-integrity payloads), the `MalusScores` dispatch, `Fold`, `CorrectionFactor`, `EffectiveWeight`, `EpochsToClear`, `ApplyToWeights`. Node-free and unit-tested in isolation. |
+| [`../malus_registry.h`](../src/wpoa/malus_registry.h) | The `MalusRegistry` facade, the runtime parameters and `WPoAApplyMalus`. |
+| [`../malus_registry.cpp`](../src/wpoa/malus_registry.cpp) | Stream provisioning (open), confirmed-only reads, `ValidReport` and `ValidDataIntegrityReport`, the per-epoch fold, publication and the provisioning thread. |
 | [`rpc/rpcwpoa.cpp`](../src/rpc/rpcwpoa.cpp) | The RPC handlers listed in §9, alongside the weight-registry ones. |

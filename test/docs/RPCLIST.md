@@ -1,18 +1,18 @@
 # MultiChain RPC command reference
 
 Every RPC command this node registers, taken from the call table in
-[`src/rpc/rpclist.cpp`](../src/rpc/rpclist.cpp) and from the help strings in
-[`src/rpc/rpchelp.cpp`](../src/rpc/rpchelp.cpp) (plus the inline help of the
+[`src/rpc/rpclist.cpp`](../../src/rpc/rpclist.cpp) and from the help strings in
+[`src/rpc/rpchelp.cpp`](../../src/rpc/rpchelp.cpp) (plus the inline help of the
 wPoA and WeightEngine commands, which lives in the two handler files
-[`src/rpc/rpcwpoa.cpp`](../src/rpc/rpcwpoa.cpp) and
-[`src/rpc/rpcweightengine.cpp`](../src/rpc/rpcweightengine.cpp)).
+[`src/rpc/rpcwpoa.cpp`](../../src/rpc/rpcwpoa.cpp) and
+[`src/rpc/rpcweightengine.cpp`](../../src/rpc/rpcweightengine.cpp)).
 
 296 commands are registered across 12 categories.
 
 ## How to read the flag columns
 
 The three booleans are the last three fields of each `CRPCCommand` entry. They are
-read by `CRPCTable::execute()` in [`src/rpc/rpcserver.cpp`](../src/rpc/rpcserver.cpp).
+read by `CRPCTable::execute()` in [`src/rpc/rpcserver.cpp`](../../src/rpc/rpcserver.cpp).
 
 | Column | `true` (✅) | `false` (—) |
 | --- | --- | --- |

@@ -1,5 +1,12 @@
 # ADR — `R_k^(e)` becomes chain-derived, and the reconciliation stream is removed
 
+> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
+> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
+> rebuilt as a Python harness. The references are kept as written because they record the
+> work as it was done; for the current structure see
+> [`../../test/README.md`](../../test/README.md) and [`../../test/docs/fixes-changelog.md`](../../test/docs/fixes-changelog.md).
+
+
 > **Status:** accepted, implemented.
 > **Scope:** `weight-engine-reconciliation`, `weight-engine-activity`, `R_k^(e)`
 > (thesis Def. 6.7), `tau_i^(e)` (Def. 6.3).

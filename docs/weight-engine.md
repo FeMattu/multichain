@@ -89,7 +89,7 @@ naming split mirrors the directory split.
 > See [implementation-status.md §0.1](implementation-status.md#01-how-a-nodes-weight-is-assigned--the-authoritative-flow)
 > and [adr/reconciliation-onchain.md §7](adr/reconciliation-onchain.md#7-divergence-from-the-thesis-text).
 
-Definitions in [`weight_streams.h`](../../weight_engine/weight_streams.h).
+Definitions in [`weight_streams.h`](../src/weight_engine/weight_streams.h).
 
 **Published — two streams:**
 
@@ -109,7 +109,7 @@ Definitions in [`weight_streams.h`](../../weight_engine/weight_streams.h).
 
 `tau_i^{(e)}` and `R_k^{(e)}` are both derived **directly from the confirmed blocks** of
 the epoch, by `ComputeActivityAndReconciliationForEpoch()`
-([`weight_reader.h`](../../weight_engine/weight_reader.h)). Both are deterministic
+([`weight_reader.h`](../src/weight_engine/weight_reader.h)). Both are deterministic
 functions of those blocks, so every honest node recomputes the identical value: no
 publisher, no duplicate-write risk, nothing to trust and nothing to misstate.
 
@@ -153,7 +153,7 @@ that miner `k` **signed**, among the confirmed transactions of epoch `e`.
   at the end of the epoch, so the total carries no floating-point rounding of its own.
 
 The rules live in the pure layer (`mc_ValuePaidToTreasury`,
-`mc_AccumulateReconciliation` in [`weight_records.h`](../../weight_engine/weight_records.h))
+`mc_AccumulateReconciliation` in [`weight_records.h`](../src/weight_engine/weight_records.h))
 and are unit-tested there; only the traversal needs the block layer.
 
 #### The treasury address is a chain parameter
@@ -194,7 +194,7 @@ that fails the test is **discarded** by the reader — it does not enter `C_k` a
 no side effect of any kind. Not flagged, not down-weighted: discarded.
 
 The rule lives in one place, `mc_MembershipRecordIsSelfAttested`
-([`weight_records.h`](../../weight_engine/weight_records.h)), so the reader that discards
+([`weight_records.h`](../src/weight_engine/weight_records.h)), so the reader that discards
 and any verifier that accuses apply an identical predicate. The signing addresses are
 recovered from the transaction's input scripts exactly as MultiChain's own
 `StreamItemEntry` does (`WeightStreamItem::publishers`).
@@ -216,7 +216,7 @@ ones simply drop out.
 > with a mutable relation, which is why the indexing had to change rather than be patched.
 
 `C_k` is now rebuilt in two pure steps
-([`weight_records.h`](../../weight_engine/weight_records.h)):
+([`weight_records.h`](../src/weight_engine/weight_records.h)):
 
 1. `mc_AccumulateLatestMembership` folds the chain-ordered items into
    `node_address -> miner_address`, newest confirmed winning;
@@ -249,7 +249,7 @@ streams grant write narrowly and which grant it to the whole network.
 ## 3. The computation pipeline
 
 Implemented verbatim from the thesis chapter *"Gestione del peso"* in
-[`weight_engine.h`](../../weight_engine/weight_engine.h), which is a **pure** core: it
+[`weight_engine.h`](../src/weight_engine/weight_engine.h), which is a **pure** core: it
 depends only on the C++ standard library, so it is testable in isolation.
 
 ```
@@ -270,7 +270,7 @@ place.
 
 The final integer weight is `ToIntegerWeight(w_k)`, always `>= 1` — the weight-positivity
 requirement, and also the Efraimidis–Spirakis requirement
-([`wpoa_selector.h`](../wpoa_selector.h)).
+([`wpoa_selector.h`](../src/wpoa/wpoa_selector.h)).
 
 > **Supersedes the allocation / compliance formulation.** Until this change the engine
 > implemented the earlier version of the same feedback slot: an allocation
@@ -318,7 +318,7 @@ The epoch is **1-based**:
 epoch(height) = height / g_weight_epoch_length + 1
 ```
 
-`HeightToEpoch()` in [`weight_engine.cpp`](../../weight_engine/weight_engine.cpp). The
+`HeightToEpoch()` in [`weight_engine.cpp`](../src/weight_engine/weight_engine.cpp). The
 same function is reused by the malus registry to align epochs
 ([malus-registry.md](malus-registry.md)).
 
@@ -368,7 +368,7 @@ already ruled out deriving the treasury address from the mutable admin set
 `ISMINE_SPENDABLE | ISMINE_WATCH_ONLY` — and MultiChain keeps no address index. A node
 therefore cannot read another cluster's balance at all, yet **every** node must recompute
 **every** cluster's weight in order to verify the published ones
-([weight_verifier.h](../../weight_engine/weight_verifier.h)). The chain-derived route is
+([weight_verifier.h](../src/weight_engine/weight_verifier.h)). The chain-derived route is
 not merely safer here; it is the only one that exists.
 
 #### No balance cache is needed
@@ -418,14 +418,22 @@ rather than what it was notionally due.
 ## 4. The engine thread
 
 `ThreadWeightEngine()` in
-[`weight_engine.cpp`](../../weight_engine/weight_engine.cpp), launched from `AppInit2`.
+[`weight_engine.cpp`](../src/weight_engine/weight_engine.cpp), launched from `AppInit2`.
 
 The loop, on each iteration:
 
 1. waits for the wallet, permissions and connectivity to be ready, and for the initial
    block download to finish (the same gate as the wPoA thread);
 2. calls `reader.EnsureInputStreams()` — creates the two missing published streams and
-   subscribes;
+   subscribes. **Creation is retried.** It used to be one-shot: the "attempted" flag was
+   latched *before* the `create` call, so a single throw — no `create` permission yet, no
+   spendable output yet, both of which resolve themselves within a few blocks — was
+   remembered as success and the stream never appeared. A live node produced
+   `weight-engine-esg` and neither of the other two, after which the engine waited for
+   inputs that could no longer arrive, silently. All three registries now share one state
+   machine (`src/wpoa/stream_setup_state.h`) that latches only on a real broadcast, bounds
+   its retries at `MC_WPOA_STREAM_SETUP_MAX_FAILURES`, logs every failure with its attempt
+   count, and can re-arm if a broadcast never confirms;
 3. identifies the **latest buried epoch**;
 4. computes `w_k` **only for its own** miner address, and only if the local node is itself
    a cluster miner (`ComputeLocalWeightForEpoch`: if
@@ -436,6 +444,85 @@ The loop, on each iteration:
 
 A node not yet certified, with incomplete inputs, or whose epoch is not yet buried, simply
 does not publish: no error, no partial value.
+
+---
+
+## 4bis. Deferred activation — when wPoA actually takes over
+
+wPoA does **not** begin governing at `setup-first-blocks`. It begins at the first block
+that confirms a weight the selector can actually draw. The two are different, and the
+difference used to stop chains.
+
+### The circular dependency
+
+At `setup-first-blocks` the height says "wPoA governs from here". But the engine cannot
+publish a weight until an epoch is **buried**, an epoch cannot bury without blocks, and —
+once wPoA governs — blocks are only produced by whoever the registry elects. With an empty
+registry the selector returns `""`, no miner self-elects, no block is produced, and the
+epoch that would have produced the first weight never arrives.
+
+The chain stops, and nothing in the logs connects the symptom to the cause. Reproduced on
+a clean single-node chain with `setup-first-blocks = 25`: the last block was 24.
+
+`AdjustSetupFirstBlocks` (see
+[protocol-parameters.md](protocol-parameters.md), §1ter) raises the floor so the geometry
+*allows* a weight to confirm in time, but a floor is still a height. It cannot know whether
+the engine had `create` permission, whether anyone registered membership, or whether a CA
+ever certified a score.
+
+### The rule
+
+wPoA governs a height when **both** hold:
+
+1. `height >= setup-first-blocks` — the native setup phase is over;
+2. the registry has, at some point, carried a **positive** weight.
+
+Condition 2 is a latch. It flips once and never flips back.
+
+* **Before it flips** the node behaves exactly as if wPoA were off: private sortition and
+  Phase-2 selection both hand the round to the native MultiChain scheduler, and the
+  mining-diversity gate stands down with them so the native round-robin spacing still
+  applies. The chain advances, epochs bury, the engine computes and publishes — and wPoA
+  takes over by itself.
+
+* **After it flips**, every validator being ineligible is a *legitimate outcome of a
+  weighted sortition*, not a bootstrap problem: it is what a registry whose weights have
+  all gone to zero means. The chain stopping there is the protocol working, and the node
+  does **not** route around it. It says so instead, because from the outside a correct
+  halt and a hang look identical:
+
+  ```
+  [wPoA] height N: wPoA is active but NO validator is eligible (every effective weight
+         is 0, or none is valid for this round). The chain will not advance until a
+         positive weight is published. This is the protocol, not a stall to route around.
+  ```
+
+Positive matters: Efraimidis–Spirakis cannot draw a zero-weight key, so a registry listing
+validators at weight `0` elects nobody just as surely as an empty one. Only a weight `> 0`
+counts as activation.
+
+### Where the latch lives, and why it is not a chain query
+
+`WPoAEverElectable()` is a plain boolean, set from `StreamWeightRegistry::ReadAllRecords`
+— the single path every consumer of the weights already goes through, so it is maintained
+whether the round is decided by Phase-2 selection, by private sortition, or merely
+inspected by an audit RPC. Activation is announced once:
+
+```
+[wPoA] ACTIVATED: the registry now carries a positive weight (<addr> = <w>, confirmed in
+       block N). Until now the chain ran under the native MultiChain rules.
+```
+
+It is deliberately **not** derived from the chain at the point of use. An earlier version
+did exactly that — reading the weights stream inside `WPoAActiveAtHeight` — and because
+that predicate is also the mining-diversity permission hook, the wallet read happened
+under locks the permission check already held. The node hung at precisely the height the
+change was meant to rescue.
+
+Node-local staleness is safe here. Before the latch is set this node has never seen a
+weight, so it could not recompute any election anyway, and the validator already **accepts**
+a block whose election it cannot recompute rather than stalling (see
+`VerifyBlockMinerWPoA`). The latch only ever changes what this node does while *mining*.
 
 ---
 
@@ -450,7 +537,7 @@ changed is that this is now **enforced and verifiable** rather than merely conve
 see [§5.1](#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others).
 
 There is no runtime overwrite. In `AppInit2`, at the end of the wPoA block
-([`init.cpp`](../../core/init.cpp)):
+([`init.cpp`](../src/core/init.cpp)):
 
 ```cpp
 if (g_wpoa_weights_enabled && pwalletMain && pwalletTxsMain && !fDisableWallet)
@@ -466,7 +553,7 @@ The difference is **observable**: with the engine on, `-weight=500` does not pro
 record that is later superseded — it produces **no** record.
 
 Both paths write the same stream. Reads are **newest-confirmed-wins**
-(`mc_AccumulateLatestWeight`, [`weight_record.h`](../weight_record.h)), so consensus is
+(`mc_AccumulateLatestWeight`, [`weight_record.h`](../src/wpoa/weight_record.h)), so consensus is
 indifferent to which of a node's two paths produced the record.
 
 ### 5.1 Every node publishes its own weight, and every node checks the others
@@ -479,12 +566,12 @@ worth separating because they answer different questions and fail in opposite di
 
 A weight record is valid **only if the address that signed the publishing transaction is
 the `node_address` the payload declares.** A record naming another cluster is **discarded**
-by `DecodeWeightRecord` ([`stream_weight_registry.cpp`](../stream_weight_registry.cpp)):
+by `DecodeWeightRecord` ([`stream_weight_registry.cpp`](../src/wpoa/stream_weight_registry.cpp)):
 it never reaches the weight map, so no node can publish a weight on another cluster's
 behalf.
 
 The rule is the *same predicate* the membership stream uses —
-`mc_StreamItemIsSelfAttested` in [`weight_record.h`](../weight_record.h) — with one
+`mc_StreamItemIsSelfAttested` in [`weight_record.h`](../src/wpoa/weight_record.h) — with one
 implementation shared by both layers. Two copies of a consensus-critical predicate could
 drift into a node discarding a record it does not accuse, or accusing one it does not
 discard.
@@ -510,8 +597,8 @@ self-attested records, `ESG` is published. So any honest node can re-run the ide
 the identical inputs and reach the identical integer. A published value that differs is
 **provably wrong** — not a matter of opinion — and every node can reject it independently,
 with no coordination and no privileged auditor. Implementation:
-[`weight_verifier.h`](../../weight_engine/weight_verifier.h) /
-[`.cpp`](../../weight_engine/weight_verifier.cpp), reported by the
+[`weight_verifier.h`](../src/weight_engine/weight_verifier.h) /
+[`.cpp`](../src/weight_engine/weight_verifier.cpp), reported by the
 `weightverifyweights` RPC.
 
 The comparison is **exact integer equality**, which is safe precisely because of the
@@ -611,6 +698,75 @@ already carries per-epoch findings.
 
 ---
 
+## 5bis. Two operational orderings that fail silently
+
+Neither is a defect. Both are sequences that are correct when followed and produce a
+misleading symptom when they are not, so they are written down rather than rediscovered.
+
+### Create the stream, then grant on it
+
+A stream permission names an entity, and the entity has to exist first:
+
+```
+grant <addr> wpoa-weights.write        # BEFORE `create stream wpoa-weights`
+-> error code: -708  Entity with this name not found: wpoa-weights
+```
+
+`-708` is accurate and the ordering requirement is ordinary MultiChain behaviour. The
+trap is what happens when the error is not noticed: the grant simply did not happen, and
+the **next** thing to fail is something else entirely, several steps later —
+
+```
+weightregistermembership <miner>
+-> error code: -704  Address <addr> lacks write permission for weight-engine-membership
+```
+
+— which names a different command, a different stream and a different permission. The
+correct order is therefore:
+
+1. `create stream wpoa-weights false` (and the other closed streams), **wait for
+   confirmation**;
+2. `grant <addr> wpoa-weights.write` for each publisher, wait for confirmation;
+3. only then `weightregistermembership` / `weightsetesg`.
+
+Global permissions (`connect,send,receive`, `mine`, `high1`) name no entity and can be
+granted at any point.
+
+### Confirm the treasury's `receive` before restarting with `-weighttreasuryaddress`
+
+`weight-treasury-address` is hash-enforced, so every node must carry the same value — in
+practice it is installed by restarting the nodes with the flag. If the `receive` grant on
+that address has been **broadcast but not yet mined** when the restart happens, it dies in
+the mempool with the node. Afterwards:
+
+```
+sendfrom <miner> <treasury> <amount>
+-> error code: -704  Destination address doesn't have receive permission
+```
+
+and every restitution fails. `R_k` is then 0 for every cluster, `rho` stays 0, and
+`w_k = W_k · (1 - lambda)` for ever — which is indistinguishable from a correctly
+configured chain whose restitution channel happens to be inert. Observed on a live run:
+96 consecutive failures, no restitution recorded, and nothing in the results that looked
+wrong.
+
+The node now warns at startup when the configured treasury does not hold a confirmed
+`receive`:
+
+```
+[WeightEngine] WARNING: the treasury address <addr> does NOT hold `receive` in the
+    confirmed permission database. Every miner restitution to it will fail with -704 and
+    R_k will be 0 for every cluster ...
+```
+
+**Why the parameter is not runtime-settable instead.** It is consensus-critical: `R_k` is
+defined as the value paid to *that* address, so two nodes with different values compute
+different weights and fork. Making it settable by RPC would move a hash-enforced quantity
+outside the hash, which is a larger hole than the sequencing hazard it would close. The
+ordering requirement stands; the warning is there so that getting it wrong is visible.
+
+---
+
 ## 6. Security model — three independent layers
 
 This is the part to read carefully: the layers are distinct, they protect different
@@ -676,15 +832,15 @@ reconciliation stream removed an authorization surface rather than reassigning i
 | `weightsetesg` | `weight-engine-esg` | **Certification Authority only** | `{node_address, esg}`, `esg > 0` |
 | `weightregistermembership` | `weight-engine-membership` | **any node** | key `node_address`, payload `{node_address, miner_address, timestamp}` |
 
-Registered in [`rpclist.cpp`](../../rpc/rpclist.cpp). Each method, **before** publishing:
+Registered in [`rpclist.cpp`](../src/rpc/rpclist.cpp). Each method, **before** publishing:
 
 1. validates the record in **round-trip** with the *same* W1 parser the reader uses
    (`mc_Parse*RecordJson`) — so it cannot emit a malformed record the reader would
    reject;
 2. applies its authorization rule
-   ([`weight_authorization.h`](../../weight_engine/weight_authorization.h) holds the
+   ([`weight_authorization.h`](../src/weight_engine/weight_authorization.h) holds the
    decision tables as pure functions; the on-chain lookups live in
-   [`weight_publisher.cpp`](../../weight_engine/weight_publisher.cpp)):
+   [`weight_publisher.cpp`](../src/weight_engine/weight_publisher.cpp)):
    `IsCertificationAuthority` for ESG, and **none at all** for
    `weightregistermembership` — it takes no parameter naming *whose* membership to
    declare, so it structurally cannot write about anyone but the caller. There is no
@@ -765,18 +921,18 @@ visible in `listpermissions`.
 
 MultiChain has **no arbitrary named custom permission**: there is no
 `grant <addr> custom.certauth`. It offers exactly six **fixed** slots
-([`permission.h`](../../permissions/permission.h)): `low1`–`low3` (`MC_PTP_CUSTOM1..3`) and
+([`permission.h`](../src/permissions/permission.h)): `low1`–`low3` (`MC_PTP_CUSTOM1..3`) and
 `high1`–`high3` (`MC_PTP_CUSTOM4..6`). The role therefore occupies one of them, and it
 **must be a high slot**:
 
 > `mc_Permissions::IsActivateEnough` returns `0` for the high slots
-> ([`permission.cpp`](../../permissions/permission.cpp)), so granting one requires
+> ([`permission.cpp`](../src/permissions/permission.cpp)), so granting one requires
 > `admin` and not merely `activate`. That is precisely the requirement that **only the
 > administrator may confer CA status**. The low slots are grantable by any `activate`
 > holder and would silently weaken it.
 
 The wire name is defined once, as `MC_WEIGHT_CA_PERMISSION_NAME` in
-[`weight_authorization.h`](../../weight_engine/weight_authorization.h), and the permission
+[`weight_authorization.h`](../src/weight_engine/weight_authorization.h), and the permission
 *bit* is derived from that name at runtime through MultiChain's own `GetPermissionType`
 parser — so the name shown in an error and the bit actually queried cannot drift, and
 moving the role to another slot is a one-line change.
@@ -867,14 +1023,14 @@ owning thread (see the note in
 
 | File | Role |
 |---|---|
-| [`weight_streams.h`](../../weight_engine/weight_streams.h) | W1: stream names, JSON field names, parameter defaults. No logic. |
-| [`weight_records.h`](../../weight_engine/weight_records.h) | W1: pure record parsers (`mc_Parse*RecordJson`), the self-attestation predicate and the cluster inversion. Testable in isolation. |
-| [`weight_authorization.h`](../../weight_engine/weight_authorization.h) | W1: the pure per-stream write policy — the Certification Authority decision table and the CA role's wire name. No node dependency. |
-| [`weight_engine.h`](../../weight_engine/weight_engine.h) | W2: the pure computation core. Standard library only. |
-| [`weight_engine.cpp`](../../weight_engine/weight_engine.cpp) | W3: `HeightToEpoch`, `ThreadWeightEngine`, node glue, configuration globals. |
-| [`weight_reader.h`](../../weight_engine/weight_reader.h) / [`.cpp`](../../weight_engine/weight_reader.cpp) | W3: `WeightStreamReader` — lifecycle of the two published streams, confirmed reads with publisher extraction, and the single-pass `ComputeActivityAndReconciliationForEpoch`. |
-| [`weight_publisher.h`](../../weight_engine/weight_publisher.h) / [`.cpp`](../../weight_engine/weight_publisher.cpp) | W3: the single validated write path, the CA-gated ESG RPC and the public self-write membership RPC. No reconciliation write path exists — the quantity is derived. |
-| [`weight_verifier.h`](../../weight_engine/weight_verifier.h) / [`.cpp`](../../weight_engine/weight_verifier.cpp) | Universal verification of the published weights: the pure compare/filter and the per-epoch verdict cache. The `weightverifyweights` RPC that reports it lives in [`rpc/rpcweightengine.cpp`](../src/rpc/rpcweightengine.cpp). |
+| [`weight_streams.h`](../src/weight_engine/weight_streams.h) | W1: stream names, JSON field names, parameter defaults. No logic. |
+| [`weight_records.h`](../src/weight_engine/weight_records.h) | W1: pure record parsers (`mc_Parse*RecordJson`), the self-attestation predicate and the cluster inversion. Testable in isolation. |
+| [`weight_authorization.h`](../src/weight_engine/weight_authorization.h) | W1: the pure per-stream write policy — the Certification Authority decision table and the CA role's wire name. No node dependency. |
+| [`weight_engine.h`](../src/weight_engine/weight_engine.h) | W2: the pure computation core. Standard library only. |
+| [`weight_engine.cpp`](../src/weight_engine/weight_engine.cpp) | W3: `HeightToEpoch`, `ThreadWeightEngine`, node glue, configuration globals. |
+| [`weight_reader.h`](../src/weight_engine/weight_reader.h) / [`.cpp`](../src/weight_engine/weight_reader.cpp) | W3: `WeightStreamReader` — lifecycle of the two published streams, confirmed reads with publisher extraction, and the single-pass `ComputeActivityAndReconciliationForEpoch`. |
+| [`weight_publisher.h`](../src/weight_engine/weight_publisher.h) / [`.cpp`](../src/weight_engine/weight_publisher.cpp) | W3: the single validated write path, the CA-gated ESG RPC and the public self-write membership RPC. No reconciliation write path exists — the quantity is derived. |
+| [`weight_verifier.h`](../src/weight_engine/weight_verifier.h) / [`.cpp`](../src/weight_engine/weight_verifier.cpp) | Universal verification of the published weights: the pure compare/filter and the per-epoch verdict cache. The `weightverifyweights` RPC that reports it lives in [`rpc/rpcweightengine.cpp`](../src/rpc/rpcweightengine.cpp). |
 
 ### 9.1 Tests
 
@@ -887,10 +1043,10 @@ The module has its **own** unit suites, with a runner separate from the wPoA one
 
 | Suite | File | Coverage |
 |---|---|---|
-| `records` | [`weight_records_tests.cpp`](../../weight_engine/test/weight_records_tests.cpp) | The chain-derived **reconciliation rules** (only treasury-paying outputs count; third parties, change and non-monetary outputs excluded; the signer is credited so a transfer *to* a miner never counts as one *from* it; treasury self-payment excluded; multi-transaction aggregation; order independence across nodes). Record parsing; the **self-attestation rule** (own declaration accepted, foreign / admin-proxy declaration rejected, fail-closed on an unrecoverable signer); cluster inversion, including a node changing cluster twice so only the last declaration counts, and the no-self-membership rule. |
-| `authorization` | [`weight_authorization_tests.cpp`](../../weight_engine/test/weight_authorization_tests.cpp) | The ESG write decision table: CA authorized; **global admin without the role refused**; generic address refused; revocation biting while `.write` remains; CA lacking `.write`; CA-first error ordering; fail-closed on a chain without custom permissions; and that the role sits in a `high*` slot. |
-| `verifier` | [`weight_verifier_tests.cpp`](../../weight_engine/test/weight_verifier_tests.cpp) | Matching values accepted; an inflated **and** an understated value rejected and dropped from the map; off-by-one rejected (no tolerance band); a weight published for a non-cluster rejected with its own reason; **fail-open** when the recomputation was unavailable, including a partial map; two honest nodes reaching identical verdicts and identical filtered maps. |
-| `engine` | [`weight_engine_tests.cpp`](../../weight_engine/test/weight_engine_tests.cpp) | Order independence, gain excluding the epoch's own restitution, cumulative `saldo` recursion, `rho` bounds and the non-positive-`saldo` guard, full-restitution scoring `rho = 1` (not `0`), per-cluster independence, weight positivity, `ToIntegerWeight` clamp. |
+| `records` | [`weight_records_tests.cpp`](../src/weight_engine/test/weight_records_tests.cpp) | The chain-derived **reconciliation rules** (only treasury-paying outputs count; third parties, change and non-monetary outputs excluded; the signer is credited so a transfer *to* a miner never counts as one *from* it; treasury self-payment excluded; multi-transaction aggregation; order independence across nodes). Record parsing; the **self-attestation rule** (own declaration accepted, foreign / admin-proxy declaration rejected, fail-closed on an unrecoverable signer); cluster inversion, including a node changing cluster twice so only the last declaration counts, and the no-self-membership rule. |
+| `authorization` | [`weight_authorization_tests.cpp`](../src/weight_engine/test/weight_authorization_tests.cpp) | The ESG write decision table: CA authorized; **global admin without the role refused**; generic address refused; revocation biting while `.write` remains; CA lacking `.write`; CA-first error ordering; fail-closed on a chain without custom permissions; and that the role sits in a `high*` slot. |
+| `verifier` | [`weight_verifier_tests.cpp`](../src/weight_engine/test/weight_verifier_tests.cpp) | Matching values accepted; an inflated **and** an understated value rejected and dropped from the map; off-by-one rejected (no tolerance band); a weight published for a non-cluster rejected with its own reason; **fail-open** when the recomputation was unavailable, including a partial map; two honest nodes reaching identical verdicts and identical filtered maps. |
+| `engine` | [`weight_engine_tests.cpp`](../src/weight_engine/test/weight_engine_tests.cpp) | Order independence, gain excluding the epoch's own restitution, cumulative `saldo` recursion, `rho` bounds and the non-positive-`saldo` guard, full-restitution scoring `rho = 1` (not `0`), per-cluster independence, weight positivity, `ToIntegerWeight` clamp. |
 
 All four suites are node-free: they do not require building the node. See [testing.md](testing.md).
 
@@ -910,3 +1066,10 @@ All four suites are node-free: they do not require building the node. See [testi
 - [malus-registry.md](malus-registry.md) — the malus registry, which reuses
   `HeightToEpoch`.
 - [implementation-status.md](implementation-status.md) — implementation status.
+
+---
+
+_Verified against the code on 2026-09-17 UTC (commit `7f3eb829`, branch
+`fix/wpoa-cpp-bugs-and-harness-simplification`). The deferred-activation and
+stream-retry sections describe the behaviour AFTER the fixes of that branch; a binary
+built before it stops at `setup-first-blocks` with an empty registry._

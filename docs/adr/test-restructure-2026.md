@@ -1,5 +1,12 @@
 # ADR — restructuring the test tree, and realigning the suites with the code
 
+> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
+> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
+> rebuilt as a Python harness. The references are kept as written because they record the
+> work as it was done; for the current structure see
+> [`../../test/README.md`](../../test/README.md) and [`../../test/docs/fixes-changelog.md`](../../test/docs/fixes-changelog.md).
+
+
 > **Status:** accepted, implemented. The four open points of §7 were resolved on
 > 2026-09-15; §7 records the answers.
 > **Scope:** `src/weight_engine/test/`, `src/wpoa/test/`, a new project-level
@@ -8,10 +15,10 @@
 > economic simulation harness — see §2.3).
 > **Register: technical-direct.** Decision record: the inventory, the discrepancies
 > verified one by one, the decisions and their consequences. Module references:
-> [../../src/wpoa/docs/testing.md](../../src/wpoa/docs/testing.md),
-> [../../src/wpoa/docs/weight-engine.md](../../src/wpoa/docs/weight-engine.md).
-> Sibling ADRs: [../../src/wpoa/docs/adr/reconciliation-onchain.md](../../src/wpoa/docs/adr/reconciliation-onchain.md),
-> [../../src/wpoa/docs/adr/randao-fold-bare-xor.md](../../src/wpoa/docs/adr/randao-fold-bare-xor.md).
+> [../../src/wpoa/docs/testing.md](../testing.md),
+> [../../src/wpoa/docs/weight-engine.md](../weight-engine.md).
+> Sibling ADRs: [../../src/wpoa/docs/adr/reconciliation-onchain.md](../adr/reconciliation-onchain.md),
+> [../../src/wpoa/docs/adr/randao-fold-bare-xor.md](../adr/randao-fold-bare-xor.md).
 >
 > **On the paths cited in §1–§4.** Those sections were written *before* the move and cite
 > files at the locations they occupied then, with line numbers referring to their content
@@ -198,7 +205,7 @@ echo "$r" | grep -qiE 'method not found|unknown command|help' \
 ```
 
 Lines 179–183 do the same for the two streams. This is correct and intentional: it pins the
-removal that [adr/reconciliation-onchain.md](../../src/wpoa/docs/adr/reconciliation-onchain.md)
+removal that [adr/reconciliation-onchain.md](../adr/reconciliation-onchain.md)
 decided. **Keep both, unchanged.**
 
 Every other hit is prose *explaining* the removal (the CHANGELOG, the ADR,
@@ -918,7 +925,7 @@ documentation, not dead code.
 computes the documented weight — *"20/20 cells exact in `wpoa` mode"* — and
 `output/*.csv` plus `output/report.xlsx` are the tracked reference data behind that claim.
 An accepted ADR cites it as evidence for a design decision:
-[reconciliation-onchain.md](../../src/wpoa/docs/adr/reconciliation-onchain.md) line 34
+[reconciliation-onchain.md](../adr/reconciliation-onchain.md) line 34
 points at `helpers/stream_writer.py` for the note that a reconciliation record could
 contradict the ledger. Deleting the harness would leave that ADR citing nothing.
 

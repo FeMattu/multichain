@@ -15,10 +15,10 @@
 The Phase 3b RANDAO beacon lives in two files, split the same way as the Phase 2 selector
 ([wpoa-selector.md](wpoa-selector.md)) and the Phase 3a VRF ([vrf-wrapper.md](vrf-wrapper.md)):
 
-- [`randao_accumulator.h`](../randao_accumulator.h) — the **pure core** class
+- [`randao_accumulator.h`](../src/wpoa/randao_accumulator.h) — the **pure core** class
   `RandaoAccumulator` (`Genesis`, `Fold`, `DeriveSeed`), which is header-only, node-free and
   unit-tested, **plus** the *declarations* of the node glue.
-- [`randao_accumulator.cpp`](../randao_accumulator.cpp) — the **node glue**: the runtime
+- [`randao_accumulator.cpp`](../src/wpoa/randao_accumulator.cpp) — the **node glue**: the runtime
   flag/lookback globals, the activation predicate, the memoized block-index walk, reveal
   extraction and the seed helper.
 
@@ -26,7 +26,7 @@ The Phase 3b RANDAO beacon lives in two files, split the same way as the Phase 2
 the miner and any validator compute them even one bit differently, they elect different
 proposers and the chain forks (see [phase3b-implementation-guide.md §3](phase3b-implementation-guide.md#3-mental-model)).
 Keeping them in a header that depends on **nothing but `CSHA256`** lets the Boost.Test unit
-suite ([test/randao_accumulator_tests.cpp](../test/randao_accumulator_tests.cpp)) link them
+suite ([test/randao_accumulator_tests.cpp](../src/wpoa/test/randao_accumulator_tests.cpp)) link them
 against an independent reference implementation without pulling in the wallet or the node —
 so a bug in the fold or the seed cannot hide behind shared node state. Everything that *does*
 need the node (the block index, disk reads, the global flag) is quarantined in the `.cpp`.
@@ -398,7 +398,7 @@ static bool ExtractBlockReveal(const CBlock& block,
 ```
 
 This is the reveal reader. It is a near-copy of `FindBlockVRF` in
-[multichainblock.cpp](../../protocol/multichainblock.cpp) (see
+[multichainblock.cpp](../src/protocol/multichainblock.cpp) (see
 [vrf-verifier.md §1](vrf-verifier.md)), with **one deliberate difference**:
 
 - **`mc_Script scriptTmp;` — a stack-local decoder, NOT `mc_gState->m_TmpScript1`.**

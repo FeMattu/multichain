@@ -35,7 +35,7 @@ This is the per-file companion to
 ## 1. The pure core (`private_sortition.h`)
 
 `PrivateSortition` is header-only and node-free (it depends only on the Phase-2 score
-transform in [`wpoa_selector.h`](../wpoa_selector.h)), so the unit suite exercises it
+transform in [`wpoa_selector.h`](../src/wpoa/wpoa_selector.h)), so the unit suite exercises it
 without linking the node — exactly like the Phase 2/3a/3b cores.
 
 ### 1.1 `VRFInput(seed32, height, out)` — the public VRF input
@@ -69,7 +69,7 @@ byte-identical to `WPoASelector::ComputeScore(seed,addr,…)` — the property t
 `score_matches_shared_transform` pins. `weight == 0 ⇒ +inf` (via `ScoreFromEntropy64`), so
 an unweighted node can never be the argmin.
 
-The refactor that made this possible lives in [`wpoa_selector.h`](../wpoa_selector.h):
+The refactor that made this possible lives in [`wpoa_selector.h`](../src/wpoa/wpoa_selector.h):
 `FoldTop64(buf)` (big-endian top-64-bit fold) and `ScoreFromEntropy64(d, weight, dumping)`
 (`u=(d+1)/2^64; E=-ln(u); score=E/f(weight)`) were extracted from the old `ComputeScore`,
 which now just does `HMAC → FoldTop64 → ScoreFromEntropy64`.

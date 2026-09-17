@@ -9,7 +9,7 @@
 > single resolution block has since been replaced. The current behaviour is:
 >
 > - **Every wPoA and weight-engine switch is a `params.dat` chain parameter**, defined
->   in [`chainparams/paramlist.h`](../../chainparams/paramlist.h) from protocol
+>   in [`chainparams/paramlist.h`](../src/chainparams/paramlist.h) from protocol
 >   `20014`. They are set at `multichain-util create` time (or edited into
 >   `params.dat`) and **inherited** by every node that joins — a fresh node needs no
 >   wPoA command-line flags.
@@ -23,7 +23,7 @@
 > - **`AppInit2` resolves each phase** as: explicit runtime `-enablewpoa*` flag → else
 >   the runtime master `-enablewpoa`/`-wpoaenable` → else the inherited `params.dat`
 >   value. Creation-time master expansion lives in
->   [`chainparams/params.cpp`](../../chainparams/params.cpp) (`Read`).
+>   [`chainparams/params.cpp`](../src/chainparams/params.cpp) (`Read`).
 > - **Dependency constraints are hard failures**, at both creation and startup:
 >   `weights → selection → vrf → randao → sortition → malus`; the weight engine
 >   requires `weights`; and sortition requires lookback `k ≥ 1`.

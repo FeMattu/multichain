@@ -10,8 +10,8 @@
 > **Register: technical-direct.** Decision record: what the code actually does, where the
 > thesis and the code diverge, what the existing suite does when you run it, and what
 > follows for the refactor.
-> Sibling ADRs: [../../src/wpoa/docs/adr/reconciliation-onchain.md](../../src/wpoa/docs/adr/reconciliation-onchain.md),
-> [../../src/wpoa/docs/adr/randao-fold-bare-xor.md](../../src/wpoa/docs/adr/randao-fold-bare-xor.md),
+> Sibling ADRs: [../../src/wpoa/docs/adr/reconciliation-onchain.md](../adr/reconciliation-onchain.md),
+> [../../src/wpoa/docs/adr/randao-fold-bare-xor.md](../adr/randao-fold-bare-xor.md),
 > [test-restructure-2026.md](test-restructure-2026.md).
 
 ---
@@ -74,7 +74,7 @@ itself, rather than inferred from call sites:
 `getvalidatorinfo` and `getweight` do **not** exist — confirming the finding already
 recorded in [experiments/docs/metrics.md](../../experiments/docs/metrics.md). Neither does
 `weightsetreconciliation`, whose removal
-[reconciliation-onchain.md](../../src/wpoa/docs/adr/reconciliation-onchain.md) decided and
+[reconciliation-onchain.md](../adr/reconciliation-onchain.md) decided and
 which `functional_test_weight_engine.sh:174` deliberately asserts is gone.
 
 ### 1.2 The streams are four, not three
@@ -94,7 +94,7 @@ ESG), plus two *outputs* (weights, malus). `weight-engine-reconciliation` and
 ### 1.3 `src/weight_engine/test/experimental/` — confirmed protected, not touched
 
 The citation the mandate asked me to find is real and exact.
-[reconciliation-onchain.md §1](../../src/wpoa/docs/adr/reconciliation-onchain.md) cites
+[reconciliation-onchain.md §1](../adr/reconciliation-onchain.md) cites
 `helpers/stream_writer.py` for the note that `R_k` had been a random draw *"with no
 on-chain counterpart — the stream asserted a reconciliation that never happened"*. That
 citation is load-bearing evidence for an **accepted** ADR.

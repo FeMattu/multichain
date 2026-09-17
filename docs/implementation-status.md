@@ -1,5 +1,12 @@
 # wPoA — Implementation status
 
+> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
+> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
+> rebuilt as a Python harness. The references are kept as written because they record the
+> work as it was done; for the current structure see
+> [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
+
+
 > **Register: technical-direct.** A status table with pointers to code and tests. No
 > design argumentation: for the *why* of each choice see the phase guides, for the
 > theoretical model see [thesis-project-overview.md](thesis-project-overview.md).
@@ -243,7 +250,7 @@ API in detail: [stream-weight-registry.md](stream-weight-registry.md).
 
 These two native MultiChain parameters have similar names and **opposite** roles. The
 distinction is verifiable from their flags in
-[`paramlist.h`](../../chainparams/paramlist.h), and it matters because wPoA interacts with
+[`paramlist.h`](../src/chainparams/paramlist.h), and it matters because wPoA interacts with
 only one of them.
 
 | | `mining-diversity` | `mining-turnover` |
@@ -252,13 +259,13 @@ only one of them.
 | Part of the `params.dat` hash | **Yes** | No |
 | Nature | **Binding consensus rule** | **Local operational hint** |
 | Default | `0.3` | `0.5` |
-| Where it acts | `mc_Permissions::CanMine()` and `GetActiveMinerCount()` in [`permission.cpp`](../../permissions/permission.cpp) | `dMinerDrift = Params().MiningTurnover()` in [`miner.cpp`](../../miner/miner.cpp) |
+| Where it acts | `mc_Permissions::CanMine()` and `GetActiveMinerCount()` in [`permission.cpp`](../src/permissions/permission.cpp) | `dMinerDrift = Params().MiningTurnover()` in [`miner.cpp`](../src/miner/miner.cpp) |
 | Effect | A miner must wait `diversity × (active miners)` blocks before mining again. A block violating the spacing is **invalid**: peers reject it. | Affects only the local timing of one's own mining attempt. Makes no block invalid. |
 | Consequence of divergence between nodes | Fork | None: every node may hold its own value |
 
 **How wPoA interacts with each.** On wPoA-governed heights the **spacing** of
 `mining-diversity` is deliberately **bypassed**, but the `mine` permission still gates the
-signer. In [`multichainblock.cpp`](../../protocol/multichainblock.cpp):
+signer. In [`multichainblock.cpp`](../src/protocol/multichainblock.cpp):
 
 ```cpp
 int nMinerPerm;
@@ -295,7 +302,7 @@ Every other height keeps `CanMine()` unchanged.
 | Opaque read API | Done | `GetLocalWeight`, `GetAllNodesWeights`, `GetNodeWeight`. Backward search per address; hides the stream mechanics from callers. |
 | RPC surface | Done | `getlocalweight`, `getnodeweight`, `getallweights`. Confirmed-only, thread-safe. |
 | Read-path correctness fixes | Done | The non-WRP read family (WRP snapshot bug) and the 6-argument `OpReturnFormatEntry` overload. |
-| Unit tests (pure parsing / aggregation) | Done | [`wpoa_weight_tests.cpp`](../test/wpoa_weight_tests.cpp), node-free. |
+| Unit tests (pure parsing / aggregation) | Done | [`wpoa_weight_tests.cpp`](../src/wpoa/test/wpoa_weight_tests.cpp), node-free. |
 
 Detail: [phase1-implementation-guide.md](phase1-implementation-guide.md) ·
 [stream-weight-registry.md](stream-weight-registry.md) ·
@@ -313,7 +320,7 @@ Detail: [phase1-implementation-guide.md](phase1-implementation-guide.md) ·
 | mining-diversity spacing bypass | Done | The native round-robin gate is removed on wPoA-governed heights. |
 | Deterministic tie-break | Done | Lexicographically smallest address on exact score collision. |
 | Whale compression (`-dumpfunction`) | Done | `none` / `sqrt` / `log`, applied before the draw. |
-| Unit tests (pure selector math) | Done | [`wpoa_selector_tests.cpp`](../test/wpoa_selector_tests.cpp); probability preservation over 200k seeds. |
+| Unit tests (pure selector math) | Done | [`wpoa_selector_tests.cpp`](../src/wpoa/test/wpoa_selector_tests.cpp); probability preservation over 200k seeds. |
 
 Detail: [phase2-implementation-guide.md](phase2-implementation-guide.md) ·
 [wpoa-selector.md](wpoa-selector.md) · [miner-integration.md](miner-integration.md) ·
@@ -328,7 +335,7 @@ Detail: [phase2-implementation-guide.md](phase2-implementation-guide.md) ·
 | VRF wrapper (`WPoAVRF`, ECVRF/DLEQ over secp256k1) | Done | Pure `Prove` / `Verify`; no new build dependency. |
 | `-enablewpoavrf` switch | Done | Gates reveal production and verification via `WPoAVRFActiveAtHeight`. |
 | Per-block reveal embed + verify | Done | The proposer embeds `(R, pi)` as a suffix of the block-signature element; `VerifyBlockMinerWPoA` rejects a missing or invalid reveal. |
-| Unit tests (pure VRF crypto) | Done | [`vrf_wrapper_tests.cpp`](../test/vrf_wrapper_tests.cpp); roundtrip, determinism, tamper / forgery / cross-key rejection. |
+| Unit tests (pure VRF crypto) | Done | [`vrf_wrapper_tests.cpp`](../src/wpoa/test/vrf_wrapper_tests.cpp); roundtrip, determinism, tamper / forgery / cross-key rejection. |
 
 Detail: [phase3a-implementation-guide.md](phase3a-implementation-guide.md) ·
 [vrf-wrapper.md](vrf-wrapper.md) · [vrf-prover.md](vrf-prover.md) ·
@@ -344,7 +351,7 @@ Detail: [phase3a-implementation-guide.md](phase3a-implementation-guide.md) ·
 | `-enablewpoarandao` + `-wpoarandaolookback=k` | Done | `k` is consensus-critical, validated at startup. |
 | Seed anchored to `h[n]` and `n+1` | Done | Conforms to Def. 5.4 of the thesis. |
 | Selection-seed swap (miner + validator) | Done | Both call sites replace the prev-hash seed with `WPoARandaoSelectionSeed(tip)`; the election stays weight-proportional. |
-| Unit tests (pure accumulator / seed math) | Done | [`randao_accumulator_tests.cpp`](../test/randao_accumulator_tests.cpp); spec conformance against an independent reference, order and input sensitivity, chain consistency. |
+| Unit tests (pure accumulator / seed math) | Done | [`randao_accumulator_tests.cpp`](../src/wpoa/test/randao_accumulator_tests.cpp); spec conformance against an independent reference, order and input sensitivity, chain consistency. |
 
 Detail: [phase3b-implementation-guide.md](phase3b-implementation-guide.md) ·
 [randao-accumulator.md](randao-accumulator.md) · [randao-miner.md](randao-miner.md) ·
@@ -364,7 +371,7 @@ This is the security fix: it makes the proposer unpredictable until it acts.
 | **Banded delay** on `target-block-time` | Done | `D = T + delta·T·(2·score_norm − 1) + lambda·Phi` with `score_norm = 1 − e^{−W·score}`. Replaces the earlier open-ended ramp. The `W` factor keeps candidates spread across the band instead of crushed against its early edge. |
 | Native feedback reused as `Phi` | Done | The global correction term recentres the mean block time on target; `lambda = 0` disables it. |
 | Eligibility / time-bar validation | Done | Replaces the public-argmin equality: verify the VRF over the sortition input, recompute the score, accept iff `block.nTime >= parent.nTime + delay`. The auto-relaxing bar **is** the liveness fallback: no zero-proposer gap. |
-| Unit tests (pure math + real VRF) | Done | [`private_sortition_tests.cpp`](../test/private_sortition_tests.cpp); VRF-input encoding, score reuse, delay map, key-dependence (privacy), winner-delay uniformity, and probability preservation with real VRF keys. |
+| Unit tests (pure math + real VRF) | Done | [`private_sortition_tests.cpp`](../src/wpoa/test/private_sortition_tests.cpp); VRF-input encoding, score reuse, delay map, key-dependence (privacy), winner-delay uniformity, and probability preservation with real VRF keys. |
 
 Detail: [phase4-implementation-guide.md](phase4-implementation-guide.md) ·
 [private-sortition.md](private-sortition.md) ·
@@ -385,7 +392,7 @@ supersedes: [native-poa-block-delay.md](native-poa-block-delay.md).
 | `w_eff = w * Psi` in the election | Done | Applied in one place (`WPoAApplyMalus`), consumed by the public selector and by both sides of the private sortition. Inert when disabled or when nobody carries a violation. **Generic over the kind**: adding the two data-integrity kinds touched only the per-kind score dispatch — `Psi`, `w_eff` and the consensus path operate on the accumulated severity `M`, not on what produced it. |
 | `-enablewpoamalus` + `mu` / `M_max` / four point weights | Done | Inheritable chain parameters; requires sortition, and both `p(Equiv) > p(Delay)` and `p(BadWeight) > p(SelfWrite)` are enforced at startup. Intended ordering `p(Equiv) > p(BadWeight) > p(SelfWrite) > p(Delay)`. |
 | Reversibility of an exclusion | Done | `M` is an exponential moving average with `mu < 1`, so an exclusion clears after a finite number of clean epochs: no permanent ban — for **either** family, since the decay is a property of `M` rather than of the offence. Clearing bound corrected at the threshold. |
-| Unit tests | Done | [`wpoa_malus_tests.cpp`](../test/wpoa_malus_tests.cpp) (23 cases); parsing for both families, every data-integrity rejection (including a report accusing an *honest* record), the four-score dispatch and its ordering, EMA fold, `Psi`, `w_eff` end to end for a proved `badweight`, and reversibility. |
+| Unit tests | Done | [`wpoa_malus_tests.cpp`](../src/wpoa/test/wpoa_malus_tests.cpp) (23 cases); parsing for both families, every data-integrity rejection (including a report accusing an *honest* record), the four-score dispatch and its ordering, EMA fold, `Psi`, `w_eff` end to end for a proved `badweight`, and reversibility. |
 
 Detail: [malus-registry.md](malus-registry.md).
 
@@ -402,7 +409,7 @@ Detail: [malus-registry.md](malus-registry.md).
 | Self-attested membership (W3) | Done | Item key = declaring node; latest confirmed declaration wins, so a node changes cluster autonomously. The reader **discards** any record whose tx signer differs from its declared `node_address`. `weight-engine-membership.write` is meant to be granted network-wide. |
 | Self-published weights + universal verification | Done | `wpoa-weights.write` is granted network-wide; each node publishes only its **own** cluster, with `publishfrom` so the signer *is* the declared address. The reader **discards** a record whose signer differs (fails closed); the weight engine independently **recomputes every cluster** once per buried epoch and reports mismatches (fails open when it cannot recompute). Exposed by `weightverifyweights`. The mismatch consequence on `w_eff` is carried by the malus registry. |
 | Publisher + RPCs (W3) | Done | `weightsetesg` (**Certification Authority** only) and `weightregistermembership` (public self-write) — no write path in this module requires global `admin` any more. The admin-proxy `weightsetmembership` was removed (under self-attestation its records would be discarded) and `weightsetreconciliation` with the stream it wrote. |
-| ESG Certification Authority role (W3) | Done | The role is carried by MultiChain's `high1` custom permission — a **high** slot deliberately, since only those require `admin` rather than `activate` to grant. `weightsetesg` checks `IsCertificationAuthority` **instead of** `CanAdmin`, so an administrator that has not granted itself the role is refused. Revocation bites independently of `.write`. Policy decision table: [`weight_authorization.h`](../../weight_engine/weight_authorization.h). |
+| ESG Certification Authority role (W3) | Done | The role is carried by MultiChain's `high1` custom permission — a **high** slot deliberately, since only those require `admin` rather than `activate` to grant. `weightsetesg` checks `IsCertificationAuthority` **instead of** `CanAdmin`, so an administrator that has not granted itself the role is refused. Revocation bites independently of `.write`. Policy decision table: [`weight_authorization.h`](../src/weight_engine/weight_authorization.h). |
 | Computation and publication thread | Done | `ThreadWeightEngine`; publishes only for the latest **buried** epoch and only if the node is a cluster miner. Mutually exclusive with the static registrar. |
 | `-enableweightengine` + `epochlength` / `kappa` / `alpha` / `lambda` / `treasuryaddress` | Done | Hash-enforced chain parameters; requires Phase 1; validated at startup. `weight-treasury-address` may be empty, which makes `R_k = 0` uniformly — a uniform scaling that leaves the election unchanged. |
 | Unit tests | Done | Its own runner: `src/weight_engine/test/run_unit_tests.sh`, suites `records`, `authorization`, `engine` and `verifier`. |
@@ -411,6 +418,29 @@ Detail: [weight-engine.md](weight-engine.md) ·
 [CHANGELOG-weight-engine-refactor.md](CHANGELOG-weight-engine-refactor.md) (permission
 model before/after, per stream) ·
 [adr/reconciliation-onchain.md](adr/reconciliation-onchain.md).
+
+---
+
+## 7bis. Activation semantics (post-fix)
+
+Two behaviours that the per-phase status tables above do not capture, because they are
+about *when* the machinery engages rather than whether it exists.
+
+**wPoA activates on the first positive weight, not at `setup-first-blocks`.** Until the
+registry carries a weight the selector can draw, both mining branches hand the round to
+the native MultiChain scheduler and the mining-diversity gate stands down with them; the
+chain advances, epochs bury, the engine publishes, and wPoA takes over by itself. The
+latch never clears: once activated, "no validator eligible" is a legitimate sortition
+outcome and the chain halting is correct behaviour, logged rather than routed around.
+Full rule in [weight-engine.md](weight-engine.md) §4bis.
+
+**Stream auto-creation retries.** The three registries share one bounded-retry state
+machine (`src/wpoa/stream_setup_state.h`) that latches only on a real broadcast. It used
+to latch before the attempt, which turned any transient failure into a permanent one.
+
+**The `enable-wpoa` master switch expands from `params.dat`**, not only from the
+`multichain-util create` command line. See
+[protocol-parameters.md](protocol-parameters.md) §1bis.
 
 ---
 
@@ -463,3 +493,8 @@ Detail: [testing.md](testing.md) · [`test/README.md`](../test/README.md).
 
 Full limitations register:
 [phase1-implementation-guide.md §12](phase1-implementation-guide.md#12-limitations--phase-2-hooks).
+
+---
+
+_Verified against the code on 2026-09-17 UTC (commit `7f3eb829`, branch
+`fix/wpoa-cpp-bugs-and-harness-simplification`)._

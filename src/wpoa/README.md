@@ -1,12 +1,19 @@
 # wPoA — Weighted Proof-of-Authority for MultiChain
 
+> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
+> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
+> rebuilt as a Python harness. The references are kept as written because they record the
+> work as it was done; for the current structure see
+> [`../../test/README.md`](../../test/README.md) and [`../../test/docs/fixes-changelog.md`](../../test/docs/fixes-changelog.md).
+
+
 > A **Weighted Proof-of-Authority** consensus extension for MultiChain: every
 > validator advertises a positive integer **weight** on a native append-only
 > stream (Phase 1), and block proposers are elected in **proportion to that
 > weight** via the Efraimidis–Spirakis weighted-sampling transform (Phase 2).
 > This file is the entry point; the deep, per-phase documentation lives in
-> [`docs/`](docs/) — start at the master
-> [implementation-guide.md](docs/implementation-guide.md).
+> [`docs/`](../../docs/) — start at the master
+> [implementation-guide.md](../../docs/implementation-guide.md).
 
 ---
 
@@ -74,11 +81,11 @@ Five phases are implemented today:
   so an exclusion always clears after a finite number of clean epochs — there is
   no permanent ban. Inert on honest behaviour (`Psi = 1`). Requires
   `-enablewpoasortition`. Full detail:
-  [malus-registry.md](docs/malus-registry.md).
+  [malus-registry.md](../../docs/malus-registry.md).
 
 Phase 5 (VDF over the beacon output, removing the residual last-revealer bias) is
 planned — see the [Implementation status](#implementation-status) and the master
-[implementation-guide.md](docs/implementation-guide.md).
+[implementation-guide.md](../../docs/implementation-guide.md).
 
 Operators only ever touch a few things:
 
@@ -114,11 +121,11 @@ violation is a **hard failure** at both chain creation and node startup.
 
 > **Every parameter — name, type, default, valid range, defining and validating code
 > line, and effect on consensus — is catalogued in one place:
-> [docs/protocol-parameters.md](docs/protocol-parameters.md).**
+> [docs/protocol-parameters.md](../../docs/protocol-parameters.md).**
 > Do not duplicate parameter values here.
 
 How the switches are read, resolved and wired into `AppInit2`:
-[docs/node-startup.md](docs/node-startup.md).
+[docs/node-startup.md](../../docs/node-startup.md).
 
 ---
 
@@ -126,9 +133,9 @@ How the switches are read, resolved and wired into `AppInit2`:
 
 > Macro view of the whole feature across phases. This is deliberately
 > high-level; the per-phase mechanics live in the phase guides linked from the
-> master [implementation-guide.md](docs/implementation-guide.md). **Keep this
+> master [implementation-guide.md](../../docs/implementation-guide.md). **Keep this
 > diagram in sync whenever the architecture changes** (see the
-> [Documentation Maintenance](docs/implementation-guide.md#documentation-maintenance)
+> [Documentation Maintenance](../../docs/implementation-guide.md#documentation-maintenance)
 > process).
 
 ```mermaid
@@ -207,22 +214,22 @@ flowchart TD
 - **Phase 1** records and serves weights on the `wpoa-weights` stream via the
   `StreamWeightRegistry` facade (deferred background registration; confirmed-only
   reads that are safe from any thread). Full detail:
-  [phase1-implementation-guide.md](docs/phase1-implementation-guide.md).
+  [phase1-implementation-guide.md](../../docs/phase1-implementation-guide.md).
 - **Phase 2** consumes `GetAllNodesWeights()` and elects each height's proposer
   in proportion to weight, gating the miner and the block validator behind
   `-enablewpoaselection` (or the `-enablewpoa` master switch). Full detail:
-  [phase2-implementation-guide.md](docs/phase2-implementation-guide.md).
+  [phase2-implementation-guide.md](../../docs/phase2-implementation-guide.md).
 - **Phase 3a** adds the VRF beacon behind `-enablewpoavrf`: the elected proposer
   embeds a verifiable reveal `(R, π)` in its block (via `WPoAVRF`, an ECVRF/DLEQ
   over the bundled secp256k1) and every peer verifies it. Selection is unchanged.
   Full detail:
-  [phase3a-implementation-guide.md](docs/phase3a-implementation-guide.md).
+  [phase3a-implementation-guide.md](../../docs/phase3a-implementation-guide.md).
 - **Phase 3b** adds the RANDAO beacon seed behind `-enablewpoarandao`: the
   per-block reveals are folded into `R_tot` (via `RandaoAccumulator`) and the
   selection seed becomes `H(R_tot[n-k]‖h[n]‖n+1)`, consumed identically by the
   miner and validator. Only the seed source changes; the election stays
   weight-proportional. Full detail:
-  [phase3b-implementation-guide.md](docs/phase3b-implementation-guide.md).
+  [phase3b-implementation-guide.md](../../docs/phase3b-implementation-guide.md).
 - **Phase 4** makes selection private behind `-enablewpoasortition` (via
   `PrivateSortition`): each validator scores itself with a VRF over the beacon
   seed under its own key and self-elects by a mining delay **banded on
@@ -232,13 +239,13 @@ flowchart TD
   `nTime`-time-bar eligibility check. The proposer is unpredictable until it acts;
   the distribution is unchanged; and because the winner's normalized score is
   exactly uniform, the mean realized block time lands on the target. Full
-  detail: [phase4-implementation-guide.md](docs/phase4-implementation-guide.md).
+  detail: [phase4-implementation-guide.md](../../docs/phase4-implementation-guide.md).
 
 ---
 
 ## Documentation map
 
-All detailed documentation lives in [`docs/`](docs/). Each file declares its
+All detailed documentation lives in [`docs/`](../../docs/). Each file declares its
 **linguistic register** in its opening note: *tecnico-diretto* for API, data
 structures, RPC flows, configuration and build/troubleshooting;
 *formale-accademico* for the consensus model, security properties and comparison
@@ -249,25 +256,25 @@ their content — the other files link to them:
 
 | Single source | What only it may state |
 |---|---|
-| **[implementation-status.md](docs/implementation-status.md)** | What is implemented and what is not, the high-level architecture, the **authoritative weight-assignment diagram**, and the `mining-turnover` vs `mining-diversity` distinction. |
-| **[protocol-parameters.md](docs/protocol-parameters.md)** | Every parameter: name, type, default, valid range, defining and validating code line, consensus effect, network-fixed vs locally overridable. |
-| **[testing.md](docs/testing.md)** | Build steps, unit and functional test invocation, troubleshooting. |
+| **[implementation-status.md](../../docs/implementation-status.md)** | What is implemented and what is not, the high-level architecture, the **authoritative weight-assignment diagram**, and the `mining-turnover` vs `mining-diversity` distinction. |
+| **[protocol-parameters.md](../../docs/protocol-parameters.md)** | Every parameter: name, type, default, valid range, defining and validating code line, consensus effect, network-fixed vs locally overridable. |
+| **[testing.md](../../docs/testing.md)** | Build steps, unit and functional test invocation, troubleshooting. |
 
 ### Theory and rationale — *formale-accademico*
 
 | Document | What it covers |
 |---|---|
-| [thesis-project-overview.md](docs/thesis-project-overview.md) | Problem statement, threat model, literature review, formal model, security properties, probability preservation, comparison with PoW / PoS / PoA / PoSA. The research companion. |
-| [implementation-roadmap.md](docs/implementation-roadmap.md) | Rationale for private (Efraimidis) sortition over public WRS, phased plan, vulnerabilities and mitigations, success criteria. Mixed register, declared per section. |
-| [implementation-guide.md](docs/implementation-guide.md) | Phase map: how the phases build on one another, plus the Documentation Maintenance process. |
+| [thesis-project-overview.md](../../docs/thesis-project-overview.md) | Problem statement, threat model, literature review, formal model, security properties, probability preservation, comparison with PoW / PoS / PoA / PoSA. The research companion. |
+| [implementation-roadmap.md](../../docs/implementation-roadmap.md) | Rationale for private (Efraimidis) sortition over public WRS, phased plan, vulnerabilities and mitigations, success criteria. Mixed register, declared per section. |
+| [implementation-guide.md](../../docs/implementation-guide.md) | Phase map: how the phases build on one another, plus the Documentation Maintenance process. |
 
 ### Configuration and startup — *tecnico-diretto*
 
 | Document | What it covers |
 |---|---|
-| [protocol-parameters.md](docs/protocol-parameters.md) | **The parameter catalogue.** All 23 parameters, the per-stream write policies (none of which is configurable) and the `-weight` precedence rule. |
-| [node-startup.md](docs/node-startup.md) | How the switches are read from `params.dat`, resolved (master + per-phase precedence + hard-fail constraints) and wired into `AppInit2`; how the publication thread is launched. |
-| [weight-engine.md](docs/weight-engine.md) | The weight-production layer: the two published input streams plus the two chain-derived quantities, the `c_i → W_k → A_k → ρ_k → B_k → w_k` pipeline, the CA-gated and public write RPCs, universal verification of the published weights, and the one remaining trusted datum. |
+| [protocol-parameters.md](../../docs/protocol-parameters.md) | **The parameter catalogue.** All 23 parameters, the per-stream write policies (none of which is configurable) and the `-weight` precedence rule. |
+| [node-startup.md](../../docs/node-startup.md) | How the switches are read from `params.dat`, resolved (master + per-phase precedence + hard-fail constraints) and wired into `AppInit2`; how the publication thread is launched. |
+| [weight-engine.md](../../docs/weight-engine.md) | The weight-production layer: the two published input streams plus the two chain-derived quantities, the `c_i → W_k → A_k → ρ_k → B_k → w_k` pipeline, the CA-gated and public write RPCs, universal verification of the published weights, and the one remaining trusted datum. |
 
 ### Component architecture — *tecnico-diretto*
 
@@ -275,15 +282,15 @@ One file per real source unit under `src/wpoa/`.
 
 | Document | Source unit |
 |---|---|
-| [stream-weight-registry.md](docs/stream-weight-registry.md) | `stream_weight_registry.h` / `.cpp` — the registry class and background thread. |
-| [weight-record.md](docs/weight-record.md) | `weight_record.h` — pure parsing/aggregation helpers. |
-| [wpoa-selector.md](docs/wpoa-selector.md) | `wpoa_selector.h` / `.cpp` — the Efraimidis–Spirakis selector core and node glue. |
-| [vrf-wrapper.md](docs/vrf-wrapper.md) | `vrf_wrapper.h` / `.cpp` — the ECVRF/DLEQ core over secp256k1. |
-| [randao-accumulator.md](docs/randao-accumulator.md) | `randao_accumulator.h` / `.cpp` — the fold, the lookback seed, the memoized walk. |
-| [private-sortition.md](docs/private-sortition.md) | `private_sortition.h` / `.cpp` — VRF input, score, the banded mining delay. |
-| [malus-registry.md](docs/malus-registry.md) | `malus_record.h`, `malus_registry.h` / `.cpp` — the open report stream, `Valid(e)`, the decaying accumulator, `w_eff`. |
-| [multichain-internals.md](docs/multichain-internals.md) | The MultiChain host APIs this module builds on. |
-| [native-poa-block-delay.md](docs/native-poa-block-delay.md) | The native PoA timing gate that Phase 4 supersedes, with its convergence analysis. |
+| [stream-weight-registry.md](../../docs/stream-weight-registry.md) | `stream_weight_registry.h` / `.cpp` — the registry class and background thread. |
+| [weight-record.md](../../docs/weight-record.md) | `weight_record.h` — pure parsing/aggregation helpers. |
+| [wpoa-selector.md](../../docs/wpoa-selector.md) | `wpoa_selector.h` / `.cpp` — the Efraimidis–Spirakis selector core and node glue. |
+| [vrf-wrapper.md](../../docs/vrf-wrapper.md) | `vrf_wrapper.h` / `.cpp` — the ECVRF/DLEQ core over secp256k1. |
+| [randao-accumulator.md](../../docs/randao-accumulator.md) | `randao_accumulator.h` / `.cpp` — the fold, the lookback seed, the memoized walk. |
+| [private-sortition.md](../../docs/private-sortition.md) | `private_sortition.h` / `.cpp` — VRF input, score, the banded mining delay. |
+| [malus-registry.md](../../docs/malus-registry.md) | `malus_record.h`, `malus_registry.h` / `.cpp` — the open report stream, `Valid(e)`, the decaying accumulator, `w_eff`. |
+| [multichain-internals.md](../../docs/multichain-internals.md) | The MultiChain host APIs this module builds on. |
+| [native-poa-block-delay.md](../../docs/native-poa-block-delay.md) | The native PoA timing gate that Phase 4 supersedes, with its convergence analysis. |
 
 ### Integration points — *tecnico-diretto*
 
@@ -292,33 +299,33 @@ to find the right one:
 
 | | Miner side — `GetMinerAndExpectedMiningStartTime` | Validator side — `VerifyBlockMinerWPoA` |
 |---|---|---|
-| **Phase 2** — weighted election | [miner-integration.md](docs/miner-integration.md) | [block-validation.md](docs/block-validation.md) |
-| **Phase 3a** — VRF reveal | [vrf-prover.md](docs/vrf-prover.md) | [vrf-verifier.md](docs/vrf-verifier.md) |
-| **Phase 3b** — RANDAO seed swap | [randao-miner.md](docs/randao-miner.md) | [randao-validator.md](docs/randao-validator.md) |
-| **Phase 4** — private sortition | [sortition-miner.md](docs/sortition-miner.md) | [sortition-validator.md](docs/sortition-validator.md) |
+| **Phase 2** — weighted election | [miner-integration.md](../../docs/miner-integration.md) | [block-validation.md](../../docs/block-validation.md) |
+| **Phase 3a** — VRF reveal | [vrf-prover.md](../../docs/vrf-prover.md) | [vrf-verifier.md](../../docs/vrf-verifier.md) |
+| **Phase 3b** — RANDAO seed swap | [randao-miner.md](../../docs/randao-miner.md) | [randao-validator.md](../../docs/randao-validator.md) |
+| **Phase 4** — private sortition | [sortition-miner.md](../../docs/sortition-miner.md) | [sortition-validator.md](../../docs/sortition-validator.md) |
 
 On-chain carriage of the reveal is separate:
-[block-vrf-encoding.md](docs/block-vrf-encoding.md).
+[block-vrf-encoding.md](../../docs/block-vrf-encoding.md).
 
 ### RPC and testing — *tecnico-diretto*
 
 | Document | What it covers |
 |---|---|
-| [rpc-registration.md](docs/rpc-registration.md) | How the RPC commands are added to the dispatch table (`rpc/rpclist.cpp`). |
-| [testing.md](docs/testing.md) | Build steps, the MultiChain mining model, unit suites, the single system-level functional run, and troubleshooting. |
+| [rpc-registration.md](../../docs/rpc-registration.md) | How the RPC commands are added to the dispatch table (`rpc/rpclist.cpp`). |
+| [testing.md](../../docs/testing.md) | Build steps, the MultiChain mining model, unit suites, the single system-level functional run, and troubleshooting. |
 
 ### Per-phase development history — *tecnico-diretto*
 
 Retained as the design record of each phase: mental model, design decisions with their
 alternatives, code walkthrough, edge cases. **They no longer carry status tables** —
 current status lives only in
-[implementation-status.md](docs/implementation-status.md).
+[implementation-status.md](../../docs/implementation-status.md).
 
-[Phase 1](docs/phase1-implementation-guide.md) ·
-[Phase 2](docs/phase2-implementation-guide.md) ·
-[Phase 3a](docs/phase3a-implementation-guide.md) ·
-[Phase 3b](docs/phase3b-implementation-guide.md) ·
-[Phase 4](docs/phase4-implementation-guide.md)
+[Phase 1](../../docs/phase1-implementation-guide.md) ·
+[Phase 2](../../docs/phase2-implementation-guide.md) ·
+[Phase 3a](../../docs/phase3a-implementation-guide.md) ·
+[Phase 3b](../../docs/phase3b-implementation-guide.md) ·
+[Phase 4](../../docs/phase4-implementation-guide.md)
 
 ---
 
@@ -335,7 +342,7 @@ current status lives only in
 | [`malus_record.h`](malus_record.h) | Malus: pure record parsing + accumulator core (`Fold` / `CorrectionFactor` / `EffectiveWeight` / `EpochsToClear`). |
 | [`malus_registry.h`](malus_registry.h) / [`.cpp`](malus_registry.cpp) | Malus: the open report stream, the `Valid(e)` predicate, `WPoAApplyMalus` (the single consensus entry point). |
 | [`../rpc/rpcwpoa.cpp`](../rpc/rpcwpoa.cpp) | The RPC handlers over both registries: the registry reads (`getlocalweight`, `getallweights`, `getnodeweight`), the malus surface (`getallmalus`, `getnodemalus`, `reportmalus`) and the read-only **round audit** — `wpoa{getlocal,getnode,list}` × `score` / `delay` / `effectiveweight` / `finalweight`, which replay the public election model for any height. |
-| [`../weight_engine/`](../weight_engine/) | The weight-production layer. See [weight-engine.md](docs/weight-engine.md). |
+| [`../weight_engine/`](../weight_engine/) | The weight-production layer. See [weight-engine.md](../../docs/weight-engine.md). |
 
 Unit suites live in [`test/`](test/) and run node-free:
 
@@ -361,7 +368,7 @@ carriage), [`../Makefile.am`](../Makefile.am) (build).
 Per-phase implementation status — what is done, what is not, with direct pointers to the
 source files and to the tests that validate them — lives in **a single place**:
 
-> **[docs/implementation-status.md](docs/implementation-status.md)**
+> **[docs/implementation-status.md](../../docs/implementation-status.md)**
 
 That file also carries the high-level architecture, the authoritative weight-assignment
 diagram, and the distinction between `mining-turnover` (a local operational hint) and
@@ -406,15 +413,16 @@ cd /home/mattu/multichain
 ./src/multichain-cli <chain> getallweights
 ```
 
-Full build and test instructions are in [testing.md](docs/testing.md) and
-[`test/README.md`](test/README.md). All unit suites (weight, malus, selector, VRF,
+Full build and test instructions are in [testing.md](../../docs/testing.md) and
+[`test/README.md`](../../test/README.md). All unit suites (weight, malus, selector, VRF,
 RANDAO, sortition) run node-free via
 [`test/run_unit_tests.sh`](test/run_unit_tests.sh) — pass a suite name to run
 just one, e.g. `run_unit_tests.sh vrf`. The malus suite runs the same way
 (`run_unit_tests.sh malus`). The functional tests are now a single
 system-level run,
-[`test/functional/wpoa/functional_test_wpoa_system.sh`](../../test/functional/wpoa/functional_test_wpoa_system.sh)
-(wrapped by [`test/functional/run_functional_tests.sh`](../../test/functional/run_functional_tests.sh)): it
+the Python functional harness at [`test/`](../../test/) — entry point
+[`test/bootstrap/bootstrap_network.py`](../../test/bootstrap/bootstrap_network.py), map in
+[`test/README.md`](../../test/README.md). It
 starts ONE full-stack network and verifies weight, multi-node consistency, VRF,
 RANDAO, sortition and the chi-square distribution on that shared run. Run
 absolutely everything with [`test/run_all_tests.sh`](test/run_all_tests.sh).
@@ -439,10 +447,14 @@ identifier must find it.
 | **beacon seed** (`seed[n+1]`) | `H(R_tot[n−k] ‖ h[n] ‖ n+1)`, the public agreed seed of the election. | The **reveal** `R[n]`, which is a single block's VRF contribution. |
 | **reveal** (`R`, `π`) | The VRF-output and proof pair published by the proposer in its own block. | The *seed*, which is aggregated and derived. |
 | **malus** (`M`, `Ψ`) | The misbehaviour accumulator and the correction `Ψ = max(0, 1 − M/M_max)` derived from it. | *slashing*: nothing is confiscated here, and `μ < 1` makes every exclusion **reversible**. |
-| **mining-diversity** | A **binding**, hash-enforced consensus rule. A block violating the spacing is invalid. | **mining-turnover**, which is `NOHASH` and only a local timing hint. See [implementation-status.md §0.2](docs/implementation-status.md#02-mining-turnover-and-mining-diversity--operational-hint-vs-binding-rule). |
+| **mining-diversity** | A **binding**, hash-enforced consensus rule. A block violating the spacing is invalid. | **mining-turnover**, which is `NOHASH` and only a local timing hint. See [implementation-status.md §0.2](../../docs/implementation-status.md#02-mining-turnover-and-mining-diversity--operational-hint-vs-binding-rule). |
 | **epoch** | The time unit of the weight engine and the malus registry, **1-based**: `epoch(height) = height / n + 1`. | The RANDAO *lookback* `k`, which is measured in blocks, not epochs. |
 | **closed stream** | A stream requiring the `<stream>.write` permission to publish. `wpoa-weights` and the three attestation streams are closed. | **open stream**: `wpoa-weights-malus` is deliberately open, because every report is re-verified by every node. |
 
 **Language.** This documentation is written in English throughout. Identifier, RPC, flag,
 stream and class names are always left verbatim: they are strings the reader must be able
 to grep for in the source.
+
+---
+
+_Verified against the code and the on-disk layout on 2026-09-17 UTC (commit `7f3eb829`, branch `fix/wpoa-cpp-bugs-and-harness-simplification`)._

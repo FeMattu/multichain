@@ -1,5 +1,12 @@
 # wPoA Weight Registry — Implementation Guide (Phase 1)
 
+> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
+> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
+> rebuilt as a Python harness. The references are kept as written because they record the
+> work as it was done; for the current structure see
+> [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
+
+
 > **Register: technical-direct.** A developer reference: APIs, function signatures,
 > data structures and control flow, with code terminology left verbatim. For the
 > theoretical consensus model see
@@ -92,22 +99,22 @@ bias block production. That is Phase 2 (see §12).
 
 | File | Role |
 |------|------|
-| [`weight_record.h`](../weight_record.h) | Pure, dependency-light helpers (`mc_ParseWeightRecordJson`, `mc_AccumulateLatestWeight`). Depends only on json_spirit, so it is unit-testable in isolation. |
-| [`stream_weight_registry.h`](../stream_weight_registry.h) | Public API: the `StreamWeightRegistry` class, the deferred-thread entry point, the RPC declarations, `g_node_weight`, and the two `#define`s. |
-| [`stream_weight_registry.cpp`](../stream_weight_registry.cpp) | Implementation: class methods, the low-level decoder, the background thread, and the three RPC command handlers. |
+| [`weight_record.h`](../src/wpoa/weight_record.h) | Pure, dependency-light helpers (`mc_ParseWeightRecordJson`, `mc_AccumulateLatestWeight`). Depends only on json_spirit, so it is unit-testable in isolation. |
+| [`stream_weight_registry.h`](../src/wpoa/stream_weight_registry.h) | Public API: the `StreamWeightRegistry` class, the deferred-thread entry point, the RPC declarations, `g_node_weight`, and the two `#define`s. |
+| [`stream_weight_registry.cpp`](../src/wpoa/stream_weight_registry.cpp) | Implementation: class methods, the low-level decoder, the background thread, and the three RPC command handlers. |
 | Docs | [../README.md](../README.md) (entry point), this guide, [multichain-internals.md](multichain-internals.md), [stream-weight-registry.md](stream-weight-registry.md), [weight-record.md](weight-record.md), [node-startup.md](node-startup.md), [rpc-registration.md](rpc-registration.md), [testing.md](testing.md). |
-| [`test/wpoa_weight_tests.cpp`](../test/wpoa_weight_tests.cpp) | Boost.Test unit tests for the pure logic. |
-| [`test/run_unit_tests.sh`](../test/run_unit_tests.sh) | Build + run the unit tests (no node build needed). |
+| [`test/wpoa_weight_tests.cpp`](../src/wpoa/test/wpoa_weight_tests.cpp) | Boost.Test unit tests for the pure logic. |
+| [`test/run_unit_tests.sh`](../src/wpoa/test/run_unit_tests.sh) | Build + run the unit tests (no node build needed). |
 | [`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh) | End-to-end smoke test driving a real single node. |
 
 Files **modified** in the host tree (integration points):
 
 | File | Change |
 |------|--------|
-| [`../core/init.cpp`](../../core/init.cpp) | `-weight` help line; validate `-weight`; launch the deferred thread at the end of `AppInit2`. |
-| [`../rpc/rpclist.cpp`](../../rpc/rpclist.cpp) | Register the three RPC commands (category `wpoa`). |
-| [`../rpc/rpchelp.cpp`](../../rpc/rpchelp.cpp) | Help text for the three commands; allow them offline. |
-| [`../Makefile.am`](../../Makefile.am) | Compile `stream_weight_registry.cpp` into `libbitcoin_wallet`; list the two headers. |
+| [`../core/init.cpp`](../src/core/init.cpp) | `-weight` help line; validate `-weight`; launch the deferred thread at the end of `AppInit2`. |
+| [`../rpc/rpclist.cpp`](../src/rpc/rpclist.cpp) | Register the three RPC commands (category `wpoa`). |
+| [`../rpc/rpchelp.cpp`](../src/rpc/rpchelp.cpp) | Help text for the three commands; allow them offline. |
+| [`../Makefile.am`](../src/Makefile.am) | Compile `stream_weight_registry.cpp` into `libbitcoin_wallet`; list the two headers. |
 
 ---
 
@@ -609,7 +616,7 @@ miner this is a few seconds per block; see [testing.md](testing.md) §3/§6.
 ## 11. How to modify
 
 ### 11.1 Change the stream name or default weight
-Edit the two `#define`s in [`stream_weight_registry.h`](../stream_weight_registry.h)
+Edit the two `#define`s in [`stream_weight_registry.h`](../src/wpoa/stream_weight_registry.h)
 (`MC_WPOA_WEIGHTS_STREAM_NAME`, `MC_WPOA_DEFAULT_WEIGHT`). They flow into the module,
 `init.cpp` (help/validation) and `rpchelp.cpp` automatically.
 
@@ -620,8 +627,8 @@ In `ResolveLocalAddress`, reorder the `GetKeyFromAddressBook` calls: try
 ### 11.3 Add a field to the record (e.g. a version tag)
 1. In `PublishWeightRecord`, add `record.push_back(Pair("version", (int64_t)1));`.
 2. If you need to read it back, extend `mc_ParseWeightRecordJson` in
-   [`weight_record.h`](../weight_record.h) to pull the new member, and add a unit test in
-   [`test/wpoa_weight_tests.cpp`](../test/wpoa_weight_tests.cpp).
+   [`weight_record.h`](../src/wpoa/weight_record.h) to pull the new member, and add a unit test in
+   [`test/wpoa_weight_tests.cpp`](../src/wpoa/test/wpoa_weight_tests.cpp).
 Old records without the field still parse (the reader only requires address+weight).
 
 ### 11.4 Make the stream read-restricted (only admins may set weights)
@@ -634,11 +641,11 @@ allowed addresses. See MultiChain's `create stream ... {"restrict":...}` docs an
 Edit `MC_WPOA_RETRY_INTERVAL_MS` and `MC_WPOA_MAX_ATTEMPTS` at the top of the `.cpp`.
 
 ### 11.6 Add a new read RPC (e.g. `gettotalweight`)
-1. Declare it in [`stream_weight_registry.h`](../stream_weight_registry.h).
+1. Declare it in [`stream_weight_registry.h`](../src/wpoa/stream_weight_registry.h).
 2. Implement it in the `.cpp` (construct a registry, call `GetAllNodesWeights`, sum).
-3. Register it in [`../rpc/rpclist.cpp`](../../rpc/rpclist.cpp) (category `wpoa`,
+3. Register it in [`../rpc/rpclist.cpp`](../src/rpc/rpclist.cpp) (category `wpoa`,
    `true,true,true`).
-4. Add help in [`../rpc/rpchelp.cpp`](../../rpc/rpchelp.cpp) and, if it should work
+4. Add help in [`../rpc/rpchelp.cpp`](../src/rpc/rpchelp.cpp) and, if it should work
    offline, add it to `setAllowedWhenOffline`.
 
 ### 11.7 Consume the weights elsewhere in the node (Phase 2 starting point)

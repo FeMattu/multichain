@@ -152,18 +152,21 @@ come from the node.
 All of these were hit while building this, and each is explained in
 [`docs/architecture-notes.md`](docs/architecture-notes.md):
 
-- **`enable-wpoa = true` in `params.dat` does nothing.** `AppInit2` reads only the
-  per-phase keys. The harness writes all eight explicitly.
-- **Stream auto-creation is unreliable.** It is one-shot per process; on a probe run of
-  this repository it produced only `weight-engine-esg` and left the registry permanently
-  empty. The admin creates all four streams explicitly.
+- ~~**`enable-wpoa = true` in `params.dat` does nothing.**~~ **Fixed** — the master now
+  expands from the file too. The harness still writes all eight keys explicitly, which
+  keeps `params.dat` a complete statement of what the chain runs.
+- ~~**Stream auto-creation is unreliable.**~~ **Fixed** — the three registries share one
+  bounded-retry state machine. The admin still creates all four streams explicitly, because
+  it grants per-stream permissions in the next step and an entity permission cannot precede
+  its entity.
 - **A stream permission cannot be granted before its stream exists** (`-708`). Grants come
   in two passes, global then per-stream.
 - **A joining node exits on its first run** and prints the address it is waiting to have
   granted. The sequence is join → grant → launch.
 - **Stopping a node and restarting it immediately fails** on the still-held LevelDB lock.
-  The RPC port closing is the signal to wait for, not the pid file, which MultiChain does
-  not reliably write.
+  The RPC port closing is the signal to wait for. MultiChain *does* write a pid file
+  (`<datadir>/<chain>/multichain.pid`) and removes it on a clean shutdown, but a pid cannot
+  say whether LevelDB has released its lock — it is used only to escalate to a signal.
 - **`-maxtxfee` must be raised** with `minimum-relay-fee`, or every publish above ~500
   bytes fails with `-6 Transaction too large for fee policy` while plain transfers keep
   working — the network looks healthy and no record is ever written.
@@ -178,6 +181,8 @@ All of these were hit while building this, and each is explained in
 
 - [`docs/architecture-notes.md`](docs/architecture-notes.md) — the exploration write-up,
   including how a node acquires its initial weight and why no self-publish is used.
+- [`docs/fixes-changelog.md`](docs/fixes-changelog.md) — the faults this harness found in
+  the protocol, the commits that fixed them, and what the harness stopped doing as a result.
 - [`config/schema.md`](config/schema.md) — the profile format.
 - [`../docs/protocol-parameters.md`](../docs/protocol-parameters.md) — the parameter catalogue.
 - [`../docs/weight-engine.md`](../docs/weight-engine.md) — the pipeline this measures.

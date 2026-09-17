@@ -1,7 +1,7 @@
 # ADR — the RANDAO fold returns to the bare XOR of Definition 5.3
 
 > **Status:** accepted, implemented.
-> **Scope:** `RandaoAccumulator::Fold` ([../../randao_accumulator.h](../../randao_accumulator.h)),
+> **Scope:** `RandaoAccumulator::Fold` ([../../randao_accumulator.h](../../src/wpoa/randao_accumulator.h)),
 > thesis Def. 5.3 / §5.4 (global accumulator update). The seed derivation `seed[n+1] =
 > H(R_tot[n-k] ‖ h[n] ‖ n+1)` is untouched.
 > **Register: technical-direct.** Decision record: the problem, the options weighed, the

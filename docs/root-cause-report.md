@@ -1,5 +1,12 @@
 # wPoA — Report di analisi root-cause (Fase 1)
 
+> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
+> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
+> rebuilt as a Python harness. The references are kept as written because they record the
+> work as it was done; for the current structure see
+> [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
+
+
 Repo: `/home/mattu/multichain` — fork di MultiChain 2.3
 Branch di partenza dell'analisi: `tests/shadow-simulator` (HEAD `7e7d9a6`)
 Data: 2026-09-03
@@ -12,7 +19,7 @@ Data: 2026-09-03
 > il test di sistema [`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh)
 > e i due functional del weight engine stanno sotto
 > [`test/functional/weight_engine/`](../../../test/functional/weight_engine/). Motivazione:
-> [`docs/adr/test-restructure-2026.md`](../../../docs/adr/test-restructure-2026.md).
+> [`docs/adr/test-restructure-2026.md`](adr/test-restructure-2026.md).
 
 Tutti i path in questo documento sono stati **verificati per ricerca nel codice**, non ipotizzati.
 La struttura reale del fork differisce dall'upstream nominale: i moduli custom vivono in

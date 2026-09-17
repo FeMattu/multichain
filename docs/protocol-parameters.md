@@ -60,7 +60,7 @@ the inherited value **for that node only** (CLI wins).
 ### 1.1 The parameters are hash-enforced
 
 No entry in the wPoA/weight block of
-[`paramlist.h`](../../chainparams/paramlist.h) carries the `MC_PRM_NOHASH` flag: every
+[`paramlist.h`](../src/chainparams/paramlist.h) carries the `MC_PRM_NOHASH` flag: every
 one is `MC_PRM_USER | MC_PRM_CLONE` plus its own type. **The parameters therefore take
 part in the `params.dat` hash.**
 
@@ -85,8 +85,8 @@ cryptographically bound). That description is **obsolete**.
 Resolution has three levels, in order: the value inherited from `params.dat` → the
 runtime master `-enablewpoa` / `-wpoaenable` → the explicit per-phase flag (which wins).
 Creation-time master expansion lives in
-[`params.cpp`](../../chainparams/params.cpp) (`Read(argc,argv)`); runtime resolution in
-[`init.cpp`](../../core/init.cpp) (`AppInit2`).
+[`params.cpp`](../src/chainparams/params.cpp) (`Read(argc,argv)`); runtime resolution in
+[`init.cpp`](../src/core/init.cpp) (`AppInit2`).
 
 ### 1.3 Dependency constraints (hard failure)
 
@@ -104,19 +104,117 @@ inert.
 
 | Constraint | Error at |
 |---|---|
-| `enablewpoaselection` requires `enablewpoaweights` | `init.cpp:3334` |
-| `enablewpoavrf` requires `enablewpoaselection` | `init.cpp:3336` |
-| `enablewpoarandao` requires `enablewpoavrf` | `init.cpp:3338` |
-| `enablewpoasortition` requires `enablewpoarandao` | `init.cpp:3340` |
-| `enablewpoasortition` requires `wpoarandaolookback >= 1` | `init.cpp:3342` |
-| `enablewpoamalus` requires `enablewpoasortition` | `init.cpp:3455` |
-| `wpoamalusequivpoints` must be `>` `wpoamalusdelaypoints` | `init.cpp:3419` |
-| `wpoamalusbadweightpoints` must be `>` `wpoamalusselfwritepoints` | `init.cpp:3446` |
-| `enableweightengine` requires `enablewpoaweights` | `init.cpp:3586` |
+| `enablewpoaselection` requires `enablewpoaweights` | `src/core/init.cpp:3441` |
+| `enablewpoavrf` requires `enablewpoaselection` | `src/core/init.cpp:3443` |
+| `enablewpoarandao` requires `enablewpoavrf` | `src/core/init.cpp:3445` |
+| `enablewpoasortition` requires `enablewpoarandao` | `src/core/init.cpp:3447` |
+| `enablewpoasortition` requires `wpoarandaolookback >= 1` | `src/core/init.cpp:3449` |
+| `enablewpoamalus` requires `enablewpoasortition` | `src/core/init.cpp:3566` |
+| `wpoamalusequivpoints` must be `>` `wpoamalusdelaypoints` | `src/core/init.cpp:3547` |
+| `wpoamalusbadweightpoints` must be `>` `wpoamalusselfwritepoints` | `src/core/init.cpp:3556` |
+| `enableweightengine` requires `enablewpoaweights` | `src/core/init.cpp:3740` |
 
 The `k >= 1` constraint is not arbitrary: the reveal that sortition produces feeds
 `R_tot[n]`, while its own seed reads `R_tot[n-k]`. At `k = 0` the dependency would be
 circular.
+
+---
+
+## 1bis. The master switch, and how it expands
+
+`enable-wpoa` is not a switch the consensus code reads. Nothing branches on it: every
+decision is taken on the six per-phase keys (`enable-wpoa-weights`, `-selection`, `-vrf`,
+`-randao`, `-sortition`, `-malus`). The master is a **convenience that expands into
+them**, and where that expansion happens used to matter a great deal.
+
+It expands in two places, and they now agree:
+
+| Where the master arrives | Expands | Result |
+|---|---|---|
+| `multichain-util create -enablewpoa=1 ...` | `mc_MultichainParams::Read` writes all six per-phase keys into the generated `params.dat` | The file is explicit; every joining node inherits the six values |
+| Written by hand into `params.dat` as `enable-wpoa = true` | `AppInit2` expands it at startup, to every phase still at its default | The file stays as written; the runtime configuration is the expanded one |
+
+**Before this was fixed, the second row did nothing.** `AppInit2` read only the per-phase
+keys and never `enablewpoa`, so a `params.dat` carrying `enable-wpoa = true` was parsed,
+hashed, echoed back by `getblockchainparams` — and inert. The chain ran native MultiChain
+mining, and the only symptom was the weight engine refusing to start with
+
+```
+Error: weight-engine: -enableweightengine requires the wPoA weights stream (-enablewpoaweights).
+```
+
+which names a flag the operator never touched. This is the single most dangerous gap for
+anyone writing `params.dat` by hand, and it is why it has a section of its own.
+
+### What wins over what
+
+1. A **runtime per-phase flag** (`-enablewpoaselection=0`) — always wins, for that node.
+2. The **runtime master** (`-enablewpoa`) — sets the baseline for every phase without its
+   own flag.
+3. A **per-phase key in `params.dat`** that is `true` — explicit, and the in-file master
+   never overrides it.
+4. The **in-file master** — expands to every phase still at its default.
+
+### The one thing the file cannot say
+
+A phase written explicitly as `false` next to `enable-wpoa = true` is indistinguishable
+from a phase that is simply absent: both read as the default, and `params.dat` carries no
+"was this key present" bit. Such a file is self-contradictory, and the master wins. If a
+node genuinely needs a phase off while the chain has it on, that is what the runtime flag
+is for — and it forks that node, which the startup log says out loud.
+
+### Reading the effective configuration
+
+`getblockchainparams` reports what is **stored in the file**, not what the node resolved.
+After an in-file master expansion the per-phase keys still read `false` there while every
+phase is running. That is correct — the file is hash-enforced and must not be rewritten —
+but it means the file is not the place to check. The startup log is:
+
+```
+[wPoA] params.dat sets enable-wpoa=true: expanding the master switch to weights,
+       selection, vrf, randao and sortition
+```
+
+---
+
+## 1ter. `setup-first-blocks` is derived, not merely validated
+
+Two distinct mechanisms decide when wPoA starts governing, and both are easy to miss.
+
+### The floor applied at chain creation
+
+`mc_MultichainParams::AdjustSetupFirstBlocks` (`src/chainparams/params.cpp:1324-1331`)
+**raises** `setup-first-blocks` when the weight engine and wPoA selection are both on, and
+writes the corrected value into `params.dat` *before the parameter hash is taken*:
+
+```
+first_computable = weight-epoch-length + MC_WEIGHT_DEFAULT_STABILITY_MARGIN - 1
+required         = first_computable + MC_WEIGHT_SETUP_PUBLISH_MARGIN + 1
+                 = weight-epoch-length + 9
+```
+
+with `MC_WEIGHT_DEFAULT_STABILITY_MARGIN = 6` and `MC_WEIGHT_SETUP_PUBLISH_MARGIN = 3`
+(`src/weight_engine/weight_streams.h`). Both are **compile-time constants, not chain
+parameters**: they cannot be configured, and a node built from different sources would
+disagree about them.
+
+The stability margin is how deeply an epoch must be buried before it is computed, so that
+a shallow reorg cannot make two nodes read different blocks. The publish margin is the
+slack on top: being *computable* is not enough, because the selector reads confirmed
+stream items only — the value still has to be noticed by the engine, published as a
+transaction, and mined.
+
+A larger configured value is left alone; a smaller one is raised and the change is
+reported. With the stock defaults (epoch 100, setup 60) this **always** fires. Read the
+effective value back from `getblockchainparams` rather than trusting what you wrote.
+
+### The deferred activation at runtime
+
+Even a correct floor is a height, and a height cannot know whether the engine has managed
+to publish anything. Since the deferred-activation fix, wPoA additionally waits for the
+registry to carry a weight it can actually draw — see
+[weight-engine.md](weight-engine.md), *Deferred activation*. Until then the chain runs
+under the native rules instead of stopping.
 
 ---
 
@@ -149,10 +247,10 @@ D_i        = T_block + delta * T_block * (2 * score_norm - 1) + lambda * Phi   (
 ```
 
 where `T_block` is the native `targetblocktime`
-([`paramlist.h`](../../chainparams/paramlist.h), entry `targetblocktime`), `delta` is
+([`paramlist.h`](../src/chainparams/paramlist.h), entry `targetblocktime`), `delta` is
 `-wpoasortitiondelta`, `lambda` is `-wpoasortitionlambda`, and `W` is the sum of the
 compressed effective weights. Implementation: `PrivateSortition::MiningDelay()` in
-[`private_sortition.h`](../private_sortition.h).
+[`private_sortition.h`](../src/wpoa/private_sortition.h).
 
 The `W` factor is what makes the normalisation real: without it the value inherits the
 scale of `E/w` and collapses toward `0` for every candidate as soon as weights reach the
@@ -244,7 +342,7 @@ turned it off would fold records its peers discard — a fork.
 
 The ESG writer must hold the **Certification Authority** role, carried on chain by
 MultiChain's `high1` custom permission
-([`weight_authorization.h`](../../weight_engine/weight_authorization.h)
+([`weight_authorization.h`](../src/weight_engine/weight_authorization.h)
 `MC_WEIGHT_CA_PERMISSION_NAME`). It is a **compile-time constant**, not an inheritable
 parameter, and that is a deliberate consequence of what the check does:
 
@@ -263,7 +361,7 @@ conferrable by the administrator alone. Full rationale, including why the reader
 enforce the role: [weight-engine.md §6.4](weight-engine.md#64-esg--the-certification-authority-role).
 
 Two related constants are **not** chain parameters yet, and are fixed at compile time in
-[`weight_streams.h`](../../weight_engine/weight_streams.h):
+[`weight_streams.h`](../src/weight_engine/weight_streams.h):
 
 | Constant | Value | Note |
 |---|---|---|
@@ -279,7 +377,7 @@ is a plain runtime flag: every validator sets its own.
 
 | CLI flag | Type | Default | Valid range | Defined | Validation |
 |---|---|---|---|---|---|
-| `-weight=<n>` | integer | `100` | `> 0` (positive integers) | `MC_WPOA_DEFAULT_WEIGHT`, [`stream_weight_registry.h`](../stream_weight_registry.h) | `init.cpp:3234` — `-weight <= 0` prevents startup |
+| `-weight=<n>` | integer | `100` | `> 0` (positive integers) | `MC_WPOA_DEFAULT_WEIGHT`, [`stream_weight_registry.h`](../src/wpoa/stream_weight_registry.h) | `init.cpp:3234` — `-weight <= 0` prevents startup |
 
 ### 5.1 `-weight` is the fallback, not the primary path
 
@@ -408,3 +506,11 @@ multichain-cli mychain grant <everynode> wpoa-weights.write
   streams, computation pipeline, admin RPCs, authorization model.
 - [implementation-status.md](implementation-status.md) — per-phase implementation status.
 - [implementation-guide.md](implementation-guide.md) — general index and phase map.
+
+---
+
+_Verified against the code on 2026-09-17 UTC (commit `7f3eb829`, branch
+`fix/wpoa-cpp-bugs-and-harness-simplification`): every `src/core/init.cpp` and
+`src/chainparams/paramlist.h` reference above was re-read from the source rather than
+carried over. Line numbers drift — if one does not match, trust the symbol name and
+correct the number._

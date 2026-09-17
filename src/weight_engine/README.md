@@ -4,7 +4,7 @@ Computes the dynamic, ESG-derived validator weight `w_k` that the wPoA layer
 (`src/wpoa/`) consumes to elect proposers. It **produces** the weights; it does
 not select.
 
-The module reference is [`../wpoa/docs/weight-engine.md`](../wpoa/docs/weight-engine.md).
+The module reference is [`../../docs/weight-engine.md`](../../docs/weight-engine.md).
 This file is only a map of the directory and its tests.
 
 ## Source layout
@@ -24,7 +24,7 @@ This file is only a map of the directory and its tests.
 
 Two published input streams, `weight-engine-membership` and `weight-engine-esg`.
 `tau` and `R_k` are **derived from the blocks**, not published — see
-[`../wpoa/docs/adr/reconciliation-onchain.md`](../wpoa/docs/adr/reconciliation-onchain.md).
+[`../../docs/adr/reconciliation-onchain.md`](../../docs/adr/reconciliation-onchain.md).
 
 ## Tests
 
@@ -42,19 +42,27 @@ Suites: `records` (input parsers + reconciliation rules), `authorization`
 verification). No node build needed, and no autotools — the runner invokes `g++`
 directly.
 
-**Functional** — [`../../test/functional/weight_engine/`](../../test/functional/weight_engine/).
-They moved out of this module because a functional run exercises wPoA, the weight
-engine, the malus registry and the streams together; see
-[`../../docs/adr/test-restructure-2026.md`](../../docs/adr/test-restructure-2026.md).
+**Functional** — [`../../test/`](../../test/), a Python harness that runs a real
+multi-node network on localhost and takes it from bootstrap to a statistical report. It
+covers wPoA, the weight engine, the malus registry and the streams together, because a
+functional run exercises them as one system; see
+[`../../docs/adr/test-restructure-2026.md`](../../docs/adr/test-restructure-2026.md) and
+[`../../test/README.md`](../../test/README.md).
 
 ```bash
-./test/functional/run_functional_tests.sh --suite weight-engine
-./test/functional/run_functional_tests.sh --suite weight-engine-bootstrap
-./test/functional/run_functional_tests.sh --suite weight-engine-large --fast
+# one command: bootstrap -> traffic -> shutdown -> phase1 -> phase2 -> phase3 -> plots
+./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
+    --config test/config/profiles/small.yaml
 ```
 
-**Experimental** — [`test/experimental/`](test/experimental/) is **not** a test: it
-is the MyLedger economic simulation harness. It has no pass/fail contract; its
+Profiles (`small`, `medium`, `large`) are documented in
+[`../../test/config/schema.md`](../../test/config/schema.md).
+
+**Experimental** — the former `test/experimental/` MyLedger simulation harness was
+removed when `test/` was rebuilt; its economic model lives on in the traffic daemons of
+the functional harness. The original text follows for context:
+
+> It is **not** a test: it It has no pass/fail contract; its
 product is CSVs, an `.xlsx` report and a log for offline analysis. It stays in this
 module because its research question ("does the deployed engine compute the weight
 the POESIA / Vers_2 model specifies?") is a weight-engine question.
@@ -74,7 +82,7 @@ the POESIA / Vers_2 model specifies?") is a weight-engine question.
 ## Chain parameters
 
 All consensus-critical, all hash-enforced, all in `params.dat`. Full table in
-[`../wpoa/docs/protocol-parameters.md`](../wpoa/docs/protocol-parameters.md).
+[`../../docs/protocol-parameters.md`](../../docs/protocol-parameters.md).
 
 | Flag | `params.dat` key | Default |
 |---|---|---|
@@ -84,3 +92,7 @@ All consensus-critical, all hash-enforced, all in `params.dat`. Full table in
 | `-weightalpha` | `weight-alpha` | 0.2 |
 | `-weightlambda` | `weight-lambda` | 0.5, in `[0, 1)` |
 | `-weighttreasuryaddress` | `weight-treasury-address` | empty → `R_k = 0` |
+
+---
+
+_Verified against the code and the on-disk layout on 2026-09-17 UTC (commit `7f3eb829`, branch `fix/wpoa-cpp-bugs-and-harness-simplification`)._
