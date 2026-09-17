@@ -108,6 +108,9 @@ class Orchestrator:
         self.effective_params: Dict[str, str] = {}
         #: Set once the registry is seen carrying a positive weight. Reported, not gated on.
         self.wpoa_activated = False
+        #: The weight distribution observed just before traffic starts, used to split the
+        #: malicious quota proportionally. Empty until the registry first fills.
+        self.initial_weights: Dict[str, float] = {}
         self._stopping = False
 
     # -- infrastructure ----------------------------------------------------------------
@@ -738,6 +741,7 @@ class Orchestrator:
                 )
                 self.log.note("registry usable", tip, scoreable=scoreable, weights=weights)
                 self.wpoa_activated = True
+                self._capture_initial_weights(weights)
                 return
             time.sleep(3.0)
 
@@ -747,6 +751,57 @@ class Orchestrator:
             "under the native rules until the first weight confirms" % tip
         )
         self.log.note("registry not yet usable at start of traffic", tip, wanted=want)
+
+    def _capture_initial_weights(self, weights: Dict[str, Any]) -> None:
+        """Map ``getallweights`` (address -> weight) onto miner node_ids.
+
+        The malicious quota split is by node_id, so the address-keyed registry answer is
+        translated here. A miner with no confirmed weight yet is simply absent, and the
+        quota split then falls back to uniform for the whole set — recorded as such.
+        """
+        address_to_node = {
+            self.addresses.get(n.node_id): n.node_id for n in self.profile.by_role("miner")
+        }
+        for address, weight in (weights or {}).items():
+            node_id = address_to_node.get(address)
+            if node_id is not None:
+                try:
+                    self.initial_weights[node_id] = float(weight or 0.0)
+                except (TypeError, ValueError):
+                    continue
+
+    def write_malicious_manifest(self) -> None:
+        """Freeze the malicious plan to ``<run>/malicious_manifest.json``.
+
+        Written before the miner daemons start, because a selected miner reads it at
+        startup, and written unconditionally — a disabled plan too — so phase 1 always
+        finds one file of a known shape rather than having to tell "off" from "old". The
+        addresses and the observed initial weights are folded in here, since neither
+        exists at profile-load time.
+        """
+        plan = self.profile.malicious_plan(
+            addresses=self.addresses, initial_weights=self.initial_weights or None
+        )
+        write_json(self.run_dir / "malicious_manifest.json", plan)
+        if plan.get("enabled"):
+            log_step(
+                "malicious experiment: %d/%d miner(s) selected (%s), rate %.2f, split %s"
+                % (
+                    len(plan["malicious_miner_ids"]),
+                    len(plan["all_miner_ids"]),
+                    ", ".join(plan["malicious_miner_ids"]),
+                    plan["target_action_rate"],
+                    plan["quota_share_source"],
+                )
+            )
+            self.log.note(
+                "malicious plan frozen",
+                self.tip(),
+                seed=plan["seed"],
+                malicious_miner_ids=plan["malicious_miner_ids"],
+                per_miner_target_rate=plan["per_miner_target_rate"],
+                quota_share_source=plan["quota_share_source"],
+            )
 
     def check_wpoa_activated(self, tip: int) -> None:
         """After the run: did wPoA ever actually take over?
@@ -784,6 +839,9 @@ class Orchestrator:
 
     def start_traffic(self) -> None:
         log_step("starting the traffic daemons")
+        # The plan must be on disk before any miner daemon starts: a selected miner reads
+        # it at startup to know it is malicious and what its target rate is.
+        self.write_malicious_manifest()
         traffic_dir = REPO_ROOT / "test" / "traffic"
         common = [
             "--config",
@@ -801,6 +859,13 @@ class Orchestrator:
             "run_miner_daemons",
             [sys.executable, str(traffic_dir / "run_miner_daemons.py")] + common,
         )
+        # The honest detector runs only when there is something to detect. One process,
+        # on the admin, so every offence is reported at most once (§ malus_detector).
+        if self.profile.malicious_enabled:
+            self.spawn(
+                "malus_detector",
+                [sys.executable, str(HERE / "malus_detector.py")] + common,
+            )
 
     # -- 10. drive and stop ------------------------------------------------------------
 
@@ -926,6 +991,13 @@ class Orchestrator:
                 "measured_epochs": self.profile.last_buried_epoch(final_height),
                 "wpoa_activated": self.wpoa_activated,
                 "stability_margin": 6,
+                # The resolved plan, with the addresses and the observed initial weights
+                # folded in — the same object written to malicious_manifest.json, repeated
+                # here so a reader of the run manifest alone sees who misbehaved.
+                "malicious_plan": self.profile.malicious_plan(
+                    addresses=self.addresses,
+                    initial_weights=self.initial_weights or None,
+                ),
             }
         )
         write_json(self.run_dir / "manifest.json", manifest)

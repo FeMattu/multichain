@@ -308,6 +308,17 @@ class RpcClient:
         """
         return self.call("liststreamitems", stream, True, count, start)
 
+    def stream_key_items(self, stream: str, key: str, count: int = 100000) -> list:
+        """Every confirmed item published under one key, verbose.
+
+        The idempotency primitive for the malicious injector: an action is keyed by its
+        deterministic ``action_id``, so this answers "has this exact action already
+        landed?" without any local state. Verbose, so the caller can read the confirming
+        block height straight off the item. ``count`` is explicit for the same reason as
+        above — the default of 10 would silently truncate.
+        """
+        return self.call("liststreamkeyitems", stream, key, True, count)
+
 
 __all__ = [
     "RpcClient",

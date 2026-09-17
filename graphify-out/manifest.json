@@ -5082,9 +5082,9 @@
     "semantic_hash": ""
   },
   "test/README.md": {
-    "mtime": 1789643860.4162948,
-    "seen": 1789643994.1670036,
-    "ast_hash": "2cfbf0c1796c1ac8c5b8c2f91aaa1160",
+    "mtime": 1789679920.814016,
+    "seen": 1789680121.0085135,
+    "ast_hash": "80cb44554489416633bebeea505a31fd",
     "semantic_hash": ""
   },
   "src/weight_engine/test/weight_epoch_tests.cpp": {
@@ -5118,21 +5118,21 @@
     "semantic_hash": ""
   },
   "test/analysis/pipeline/phase1_collect.py": {
-    "mtime": 1789600267.1138313,
-    "seen": 1789601216.1133397,
-    "ast_hash": "b6bf766cc4a2faf6bbd9616136782a06",
+    "mtime": 1789678994.148067,
+    "seen": 1789680121.00835,
+    "ast_hash": "a97ffc1c0f8605415c540da103319b31",
     "semantic_hash": ""
   },
   "test/analysis/pipeline/phase2_aggregate.py": {
-    "mtime": 1789643439.0177765,
-    "seen": 1789643486.3878465,
-    "ast_hash": "c727433ee91bb5e01c0817da039a6601",
+    "mtime": 1789678804.126536,
+    "seen": 1789680121.0083518,
+    "ast_hash": "ee418ac9c0e1773b8467901fe583d7a0",
     "semantic_hash": ""
   },
   "test/analysis/pipeline/phase3_analyze.py": {
-    "mtime": 1789601145.1561506,
-    "seen": 1789601216.1133413,
-    "ast_hash": "49e3c5989c4025cb892c12f7e1397724",
+    "mtime": 1789680085.0466104,
+    "seen": 1789680121.008353,
+    "ast_hash": "48dc4a39e563e216e0f265cff08de988",
     "semantic_hash": ""
   },
   "test/analysis/pipeline/stat/__init__.py": {
@@ -5196,9 +5196,9 @@
     "semantic_hash": ""
   },
   "test/bootstrap/bootstrap_network.py": {
-    "mtime": 1789640563.717286,
-    "seen": 1789643486.3878603,
-    "ast_hash": "860c0aa86b635ad9000effc0baf57f16",
+    "mtime": 1789678541.334962,
+    "seen": 1789680121.008367,
+    "ast_hash": "2df442641935ad1be66929bec01e3970",
     "semantic_hash": ""
   },
   "test/bootstrap/ca_assign_esg.py": {
@@ -5208,15 +5208,15 @@
     "semantic_hash": ""
   },
   "test/bootstrap/config_loader.py": {
-    "mtime": 1789598733.3664002,
-    "seen": 1789601216.1133516,
-    "ast_hash": "001c35acaf9450d0dbbd4ba576429878",
+    "mtime": 1789678018.1165,
+    "seen": 1789680121.0083692,
+    "ast_hash": "31d8f71daa088cd165611eafbe8fe187",
     "semantic_hash": ""
   },
   "test/bootstrap/event_log.py": {
-    "mtime": 1789598858.8563557,
-    "seen": 1789601216.1133528,
-    "ast_hash": "05335d8e64ec1372c6fdc8050a98c6a0",
+    "mtime": 1789678582.5830634,
+    "seen": 1789680121.00837,
+    "ast_hash": "d1c512a390bb209dcbb022727e7aa9a8",
     "semantic_hash": ""
   },
   "test/bootstrap/node_process.py": {
@@ -5226,15 +5226,15 @@
     "semantic_hash": ""
   },
   "test/bootstrap/rpc_client.py": {
-    "mtime": 1789598812.6775572,
-    "seen": 1789601216.1133544,
-    "ast_hash": "e2f8f39632f465d818f46143505e9bc9",
+    "mtime": 1789678180.0679505,
+    "seen": 1789680121.0083742,
+    "ast_hash": "373ef327a18c75ed6d82b4b5adb967d5",
     "semantic_hash": ""
   },
   "test/plotting/generate_plots.py": {
-    "mtime": 1789600790.0709348,
-    "seen": 1789601216.1133552,
-    "ast_hash": "b41d966b86a8bf2d56e6015b0558393e",
+    "mtime": 1789679938.1067963,
+    "seen": 1789680121.0083756,
+    "ast_hash": "0fd38bc29da32efa8b5ff1b2a1aa4d67",
     "semantic_hash": ""
   },
   "test/shutdown/stop_network.py": {
@@ -5250,9 +5250,9 @@
     "semantic_hash": ""
   },
   "test/traffic/miner_gas_daemon.py": {
-    "mtime": 1789599189.7033033,
-    "seen": 1789601216.1133575,
-    "ast_hash": "af6cb239e0f62f5add64fca581436106",
+    "mtime": 1789678367.052375,
+    "seen": 1789680121.0083792,
+    "ast_hash": "5e83e122dfa94e2271659757d14a84a2",
     "semantic_hash": ""
   },
   "test/traffic/run_company_daemons.py": {
@@ -5286,9 +5286,9 @@
     "semantic_hash": ""
   },
   "test/config/schema.md": {
-    "mtime": 1789598575.9678473,
-    "seen": 1789601216.1134775,
-    "ast_hash": "42c797b08b1823db85fb73cceeaad900",
+    "mtime": 1789679859.3138888,
+    "seen": 1789680121.0085185,
+    "ast_hash": "802d41c22f4ccf13d9e9678f57179b0d",
     "semantic_hash": ""
   },
   "test/docs/RPCLIST.md": {
@@ -5331,6 +5331,78 @@
     "mtime": 1789643789.1367743,
     "seen": 1789643994.1670105,
     "ast_hash": "d89e304665bf95b5e5242eea885abb38",
+    "semantic_hash": ""
+  },
+  "test/analysis/pipeline/stat/malus.py": {
+    "mtime": 1789678722.785617,
+    "seen": 1789680121.0083587,
+    "ast_hash": "abb108c34664d0e01f27de8362dce9f0",
+    "semantic_hash": ""
+  },
+  "test/bootstrap/malicious.py": {
+    "mtime": 1789677971.6765049,
+    "seen": 1789680121.008371,
+    "ast_hash": "679d05646f9950a707263c4e6c9e528a",
+    "semantic_hash": ""
+  },
+  "test/bootstrap/malus_detector.py": {
+    "mtime": 1789678534.0387833,
+    "seen": 1789680121.0083723,
+    "ast_hash": "59117009c2c485a8f722bbafb7ca7bca",
+    "semantic_hash": ""
+  },
+  "test/traffic/malicious_injector.py": {
+    "mtime": 1789680003.5587323,
+    "seen": 1789680121.0083783,
+    "ast_hash": "fe652581b4b01c7415d2fa9d39795bec",
+    "semantic_hash": ""
+  },
+  "test/unit/__init__.py": {
+    "mtime": 1789679520.6779401,
+    "seen": 1789680121.0083823,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "test/unit/test_malicious_config.py": {
+    "mtime": 1789679553.0399997,
+    "seen": 1789680121.008383,
+    "ast_hash": "9ce8a30f67fe4424ef5884156ea7c5a7",
+    "semantic_hash": ""
+  },
+  "test/unit/test_malicious_injector.py": {
+    "mtime": 1789679749.3683817,
+    "seen": 1789680121.0083838,
+    "ast_hash": "439a8eb259a7626dd796c5ccec611bb6",
+    "semantic_hash": ""
+  },
+  "test/unit/test_malicious_logic.py": {
+    "mtime": 1789679724.4592383,
+    "seen": 1789680121.0083845,
+    "ast_hash": "b2471fe9f24b191367224ffdcde67c1f",
+    "semantic_hash": ""
+  },
+  "test/unit/test_malus_pipeline.py": {
+    "mtime": 1789679697.5675914,
+    "seen": 1789680121.0083852,
+    "ast_hash": "7991fc0760122d45176165711c8cf985",
+    "semantic_hash": ""
+  },
+  "test/unit/test_malus_stats.py": {
+    "mtime": 1789679651.6371143,
+    "seen": 1789680121.0083861,
+    "ast_hash": "f241cbdd3f94590ae0631ecf3daa497e",
+    "semantic_hash": ""
+  },
+  "test/config/profiles/malicious.yaml": {
+    "mtime": 1789679468.2329092,
+    "seen": 1789680121.0085154,
+    "ast_hash": "9ad622edd6d9475c7de9f2095f1b8439",
+    "semantic_hash": ""
+  },
+  "test/docs/malicious-miners.md": {
+    "mtime": 1789679912.8005538,
+    "seen": 1789680121.0085223,
+    "ast_hash": "e76258b2fdf3d4088f62db1d157e4bf3",
     "semantic_hash": ""
   }
 }

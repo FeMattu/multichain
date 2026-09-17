@@ -28,6 +28,28 @@ Figures, in the order they are produced:
 9. ``traffic_per_epoch.png`` — planned against sent against on-chain, which is where a
    silent publish failure becomes visible.
 
+Weight <-> election diagnostics (each drawn from the same phase-3 table its test read):
+
+10. ``p_value_uniformity.png`` — histogram of the per-epoch goodness-of-fit p-values with the
+    uniform expectation, KS vs U(0,1) and a binomial test on the rejection count.
+11. ``wilson_violation_heatmap.png`` — epoch x validator, red where the entitled share fell
+    outside the 95% Wilson interval, with row/column violation totals.
+12. ``residual_boxplot_by_validator.png`` — per-validator boxplot of ``p_hat - p_theoretical``
+    over all epochs, with zero drawn and the observation count per validator.
+
+The malicious-miner experiment (only when a ``malicious`` section ran; otherwise each says so):
+
+13. ``malus_action_funnel.png`` — opportunity -> attempt -> RPC accepted -> confirmed ->
+    valid malus, by kind, with counts.
+14. ``malus_state_trajectory.png`` — per-epoch M, Psi, raw and effective weight for the
+    malicious miners, with confirmed-action epochs marked.
+15. ``malus_detection_latency.png`` — ECDFs of detection latency (blocks) and activation
+    latency (epochs).
+16. ``malus_weight_effect.png`` — relative change of effective weight, malicious vs honest,
+    median + IQR + transparent individual trajectories.
+17. ``malus_invariant_audit.png`` — epoch x validator grid of the malus invariants, green
+    for hold and red for violated.
+
 Matplotlib only, ``Agg`` backend, no seaborn and no styling beyond a shared palette: these
 are diagnostic figures, and a figure that needs a legend to decode its colours has failed.
 """
@@ -95,6 +117,19 @@ def short(address: str, width: int = 10) -> str:
     return (address or "")[:width]
 
 
+def _fmt(value: Any, digits: int = 4) -> str:
+    """Format a value for a figure caption, blanking anything not finite."""
+    if value in (None, ""):
+        return "-"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if not math.isfinite(number):
+        return "-"
+    return ("%%.%df" % digits) % number
+
+
 def colour_map(addresses: Sequence[str]) -> Dict[str, str]:
     return {a: PALETTE[n % len(PALETTE)] for n, a in enumerate(sorted(set(addresses)))}
 
@@ -143,6 +178,20 @@ class Plotter:
         self.correlations = read_table(self.phase3 / "weight_engine_correlations.csv")
         self.timer = read_table(self.phase3 / "wpoa_timer_race.csv")
         self.esg = read_table(self.run_dir / "analysis" / "phase1" / "esg_events.csv")
+
+        # Weight <-> election diagnostics (phase 3), each paired with its own test table.
+        self.pvalue_uniformity = read_table(self.phase3 / "weight_election_pvalue_uniformity.csv")
+        self.wilson_coverage = read_table(self.phase3 / "weight_election_wilson_coverage.csv")
+        self.residuals = read_table(self.phase3 / "weight_election_residuals.csv")
+
+        # The malicious-miner experiment (phase 2 ground truth + phase 3 statistics).
+        self.malus_state = read_table(self.phase2 / "malus_state.csv")
+        self.malus_actions = read_table(self.phase2 / "malus_actions.csv")
+        self.malus_funnel = read_table(self.phase3 / "malus_funnel.csv")
+        self.malus_latency = read_table(self.phase3 / "malus_latency.csv")
+        self.malus_weight_effect = read_table(self.phase3 / "malus_weight_effect.csv")
+        self.malus_invariants = read_table(self.phase3 / "malus_invariants.csv")
+
         self.written: List[Path] = []
 
     def record(self, path: Path) -> None:
@@ -542,6 +591,340 @@ class Plotter:
             "rejected — usually fee policy — and it depresses tau without any error.",
         ))
 
+    # -- 10. weight <-> election diagnostics -------------------------------------------
+
+    def plot_pvalue_uniformity(self) -> None:
+        path = self.out / "p_value_uniformity.png"
+        pvals = [f(r.get("gof_p_value")) for r in self.tests
+                 if r.get("epoch") not in ("", "all", None) and f(r.get("gof_p_value")) is not None]
+        stats = self.pvalue_uniformity[0] if self.pvalue_uniformity else {}
+        if not pvals:
+            self.record(empty(path, "Per-epoch p-value uniformity",
+                              "no per-epoch goodness-of-fit p-value was computed"))
+            return
+        fig, ax = plt.subplots(figsize=FIGSIZE)
+        bins = 10
+        ax.hist(pvals, bins=bins, range=(0.0, 1.0), color=PALETTE[0], alpha=0.8,
+                edgecolor="white", label="observed p-values")
+        expected = len(pvals) / bins
+        ax.axhline(expected, color=PALETTE[1], lw=1.6, ls="--",
+                   label="uniform expectation (%.2f/bin)" % expected)
+        ax.axvline(0.05, color=PALETTE[3], lw=1.0, ls=":", label="alpha = 0.05")
+        ax.set_xlabel("goodness-of-fit p-value")
+        ax.set_ylabel("epochs")
+        ax.set_title("Per-epoch p-values against the uniform null of a weighted election")
+        ax.legend(fontsize=8)
+        ax.grid(axis="y", alpha=0.25)
+        note = (
+            "N = %s epochs, k = %s rejections at alpha = %s (%.2f expected). "
+            "KS vs U(0,1): D = %s, p = %s. Binomial on the rejection count: p = %s. "
+            "A weighted election makes these p-values ~U(0,1); a spike near 0 is a "
+            "mis-specified null."
+            % (
+                stats.get("n_epochs", len(pvals)),
+                stats.get("n_rejections", "-"),
+                stats.get("alpha", "0.05"),
+                float(stats.get("expected_rejections") or 0.0),
+                _fmt(stats.get("ks_statistic_vs_uniform")),
+                _fmt(stats.get("ks_p_value")),
+                _fmt(stats.get("binomial_p_value_rejection_count")),
+            )
+        )
+        self.record(finish(fig, path, note))
+
+    def plot_wilson_violation_heatmap(self) -> None:
+        path = self.out / "wilson_violation_heatmap.png"
+        rows = [r for r in self.wilson_coverage if r.get("epoch") not in ("", None)]
+        rows = [r for r in rows if b(r.get("inside_wilson95")) is not None]
+        if not rows:
+            self.record(empty(path, "Wilson coverage violations",
+                              "no (epoch, validator) interval had both a weight and blocks"))
+            return
+        epochs = sorted({i(r["epoch"]) for r in rows if i(r["epoch"]) is not None})
+        validators = sorted({r["validator_address"] for r in rows})
+        vio = {(i(r["epoch"]), r["validator_address"]): b(r.get("violation")) for r in rows}
+        grid = [[1.0 if vio.get((e, v)) else 0.0 for e in epochs] for v in validators]
+
+        fig, ax = plt.subplots(figsize=(max(8, len(epochs) * 0.5), max(4, len(validators) * 0.5)))
+        ax.imshow(grid, aspect="auto", cmap="Reds", vmin=0.0, vmax=1.0)
+        ax.set_xticks(range(len(epochs)))
+        ax.set_xticklabels(epochs, fontsize=7)
+        ax.set_yticks(range(len(validators)))
+        ax.set_yticklabels([short(v) for v in validators], fontsize=7)
+        # Row/column totals in the tick labels.
+        col_tot = [sum(1 for v in validators if vio.get((e, v))) for e in epochs]
+        row_tot = [sum(1 for e in epochs if vio.get((e, v))) for v in validators]
+        ax.set_xticklabels(["%s\n(%d)" % (e, t) for e, t in zip(epochs, col_tot)], fontsize=7)
+        ax.set_yticklabels(["%s (%d)" % (short(v), t) for v, t in zip(validators, row_tot)],
+                           fontsize=7)
+        ax.set_xlabel("epoch (column total = violations)")
+        ax.set_ylabel("validator (row total = violations)")
+        ax.set_title("Where the entitled share fell outside the 95% Wilson interval (red)")
+        total = sum(col_tot)
+        self.record(finish(
+            fig, path,
+            "A red cell is an epoch-validator where p_theoretical fell outside the observed "
+            "share's 95%% Wilson interval. %d of %d cells; about %.1f are expected by chance "
+            "at alpha = 0.05." % (total, len(epochs) * len(validators), 0.05 * len(rows)),
+        ))
+
+    def plot_residual_boxplot(self) -> None:
+        path = self.out / "residual_boxplot_by_validator.png"
+        rows = [r for r in self.residuals if f(r.get("residual")) is not None]
+        if not rows:
+            self.record(empty(path, "Residuals by validator",
+                              "no (p_hat - p_theoretical) residuals were computed"))
+            return
+        by_validator: Dict[str, List[float]] = defaultdict(list)
+        for r in rows:
+            by_validator[r["validator_address"]].append(f(r["residual"]))
+        validators = sorted(by_validator)
+        data = [by_validator[v] for v in validators]
+        colours = colour_map(validators)
+        fig, ax = plt.subplots(figsize=(max(8, len(validators) * 1.1), 6))
+        bp = ax.boxplot(data, patch_artist=True, showmeans=True)
+        for patch, v in zip(bp["boxes"], validators):
+            patch.set_facecolor(colours[v])
+            patch.set_alpha(0.6)
+        ax.axhline(0.0, color="black", lw=1.2, ls="--", label="zero (perfect match)")
+        ax.set_xticks(range(1, len(validators) + 1))
+        ax.set_xticklabels(["%s\n(n=%d)" % (short(v), len(by_validator[v])) for v in validators],
+                           fontsize=7)
+        ax.set_ylabel("residual  p_hat - p_theoretical")
+        ax.set_title("Election-share residuals by validator, across all measured epochs")
+        ax.legend(fontsize=8)
+        ax.grid(axis="y", alpha=0.25)
+        self.record(finish(
+            fig, path,
+            "Each box is one validator's residuals over the measured epochs; the count is "
+            "in the tick label. A box centred on zero is a validator elected at its "
+            "entitled rate; a consistent offset is over- or under-representation.",
+        ))
+
+    # -- 11. the malicious-miner experiment --------------------------------------------
+
+    def _malus_ran(self) -> bool:
+        return any(f(r.get("attempts")) for r in self.malus_funnel) or bool(self.malus_actions)
+
+    def plot_malus_funnel(self) -> None:
+        path = self.out / "malus_action_funnel.png"
+        if not self._malus_ran():
+            self.record(empty(path, "Malus action funnel",
+                              "no malicious experiment ran on this profile"))
+            return
+        stages = ["opportunities", "attempts", "sent", "confirmed", "valid_malus"]
+        labels = ["opportunity", "attempt", "RPC accepted", "confirmed", "valid malus"]
+        by_scope = {r.get("scope"): r for r in self.malus_funnel}
+        fig, ax = plt.subplots(figsize=FIGSIZE)
+        width = 0.38
+        offsets = {"selfwrite": -width / 2, "badweight": width / 2}
+        drawn = False
+        for kind, off in offsets.items():
+            row = by_scope.get(kind)
+            if not row:
+                continue
+            values = [i(row.get(s)) or 0 for s in stages]
+            xs = [k + off for k in range(len(stages))]
+            ax.bar(xs, values, width=width,
+                   color=PALETTE[0] if kind == "selfwrite" else PALETTE[1], label=kind)
+            for x, v in zip(xs, values):
+                if v:
+                    ax.text(x, v, str(v), ha="center", va="bottom", fontsize=7)
+            drawn = True
+        # The 'all' row supplies the opportunity count (not defined per kind).
+        all_row = by_scope.get("all", {})
+        opp = i(all_row.get("opportunities"))
+        if opp:
+            ax.axhline(opp, color=PALETTE[3], lw=1.0, ls=":", label="opportunities (%d)" % opp)
+        if not drawn:
+            self.record(empty(path, "Malus action funnel", "the funnel table carried no rows"))
+            return
+        ax.set_xticks(range(len(stages)))
+        ax.set_xticklabels(labels)
+        ax.set_ylabel("count")
+        ax.set_title("Malicious action funnel, by kind")
+        ax.legend(fontsize=8)
+        ax.grid(axis="y", alpha=0.25)
+        attempts = i(all_row.get("attempts")) or 0
+        valid = i(all_row.get("valid_malus")) or 0
+        self.record(finish(
+            fig, path,
+            "Each stage is a strict subset of the one before. Of %d attempts, %d became a "
+            "valid malus (%s)."
+            % (attempts, valid, _fmt((valid / attempts) if attempts else None)),
+        ))
+
+    def plot_malus_trajectory(self) -> None:
+        path = self.out / "malus_state_trajectory.png"
+        rows = [r for r in self.malus_state if i(r.get("epoch")) is not None]
+        malicious = sorted({r["address"] for r in rows if b(r.get("is_malicious")) is True})
+        if not rows or not malicious:
+            self.record(empty(path, "Malus state trajectory",
+                              "no malicious miner had a malus trajectory to plot"))
+            return
+        colours = colour_map(malicious)
+        # Confirmed-action epochs, to mark on the panels.
+        action_epochs = sorted({i(r.get("confirm_epoch")) for r in self.malus_actions
+                                if b(r.get("confirmed")) and i(r.get("confirm_epoch")) is not None})
+        fig, axes = plt.subplots(2, 2, figsize=(14, 9), sharex=True)
+        panels = [
+            ("M", "accumulator M", axes[0][0]),
+            ("psi", "correction Psi", axes[0][1]),
+            ("weight_raw", "raw weight w", axes[1][0]),
+            ("weight_effective", "effective weight w_eff", axes[1][1]),
+        ]
+        for col, title, ax in panels:
+            for address in malicious:
+                series = sorted(
+                    ((i(r["epoch"]), f(r.get(col))) for r in rows
+                     if r["address"] == address and f(r.get(col)) is not None),
+                    key=lambda t: t[0],
+                )
+                if series:
+                    ax.plot([e for e, _ in series], [v for _, v in series],
+                            marker="o", ms=3, color=colours[address], label=short(address))
+            for e in action_epochs:
+                ax.axvline(e, color="#999999", lw=0.6, ls=":", alpha=0.7)
+            ax.set_title(title)
+            ax.grid(alpha=0.25)
+        axes[0][0].legend(fontsize=7)
+        axes[1][0].set_xlabel("epoch")
+        axes[1][1].set_xlabel("epoch")
+        fig.suptitle("Malus state trajectory for the malicious miners "
+                     "(dotted lines: epochs with a confirmed malicious action)")
+        self.record(finish(
+            fig, path,
+            "M is the decaying severity, Psi = max(0, 1 - M/M_max) the correction, and "
+            "w_eff = round(w * Psi) the weight the election consumes. Dotted verticals mark "
+            "epochs in which a malicious action confirmed.",
+        ))
+
+    def plot_malus_latency(self) -> None:
+        path = self.out / "malus_detection_latency.png"
+        det = [f(r.get("detection_latency_blocks")) for r in self.malus_actions
+               if b(r.get("reported")) and f(r.get("detection_latency_blocks")) is not None]
+        act = [f(r.get("activation_latency_epochs")) for r in self.malus_actions
+               if f(r.get("activation_latency_epochs")) is not None]
+        if not det and not act:
+            self.record(empty(path, "Malus detection latency",
+                              "no confirmed malicious action was detected, so there is no "
+                              "latency to plot"))
+            return
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+        for ax, data, title, unit, colour in (
+            (ax1, det, "detection latency", "blocks", PALETTE[0]),
+            (ax2, act, "activation latency", "epochs", PALETTE[2]),
+        ):
+            if data:
+                xs = sorted(data)
+                ys = [(k + 1) / len(xs) for k in range(len(xs))]
+                ax.step(xs, ys, where="post", color=colour, lw=1.8)
+                ax.scatter(xs, ys, s=18, color=colour)
+                ax.set_ylim(0, 1.05)
+            else:
+                ax.text(0.5, 0.5, "no data", ha="center", va="center", transform=ax.transAxes)
+            ax.set_xlabel("%s (%s)" % (title, unit))
+            ax.set_ylabel("ECDF")
+            ax.set_title(title)
+            ax.grid(alpha=0.25)
+        fig.suptitle("Detection latency (confirmation → first report) and activation latency")
+        self.record(finish(
+            fig, path,
+            "Detection latency is measured in blocks from an action's confirmation to its "
+            "first report; activation latency in epochs (the protocol applies a proved "
+            "malus from the epoch after the offence, so 1 is the minimum).",
+        ))
+
+    def plot_malus_weight_effect(self) -> None:
+        path = self.out / "malus_weight_effect.png"
+        rows = [r for r in self.malus_weight_effect if f(r.get("rel_change_w_eff")) is not None]
+        if not rows:
+            self.record(empty(path, "Malus effect on effective weight",
+                              "no validator had an effective-weight trajectory to compare"))
+            return
+        groups = {"malicious": [], "honest": []}
+        for r in rows:
+            key = "malicious" if b(r.get("is_malicious")) is True else "honest"
+            groups[key].append(f(r["rel_change_w_eff"]))
+        fig, ax = plt.subplots(figsize=FIGSIZE)
+        positions = {"malicious": 1, "honest": 2}
+        colours = {"malicious": PALETTE[1], "honest": PALETTE[2]}
+        for name, pos in positions.items():
+            values = groups[name]
+            if not values:
+                continue
+            # Transparent individual trajectories jittered around the group position.
+            jitter = [pos + (h % 7 - 3) * 0.03 for h in range(len(values))]
+            ax.scatter(jitter, values, color=colours[name], alpha=0.35, s=30)
+            med = sorted(values)[len(values) // 2]
+            q1 = sorted(values)[len(values) // 4]
+            q3 = sorted(values)[(3 * len(values)) // 4]
+            ax.plot([pos - 0.2, pos + 0.2], [med, med], color=colours[name], lw=2.4)
+            ax.plot([pos, pos], [q1, q3], color=colours[name], lw=1.2)
+        ax.axhline(0.0, color="black", lw=1.0, ls="--")
+        ax.set_xticks(list(positions.values()))
+        ax.set_xticklabels(["malicious (n=%d)" % len(groups["malicious"]),
+                            "honest (n=%d)" % len(groups["honest"])])
+        ax.set_ylabel("relative change in effective weight (first → last epoch)")
+        ax.set_title("Effect of the malus on effective weight: malicious vs honest")
+        ax.grid(axis="y", alpha=0.25)
+        self.record(finish(
+            fig, path,
+            "Thick bar: group median; thin bar: IQR; points: individual validators "
+            "(transparent). The matched-by-band comparison is in "
+            "phase3/malus_effectiveness.md.",
+        ))
+
+    def plot_malus_invariant_audit(self) -> None:
+        path = self.out / "malus_invariant_audit.png"
+        rows = [r for r in self.malus_invariants if i(r.get("epoch")) is not None]
+        if not rows:
+            self.record(empty(path, "Malus invariant audit",
+                              "no malus state was sampled, so there is nothing to audit"))
+            return
+        epochs = sorted({i(r["epoch"]) for r in rows})
+        validators = sorted({r["address"] for r in rows})
+        checks = ["invariant_psi_in_unit", "invariant_weff_matches", "invariant_clean_psi_one"]
+
+        def cell_ok(e: int, v: str) -> Optional[bool]:
+            entry = next((r for r in rows if i(r["epoch"]) == e and r["address"] == v), None)
+            if entry is None:
+                return None
+            oks = [b(entry.get(c)) for c in checks]
+            if any(o is False for o in oks):
+                return False
+            if all(o is True for o in oks):
+                return True
+            return None
+
+        # 1 = all invariants hold (green), 0 = a violation (red), 0.5 = not evaluable.
+        grid = []
+        violations = 0
+        for v in validators:
+            row = []
+            for e in epochs:
+                ok = cell_ok(e, v)
+                row.append(1.0 if ok is True else (0.0 if ok is False else 0.5))
+                if ok is False:
+                    violations += 1
+            grid.append(row)
+        from matplotlib.colors import ListedColormap  # local: only this plot needs it
+        cmap = ListedColormap(["#c0392b", "#dddddd", "#2ecc71"])
+        fig, ax = plt.subplots(figsize=(max(8, len(epochs) * 0.5), max(4, len(validators) * 0.5)))
+        ax.imshow(grid, aspect="auto", cmap=cmap, vmin=0.0, vmax=1.0)
+        ax.set_xticks(range(len(epochs)))
+        ax.set_xticklabels(epochs, fontsize=7)
+        ax.set_yticks(range(len(validators)))
+        ax.set_yticklabels([short(v) for v in validators], fontsize=7)
+        ax.set_xlabel("epoch")
+        ax.set_ylabel("validator")
+        ax.set_title("Malus invariants per (epoch, validator): green = hold, red = violated")
+        self.record(finish(
+            fig, path,
+            "Invariants: Psi in [0,1]; w_eff = round(w * Psi); and no proved malus => "
+            "Psi = 1. %d violation(s) across %d cells." % (violations, len(epochs) * len(validators)),
+        ))
+
     # -- driver ------------------------------------------------------------------------
 
     def run(self) -> List[Path]:
@@ -554,6 +937,16 @@ class Plotter:
         self.plot_margin()
         self.plot_rho_feedback()
         self.plot_traffic()
+        # Weight <-> election diagnostics.
+        self.plot_pvalue_uniformity()
+        self.plot_wilson_violation_heatmap()
+        self.plot_residual_boxplot()
+        # The malicious-miner experiment.
+        self.plot_malus_funnel()
+        self.plot_malus_trajectory()
+        self.plot_malus_latency()
+        self.plot_malus_weight_effect()
+        self.plot_malus_invariant_audit()
 
         index = self.out / "README.md"
         lines = ["# Figures", "",

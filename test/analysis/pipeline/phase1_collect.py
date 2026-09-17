@@ -110,6 +110,28 @@ COLUMNS: "OrderedDict[str, List[str]]" = OrderedDict(
         ("node_state", ["sample_height", "node_id", "blocks", "connections", "balance"]),
         ("rpc_errors", ["timestamp_utc", "node_id", "node_role", "block_height", "method",
                         "code", "error", "context_json"]),
+        # -- the malicious-miner experiment --------------------------------------------
+        # These five are empty on a plain run, and their headers still write, so phase 2
+        # can read them unconditionally and a diff of two runs stays clean.
+        ("malicious_config", ["parameter", "value", "source"]),
+        ("malicious_miners", ["node_id", "address", "is_malicious", "quota_share",
+                              "target_rate", "quota_share_source"]),
+        ("malicious_opportunities", ["timestamp_utc", "block_height", "epoch", "miner",
+                                     "node_address", "opportunity_index",
+                                     "opportunities_denominator", "target_rate", "deficit",
+                                     "probability", "draw", "act", "action", "action_id",
+                                     "attempted_so_far", "realised_rate"]),
+        ("malicious_actions", ["timestamp_utc", "block_height", "epoch", "miner",
+                               "node_address", "opportunity_index", "action", "action_id",
+                               "stream", "txid", "declared_address", "declared_weight",
+                               "true_weight", "target_epoch"]),
+        ("malicious_confirmations", ["timestamp_utc", "block_height", "epoch", "miner",
+                                     "node_address", "action", "action_id", "stream", "txid",
+                                     "confirm_height", "declared_address", "declared_weight",
+                                     "target_epoch"]),
+        ("malus_detections", ["timestamp_utc", "detect_height", "detect_epoch", "verdict",
+                              "kind", "accused_address", "offence_height", "offence_epoch",
+                              "evidence_txid", "stream", "report_txid", "reason"]),
     ]
 )
 
@@ -262,6 +284,42 @@ class Collector:
             source="compile-time constant of the node",
             note="MC_WEIGHT_DEFAULT_STABILITY_MARGIN; not a chain parameter",
         )
+
+    def collect_malicious_plan(self) -> None:
+        """The resolved malicious plan, flattened into two tables.
+
+        ``malicious_config`` carries the scalars, ``malicious_miners`` one row per miner —
+        malicious and honest alike, because the honest miners are the matched comparison
+        group phase 3's counterfactual needs. Both are written even when the experiment
+        was off (every row then simply says ``is_malicious = false``), so the shape is
+        constant across runs.
+        """
+        plan = self.manifest.get("malicious_plan") or {}
+        for key in ("schema_version", "enabled", "seed", "target_action_rate",
+                    "miner_count", "start_epoch", "stop_epoch", "selfwrite_stream",
+                    "opportunities_per_epoch", "quota_share_source"):
+            if key in plan:
+                self.add("malicious_config", parameter=key, value=plan[key],
+                         source="malicious_plan")
+        for name, weight in (plan.get("actions") or {}).items():
+            self.add("malicious_config", parameter="action_weight.%s" % name, value=weight,
+                     source="malicious_plan")
+
+        malicious = set(plan.get("malicious_miner_ids", []))
+        addresses = plan.get("malicious_miner_addresses", {}) or {}
+        shares = plan.get("quota_shares", {}) or {}
+        rates = plan.get("per_miner_target_rate", {}) or {}
+        manifest_addresses = self.manifest.get("addresses", {}) or {}
+        for node_id in plan.get("all_miner_ids", []):
+            self.add(
+                "malicious_miners",
+                node_id=node_id,
+                address=addresses.get(node_id) or manifest_addresses.get(node_id, ""),
+                is_malicious=node_id in malicious,
+                quota_share=_num(shares.get(node_id)),
+                target_rate=_num(rates.get(node_id)),
+                quota_share_source=plan.get("quota_share_source", ""),
+            )
 
     # -- snapshots ---------------------------------------------------------------------
 
@@ -753,6 +811,77 @@ class Collector:
                 planned_returns=_num(payload.get("planned_returns")),
                 mean_gap_s=_num(payload.get("mean_gap_s")),
             )
+        elif kind == "malicious_opportunity":
+            self.add(
+                "malicious_opportunities",
+                timestamp_utc=event.get("timestamp_utc", ""),
+                block_height=height,
+                epoch=_num(payload.get("epoch")),
+                miner=payload.get("miner", event.get("node_id", "")),
+                node_address=event.get("node_address", ""),
+                opportunity_index=_num(payload.get("opportunity_index")),
+                opportunities_denominator=_num(payload.get("opportunities_denominator")),
+                target_rate=_num(payload.get("target_rate")),
+                deficit=_num(payload.get("deficit")),
+                probability=_num(payload.get("probability")),
+                draw=_num(payload.get("draw")),
+                act=payload.get("act", ""),
+                action=payload.get("action", ""),
+                action_id=payload.get("action_id", ""),
+                attempted_so_far=_num(payload.get("attempted_so_far")),
+                realised_rate=_num(payload.get("realised_rate")),
+            )
+        elif kind == "malicious_action_sent":
+            self.add(
+                "malicious_actions",
+                timestamp_utc=event.get("timestamp_utc", ""),
+                block_height=height,
+                epoch=_num(payload.get("epoch")),
+                miner=payload.get("miner", event.get("node_id", "")),
+                node_address=event.get("node_address", ""),
+                opportunity_index=_num(payload.get("opportunity_index")),
+                action=payload.get("action", ""),
+                action_id=payload.get("action_id", ""),
+                stream=payload.get("stream", ""),
+                txid=payload.get("txid", ""),
+                declared_address=payload.get("declared_address", ""),
+                declared_weight=_num(payload.get("declared_weight")),
+                true_weight=_num(payload.get("true_weight")),
+                target_epoch=_num(payload.get("target_epoch")),
+            )
+        elif kind == "malicious_action_confirmed":
+            self.add(
+                "malicious_confirmations",
+                timestamp_utc=event.get("timestamp_utc", ""),
+                block_height=height,
+                epoch=_num(payload.get("epoch")),
+                miner=payload.get("miner", event.get("node_id", "")),
+                node_address=event.get("node_address", ""),
+                action=payload.get("action", ""),
+                action_id=payload.get("action_id", ""),
+                stream=payload.get("stream", ""),
+                txid=payload.get("txid", ""),
+                confirm_height=_num(payload.get("confirm_height")),
+                declared_address=payload.get("declared_address", ""),
+                declared_weight=_num(payload.get("declared_weight")),
+                target_epoch=_num(payload.get("target_epoch")),
+            )
+        elif kind == "malus_detection":
+            self.add(
+                "malus_detections",
+                timestamp_utc=event.get("timestamp_utc", ""),
+                detect_height=_num(payload.get("detect_height", height)),
+                detect_epoch=_num(payload.get("detect_epoch")),
+                verdict=payload.get("verdict", ""),
+                kind=payload.get("kind", ""),
+                accused_address=payload.get("accused_address", ""),
+                offence_height=_num(payload.get("offence_height")),
+                offence_epoch=_num(payload.get("offence_epoch")),
+                evidence_txid=payload.get("evidence_txid", ""),
+                stream=payload.get("stream", ""),
+                report_txid=payload.get("report_txid", ""),
+                reason=str(payload.get("reason") or "")[:300],
+            )
         elif kind == "rpc_error":
             context = {
                 k: v
@@ -801,6 +930,7 @@ def collect(run_dir: Path, profile_path: Optional[Path] = None) -> Dict[str, Any
     collector = Collector(profile, manifest)
     collector.collect_nodes()
     collector.collect_config()
+    collector.collect_malicious_plan()
     for event in read_events(run_dir):
         collector.collect_event(event)
 
@@ -829,6 +959,18 @@ def collect(run_dir: Path, profile_path: Optional[Path] = None) -> Dict[str, Any
         "run_status": manifest.get("status"),
         "row_counts": counts,
     }
+    # Headline facts of the malicious experiment, lifted from the run's resolved plan so
+    # phase 3 can read the target rate and the selection without re-opening the plan.
+    plan = manifest.get("malicious_plan") or {}
+    out_manifest.update(
+        {
+            "malicious_enabled": bool(plan.get("enabled")),
+            "malicious_target_action_rate": plan.get("target_action_rate"),
+            "malicious_miner_ids": plan.get("malicious_miner_ids", []),
+            "malicious_seed": plan.get("seed"),
+            "malicious_actions": plan.get("actions", {}),
+        }
+    )
     (out_dir / "manifest.json").write_text(
         json.dumps(out_manifest, indent=2, default=str), encoding="utf-8"
     )

@@ -13,6 +13,10 @@ Ready-made profiles live in [`profiles/`](profiles/):
 | [`small.yaml`](profiles/small.yaml) | 1 | 1 | 3 | 5 | 20 × 20 |
 | [`medium.yaml`](profiles/medium.yaml) | 1 | 2 | 5 | 10 | 20 × 30 |
 | [`large.yaml`](profiles/large.yaml) | 1 | 3 | 10 | 20 | 20 × 40 |
+| [`malicious.yaml`](profiles/malicious.yaml) | 1 | 2 | 10 | 15 | 20 × 30 |
+
+`malicious.yaml` is the only one with a `malicious` section (2 of its 10 miners misbehave);
+the other three leave it out and run the honest baseline. See [§ `malicious`](#malicious-optional).
 
 Validation lives in [`../bootstrap/config_loader.py`](../bootstrap/config_loader.py) and is
 strict: an unknown key is an error, not a warning. A typo in a `params.dat` key would
@@ -188,6 +192,42 @@ Both endpoints of every range must satisfy `low <= high`.
 | `startup_timeout_s` | `120` | How long to wait for a node's RPC to answer `getinfo`. |
 | `wpoa_debug` | `false` | Adds `-wpoadebug` to every daemon. Verbose. |
 | `shutdown_grace_s` | `30` | Time a node gets to answer `stop` before `SIGTERM`. |
+
+### `malicious` *(optional)*
+
+The malicious-miner experiment. **Absent means off**, and a profile without this section
+behaves exactly as it did before the feature existed — the same numbers, the same tables.
+Only *miners* can be selected. Full rationale:
+[`../docs/malicious-miners.md`](../docs/malicious-miners.md).
+
+| Field | Type | Default | Constraint |
+|---|---|---|---|
+| `enabled` | bool | `false` | When `false`, every other field is ignored. |
+| `miner_count` | int | `0` | `0 <= miner_count <= nodes.miner_count`. How many miners misbehave. |
+| `target_action_rate` | float | `0.0` | `[0, 1]`. Target share of the malicious *opportunities* to act on. |
+| `seed` | int | *the run `seed`* | `>= 0`. Drives the miner selection and every Bernoulli decision. Recorded in the manifest. |
+| `actions` | mapping | `{selfwrite: 0.5, badweight: 0.5}` | Non-empty; weights `>= 0`, not all zero; normalised. **Only** `selfwrite` and `badweight`. |
+| `start_epoch` | int | `1` | `1 <= start_epoch <= epochs.count`. First epoch an opportunity arises. |
+| `stop_epoch` | int/null | `null` | `null` = to the end; otherwise `>= start_epoch`. |
+| `selfwrite_stream` | enum | `weight-engine-membership` | `weight-engine-membership` \| `wpoa-weights`. Which self-attested stream a selfwrite targets. |
+
+Only two of the protocol's four malus kinds are producible from outside the node, so the
+loader **rejects `delay` and `equiv`** with the reason (they are minted inside
+`miner.cpp` / `multichainblock.cpp`, which this work must not touch). `enabled: true` with
+`miner_count: 0` or `target_action_rate: 0` is rejected too — that combination is inert,
+and `enabled: false` states the same thing without pretending to run.
+
+An **opportunity** is one countable event per malicious miner per epoch of the active
+window — not a block won, not a poll cycle — so a miner already penalised to `Psi = 0`
+still gets exactly one chance per epoch and the rate controller cannot diverge. The
+aggregate target is split across the selected miners in proportion to their initial share
+of the published weight (uniform when no weight is available yet), and each miner runs a
+deficit controller on its own share, so the total *attempted* actions approach
+`target_action_rate` of the total opportunities with no coordination between miners.
+
+The run writes an immutable **`<run>/malicious_manifest.json`** — the resolved config, the
+selected miner ids and addresses, the seed, the per-miner target rates and the schema
+version — consumed by the traffic daemons and by the analysis.
 
 ---
 

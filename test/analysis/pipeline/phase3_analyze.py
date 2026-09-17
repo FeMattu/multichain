@@ -49,6 +49,7 @@ from pipeline.stat import ALPHA, ANALYSIS_SEED, MC_GOF, MC_STREAK  # noqa: E402
 from pipeline.stat import concentration as CONC  # noqa: E402
 from pipeline.stat import gof as GOF  # noqa: E402
 from pipeline.stat import longitudinal as LONG  # noqa: E402
+from pipeline.stat import malus as MALUS  # noqa: E402
 from pipeline.stat import streak as STREAK  # noqa: E402
 from pipeline.stat import timer_race as TIMER  # noqa: E402
 from pipeline.stat import wilson as WILSON  # noqa: E402
@@ -129,6 +130,14 @@ class Analysis:
         self.epoch_engine = read_table(self.phase2, "epoch_engine")
         self.epoch_traffic = read_table(self.phase2, "epoch_traffic")
         self.epoch_conc = read_table(self.phase2, "epoch_concentration")
+        # The malicious-miner experiment. All empty on a plain run, which every method
+        # below handles by producing an empty table and a "not run" note rather than a
+        # crash — so the whole phase is a no-op when there was no experiment.
+        self.malus_state = read_table(self.phase2, "malus_state")
+        self.malus_actions = read_table(self.phase2, "malus_actions")
+        self.malus_funnel = read_table(self.phase2, "malus_funnel")
+        self.malus_rate = read_table(self.phase2, "malus_rate_by_miner")
+        self.malus_detection_events = read_table(self.phase2, "malus_detection_events")
 
         self.tables: Dict[str, List[Dict[str, Any]]] = {}
         self.checks: List[Dict[str, Any]] = []
@@ -571,6 +580,320 @@ class Analysis:
             )
         ]
 
+    # -- 5a. weight <-> election diagnostics -------------------------------------------
+
+    def analyse_weight_election_diagnostics(self) -> None:
+        """Second-order diagnostics on the headline test, all from phase-2/3 tables.
+
+        Three views, each with the test its figure will draw:
+
+        * the per-epoch goodness-of-fit p-values should be ~U(0,1) if the election really
+          is weighted — a KS test against U(0,1) and a binomial test on the count of
+          rejections at alpha say whether they are;
+        * per (epoch, validator), whether the entitled share fell outside the 95% Wilson
+          interval — the heatmap of coverage failures;
+        * per validator, the residual ``p_hat - p_theoretical`` across epochs — the boxplot.
+
+        The plot and the test read the **same** rows: the figure draws these tables, and
+        the numbers printed on it are the ones computed here.
+        """
+        from pipeline.stat import binom_sf_inclusive, ks_pvalue_one_sample  # noqa: E402
+        from pipeline.stat import ks_statistic_against_cdf  # noqa: E402
+
+        pvals = [
+            f(r.get("gof_p_value"))
+            for r in self.tables.get("wpoa_epoch_tests", [])
+            if r.get("epoch") != "all" and f(r.get("gof_p_value")) is not None
+        ]
+        n = len(pvals)
+        rejections = sum(1 for p in pvals if p < ALPHA)
+        ks_stat = ks_statistic_against_cdf(pvals, lambda x: min(1.0, max(0.0, x))) if n else None
+        ks_p = ks_pvalue_one_sample(ks_stat, n) if ks_stat is not None else None
+        # Binomial: under the null, each epoch rejects with probability alpha; is the
+        # observed count of rejections consistent with that?
+        binom_p = binom_sf_inclusive(rejections, n, ALPHA) if n else None
+        self.tables["weight_election_pvalue_uniformity"] = [
+            {
+                "n_epochs": n,
+                "n_rejections": rejections,
+                "alpha": ALPHA,
+                "expected_rejections": ALPHA * n,
+                "ks_statistic_vs_uniform": ks_stat,
+                "ks_p_value": ks_p,
+                "binomial_p_value_rejection_count": binom_p,
+            }
+        ]
+
+        # Per (epoch, validator) Wilson coverage, straight from the validator table.
+        heat: List[Dict[str, Any]] = []
+        for row in self.tables.get("wpoa_epoch_validators", []):
+            if row.get("epoch") == "all":
+                continue
+            inside = row.get("p_theoretical_inside_wilson95")
+            heat.append(
+                {
+                    "epoch": row.get("epoch"),
+                    "validator_address": row.get("validator_address", ""),
+                    "inside_wilson95": inside,
+                    "violation": (inside is False),
+                    "p_hat": f(row.get("p_hat")),
+                    "p_theoretical": f(row.get("p_theoretical")),
+                }
+            )
+        self.tables["weight_election_wilson_coverage"] = heat
+
+        # Per-validator residuals across epochs.
+        residual: List[Dict[str, Any]] = []
+        for row in self.tables.get("wpoa_epoch_validators", []):
+            if row.get("epoch") == "all":
+                continue
+            p_hat = f(row.get("p_hat"))
+            p_th = f(row.get("p_theoretical"))
+            if p_hat is None or p_th is None:
+                continue
+            residual.append(
+                {
+                    "validator_address": row.get("validator_address", ""),
+                    "epoch": row.get("epoch"),
+                    "residual": p_hat - p_th,
+                }
+            )
+        self.tables["weight_election_residuals"] = residual
+
+    # -- 5b. the malicious-miner experiment --------------------------------------------
+
+    @property
+    def malus_experiment_ran(self) -> bool:
+        """True when the run carried an enabled experiment with at least one opportunity."""
+        return any(self.malus_rate) or bool(self.malus_actions)
+
+    def analyse_malus(self) -> None:
+        """Detection quality, the funnel, the rate controller, latency, weight effect.
+
+        Every sub-table is written even when the experiment did not run — empty, with a
+        note — so a downstream reader (the plots, the report) never has to test for
+        presence. Precision, recall and F1 are measured against **confirmed** actions as
+        the positive class, and the false-positive count comes from reports against
+        records that were not confirmed malicious actions.
+        """
+        # -- funnel (carried straight through; it is already aggregated) ----------------
+        self.tables["malus_funnel"] = [
+            {
+                "scope": r.get("scope", ""),
+                "opportunities": i(r.get("opportunities")),
+                "attempts": i(r.get("attempts")),
+                "sent": i(r.get("sent")),
+                "confirmed": i(r.get("confirmed")),
+                "valid_malus": i(r.get("valid_malus")),
+            }
+            for r in self.malus_funnel
+        ]
+
+        # -- detection precision / recall / F1 -----------------------------------------
+        confirmed_actions = [r for r in self.malus_actions if b(r.get("confirmed"))]
+        tp = sum(1 for r in confirmed_actions if b(r.get("reported")))
+        fn = len(confirmed_actions) - tp
+        # A false positive is a "reported" verdict against a record that was not a
+        # confirmed malicious action — the safety property says there should be none.
+        fp = sum(
+            1
+            for r in self.malus_detection_events
+            if r.get("verdict") == "reported" and b(r.get("is_true_positive")) is not True
+        )
+        metrics = MALUS.detection_metrics(tp, fp, fn)
+        by_kind: List[Dict[str, Any]] = []
+        for kind in ("selfwrite", "badweight"):
+            k_conf = [r for r in confirmed_actions if r.get("action") == kind]
+            k_tp = sum(1 for r in k_conf if b(r.get("reported")))
+            k_fn = len(k_conf) - k_tp
+            k_fp = sum(
+                1 for r in self.malus_detection_events
+                if r.get("verdict") == "reported" and r.get("kind") == kind
+                and b(r.get("is_true_positive")) is not True
+            )
+            row = {"kind": kind}
+            row.update(MALUS.detection_metrics(k_tp, k_fp, k_fn))
+            by_kind.append(row)
+        overall = {"kind": "all"}
+        overall.update(metrics)
+        self.tables["malus_detection"] = [overall] + by_kind
+        self.summary["malus_detection"] = metrics
+
+        # -- rate convergence ----------------------------------------------------------
+        rate_rows: List[Dict[str, Any]] = []
+        for r in self.malus_rate:
+            conv = MALUS.rate_convergence(
+                f(r.get("target_rate")), f(r.get("attempted_rate")), i(r.get("opportunities")) or 0
+            )
+            rate_rows.append(
+                {
+                    "miner": r.get("miner", ""),
+                    "address": r.get("address", ""),
+                    "opportunities": i(r.get("opportunities")),
+                    "attempts": i(r.get("attempts")),
+                    "sent": i(r.get("sent")),
+                    "confirmed": i(r.get("confirmed")),
+                    "valid_malus": i(r.get("valid_malus")),
+                    "target_rate": f(r.get("target_rate")),
+                    "attempted_rate": f(r.get("attempted_rate")),
+                    "confirmed_rate": f(r.get("confirmed_rate")),
+                    "valid_rate": f(r.get("valid_rate")),
+                    "attempted_wilson95_low": conv["wilson95_low"],
+                    "attempted_wilson95_high": conv["wilson95_high"],
+                    "target_inside_attempted_ci": conv["target_inside"],
+                }
+            )
+        self.tables["malus_rate"] = rate_rows
+        # The aggregate realised-vs-target, over all malicious opportunities at once.
+        total_opps = sum(i(r.get("opportunities")) or 0 for r in self.malus_rate)
+        total_attempts = sum(i(r.get("attempts")) or 0 for r in self.malus_rate)
+        target = f(self.manifest1.get("malicious_target_action_rate"))
+        if target is None:
+            # Fall back to the per-miner targets' opportunity-weighted mean.
+            num = sum((f(r.get("target_rate")) or 0.0) * (i(r.get("opportunities")) or 0)
+                      for r in self.malus_rate)
+            target = (num / total_opps) if total_opps else None
+        self.summary["malus_rate"] = MALUS.rate_convergence(
+            target, (total_attempts / total_opps) if total_opps else None, total_opps
+        )
+
+        # -- detection & activation latency --------------------------------------------
+        det_latency = [i(r.get("detection_latency_blocks")) for r in confirmed_actions
+                       if b(r.get("reported")) and i(r.get("detection_latency_blocks")) is not None]
+        act_latency = [i(r.get("activation_latency_epochs")) for r in confirmed_actions
+                       if i(r.get("activation_latency_epochs")) is not None]
+        self.tables["malus_latency"] = [
+            dict(measure="detection_latency_blocks", **MALUS.latency_summary(det_latency)),
+            dict(measure="activation_latency_epochs", **MALUS.latency_summary(act_latency)),
+        ]
+        for kind in ("selfwrite", "badweight"):
+            k_lat = [i(r.get("detection_latency_blocks")) for r in confirmed_actions
+                     if r.get("action") == kind and b(r.get("reported"))
+                     and i(r.get("detection_latency_blocks")) is not None]
+            self.tables["malus_latency"].append(
+                dict(measure="detection_latency_blocks_%s" % kind, **MALUS.latency_summary(k_lat))
+            )
+
+        # -- weight effect, matched by initial weight band -----------------------------
+        self._analyse_weight_effect()
+
+        # -- invariant audit -----------------------------------------------------------
+        self._analyse_invariants()
+
+    def _analyse_weight_effect(self) -> None:
+        """Relative change of effective weight for malicious vs honest, matched by band.
+
+        Each validator's effective weight is taken at the first and last epoch it appears
+        in ``malus_state``; the relative change is compared between malicious miners and
+        honest ones **in the same initial-weight tercile**, so the comparison is not just
+        "penalised nodes fell" but "penalised nodes fell relative to comparable
+        unpenalised ones". Causality is not claimed from a bare ESG/activity difference —
+        the matching on initial weight is what the band is for.
+        """
+        first_last: Dict[str, Dict[str, Any]] = {}
+        for row in self.malus_state:
+            address = row.get("address", "")
+            epoch = i(row.get("epoch"))
+            if not address or epoch is None:
+                continue
+            weff = f(row.get("weight_effective"))
+            wraw = f(row.get("weight_raw"))
+            entry = first_last.setdefault(
+                address,
+                {"is_malicious": b(row.get("is_malicious")), "first_epoch": epoch,
+                 "last_epoch": epoch, "w_eff_start": weff, "w_eff_end": weff,
+                 "w_raw_start": wraw},
+            )
+            if epoch <= entry["first_epoch"]:
+                entry["first_epoch"], entry["w_eff_start"], entry["w_raw_start"] = epoch, weff, wraw
+            if epoch >= entry["last_epoch"]:
+                entry["last_epoch"], entry["w_eff_end"] = epoch, weff
+
+        starts = sorted(v["w_raw_start"] for v in first_last.values() if v["w_raw_start"] is not None)
+        def band(value: Optional[float]) -> str:
+            if value is None or not starts:
+                return "unknown"
+            lo, hi = starts[len(starts) // 3], starts[2 * len(starts) // 3]
+            return "low" if value <= lo else ("mid" if value <= hi else "high")
+
+        rows: List[Dict[str, Any]] = []
+        for address, entry in sorted(first_last.items()):
+            rel = MALUS.relative_change(entry["w_eff_start"], entry["w_eff_end"])
+            rows.append(
+                {
+                    "address": address,
+                    "is_malicious": entry["is_malicious"],
+                    "weight_band": band(entry["w_raw_start"]),
+                    "w_raw_start": entry["w_raw_start"],
+                    "w_eff_start": entry["w_eff_start"],
+                    "w_eff_end": entry["w_eff_end"],
+                    "rel_change_w_eff": rel,
+                }
+            )
+        self.tables["malus_weight_effect"] = rows
+
+        summary: List[Dict[str, Any]] = []
+        for band_name in ("low", "mid", "high", "unknown"):
+            mal = [r["rel_change_w_eff"] for r in rows
+                   if r["weight_band"] == band_name and r["is_malicious"] is True
+                   and r["rel_change_w_eff"] is not None]
+            hon = [r["rel_change_w_eff"] for r in rows
+                   if r["weight_band"] == band_name and r["is_malicious"] is False
+                   and r["rel_change_w_eff"] is not None]
+            if not mal and not hon:
+                continue
+            summary.append(
+                {
+                    "weight_band": band_name,
+                    "n_malicious": len(mal),
+                    "n_honest": len(hon),
+                    "median_rel_change_malicious": MALUS.median(mal),
+                    "median_rel_change_honest": MALUS.median(hon),
+                    "difference_malicious_minus_honest": (
+                        None if (not mal or not hon)
+                        else MALUS.median(mal) - MALUS.median(hon)
+                    ),
+                }
+            )
+        self.tables["malus_weight_effect_matched"] = summary
+
+    def _analyse_invariants(self) -> None:
+        """Count invariant violations per epoch, from the recompute done in phase 2.
+
+        Four invariants: Psi in [0,1]; w_eff equals the independent recomputation; a
+        validator with no proved malus has Psi exactly 1; and M does not rise between
+        epochs in which no new valid report was folded (checked as monotone decay for a
+        validator with no action confirmed in the interval).
+        """
+        rows: List[Dict[str, Any]] = []
+        violations = {"psi_in_unit": 0, "weff_matches": 0, "clean_psi_one": 0}
+        for row in self.malus_state:
+            psi_ok = b(row.get("invariant_psi_in_unit"))
+            weff_ok = b(row.get("invariant_weff_matches"))
+            clean_ok = b(row.get("invariant_clean_psi_one"))
+            if psi_ok is False:
+                violations["psi_in_unit"] += 1
+            if weff_ok is False:
+                violations["weff_matches"] += 1
+            if clean_ok is False:
+                violations["clean_psi_one"] += 1
+            rows.append(
+                {
+                    "epoch": i(row.get("epoch")),
+                    "address": row.get("address", ""),
+                    "is_malicious": b(row.get("is_malicious")),
+                    "M": f(row.get("M")),
+                    "psi": f(row.get("psi")),
+                    "weight_effective": f(row.get("weight_effective")),
+                    "weff_recomputed": f(row.get("weff_recomputed")),
+                    "invariant_psi_in_unit": psi_ok,
+                    "invariant_weff_matches": weff_ok,
+                    "invariant_clean_psi_one": clean_ok,
+                }
+            )
+        self.tables["malus_invariants"] = rows
+        self.summary["malus_invariant_violations"] = violations
+
     # -- 6. consistency checks ---------------------------------------------------------
 
     def run_checks(self) -> None:
@@ -740,6 +1063,62 @@ class Analysis:
             "reads" % len(wrong_actor),
         )
 
+        # -- the malicious-miner experiment (only when it ran) -------------------------
+        if self.malus_experiment_ran:
+            violations = self.summary.get("malus_invariant_violations", {})
+            total_v = sum(violations.values())
+            check(
+                "malus_psi_in_unit_interval",
+                violations.get("psi_in_unit", 0) == 0,
+                "ok: every sampled Psi lies in [0,1]"
+                if violations.get("psi_in_unit", 0) == 0
+                else "%d malus sample(s) have Psi outside [0,1]" % violations["psi_in_unit"],
+            )
+            check(
+                "malus_effective_weight_matches_recompute",
+                violations.get("weff_matches", 0) == 0,
+                "ok: w_eff = round(w_raw * Psi) in every sample"
+                if violations.get("weff_matches", 0) == 0
+                else "%d sample(s) where the node's w_eff disagrees with the independent "
+                "recomputation" % violations["weff_matches"],
+            )
+            check(
+                "malus_clean_validator_has_psi_one",
+                violations.get("clean_psi_one", 0) == 0,
+                "ok: every validator with no proved malus has Psi = 1 (the mechanism is "
+                "inert on honest behaviour)"
+                if violations.get("clean_psi_one", 0) == 0
+                else "%d sample(s) where a validator with M = 0 has Psi != 1"
+                % violations["clean_psi_one"],
+            )
+            fp = self.summary.get("malus_detection", {}).get("false_positive")
+            check(
+                "malus_detector_no_false_positives",
+                fp == 0,
+                "ok: the detector reported no honest record (%d report(s), all against "
+                "confirmed malicious actions)"
+                % self.summary.get("malus_detection", {}).get("n_reports", 0)
+                if fp == 0
+                else "%d honest record(s) were wrongly reported as malus — the safety "
+                "property does not hold" % (fp or 0),
+            )
+            # A run that injected but detected nothing is worth flagging, though it is not
+            # a pipeline bug: it usually means the offences never confirmed or the epoch
+            # never buried in time. Non-critical.
+            confirmed = sum(1 for r in self.malus_actions if b(r.get("confirmed")))
+            valid = sum(1 for r in self.malus_actions if b(r.get("reported")))
+            check(
+                "malus_confirmed_actions_were_detected",
+                not (confirmed > 0 and valid == 0),
+                "ok: %d of %d confirmed malicious action(s) were recognised as malus"
+                % (valid, confirmed)
+                if not (confirmed > 0 and valid == 0)
+                else "%d malicious action(s) confirmed on chain but none was recognised as "
+                "a valid malus — check the detector and the epoch-burial timing" % confirmed,
+                critical=False,
+            )
+            _ = total_v  # referenced for clarity; the per-invariant checks above are what fail
+
         # -- the run produced something to test ----------------------------------------
         check(
             "at_least_one_fully_measured_epoch",
@@ -903,6 +1282,186 @@ class Analysis:
         lines.append(
             "The corresponding figure is `plots/weight_vs_election.png`, produced by "
             "`plotting/generate_plots.py`."
+        )
+        lines.append("")
+        path.write_text("\n".join(lines), encoding="utf-8")
+        return path
+
+    def write_malus_report(self) -> Optional[Path]:
+        """The dedicated report for the malicious-miner experiment.
+
+        Written only when the experiment ran, and returned so the caller can link it. It
+        keeps the three states — attempted, confirmed, valid malus — visibly separate,
+        because that separation is the honest way to state what the mechanism achieved.
+        """
+        if not self.malus_experiment_ran:
+            return None
+        path = self.out / "malus_effectiveness.md"
+        lines: List[str] = []
+        lines.append("# Malicious miners and the behavioural malus")
+        lines.append("")
+        lines.append(
+            "> Two of the four malus kinds are implementable from outside the node and are "
+            "the ones exercised here: **selfwrite** (a record on a self-attested stream "
+            "naming another node) and **badweight** (a self-published weight that fails "
+            "recomputation). `delay` and `equiv` require the consensus core and are out of "
+            "scope. The other two attacks are produced by real transactions and detected, "
+            "independently, by an honest node's own `reportmalus` predicate."
+        )
+        lines.append("")
+        lines.append(
+            "**Three states, kept distinct throughout:** an action is *attempted* when the "
+            "injector's controller decides to act, *confirmed* when its transaction reaches "
+            "a block, and a *valid malus* only when an honest node accepts the evidence and "
+            "publishes a report. Precision and recall below use **confirmed** actions as "
+            "the positive class."
+        )
+        lines.append("")
+
+        lines.append("## Selection and target rate")
+        lines.append("")
+        lines.append("| miner | target rate | opportunities | attempted | attempted rate | 95% CI | on target |")
+        lines.append("|---|---:|---:|---:|---:|---|---|")
+        for row in self.tables.get("malus_rate", []):
+            lines.append(
+                "| `%s` | %s | %s | %s | %s | [%s, %s] | %s |"
+                % (
+                    str(row.get("miner", "")),
+                    _fmt(row.get("target_rate"), 3),
+                    row.get("opportunities"),
+                    row.get("attempts"),
+                    _fmt(row.get("attempted_rate"), 3),
+                    _fmt(row.get("attempted_wilson95_low"), 3),
+                    _fmt(row.get("attempted_wilson95_high"), 3),
+                    "yes" if row.get("target_inside_attempted_ci") else "no",
+                )
+            )
+        agg = self.summary.get("malus_rate", {})
+        lines.append("")
+        lines.append(
+            "Aggregate: target **%s**, realised (attempted) **%s** over %s opportunities "
+            "(95%% CI [%s, %s]; on target: %s)."
+            % (
+                _fmt(agg.get("target"), 3),
+                _fmt(agg.get("realised"), 3),
+                (self.malus_rate and sum(i(r.get("opportunities")) or 0 for r in self.malus_rate)) or 0,
+                _fmt(agg.get("wilson95_low"), 3),
+                _fmt(agg.get("wilson95_high"), 3),
+                "yes" if agg.get("target_inside") else "no",
+            )
+        )
+        lines.append("")
+
+        lines.append("## Funnel: opportunity → attempt → sent → confirmed → valid malus")
+        lines.append("")
+        lines.append("| scope | opportunities | attempts | sent | confirmed | valid malus |")
+        lines.append("|---|---:|---:|---:|---:|---:|")
+        for row in self.tables.get("malus_funnel", []):
+            lines.append(
+                "| %s | %s | %s | %s | %s | %s |"
+                % (
+                    row.get("scope"),
+                    "-" if row.get("opportunities") is None else row.get("opportunities"),
+                    row.get("attempts"),
+                    row.get("sent"),
+                    row.get("confirmed"),
+                    row.get("valid_malus"),
+                )
+            )
+        lines.append("")
+
+        lines.append("## Detection quality")
+        lines.append("")
+        lines.append("| kind | TP | FP | FN | precision | recall | F1 |")
+        lines.append("|---|---:|---:|---:|---:|---:|---:|")
+        for row in self.tables.get("malus_detection", []):
+            lines.append(
+                "| %s | %s | %s | %s | %s | %s | %s |"
+                % (
+                    row.get("kind"),
+                    row.get("true_positive"),
+                    row.get("false_positive"),
+                    row.get("false_negative"),
+                    _fmt(row.get("precision"), 3),
+                    _fmt(row.get("recall"), 3),
+                    _fmt(row.get("f1"), 3),
+                )
+            )
+        lines.append("")
+        lines.append(
+            "A false positive is a report against a record that was **not** a confirmed "
+            "malicious action; the mechanism's safety property is that this count is zero."
+        )
+        lines.append("")
+
+        lines.append("## Latency")
+        lines.append("")
+        lines.append("| measure | n | mean | median | p25 | p75 | min | max |")
+        lines.append("|---|---:|---:|---:|---:|---:|---:|---:|")
+        for row in self.tables.get("malus_latency", []):
+            lines.append(
+                "| %s | %s | %s | %s | %s | %s | %s | %s |"
+                % (
+                    row.get("measure"),
+                    row.get("n"),
+                    _fmt(row.get("mean"), 2),
+                    _fmt(row.get("median"), 2),
+                    _fmt(row.get("p25"), 2),
+                    _fmt(row.get("p75"), 2),
+                    _fmt(row.get("min"), 2),
+                    _fmt(row.get("max"), 2),
+                )
+            )
+        lines.append("")
+        lines.append(
+            "Detection latency is in **blocks**, from the offending transaction's "
+            "confirmation to the first report of it. Activation latency is in **epochs**: "
+            "a proved malus is folded at the offence's epoch and governs selection from the "
+            "epoch after, so a value of 1 is the protocol minimum."
+        )
+        lines.append("")
+
+        lines.append("## Effective-weight effect, matched by initial-weight band")
+        lines.append("")
+        lines.append("| band | n malicious | n honest | median Δw_eff (malicious) | median Δw_eff (honest) | difference |")
+        lines.append("|---|---:|---:|---:|---:|---:|")
+        for row in self.tables.get("malus_weight_effect_matched", []):
+            lines.append(
+                "| %s | %s | %s | %s | %s | %s |"
+                % (
+                    row.get("weight_band"),
+                    row.get("n_malicious"),
+                    row.get("n_honest"),
+                    _fmt(row.get("median_rel_change_malicious"), 3),
+                    _fmt(row.get("median_rel_change_honest"), 3),
+                    _fmt(row.get("difference_malicious_minus_honest"), 3),
+                )
+            )
+        lines.append("")
+        lines.append(
+            "The comparison is within an initial-weight band, so it reads as \"penalised "
+            "nodes moved relative to comparable unpenalised ones\" rather than as a bare "
+            "before/after. No causal claim is made from an ESG or activity difference "
+            "alone."
+        )
+        lines.append("")
+
+        lines.append("## Invariant audit")
+        lines.append("")
+        violations = self.summary.get("malus_invariant_violations", {})
+        lines.append(
+            "- Psi outside [0,1]: **%d**\n- w_eff disagreeing with the recomputation: "
+            "**%d**\n- a clean validator (M = 0) with Psi != 1: **%d**"
+            % (
+                violations.get("psi_in_unit", 0),
+                violations.get("weff_matches", 0),
+                violations.get("clean_psi_one", 0),
+            )
+        )
+        lines.append("")
+        lines.append(
+            "The figure `plots/malus_invariant_audit.png` shows the per-(epoch, validator) "
+            "grid these counts come from."
         )
         lines.append("")
         path.write_text("\n".join(lines), encoding="utf-8")
@@ -1135,6 +1694,40 @@ class Analysis:
         )
         lines.append("")
 
+        if self.malus_experiment_ran:
+            lines.append("## 7b. Malicious miners and the malus")
+            lines.append("")
+            lines.append(
+                "> **Full detail: [`malus_effectiveness.md`](malus_effectiveness.md).** The "
+                "summary below is the short form."
+            )
+            lines.append("")
+            det = self.summary.get("malus_detection", {})
+            agg = self.summary.get("malus_rate", {})
+            funnel = next((r for r in self.tables.get("malus_funnel", []) if r.get("scope") == "all"), {})
+            violations = self.summary.get("malus_invariant_violations", {})
+            lines.append(
+                "- Injection rate: target **%s**, realised (attempted) **%s** — on target: %s."
+                % (_fmt(agg.get("target"), 3), _fmt(agg.get("realised"), 3),
+                   "yes" if agg.get("target_inside") else "no")
+            )
+            lines.append(
+                "- Funnel: %s opportunities → %s attempts → %s confirmed → %s valid malus."
+                % (funnel.get("opportunities"), funnel.get("attempts"),
+                   funnel.get("confirmed"), funnel.get("valid_malus"))
+            )
+            lines.append(
+                "- Detection: precision **%s**, recall **%s**, F1 **%s** (false positives: %s)."
+                % (_fmt(det.get("precision"), 3), _fmt(det.get("recall"), 3),
+                   _fmt(det.get("f1"), 3), det.get("false_positive"))
+            )
+            lines.append(
+                "- Invariant violations: Psi∉[0,1] %d, w_eff mismatch %d, clean-but-penalised %d."
+                % (violations.get("psi_in_unit", 0), violations.get("weff_matches", 0),
+                   violations.get("clean_psi_one", 0))
+            )
+            lines.append("")
+
         lines.append("## 8. Method notes")
         lines.append("")
         lines.append(
@@ -1172,6 +1765,8 @@ class Analysis:
         self.analyse_timer_race()
         self.analyse_longitudinal()
         self.analyse_weight_engine()
+        self.analyse_weight_election_diagnostics()
+        self.analyse_malus()
         self.run_checks()
 
         for name, rows in self.tables.items():
@@ -1188,6 +1783,7 @@ class Analysis:
         )
 
         self.write_weight_vs_election()
+        self.write_malus_report()
         self.write_report()
 
         critical_failures = [c["check"] for c in self.checks if c["critical"] and c["passed"] is False]

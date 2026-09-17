@@ -38,7 +38,7 @@ import json
 import os
 import threading
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterable, Iterator, Optional
 
 # -- event types -----------------------------------------------------------------------
 # Listed so that a reader of phase1_collect.py can see the whole vocabulary in one place.
@@ -59,6 +59,29 @@ EVENT_EPOCH_PLAN = "epoch_plan"
 EVENT_SNAPSHOT = "snapshot"
 EVENT_RPC_ERROR = "rpc_error"
 EVENT_HARNESS_NOTE = "harness_note"
+
+# -- the malicious-miner experiment ----------------------------------------------------
+# Written only when a profile carries an enabled ``malicious`` section. They are the
+# GROUND TRUTH of the experiment: what was offered, what was decided, what was broadcast
+# and what the honest side made of it. Four types, in the order the evidence is produced.
+
+#: One line per opportunity, per malicious miner, whether or not an action followed. The
+#: line that says "no action" is as load-bearing as the one that says "acted": without it
+#: the denominator of the realised rate would have to be guessed from the epoch geometry.
+EVENT_MALICIOUS_OPPORTUNITY = "malicious_opportunity"
+
+#: One line per action actually broadcast, carrying the txid. Distinct from the decision
+#: above because a decided action can still fail to reach the node.
+EVENT_MALICIOUS_ACTION_SENT = "malicious_action_sent"
+
+#: One line per action observed CONFIRMED on chain. The third of the three states the
+#: analysis must never conflate — attempted, sent, confirmed — because only a confirmed
+#: action can carry a malus.
+EVENT_MALICIOUS_ACTION_CONFIRMED = "malicious_action_confirmed"
+
+#: One line per verdict of the honest detector, reported or refused. A refusal is kept:
+#: it is what makes the false-positive rate measurable rather than assumed to be zero.
+EVENT_MALUS_DETECTION = "malus_detection"
 
 #: Snapshot kinds written by ``admin_daemon.py``. The value is the RPC that produced it,
 #: so phase 1 can normalise each shape without guessing.
@@ -220,6 +243,38 @@ class EventLog:
         self.emit(EVENT_SNAPSHOT, block_height, payload)
 
 
+def replay(
+    run_dir: str | Path, node_id: str, event_types: Optional[Iterable[str]] = None
+) -> Iterator[Dict[str, Any]]:
+    """Read back one node's own log, in file order.
+
+    THE LOG IS THE JOURNAL. A daemon that is restarted has to know what it already did,
+    and the alternative — a second, private state file beside the events — would be a
+    parallel log that could disagree with the evidence. Reading the evidence back
+    guarantees the two can never diverge, because there is only one.
+
+    ``events.jsonl`` is opened in append mode by every incarnation of a daemon, so a
+    restart adds to the same file rather than truncating it, which is what makes this
+    work. A truncated final line (a process killed mid-write) is skipped, exactly as
+    ``phase1_collect.read_events`` skips it.
+    """
+    path = Path(run_dir) / "logs" / node_id / "events.jsonl"
+    if not path.is_file():
+        return
+    wanted = None if event_types is None else set(event_types)
+    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if wanted is None or record.get("event_type") in wanted:
+                yield record
+
+
 def _json_default(value: Any) -> Any:
     """Last resort for anything json cannot encode — never silently drop a field."""
     if isinstance(value, (_dt.datetime, _dt.date)):
@@ -233,6 +288,10 @@ def _json_default(value: Any) -> Any:
 
 __all__ = [
     "EVENT_EPOCH_ENTERED",
+    "EVENT_MALICIOUS_ACTION_CONFIRMED",
+    "EVENT_MALICIOUS_ACTION_SENT",
+    "EVENT_MALICIOUS_OPPORTUNITY",
+    "EVENT_MALUS_DETECTION",
     "EVENT_EPOCH_PLAN",
     "EVENT_ESG_SET",
     "EVENT_GAS_REFUELLED",
@@ -250,6 +309,7 @@ __all__ = [
     "EVENT_TRAFFIC_TX_SENT",
     "EventLog",
     "SNAPSHOT_KINDS",
+    "replay",
     "run_id",
     "utc_now",
 ]

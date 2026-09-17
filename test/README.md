@@ -76,16 +76,20 @@ test/
   config/schema.md             the profile format, field by field
   config/profiles/             small.yaml, medium.yaml, large.yaml
   bootstrap/                   config_loader, rpc_client, event_log, node_process,
-                               bootstrap_network (entrypoint), admin_daemon, ca_assign_esg
+                               bootstrap_network (entrypoint), admin_daemon, ca_assign_esg,
+                               malicious (experiment logic), malus_detector (honest reporter)
   traffic/                     run_company_daemons, company_daemon,
-                               run_miner_daemons, miner_gas_daemon
+                               run_miner_daemons, miner_gas_daemon, malicious_injector
   shutdown/stop_network.py     teardown, also usable on its own
   analysis/pipeline/           phase1_collect, phase2_aggregate, phase3_analyze
-  analysis/pipeline/stat/      wilson, gof, concentration, streak, timer_race, longitudinal
+  analysis/pipeline/stat/      wilson, gof, concentration, streak, timer_race, longitudinal, malus
   analysis/pipeline/tools/     valida_sortition_montecarlo.py, verify_stat_closed_forms.py
   plotting/generate_plots.py   figures, from phase 2 and phase 3 only
+  unit/                        python unit tests (config, selection, controller, payloads, joins)
   results/                     run directories (not versioned)
 ```
+
+Run the unit tests with `python3 -m unittest discover -s test/unit` (they need no chain).
 
 ## Roles
 
@@ -109,9 +113,11 @@ run-<chain>-<UTC>/
   treasury.txt           written early: the miner daemons read it at startup
   chains/<node>/         data directories and daemon.out
   logs/<node>/events.jsonl   the run's own JSON Lines log
+  malicious_manifest.json    the resolved malicious plan (always written; disabled = off)
   analysis/phase1/       flat tables, one row per input record
-  analysis/phase2/       candidate_long, round_level, epoch_level, epoch_engine, ...
-  analysis/phase3/       tests, consistency checks, report.md, weight_vs_election.md
+  analysis/phase2/       candidate_long, round_level, epoch_level, epoch_engine, malus_*, ...
+  analysis/phase3/       tests, consistency checks, report.md, weight_vs_election.md,
+                         malus_effectiveness.md (only when the experiment ran)
   analysis/plots/        figures
 ```
 
@@ -129,8 +135,10 @@ of a node's `events.jsonl` and the RPC call that produced it.
    delay from the logged inputs. `delay_recompute_mismatch_rounds = 0` is a pass condition:
    a mismatch means the harness and the node disagree about the mechanism itself.
 3. **phase3** — the only phase that tests. Wilson intervals, goodness of fit, concentration,
-   streaks, the timer race, the longitudinal checks and the WeightEngine feedback, plus
-   consistency checks that fail loudly.
+   streaks, the timer race, the longitudinal checks and the WeightEngine feedback, the
+   weight↔election diagnostics, and — when a `malicious` section ran — malus detection
+   quality, latency, weight effect and the invariant audit, plus consistency checks that
+   fail loudly.
 
 Test constants are fixed in code and shared with the thesis: `alpha = 0.05`, Monte-Carlo
 draws 20 000 (GoF) and 10 000 (streak), analysis seed `20260905`. They are **not** profile
@@ -146,6 +154,56 @@ which gives the same guarantee across process boundaries.
 
 What the seed cannot make deterministic: wallet keys, addresses, and block timing. Those
 come from the node.
+
+## Malicious miners (optional)
+
+A profile may carry a `malicious` section that turns a chosen subset of miners into
+attackers. **Without the section the run is identical to before**; with it, the selected
+miners inject provable misbehaviour and an honest detector reports it, so the behavioural
+malus can be measured end to end. See
+[`docs/malicious-miners.md`](docs/malicious-miners.md) for the full design and
+[`config/schema.md`](config/schema.md#malicious-optional) for the fields; the example
+profile is [`config/profiles/malicious.yaml`](config/profiles/malicious.yaml).
+
+```bash
+# a full malicious run (10 miners, 2 malicious, rate 0.15, 50/50 mix, starts after bootstrap)
+./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
+    --config test/config/profiles/malicious.yaml
+```
+
+Two kinds are implemented, and only two are possible from outside the node:
+
+- **selfwrite** — a record on a self-attested stream (`weight-engine-membership` or
+  `wpoa-weights`) whose declared address is not the signer's. Honest readers discard it, so
+  the *attempt* is the offence.
+- **badweight** — a self-published `wpoa-weights` value that fails independent
+  recomputation. It *succeeds* — it enters the election — until a node recomputes it.
+
+`delay` and `equiv` are **not** implemented: they are produced inside the consensus core
+(`miner.cpp` / `multichainblock.cpp`), which this harness must never modify, and the loader
+rejects a profile that asks for them.
+
+**Three states, never conflated.** An action is *attempted* (the controller decided to
+act), *confirmed* (its transaction reached a block), and a *valid malus* only when an
+honest node's `reportmalus` predicate accepts the evidence and publishes a report. Precision
+and recall use **confirmed** actions as the positive class, because an action that never
+confirmed cannot carry a malus. An **opportunity** is one countable event per malicious
+miner per epoch of the active window; the realised rate is the attempts over those
+opportunities.
+
+**Limits.** Detection uses one honest detector on the admin node (so each offence is
+reported at most once); with `delay`/`equiv` out of reach the mechanism is exercised on its
+data-integrity kinds only; and, as everywhere in this harness, there is no network emulation
+— latency-driven effects are out of scope.
+
+**Files produced.** `malicious_manifest.json` (the resolved plan); phase-1 tables
+`malicious_opportunities/actions/confirmations`, `malus_detections`, `malicious_miners`;
+phase-2 tables `malus_state/actions/funnel/rate_by_miner/detection_events`; phase-3 tables
+`malus_detection/rate/latency/weight_effect/invariants` and the report
+`malus_effectiveness.md`; and the figures `malus_action_funnel.png`,
+`malus_state_trajectory.png`, `malus_detection_latency.png`, `malus_weight_effect.png`,
+`malus_invariant_audit.png` plus the weight↔election diagnostics `p_value_uniformity.png`,
+`wilson_violation_heatmap.png`, `residual_boxplot_by_validator.png`.
 
 ## Things that will bite you
 

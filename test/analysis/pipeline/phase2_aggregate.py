@@ -118,6 +118,38 @@ COLUMNS: "OrderedDict[str, List[str]]" = OrderedDict(
              "observed_nakamoto_1_3", "observed_nakamoto_1_2", "observed_nakamoto_2_3",
              "gini_published_weight", "gini_input_esg_tau", "gini_delta"],
         ),
+        # -- the malicious-miner experiment --------------------------------------------
+        # Empty on a plain run; the headers still write so phase 3 reads them regardless.
+        (
+            "malus_state",
+            ["epoch", "address", "is_malicious", "sample_height", "M", "psi", "weight_raw",
+             "weight_effective", "excluded", "epochs_to_clear", "weff_recomputed",
+             "invariant_psi_in_unit", "invariant_weff_matches", "invariant_clean_psi_one"],
+        ),
+        (
+            "malus_actions",
+            ["epoch", "miner", "address", "is_malicious", "action", "action_id", "attempted",
+             "sent", "txid", "confirmed", "confirm_height", "confirm_epoch", "reported",
+             "report_height", "detection_latency_blocks", "governing_epoch",
+             "activation_epoch", "activation_latency_epochs", "target_epoch"],
+        ),
+        (
+            "malus_funnel",
+            ["scope", "opportunities", "attempts", "sent", "confirmed", "valid_malus",
+             "reported_total"],
+        ),
+        (
+            "malus_rate_by_miner",
+            ["miner", "address", "is_malicious", "opportunities", "attempts", "sent",
+             "confirmed", "valid_malus", "target_rate", "attempted_rate", "sent_rate",
+             "confirmed_rate", "valid_rate"],
+        ),
+        (
+            "malus_detection_events",
+            ["verdict", "kind", "accused_address", "is_malicious_accused", "offence_epoch",
+             "offence_height", "detect_height", "detect_epoch", "evidence_txid",
+             "is_true_positive", "reason"],
+        ),
     ]
 )
 
@@ -169,6 +201,28 @@ def _epoch_from_key(key: str) -> Optional[int]:
     """The epoch a company was generating for, read back off the chain."""
     match = _TRAFFIC_KEY.match(key or "")
     return int(match.group(1)) if match else None
+
+
+def _effective_weight(weight: Optional[float], psi: Optional[float]) -> Optional[float]:
+    """Recompute ``w_eff`` exactly as ``MalusAccumulator::EffectiveWeight`` does.
+
+    Replicated here — not read from the node — so the invariant audit compares the value
+    the node reported against an independent recomputation rather than against itself. The
+    branches mirror the C++ one for one: a zero weight or a non-positive Psi gives 0; a
+    Psi at or above 1 gives the raw weight; otherwise round half up, and never let a
+    positive Psi round a positive weight down to zero.
+    """
+    if weight is None or psi is None:
+        return None
+    if weight <= 0 or not (psi > 0.0):
+        return 0.0
+    if psi >= 1.0:
+        return float(weight)
+    product = weight * psi
+    if product >= weight:
+        return float(weight)
+    rounded = math.floor(product + 0.5)
+    return float(rounded if rounded != 0 else 1)
 
 
 # --------------------------------------------------------------------------------------
@@ -708,6 +762,282 @@ class Aggregator:
             )
             self.tables["epoch_concentration"].append(row)
 
+    # -- the malicious-miner experiment ------------------------------------------------
+
+    def build_malicious(self) -> None:
+        """Join the ground-truth logs, the malus samples and the detector's verdicts.
+
+        Nothing here decides whether the mechanism worked — that is phase 3. It reshapes:
+        the per-action funnel, the per-miner rate table, the per-epoch malus trajectory
+        (with the effective-weight invariant recomputed alongside the reported value so
+        phase 3 can check it), and the detector's verdicts tagged with whether the accused
+        record was in fact a confirmed malicious action.
+        """
+        miners = read_table(self.phase1, "malicious_miners")
+        if not miners:
+            return   # no plan at all; leave every malus table empty
+        is_malicious = {r["address"]: b(r.get("is_malicious")) for r in miners if r.get("address")}
+        malicious_by_node = {r["node_id"]: b(r.get("is_malicious")) for r in miners}
+        address_of = {r["node_id"]: r.get("address", "") for r in miners}
+        target_rate = {r["node_id"]: f(r.get("target_rate")) for r in miners}
+
+        opportunities = read_table(self.phase1, "malicious_opportunities")
+        actions_sent = read_table(self.phase1, "malicious_actions")
+        confirmations = read_table(self.phase1, "malicious_confirmations")
+        detections = read_table(self.phase1, "malus_detections")
+
+        self._build_malus_state(is_malicious)
+        joined = self._build_malus_actions(
+            opportunities, actions_sent, confirmations, detections, is_malicious, address_of
+        )
+        self._build_malus_detection_events(detections, confirmations, is_malicious)
+        self._build_malus_funnel(opportunities, joined)
+        self._build_malus_rate(opportunities, joined, miners, malicious_by_node, target_rate)
+
+    def _build_malus_state(self, is_malicious: Dict[str, Optional[bool]]) -> None:
+        """One row per (governing epoch, validator), the settled malus for that epoch.
+
+        The registry's ``getallmalus`` is sampled many times per governing epoch and M
+        only grows within it as more reports confirm, so the LAST sample (max
+        sample_height) is the settled value. The effective-weight invariant is recomputed
+        here from M and Psi so phase 3 can compare it against the value the node reported.
+        """
+        rows = read_table(self.phase1, "malus")
+        latest: Dict[Tuple[Optional[int], str], Dict[str, Any]] = {}
+        for row in rows:
+            epoch = i(row.get("epoch"))
+            address = row.get("address", "")
+            if not address:
+                continue
+            key = (epoch, address)
+            height = i(row.get("sample_height")) or 0
+            if key not in latest or height >= (latest[key]["_h"] or 0):
+                latest[key] = dict(row, _h=height)
+
+        for (epoch, address), row in sorted(
+            latest.items(), key=lambda kv: (kv[0][0] is None, kv[0][0], kv[0][1])
+        ):
+            M = f(row.get("malus"))
+            psi = f(row.get("psi"))
+            weight = f(row.get("weight"))
+            effective = f(row.get("effective"))
+            recomputed = _effective_weight(weight, psi)
+            psi_ok = psi is not None and 0.0 <= psi <= 1.0
+            weff_ok = (
+                None if (recomputed is None or effective is None)
+                else abs(recomputed - effective) < 0.5
+            )
+            # No proved malus (M ~ 0) must leave Psi at exactly 1.
+            clean_psi_one = (
+                None if (M is None or psi is None)
+                else (abs(psi - 1.0) < 1e-9 if M <= 1e-12 else True)
+            )
+            self.tables["malus_state"].append(
+                {
+                    "epoch": epoch,
+                    "address": address,
+                    "is_malicious": is_malicious.get(address),
+                    "sample_height": i(row.get("sample_height")),
+                    "M": M,
+                    "psi": psi,
+                    "weight_raw": weight,
+                    "weight_effective": effective,
+                    "excluded": b(row.get("excluded")),
+                    "epochs_to_clear": i(row.get("epochs_to_clear")),
+                    "weff_recomputed": recomputed,
+                    "invariant_psi_in_unit": psi_ok,
+                    "invariant_weff_matches": weff_ok,
+                    "invariant_clean_psi_one": clean_psi_one,
+                }
+            )
+
+    def _build_malus_actions(
+        self,
+        opportunities: List[Dict[str, str]],
+        actions_sent: List[Dict[str, str]],
+        confirmations: List[Dict[str, str]],
+        detections: List[Dict[str, str]],
+        is_malicious: Dict[str, Optional[bool]],
+        address_of: Dict[str, str],
+    ) -> List[Dict[str, Any]]:
+        """One row per attempted action, threaded through sent → confirmed → reported.
+
+        The action_id is the join key throughout: it is the stream-item key of the
+        offending transaction, so it ties the injector's decision, the confirmation sweep
+        and the detector's report to one identity even across a restart.
+        """
+        sent_by_id = {r.get("action_id"): r for r in actions_sent if r.get("action_id")}
+        confirm_by_id = {r.get("action_id"): r for r in confirmations if r.get("action_id")}
+        # A report is matched to an action by the offending transaction id.
+        txid_to_id = {r.get("txid"): r.get("action_id") for r in actions_sent if r.get("txid")}
+        reported_ids: Dict[str, Dict[str, str]] = {}
+        for det in detections:
+            if det.get("verdict") != "reported":
+                continue
+            aid = txid_to_id.get(det.get("evidence_txid"))
+            if aid:
+                reported_ids[aid] = det
+
+        joined: List[Dict[str, Any]] = []
+        for opp in opportunities:
+            if b(opp.get("act")) is not True:
+                continue
+            aid = opp.get("action_id")
+            miner = opp.get("miner", "")
+            sent = sent_by_id.get(aid)
+            confirm = confirm_by_id.get(aid)
+            report = reported_ids.get(aid)
+            confirm_height = i(confirm.get("confirm_height")) if confirm else None
+            confirm_epoch = (confirm_height // self.epoch_length) if confirm_height is not None else None
+            report_height = i(report.get("detect_height")) if report else None
+            detection_latency = (
+                report_height - confirm_height
+                if (report_height is not None and confirm_height is not None)
+                else None
+            )
+            # A data-integrity malus is folded at the OFFENCE's epoch and governs
+            # selection from the epoch after (Def. 5.21 / §6). The offence's epoch is the
+            # confirm epoch (both kinds are proved from the confirming transaction).
+            governing_epoch = confirm_epoch
+            activation_epoch = (governing_epoch + 1) if governing_epoch is not None else None
+            row = {
+                "epoch": i(opp.get("epoch")),
+                "miner": miner,
+                "address": address_of.get(miner, opp.get("node_address", "")),
+                "is_malicious": is_malicious.get(address_of.get(miner, ""), True),
+                "action": opp.get("action", ""),
+                "action_id": aid,
+                "attempted": True,
+                "sent": sent is not None,
+                "txid": (sent or {}).get("txid", ""),
+                "confirmed": confirm is not None,
+                "confirm_height": confirm_height,
+                "confirm_epoch": confirm_epoch,
+                "reported": report is not None,
+                "report_height": report_height,
+                "detection_latency_blocks": detection_latency,
+                "governing_epoch": governing_epoch,
+                "activation_epoch": activation_epoch,
+                "activation_latency_epochs": 1 if activation_epoch is not None else None,
+                "target_epoch": i((sent or {}).get("target_epoch")),
+            }
+            joined.append(row)
+        self.tables["malus_actions"] = joined
+        return joined
+
+    def _build_malus_detection_events(
+        self,
+        detections: List[Dict[str, str]],
+        confirmations: List[Dict[str, str]],
+        is_malicious: Dict[str, Optional[bool]],
+    ) -> None:
+        """The detector's verdicts, tagged with whether the accused record was really one.
+
+        A confirmed malicious transaction is the ground-truth positive; a ``reported``
+        verdict against any other transaction is a false positive, which is the safety
+        property the mechanism claims to have. Kept as its own table so phase 3 can count
+        true and false positives without re-deriving the join.
+        """
+        malicious_txids = {r.get("txid") for r in confirmations if r.get("txid")}
+        for det in detections:
+            evidence = det.get("evidence_txid", "")
+            reported = det.get("verdict") == "reported"
+            self.tables["malus_detection_events"].append(
+                {
+                    "verdict": det.get("verdict", ""),
+                    "kind": det.get("kind", ""),
+                    "accused_address": det.get("accused_address", ""),
+                    "is_malicious_accused": is_malicious.get(det.get("accused_address", "")),
+                    "offence_epoch": i(det.get("offence_epoch")),
+                    "offence_height": i(det.get("offence_height")),
+                    "detect_height": i(det.get("detect_height")),
+                    "detect_epoch": i(det.get("detect_epoch")),
+                    "evidence_txid": evidence,
+                    "is_true_positive": (reported and evidence in malicious_txids),
+                    "reason": det.get("reason", ""),
+                }
+            )
+
+    def _build_malus_funnel(
+        self, opportunities: List[Dict[str, str]], joined: List[Dict[str, Any]]
+    ) -> None:
+        """opportunity → attempt → sent → confirmed → valid malus, overall and per kind."""
+        def counts(rows: List[Dict[str, Any]]) -> Dict[str, int]:
+            return {
+                "attempts": len(rows),
+                "sent": sum(1 for r in rows if r["sent"]),
+                "confirmed": sum(1 for r in rows if r["confirmed"]),
+                "valid_malus": sum(1 for r in rows if r["reported"]),
+            }
+
+        total_opps = len(opportunities)
+        for scope, rows, opps in (
+            ("all", joined, total_opps),
+            ("selfwrite", [r for r in joined if r["action"] == "selfwrite"], None),
+            ("badweight", [r for r in joined if r["action"] == "badweight"], None),
+        ):
+            c = counts(rows)
+            self.tables["malus_funnel"].append(
+                {
+                    "scope": scope,
+                    "opportunities": opps if opps is not None else "",
+                    "attempts": c["attempts"],
+                    "sent": c["sent"],
+                    "confirmed": c["confirmed"],
+                    "valid_malus": c["valid_malus"],
+                    "reported_total": c["valid_malus"],
+                }
+            )
+
+    def _build_malus_rate(
+        self,
+        opportunities: List[Dict[str, str]],
+        joined: List[Dict[str, Any]],
+        miners: List[Dict[str, str]],
+        malicious_by_node: Dict[str, Optional[bool]],
+        target_rate: Dict[str, Optional[float]],
+    ) -> None:
+        """Per malicious miner: target rate against the attempted/sent/confirmed/valid rates.
+
+        The denominator is the miner's own opportunity count — one per epoch of the active
+        window — read straight from the opportunity log, so the realised rate is measured
+        against what actually happened, not against the epoch geometry.
+        """
+        opps_by_miner: Dict[str, int] = defaultdict(int)
+        for opp in opportunities:
+            opps_by_miner[opp.get("miner", "")] += 1
+        by_miner: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for row in joined:
+            by_miner[row["miner"]].append(row)
+
+        for miner in miners:
+            node_id = miner["node_id"]
+            if malicious_by_node.get(node_id) is not True:
+                continue
+            n_opps = opps_by_miner.get(node_id, 0)
+            rows = by_miner.get(node_id, [])
+            attempts = len(rows)
+            sent = sum(1 for r in rows if r["sent"])
+            confirmed = sum(1 for r in rows if r["confirmed"])
+            valid = sum(1 for r in rows if r["reported"])
+            self.tables["malus_rate_by_miner"].append(
+                {
+                    "miner": node_id,
+                    "address": miner.get("address", ""),
+                    "is_malicious": True,
+                    "opportunities": n_opps,
+                    "attempts": attempts,
+                    "sent": sent,
+                    "confirmed": confirmed,
+                    "valid_malus": valid,
+                    "target_rate": target_rate.get(node_id),
+                    "attempted_rate": (attempts / n_opps) if n_opps else None,
+                    "sent_rate": (sent / n_opps) if n_opps else None,
+                    "confirmed_rate": (confirmed / n_opps) if n_opps else None,
+                    "valid_rate": (valid / n_opps) if n_opps else None,
+                }
+            )
+
     # -- output ------------------------------------------------------------------------
 
     def write(self, out_dir: Path) -> Dict[str, int]:
@@ -770,6 +1100,7 @@ def aggregate(run_dir: Path, profile_path: Optional[Path] = None) -> Dict[str, A
     aggregator.build_epoch_engine()
     aggregator.build_epoch_traffic(profile)
     aggregator.build_epoch_concentration()
+    aggregator.build_malicious()
 
     out_dir = Path(run_dir) / "analysis" / "phase2"
     counts = aggregator.write(out_dir)

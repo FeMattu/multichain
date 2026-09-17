@@ -41,6 +41,7 @@ from typing import List, Optional, Set
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "bootstrap"))
+sys.path.insert(0, str(HERE))
 
 from config_loader import Profile, load_profile  # noqa: E402
 from event_log import (  # noqa: E402
@@ -50,6 +51,10 @@ from event_log import (  # noqa: E402
     EventLog,
 )
 from rpc_client import RpcClient, RpcError, RpcTransportError  # noqa: E402
+
+# Only imported when a run actually has a malicious experiment; kept optional so the
+# daemon runs unchanged on a plain profile.
+from malicious_injector import MaliciousInjector  # noqa: E402
 
 
 class MinerGasDaemon:
@@ -63,6 +68,7 @@ class MinerGasDaemon:
         rpc: RpcClient,
         log: EventLog,
         treasury: str,
+        injector: "Optional[MaliciousInjector]" = None,
     ) -> None:
         self.profile = profile
         self.node_id = node_id
@@ -70,6 +76,9 @@ class MinerGasDaemon:
         self.rpc = rpc
         self.log = log
         self.treasury = treasury
+        #: Set only for a miner the run's plan named malicious; ``None`` for every honest
+        #: miner, so the restitution loop below is unchanged on a plain run.
+        self.injector = injector
         self.stop_flag = self.run_dir / "STOP"
         self._running = True
         self.rng: random.Random = profile.rng("miner-returns", node_id)
@@ -249,11 +258,30 @@ class MinerGasDaemon:
             epoch = self.profile.epoch_of_height(tip)
             if epoch > current_epoch:
                 current_epoch = epoch
+                # The malicious opportunity comes FIRST in the epoch, before the honest
+                # restitutions, and is fired once per epoch — the one contabilizzabile
+                # grain that does not depend on wins or on the poll schedule. A badweight
+                # published here targets the newest buried epoch, which the honest engine
+                # has already published its own weight for, so the injection follows the
+                # correct publication rather than racing it.
+                if self.injector is not None:
+                    try:
+                        self.injector.run_opportunity(epoch, tip)
+                    except (RpcError, RpcTransportError) as exc:
+                        self.log.rpc_error("malicious_opportunity", exc, tip, epoch=epoch)
                 self.run_epoch(epoch, tip)
             else:
                 time.sleep(2.0)
 
         self.sample_local(self.profile.last_buried_epoch(tip), tip)
+        # A last confirmation sweep: an action published in the final epoch is exactly the
+        # one most likely to confirm only after the loop has exited, and losing it would
+        # understate the confirmed count for the epoch that matters most.
+        if self.injector is not None:
+            try:
+                self.injector.sweep_confirmations(current_epoch, tip)
+            except (RpcError, RpcTransportError) as exc:
+                self.log.rpc_error("malicious_opportunity", exc, tip)
         self.log.emit(
             EVENT_NODE_STOPPED,
             tip,
@@ -285,6 +313,44 @@ def read_treasury(run_dir: Path) -> str:
     )
 
 
+def read_malicious_plan(run_dir: Path, profile: Profile) -> dict:
+    """The run's resolved malicious plan.
+
+    Read from ``<run>/malicious_manifest.json`` (written by the orchestrator once the
+    addresses and initial weights are known), and only falling back to a plan derived from
+    the profile if that file is absent — a standalone launch of this daemon against a run
+    the orchestrator never finished setting up. Reading the file rather than re-deriving is
+    what pins the plan to the one the run actually committed to.
+    """
+    path = run_dir / "malicious_manifest.json"
+    if path.is_file():
+        return json.loads(path.read_text(encoding="utf-8"))
+    return profile.malicious_plan()
+
+
+def build_injector(
+    profile: Profile, node_id: str, run_dir: Path, rpc: RpcClient, log: EventLog
+):
+    """A :class:`MaliciousInjector` for a selected miner, or ``None`` for everyone else.
+
+    Returning ``None`` for an honest miner is what keeps the restitution loop, the company
+    daemons and the non-miner nodes byte-for-byte unchanged on a plain run.
+    """
+    plan = read_malicious_plan(run_dir, profile)
+    if not plan.get("enabled") or node_id not in set(plan.get("malicious_miner_ids", [])):
+        return None
+    manifest_path = run_dir / "manifest.json"
+    all_addresses = {}
+    run_identifier = run_dir.name
+    if manifest_path.is_file():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        all_addresses = manifest.get("addresses", {}) or {}
+    own_address = all_addresses.get(node_id) or rpc.own_address()
+    return MaliciousInjector(
+        profile, plan, node_id, own_address, rpc, log, run_identifier, all_addresses
+    )
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--config", required=True)
@@ -312,7 +378,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         node_id=node.node_id,
         timeout=profile.runtime["rpc_timeout_s"],
     )
-    daemon = MinerGasDaemon(profile, node.node_id, run_dir, rpc, log, treasury)
+    injector = build_injector(profile, node.node_id, run_dir, rpc, log)
+    daemon = MinerGasDaemon(profile, node.node_id, run_dir, rpc, log, treasury, injector)
     signal.signal(signal.SIGTERM, daemon.request_stop)
     signal.signal(signal.SIGINT, daemon.request_stop)
     try:

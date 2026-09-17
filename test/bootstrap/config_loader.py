@@ -28,6 +28,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
+from malicious import (  # noqa: E402
+    MaliciousConfigError,
+    disabled_plan as _disabled_malicious_plan,
+    resolve_plan as _resolve_malicious_plan,
+    select_miners as _select_malicious,
+    validate as _validate_malicious,
+)
+
 # --------------------------------------------------------------------------------------
 # Compile-time constants of the node. NOT configurable — they must match the binary.
 # --------------------------------------------------------------------------------------
@@ -132,6 +140,7 @@ _TOP_LEVEL = {
     "weight_engine",
     "traffic",
     "runtime",
+    "malicious",
 }
 
 _TRAFFIC_DEFAULTS: Dict[str, Any] = {
@@ -205,6 +214,10 @@ class Profile:
     weight_engine_params: Dict[str, Any]
     traffic: Dict[str, Any]
     runtime: Dict[str, Any]
+    #: The validated ``malicious`` section, with every default filled in. A profile
+    #: without the section gets the disabled form, so every consumer reads the same shape
+    #: and none of them has to test for the key.
+    malicious: Dict[str, Any] = field(default_factory=dict)
     nodes: List[Node] = field(default_factory=list)
 
     # -- topology ----------------------------------------------------------------------
@@ -350,6 +363,44 @@ class Profile:
         hi = self.traffic["restitution_amount_range"][1]
         return round(ret_max * self.epoch_count * hi * 1.2 + 200, 4)
 
+    # -- the malicious-miner experiment --------------------------------------------------
+
+    @property
+    def malicious_enabled(self) -> bool:
+        return bool(self.malicious.get("enabled"))
+
+    @property
+    def malicious_miner_ids(self) -> List[str]:
+        """Which miners misbehave, decided from the plan seed alone.
+
+        A property rather than a stored field: the selection is a pure function of the
+        seed and the miner list, so every process that loads the profile derives the same
+        set without reading anything the orchestrator wrote. The run manifest still
+        records it, because a *derivation* that is not written down is not evidence.
+        """
+        if not self.malicious_enabled:
+            return []
+        return _select_malicious(
+            int(self.malicious["seed"]),
+            [n.node_id for n in self.by_role("miner")],
+            int(self.malicious["miner_count"]),
+        )
+
+    def malicious_plan(
+        self,
+        addresses: Optional[Dict[str, str]] = None,
+        initial_weights: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, Any]:
+        """The immutable plan for this run, ready to be written to the run directory.
+
+        ``addresses`` and ``initial_weights`` are only known once the network is up, so
+        they are passed in rather than read: the profile stays loadable with no chain.
+        """
+        miner_ids = [n.node_id for n in self.by_role("miner")]
+        if not self.malicious_enabled:
+            return _disabled_malicious_plan(miner_ids)
+        return _resolve_malicious_plan(self.malicious, miner_ids, addresses, initial_weights)
+
     # -- deterministic RNG -------------------------------------------------------------
 
     def rng(self, purpose: str, node_id: str = "") -> random.Random:
@@ -448,6 +499,8 @@ class Profile:
             "weight_engine_params": dict(self.weight_engine_params),
             "traffic": dict(self.traffic),
             "runtime": dict(self.runtime),
+            "malicious": dict(self.malicious),
+            "malicious_plan": self.malicious_plan(),
             "node_table": [
                 {
                     "node_id": n.node_id,
@@ -785,6 +838,18 @@ def load_profile(path: str | os.PathLike) -> Profile:
     if not isinstance(runtime["wpoa_debug"], bool):
         raise ConfigError("runtime.wpoa_debug must be true or false")
 
+    # -- the malicious-miner experiment (optional) -------------------------------------
+    # Validated in malicious.py, which knows nothing about this loader, and its error is
+    # re-raised as a ConfigError so a profile author only ever sees one error type. An
+    # ABSENT section is not an error: it yields the disabled plan, and a profile without
+    # the section must behave exactly as it did before the feature existed.
+    try:
+        malicious = _validate_malicious(
+            raw.get("malicious"), counts["miner_count"], epoch_count, seed
+        )
+    except MaliciousConfigError as exc:
+        raise ConfigError(str(exc)) from exc
+
     profile = Profile(
         path=profile_path,
         seed=seed,
@@ -802,6 +867,7 @@ def load_profile(path: str | os.PathLike) -> Profile:
         weight_engine_params=weight_engine_params,
         traffic=traffic,
         runtime=runtime,
+        malicious=malicious,
     )
     profile.nodes = _build_nodes(profile)
     return profile
@@ -842,6 +908,7 @@ __all__ = [
     "CA_PERMISSION",
     "COIN",
     "ConfigError",
+    "MaliciousConfigError",
     "Node",
     "Profile",
     "SETUP_PUBLISH_MARGIN",
