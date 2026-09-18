@@ -537,6 +537,38 @@ trip is twice it — which is what `mean_ms` means in every profile. An asymmetr
 statements rather than an average, because an average would be a third network nobody
 configured.
 
+**The measured round trip runs above the nominal one, by 8–20%.** Measured on the shipped
+maps: Zurich–Marseille 13.9 ms against 12.5 nominal, Milan–New York 105.2 against 91.5,
+Tokyo–Johannesburg 229.3 against 190.5, Los Angeles–Sydney 394.5 against 363.0. The cause
+is the jitter term: a per-packet delay drawn around the mean cannot delay a packet by less
+than zero, and ICMP reports the arrival order, so the sampled mean sits above the
+configured one. Anyone comparing an observed propagation against the model's own figure
+should expect that gap and not read it as a fault.
+
+### 6.2.1 The block time has to clear the network
+
+A profile is **rejected** when the map's worst round trip is more than a quarter of the
+sortition window:
+
+```
+sortition window  Delta_max = wpoa-sortition-delta x target-block-time
+rejected when     worst_round_trip > 0.25 x Delta_max
+```
+
+Not a matter of taste. The sortition delay is *drawn* inside that window, and if
+propagation were comparable with it, the order in which validators appear to act would be
+set by the network rather than by the draw — the election would measure the emulator's
+queueing, and it would produce a perfectly well-formed report of the wrong thing. The
+check names both numbers and the two ways out (raise `target-block-time`, or raise
+`wpoa-sortition-delta`).
+
+The shipped profiles clear it with room: the harshest, `intercontinental`, has a 0.363 s
+worst round trip against a 1.25 s limit.
+
+The same worst round trip also enters `setup-first-blocks`, once per bootstrap sync point
+(§3). That term is small — about 6 s against a 120 s budget on the harshest map — and it
+is there because it is the one that grows if a harsher map is ever written.
+
 ### 6.3 Addressing and routing
 
 | Plane | Prefix | Assigned by |

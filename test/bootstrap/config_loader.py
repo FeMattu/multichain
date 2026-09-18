@@ -87,6 +87,22 @@ _NODE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 #: before the fabric existed keep working untouched.
 FABRIC_BACKENDS = ("native", "core")
 
+#: How many times the bootstrap waits for something to cross the whole network before
+#: the next step may depend on it: the join, the two grant passes, the stream creation,
+#: the stream grants, the funding, the membership registration and the ESG certification.
+#: Counted from ``bootstrap_network.py``'s own sequence rather than guessed.
+BOOTSTRAP_SYNC_POINTS = 16
+
+#: The largest share of the sortition window that propagation may take up.
+#:
+#: The sortition delay is drawn inside ``Delta_max = wpoa-sortition-delta *
+#: target-block-time``. If a block's worst round trip were a large fraction of that
+#: window, the order in which validators *appear* to act would be set by the network
+#: rather than by the draw, and the election's timing would measure the emulator's
+#: queueing instead of the protocol. A quarter leaves the draw dominant by a factor of
+#: four, which is what the shipped maps run at.
+MAX_PROPAGATION_SHARE_OF_SORTITION_WINDOW = 0.25
+
 #: The activation flags. Hardcoded on, and rejected if a profile mentions them.
 ACTIVATION_KEYS = (
     "enable-wpoa",
@@ -379,6 +395,20 @@ class Profile:
         return round(self.fee_per_kb * 10, 8)
 
     @property
+    def worst_path_delay_ms(self) -> float:
+        """One-way delay of the slowest path on the map. 0 in the native regime."""
+        return self.topology.worst_path_delay_ms if self.topology is not None else 0.0
+
+    @property
+    def worst_round_trip_s(self) -> float:
+        return 2.0 * self.worst_path_delay_ms / 1000.0
+
+    @property
+    def sortition_window_s(self) -> float:
+        """``Delta_max``: the width of the window a sortition delay is drawn in."""
+        return float(self.wpoa_params["wpoa-sortition-delta"]) * self.target_block_time
+
+    @property
     def protocol_setup_floor(self) -> int:
         """The floor the node itself applies at genesis (``AdjustSetupFirstBlocks``)."""
         return self.epoch_length + STABILITY_MARGIN - 1 + SETUP_PUBLISH_MARGIN + 1
@@ -398,7 +428,14 @@ class Profile:
         tbt = self.target_block_time
         boot_s = 6 * self.node_count // 2 + 60
         inputs_s = 12 * tbt + self.node_count
-        need = (boot_s + inputs_s) // tbt
+        # Every step of the bootstrap is a transaction that has to reach every node
+        # before the next step may depend on it. On loopback that costs nothing; across
+        # an emulated map it is one worst-case round trip per sync point. Measured, this
+        # is small -- 16 * 363 ms is about 6 s against a 120 s budget on the harshest
+        # map shipped -- but it is the term that grows if a harsher one is ever written,
+        # and a budget that ignores it would fail with no indication why.
+        propagation_s = BOOTSTRAP_SYNC_POINTS * self.worst_round_trip_s
+        need = int(boot_s + inputs_s + propagation_s) // tbt
         need = (need + self.protocol_setup_floor) * 3 // 2
         return max(need, self.protocol_setup_floor)
 
@@ -600,6 +637,9 @@ class Profile:
             },
             "derived": {
                 "protocol_setup_floor": self.protocol_setup_floor,
+                "worst_path_delay_ms": round(self.worst_path_delay_ms, 3),
+                "worst_round_trip_s": round(self.worst_round_trip_s, 4),
+                "sortition_window_s": round(self.sortition_window_s, 4),
                 "setup_first_blocks_requested": self.setup_first_blocks,
                 "target_height": self.target_height,
                 "maxtxfee": self.maxtxfee,
@@ -1255,6 +1295,33 @@ def load_profile(path: str | os.PathLike) -> Profile:
         declared_clusters=declared_clusters,
     )
     profile.nodes = _build_nodes(profile, node_specs)
+
+    # The block time has to clear the network, and by a margin. Checked here rather than
+    # left to the results, because a chain whose propagation is comparable with its own
+    # sortition window produces a perfectly well-formed report of the wrong thing.
+    if topology is not None:
+        window = profile.sortition_window_s
+        worst = profile.worst_round_trip_s
+        if worst > window * MAX_PROPAGATION_SHARE_OF_SORTITION_WINDOW:
+            raise ConfigError(
+                "the worst round trip on %s is %.3f s, and the sortition window "
+                "(wpoa-sortition-delta %.2f x target-block-time %d s) is only %.3f s. "
+                "Propagation must stay under %.0f%% of that window, or the order in which "
+                "validators appear to act is set by the network rather than by the draw "
+                "and the election measures the emulator. Raise chain.target-block-time to "
+                "at least %d s, or raise wpoa.wpoa-sortition-delta."
+                % (
+                    topology.name, worst,
+                    float(profile.wpoa_params["wpoa-sortition-delta"]),
+                    profile.target_block_time, window,
+                    MAX_PROPAGATION_SHARE_OF_SORTITION_WINDOW * 100,
+                    math.ceil(
+                        worst
+                        / (MAX_PROPAGATION_SHARE_OF_SORTITION_WINDOW
+                           * float(profile.wpoa_params["wpoa-sortition-delta"]))
+                    ),
+                )
+            )
     return profile
 
 

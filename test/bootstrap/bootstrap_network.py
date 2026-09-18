@@ -45,6 +45,7 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -53,6 +54,8 @@ from typing import Dict, List, Optional, Tuple
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parent.parent
 sys.path.insert(0, str(HERE))
+
+import yaml  # noqa: E402
 
 from config_loader import (  # noqa: E402
     CA_PERMISSION,
@@ -1168,6 +1171,30 @@ def run_analysis(profile: Profile, run_dir: Path) -> int:
     return EXIT_OK
 
 
+def shorten(profile: Profile, epochs: int, destination: Path) -> Profile:
+    """Re-issue a profile with a different epoch count, and run *that*.
+
+    The traffic daemons, the observer and the three analysis phases are separate
+    processes that each re-load the profile from its file. An override held only in this
+    process's memory would therefore reach none of them, and the run would collect twenty
+    epochs' worth of traffic against a chain that stopped at six. So the override is
+    written out and the run adopts the written copy: what every process reads is one
+    file, and it is in the run directory, which makes the run replayable on its own.
+
+    For quick validation of a profile whose real length is hours. The shipped profiles
+    are never modified.
+    """
+    raw = yaml.safe_load(profile.path.read_text(encoding="utf-8"))
+    raw.setdefault("epochs", {})["count"] = epochs
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        "# Derived from %s with --epochs %d. Not a shipped profile.\n%s"
+        % (profile.path, epochs, yaml.safe_dump(raw, sort_keys=False, width=100)),
+        encoding="utf-8",
+    )
+    return load_profile(destination)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--config", required=True, help="path to the profile YAML")
@@ -1177,6 +1204,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--dry-run",
         action="store_true",
         help="validate the profile, print the derived plan, and stop",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=None,
+        help="override epochs.count for this run only; the profile is re-issued into "
+             "the run directory so every child process reads the same thing",
     )
     parser.add_argument(
         "--no-analyze",
@@ -1201,6 +1235,22 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.chain_home
         else Path(profile.runtime["chain_home"] or (run_dir / "chains"))
     )
+
+    if args.epochs is not None:
+        if args.epochs < 1:
+            print("[bootstrap] --epochs must be >= 1", file=sys.stderr)
+            return EXIT_CONFIG
+        destination = (
+            Path(tempfile.mkdtemp()) / "profile.yaml" if args.dry_run
+            else run_dir / "profile.yaml"
+        )
+        try:
+            profile = shorten(profile, args.epochs, destination)
+        except ConfigError as exc:
+            print("[bootstrap] configuration error after --epochs: %s" % exc, file=sys.stderr)
+            return EXIT_CONFIG
+        log_step("running %d epoch(s) instead of the profile's own; using %s"
+                 % (args.epochs, profile.path))
 
     if args.dry_run:
         plan = profile.manifest()
