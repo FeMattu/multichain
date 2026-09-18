@@ -1,6 +1,6 @@
 # CORE network emulation for the wPoA harness — analysis and plan
 
-**Status:** analysis complete, plan awaiting approval. No implementation code written.
+**Status:** implemented. The plan of §8 was approved on 2026-09-18 and carried out; §9 records what actually happened, including where the plan turned out to be wrong.
 **Date:** 2026-09-18
 **Branch:** `feat/core-emulation-harness`
 
@@ -546,3 +546,83 @@ Delete `experiments/`. Update `README.md`, `docker/mcsim`, `docker/preflight.sh`
 `test/docs/core-fabric.md`, annotate the two historical documents. *Check:* no reference to
 `experiments/` outside `docs/adr/` and `docs/root-cause-report.md`; no occurrence of the
 retired emulator's name anywhere in the new system; `graphify update .`.
+
+---
+
+## 9. What actually happened
+
+The plan was followed in order. Three things in it turned out to be wrong, and one
+measurement contradicted a published figure. All four are recorded here rather than
+quietly fixed, because each changes what a later reader should believe.
+
+### 9.1 The step-3 gate could not be what the plan said it was
+
+The plan called for a native run "indistinguishable from one taken before the change".
+That is impossible and the harness's own README says so: wallet keys, addresses and block
+timing come from the node, not from the seed, so two runs of one profile never agree byte
+for byte. The gate was therefore split in two:
+
+* **Byte-exact**, on everything the seed decides: the derived plan of six profiles,
+  compared before and after the profiles moved, was identical once the run-id timestamp
+  was normalised.
+* **Structural**, on a full 440-block run before and after the seam: same artefact set
+  plus `fabric.json`, identical columns in all 67 CSVs, identical cluster map, port map
+  and derived budgets, same status, same 21 measured epochs, and the same 9-of-10
+  consistency checks with the same single non-critical failure (`phi_consistent`).
+
+### 9.2 The latency term in the budgets is real but small
+
+Risk 3 predicted that the wall-clock budgets would be the most likely cause of a first
+CORE run failing. Measured on the built maps, the worst round trip is 0.363 s
+(Los Angeles–Sydney), which at a 10 s block time adds about 6 s to a 120 s bootstrap
+budget. The term was added anyway — it is the one that grows if a harsher map is written —
+but it is not what the risk claimed.
+
+The check that *was* missing is a different one, added on the same evidence: a profile
+whose worst round trip exceeds a quarter of the sortition window
+(`wpoa-sortition-delta x target-block-time`) is now rejected. Below that ratio the order
+in which validators appear to act is set by the network rather than by the draw, and the
+run produces a well-formed report of the wrong thing. The four shipped levels clear it
+four times over.
+
+### 9.3 A published check point of the delay model does not hold
+
+Of the four routes the model was validated against, three reproduce to better than 0.1 ms.
+The fourth, "Bologna–Geneva 840 km / 12.8 ms RTT", does not: those two cities are 448.5 km
+apart, which the model turns into 7.3 ms. 840 km is very nearly the two-hop path through
+Milan, so the published row appears to have compared a path against a direct distance.
+`test/unit/test_topology_model.py` pins the three that hold and records why the fourth is
+absent, rather than widening a tolerance until it passes.
+
+### 9.4 The emulated round trip runs above the nominal one
+
+Measured against the model's own figures: Zurich–Marseille 13.9 ms against 12.5 nominal,
+Milan–New York 105.2 against 91.5, Tokyo–Johannesburg 229.3 against 190.5, Los
+Angeles–Sydney 394.5 against 363.0 — a consistent 8–20% overshoot. The cause is the jitter
+term: a per-packet delay drawn around a mean cannot delay a packet by less than zero. It is
+documented in `config/schema.md` §6.2 so that nobody reads the gap as a fault.
+
+### 9.5 The two hazards the analysis named, as they turned out
+
+**Signalling across the PID namespace** (risk 1) was real and is handled: every node of the
+CORE smoke run stopped with `rpc`, none needed a signal at all, so the escalation path is
+untested in anger — but it is the only path that could have been silently wrong, and it
+now goes through the fabric.
+
+**A peer mesh on the control plane** (risk 2) did not occur, and is now checked twice: by
+the bootstrap's own assertion, which passed on the 4-node smoke and on the 20-node
+intercontinental map, and independently from the observer's `getpeerinfo` samples, where
+every address seen across a whole run was on `10.60.0.x` and none on `172.30.0.x`.
+
+### 9.6 Deviations from the plan, and why
+
+* **`fabric/core.py` was written during step 3 rather than step 5**, while a 45-minute
+  baseline run held every source file frozen. The validation order was not changed: the
+  native gate still ran before any CORE profile did.
+* **Step 7 was run at 6 epochs instead of 20**, by agreement: `--epochs` re-issues the
+  profile into the run directory so that every child process reads the same thing. The
+  shipped profiles are untouched at 20 epochs, and the full-length campaign is the
+  operator's to launch.
+* **`experiments/results/` was not deleted.** It holds 553 MB of untracked run output from
+  earlier campaigns. It is research data, not source, and deleting it is not a decision
+  this work should take on its own.
