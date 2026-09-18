@@ -160,42 +160,17 @@ conftest.*
 confdefs.*
 
 # ---------------------------------------------------------------------------
-# Real network emulation harness (experiments/)
+# Trees that are gone, and the untracked output they left behind
 # ---------------------------------------------------------------------------
-# Run output. A twenty-node run produces hundreds of megabytes of debug.log
-# alone, so nothing under results/ is versioned except its README and the
-# .gitkeep. EXPERIMENT_ROOT moves the whole tree off this volume.
-experiments/results/*
-!experiments/results/.gitkeep
-!experiments/results/README.md
-# The diagnosis of the runs is a document about them, not a run artefact:
-# it is written by hand and reviewed, so it belongs in the history.
-!experiments/results/DIAGNOSI.md
-
-# Topology exports: every file here is reproducible from the YAML.
-experiments/topology/generated/*
-!experiments/topology/generated/.gitkeep
-
-# The treasury private key, when someone regenerates a full pair with
-# `cli multichain treasury --with-key`. The versioned treasury.json carries
-# the ADDRESS only: the admin imports it watch-only and nothing in the harness
-# ever spends from it, so the key has no runtime purpose. See
-# experiments/docs/migration-from-shadow.md.
-experiments/configs/treasury.key.json
-experiments/configs/*.key.json
-
-# Python bytecode and test caches under the harness.
-experiments/**/__pycache__/
-experiments/.pytest_cache/
-experiments/**/*.pyc
-
-# The autotools rule `conftest.*` further up is meant for configure's probe
-# files; it also swallows pytest's conftest.py, which is real source here.
-!experiments/conftest.py
-!experiments/tests/conftest.py
-
-# The legacy Shadow tree. Its tracked content was migrated or archived in git
-# history at 6278274; what may still sit here on a developer's machine is the
-# ~3 GB of raw run output that was never tracked. Ignored so it cannot be
-# committed back by accident.
+# The network emulation harness that used to live in experiments/ was replaced
+# by the `core` regime of test/ (docs/adr/core-emulation-2026.md); the Shadow
+# tree before it was retired earlier still. Their tracked content is in git
+# history. What may still sit on a developer's machine is the raw run output
+# neither of them ever tracked -- hundreds of megabytes per campaign -- so both
+# paths stay ignored: not because anything writes there any more, but so that
+# an old tree cannot be committed back by accident.
+experiments/
 shadow/
+
+# The harness's own run output is ignored by test/results/.gitignore, next to
+# the runs themselves, so that the rule lives where the thing it describes is.
