@@ -614,7 +614,34 @@ the bootstrap's own assertion, which passed on the 4-node smoke and on the 20-no
 intercontinental map, and independently from the observer's `getpeerinfo` samples, where
 every address seen across a whole run was on `10.60.0.x` and none on `172.30.0.x`.
 
-### 9.6 Deviations from the plan, and why
+### 9.6 The four levels, as they ran
+
+Each at six epochs rather than twenty, by agreement. All four build 20 sites and 34
+cables, and all four reach seven measured epochs with wPoA active:
+
+| level | one-way delay range | checks | critical failures |
+|---|---|---|---|
+| regional | 0.75-2.41 ms | 8/10 | `delay_recompute_mismatch_rounds_is_zero` |
+| national | 1.33-7.58 ms | 9/10 | none |
+| continental | 2.50-18.65 ms | 9/10 | none |
+| intercontinental | 2.53-130.26 ms | 9/10 | none |
+
+The regional failure is not the fabric's: it is one round in which the node rendered a
+delay of 14.999999999999995 as `14`, a defect of the JSON writer that
+`test/analysis/pipeline/tools/verify_json_double_rendering.py` reproduces exactly and
+that predates this work.
+
+The continental level **failed on its first attempt** and passed on a second, identical
+run. The failure was mine, not the harness's: I had two twenty-node CORE runs in flight
+at once, and the admin process of the second died silently during the bootstrap. Memory
+was not the constraint -- 47 MiB per daemon, 0.9 GiB for twenty -- so the mechanism is
+unexplained and is recorded here as unexplained. Run one emulated campaign at a time.
+
+A measurement worth keeping: the median block interval is the same on the easiest and
+hardest maps, 10.03 s against 10.04 s at a 10 s target, with the p90 at 15 s in both --
+which is the sortition window, not the network. The geography axis measures the protocol.
+
+### 9.7 Deviations from the plan, and why
 
 * **`fabric/core.py` was written during step 3 rather than step 5**, while a 45-minute
   baseline run held every source file frozen. The validation order was not changed: the
