@@ -298,10 +298,15 @@ def sigma_rows(
             "sigma_s": sd(topology_latencies) or 0.0,
             "n": len(topology_latencies),
             "note": (
-                "not measured by this version of the harness: no caller supplies "
-                "topology_latencies, so this is 0 in either regime rather than a "
-                "measurement that came out small. Wiring an emulated map's per-link "
-                "latency through to here is separate, unstarted work."
+                "spread of the end-to-end propagation between validator pairs, over the "
+                "shortest paths of the emulated map. This is how far apart two validators "
+                "are in seeing the same block, which is what the bound is about -- not the "
+                "spread of individual cables, which would count a link between two sites "
+                "hosting no validator."
+                if len(topology_latencies) >= 2 else
+                "no propagation to measure: a native run has every node in one process, so "
+                "there is no map and no path between validators. Reported as 0 because it "
+                "is absent in this regime, not because it was measured and came out small."
             ),
         },
         {

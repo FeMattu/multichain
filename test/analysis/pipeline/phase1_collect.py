@@ -48,6 +48,10 @@ COLUMNS: "OrderedDict[str, List[str]]" = OrderedDict(
         ("nodes", ["node_id", "role", "address", "port", "rpc_port", "cluster_head_node_id",
                    "cluster_head_address", "is_admin", "is_treasury"]),
         ("config", ["parameter", "value", "source", "note"]),
+        # The emulated map's propagation, validator pair by validator pair. Empty in the
+        # native regime, where there is no map and nothing to propagate across.
+        ("topology_paths", ["validator_i", "validator_j", "site_i", "site_j",
+                            "path_delay_ms"]),
         ("blocks", ["height", "hash", "miner_address", "time", "txcount", "confirmations",
                     "epoch", "in_setup"]),
         ("round_scores", ["round_height", "epoch", "in_setup", "address", "score", "weight",
@@ -257,6 +261,84 @@ class Collector:
                 is_admin=False,
                 is_treasury=True,
             )
+
+    def collect_topology_paths(self, run_dir: Path) -> None:
+        """One row per ordered pair of validators: how long a block takes to cross.
+
+        Read from ``<run>/fabric.json``, which the orchestrator wrote when it built the
+        network, and normalised into a table like everything else phase 1 touches — no
+        aggregation, no statistic, just the shortest-path delay the map implies between
+        the sites two validators sit at.
+
+        This is the input ``S1`` never had. The quantity is the **end-to-end path** delay
+        between validators, not the delay of a single cable: what the inversion bound is
+        about is how far apart two validators are in seeing the same block, and a cable
+        between two sites that host no validator contributes nothing to that.
+
+        Absent in a native run, where every node is a local process: the table is then
+        empty and S1 is reported as not measurable, which is the truth of that regime.
+        """
+        manifest = Path(run_dir) / "fabric.json"
+        if not manifest.is_file():
+            return
+        try:
+            described = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        sites = {n: e.get("site") for n, e in (described.get("nodes") or {}).items()}
+        links = described.get("links") or []
+        if not links or not sites:
+            return
+
+        # Dijkstra over the realised cables, weighted by the delay each one actually got.
+        graph: Dict[str, Dict[str, float]] = {}
+        for link in links:
+            a, b = link.get("source"), link.get("target")
+            delay = (link.get("forward") or {}).get("delay_ms")
+            if a is None or b is None or delay is None:
+                continue
+            graph.setdefault(a, {})[b] = float(delay)
+            graph.setdefault(b, {})[a] = float(delay)
+
+        def shortest(source: str) -> Dict[str, float]:
+            import heapq
+            best = {source: 0.0}
+            queue = [(0.0, source)]
+            seen = set()
+            while queue:
+                cost, here = heapq.heappop(queue)
+                if here in seen:
+                    continue
+                seen.add(here)
+                for peer, weight in graph.get(here, {}).items():
+                    if peer in seen:
+                        continue
+                    step = cost + weight
+                    if step < best.get(peer, float("inf")):
+                        best[peer] = step
+                        heapq.heappush(queue, (step, peer))
+            return best
+
+        miners = sorted(r["node_id"] for r in self.tables.get("nodes", [])
+                        if r.get("role") == "miner")
+        cache: Dict[str, Dict[str, float]] = {}
+        for a in miners:
+            site_a = sites.get(a)
+            if not site_a:
+                continue
+            if site_a not in cache:
+                cache[site_a] = shortest(site_a)
+            for bnode in miners:
+                if bnode <= a:
+                    continue
+                site_b = sites.get(bnode)
+                if not site_b:
+                    continue
+                delay = 0.0 if site_a == site_b else cache[site_a].get(site_b)
+                if delay is None:
+                    continue
+                self.add("topology_paths", validator_i=a, validator_j=bnode,
+                         site_i=site_a, site_j=site_b, path_delay_ms=round(delay, 6))
 
     def collect_config(self) -> None:
         """Every parameter that governed the run, with where the value came from."""
@@ -929,6 +1011,8 @@ def collect(run_dir: Path, profile_path: Optional[Path] = None) -> Dict[str, Any
 
     collector = Collector(profile, manifest)
     collector.collect_nodes()
+    # After the node table: the paths are between validators, so it needs their roles.
+    collector.collect_topology_paths(run_dir)
     collector.collect_config()
     collector.collect_malicious_plan()
     for event in read_events(run_dir):

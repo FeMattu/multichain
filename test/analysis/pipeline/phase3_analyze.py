@@ -418,13 +418,27 @@ class Analysis:
             f(r.get("margin_G_s")) for r in measured if b(r.get("inversion")) is True
         ]
         inversion_gaps = [g for g in inversion_gaps if g is not None]
-        sigma_rows = TIMER.sigma_rows(residuals, inversion_gaps, [])
+        # S1: the spread of propagation between validator pairs, from the emulated map.
+        # In seconds, like every other sigma here; phase 1 records the paths in ms.
+        topology_latencies = [
+            f(r.get("path_delay_ms")) / 1000.0
+            # Tolerant: a run analysed before this table existed simply has no S1.
+            for r in (read_table(self.phase1, "topology_paths")
+                      if (self.phase1 / "topology_paths.csv").is_file() else [])
+            if f(r.get("path_delay_ms")) is not None
+        ]
+        sigma_rows = TIMER.sigma_rows(residuals, inversion_gaps, topology_latencies)
         self.tables["wpoa_sigma"] = sigma_rows
 
         sigma_s2 = next(
             (r["sigma_s"] for r in sigma_rows if r["source"] == "S2_scheduler_residual_sd"), None
         )
-        row["inversion_bound_sigma_S1"] = 0.0
+        # Reported, not folded into the bound: whether S1 and S2 should combine as
+        # sqrt(S1^2 + S2^2) is a modelling decision about Prop. 5.18 and has not been
+        # taken. The bound below is still S2 alone, exactly as it was.
+        row["inversion_bound_sigma_S1"] = next(
+            (r["sigma_s"] for r in sigma_rows if r["source"] == "S1_topology"), 0.0
+        )
         row["inversion_bound_sigma_S2"] = sigma_s2
         row["inversion_bound"] = TIMER.inversion_bound(n_candidates, sigma_s2 or 0.0, dmax or 0.0)
         row["inversion_mc_prob_gaussian_sigma_S2"] = (
