@@ -3744,9 +3744,9 @@
     "semantic_hash": ""
   },
   "test/analysis/pipeline/phase1_collect.py": {
-    "mtime": 1789719026.5824535,
-    "seen": 1789725895.5793316,
-    "ast_hash": "a97ffc1c0f8605415c540da103319b31",
+    "mtime": 1789753237.5126321,
+    "seen": 1789753298.5241134,
+    "ast_hash": "8dacb0df714c0124989290ab00401963",
     "semantic_hash": ""
   },
   "test/analysis/pipeline/phase2_aggregate.py": {
@@ -3756,9 +3756,9 @@
     "semantic_hash": ""
   },
   "test/analysis/pipeline/phase3_analyze.py": {
-    "mtime": 1789751378.5409274,
-    "seen": 1789751447.601371,
-    "ast_hash": "142e0e3040dc782edc63be7b2796b6e0",
+    "mtime": 1789753260.931423,
+    "seen": 1789753298.5241163,
+    "ast_hash": "d713ca0bf5af27aab488370f301a5fdd",
     "semantic_hash": ""
   },
   "test/analysis/pipeline/stat/__init__.py": {
@@ -3792,9 +3792,9 @@
     "semantic_hash": ""
   },
   "test/analysis/pipeline/stat/timer_race.py": {
-    "mtime": 1789751386.2464576,
-    "seen": 1789751447.6013782,
-    "ast_hash": "6883484e6ecdbf38cea52686dc33b3e8",
+    "mtime": 1789753252.7166402,
+    "seen": 1789753298.5241232,
+    "ast_hash": "efb0e621c65a3f7562d811a6cf947b3d",
     "semantic_hash": ""
   },
   "test/analysis/pipeline/stat/wilson.py": {

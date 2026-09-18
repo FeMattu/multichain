@@ -1213,9 +1213,14 @@ class Analysis:
         )
         lines.append("")
         lines.append(
-            "S1 is the propagation term. It is **not measured by this version of the harness**: phase 3 has no source of per-link latency to give it, so it is reported as 0 whichever regime the run used. A native run has no emulated latency for it to carry anyway; an emulated one does, and wiring that through is a separate piece of work. Until then S1 says nothing, and S2 -- the scheduler residual -- is the only source the bound rests on."
-            "process and there is no emulated latency, so a run here cannot speak to "
-            "latency-driven inversion. S2, the scheduler residual, is the primary source."
+            "S1 is the propagation term: the spread of the end-to-end one-way delay "
+            "between validator pairs, over the shortest paths of the map this run used. "
+            "Under an emulated map it is a measurement; in the native regime every node "
+            "is a local process, so there is no map and S1 is reported as 0 because it is "
+            "absent, not because it came out small. Either way the bound below rests on "
+            "S2 alone -- whether the two sources should be combined is a modelling "
+            "decision that has not been taken here, so S1 is reported beside the bound "
+            "and not inside it."
         )
         lines.append("")
 
