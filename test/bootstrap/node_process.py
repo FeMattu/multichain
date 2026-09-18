@@ -227,6 +227,15 @@ class NodeRunner:
             args.append("-weighttreasuryaddress=%s" % self.treasury_address)
         if self.profile.runtime.get("wpoa_debug"):
             args.append("-wpoadebug")
+        digits = self.profile.runtime.get("api_decimal_digits")
+        if digits is not None:
+            # How many decimals the node's JSON writer keeps. It is a *diagnostic* lever,
+            # not a tuning one: at the default of 14 a double whose fraction rounds up to
+            # 1.000...0 is emitted as its floor, because the writer decides the precision
+            # by rounding and then emits by truncating
+            # (src/json/json_spirit_writer_template.h:257 and :349). Raising it moves the
+            # boundary past where any audit value of this harness lands.
+            args.append("-apidecimaldigits=%d" % int(digits))
         return args
 
     def command_line(self, node_id: str, join: bool) -> List[str]:

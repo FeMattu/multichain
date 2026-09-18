@@ -204,6 +204,8 @@ _RUNTIME_DEFAULTS: Dict[str, Any] = {
     "startup_timeout_s": 120,
     "shutdown_grace_s": 30,
     "wpoa_debug": False,
+    # None = do not pass the flag, which is the node's own default of 14.
+    "api_decimal_digits": None,
 }
 
 _CHAIN_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
@@ -1256,6 +1258,13 @@ def load_profile(path: str | os.PathLike) -> Profile:
             raise ConfigError("runtime.%s must be an integer >= 1" % key)
     if not isinstance(runtime["wpoa_debug"], bool):
         raise ConfigError("runtime.wpoa_debug must be true or false")
+    digits = runtime["api_decimal_digits"]
+    if digits is not None:
+        if isinstance(digits, bool) or not isinstance(digits, int) or not (1 <= digits <= 30):
+            raise ConfigError(
+                "runtime.api_decimal_digits must be an integer in [1, 30], or absent to "
+                "leave the node at its own default of 14"
+            )
 
     # -- the malicious-miner experiment (optional) -------------------------------------
     # Validated in malicious.py, which knows nothing about this loader, and its error is
