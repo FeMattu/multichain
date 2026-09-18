@@ -373,7 +373,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     rpc = RpcClient.from_datadir(
         chain_home / node.node_id,
         profile.chain_name,
-        profile.host,
+        profile.rpc_host(node.node_id),
         node.rpc_port,
         node_id=node.node_id,
         timeout=profile.runtime["rpc_timeout_s"],

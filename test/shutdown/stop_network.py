@@ -50,7 +50,7 @@ def final_snapshot(profile: Profile, chain_home: Path, log: EventLog) -> Dict[st
         rpc = RpcClient.from_datadir(
             chain_home / admin.node_id,
             profile.chain_name,
-            profile.host,
+            profile.rpc_host(admin.node_id),
             admin.rpc_port,
             node_id=admin.node_id,
             timeout=profile.runtime["rpc_timeout_s"],
@@ -98,8 +98,15 @@ def stop_network(
     run_dir: Path,
     chain_home: Path,
     snapshot: bool = True,
+    fabric: Optional[object] = None,
 ) -> Dict[str, object]:
-    """Bring the whole run down. Returns a report, and never raises past its own cleanup."""
+    """Bring the whole run down. Returns a report, and never raises past its own cleanup.
+
+    ``fabric`` is the live one when the orchestrator is doing the stopping. Called on its
+    own against a finished run there is none, and a node in an emulated regime cannot then
+    be reached at all — its namespace went with the session. That is not a loss: the
+    session is what held the nodes, and deleting it takes them with it.
+    """
     log = EventLog(run_dir, "shutdown", "admin", epoch_length=profile.epoch_length)
     report: Dict[str, object] = {}
     try:
@@ -114,8 +121,12 @@ def stop_network(
         if snapshot:
             report["snapshot"] = final_snapshot(profile, chain_home, log)
 
-        # 3. The nodes, seed last.
-        runner = NodeRunner(profile, REPO_ROOT, chain_home)
+        # 3. The nodes, seed last -- unless the emulated network is what holds them.
+        if fabric is None and profile.fabric_backend != "native":
+            report["nodes"] = _delete_emulated_session(run_dir, log)
+            print("[shutdown] emulated session deleted; its nodes went with it", flush=True)
+            return report
+        runner = NodeRunner(profile, REPO_ROOT, chain_home, fabric)
         outcomes = runner.stop_all(profile.runtime["shutdown_grace_s"])
         report["nodes"] = outcomes
         forced = sorted(k for k, v in outcomes.items() if v in ("sigterm", "sigkill"))
@@ -130,6 +141,44 @@ def stop_network(
 
     write_json(run_dir / "shutdown.json", report)
     return report
+
+
+def _delete_emulated_session(run_dir: Path, log: EventLog) -> Dict[str, str]:
+    """Tear down an emulated run nobody is holding open any more.
+
+    Stopping the nodes one at a time is not possible here and not wanted: reaching a node
+    means entering the namespace its session owns, and the session is exactly what this is
+    deleting. Deleting it takes the namespaces, the cables and every process inside them
+    at once, which is the same outcome by a shorter path.
+
+    The session id comes from ``<run>/fabric.json``, which the orchestrator wrote when it
+    built the network.
+    """
+    manifest = run_dir / "fabric.json"
+    if not manifest.is_file():
+        log.note("no fabric.json: nothing to delete", None, path=str(manifest))
+        return {"session": "absent"}
+    try:
+        described = json.loads(manifest.read_text(encoding="utf-8"))
+        session_id = int(described.get("session_id"))
+        address = str(described.get("grpc_address") or "127.0.0.1:50051")
+    except (OSError, TypeError, ValueError) as exc:
+        log.note("fabric.json unreadable", None, error=str(exc))
+        return {"session": "unreadable: %s" % exc}
+
+    try:
+        from core.api.grpc import client as core_client
+
+        handle = core_client.CoreGrpcClient(address)
+        handle.connect()
+        handle.stop_session(session_id)
+        handle.delete_session(session_id)
+        handle.close()
+    except Exception as exc:  # the emulator may be gone, which is also a clean end
+        log.note("could not delete the session", None, session=session_id, error=str(exc))
+        return {"session": "%d: %s" % (session_id, exc)}
+    log.note("emulated session deleted", None, session=session_id)
+    return {"session": "%d: deleted" % session_id}
 
 
 def main(argv: Optional[List[str]] = None) -> int:

@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import fabric as fabric_module
 from config_loader import Profile
 
 #: Lines of params.dat are ``key = value  # comment``. The comment is preserved on
@@ -72,10 +73,20 @@ class NodeRunner:
     produce a node with a different consensus configuration from its peers.
     """
 
-    def __init__(self, profile: Profile, repo_root: Path, chain_home: Path) -> None:
+    def __init__(
+        self,
+        profile: Profile,
+        repo_root: Path,
+        chain_home: Path,
+        fabric: Optional[object] = None,
+    ) -> None:
         self.profile = profile
         self.repo_root = Path(repo_root)
         self.chain_home = Path(chain_home)
+        # The regime this runner works in. Built from the profile when the caller has no
+        # opinion, which is what keeps every entry point that only wants to stop a network
+        # from having to know there are two regimes at all.
+        self.fabric = fabric if fabric is not None else fabric_module.build(profile)
         bindir = self.repo_root / profile.runtime["bindir"]
         self.multichaind = bindir / "multichaind"
         self.multichain_util = bindir / "multichain-util"
@@ -219,18 +230,24 @@ class NodeRunner:
         return args
 
     def command_line(self, node_id: str, join: bool) -> List[str]:
+        """The full argv, including whatever it takes to run *as* this node.
+
+        The fabric contributes at both ends: a prefix that puts the command where the node
+        lives, and the flags that pin each plane to its own address. Both are empty in the
+        native regime, so the command line there is exactly what it always was.
+        """
         node = self.profile.node(node_id)
         target = (
             self.profile.seed_node_address if join else self.profile.chain_name
         )
-        return [
+        return self.fabric.wrap(node_id) + [
             str(self.multichaind),
             target,
             "-datadir=%s" % self.datadir(node_id),
             "-port=%d" % node.port,
             "-rpcport=%d" % node.rpc_port,
             "-daemon",
-        ] + self.engine_args()
+        ] + self.engine_args() + self.fabric.extra_node_args(node_id)
 
     def start(self, node_id: str, join: bool, attempts: int = 3) -> NodeHandle:
         """Launch one daemon detached and return its handle.
@@ -318,7 +335,9 @@ class NodeRunner:
         node = self.profile.node(node_id)
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
             probe.settimeout(1.0)
-            return probe.connect_ex((self.profile.host, node.rpc_port)) == 0
+            return probe.connect_ex(
+                (self.profile.rpc_host(node_id), node.rpc_port)
+            ) == 0
 
     def wait_rpc_closed(self, node_id: str, timeout: float) -> bool:
         """Block until the RPC port closes. ``False`` on timeout."""
@@ -348,8 +367,12 @@ class NodeRunner:
         if not self.rpc_open(node_id):
             return "absent"
 
+        # Run the CLI *as the node*: inside its own namespace the RPC endpoint is
+        # loopback, which is what multichain-cli assumes and what every node accepts
+        # without an -rpcallowip of its own.
         result = subprocess.run(
-            [
+            self.fabric.wrap(node_id)
+            + [
                 str(self.multichain_cli),
                 "-datadir=%s" % self.datadir(node_id),
                 "-rpcport=%d" % self.profile.node(node_id).rpc_port,
@@ -372,15 +395,20 @@ class NodeRunner:
         pid = self.read_pid(node_id)
         if pid is None:
             return "timeout"
+        # Through the fabric, never os.kill directly. A node of the emulated regime is a
+        # PID namespace as well as a network one: `multichaind -daemon` forks inside it,
+        # so the pid in its pid file is node-local and signalling it from out here would
+        # reach an unrelated process, or none. It is the one difference between the two
+        # regimes that is completely silent when got wrong.
         try:
-            os.kill(pid, signal.SIGTERM)
+            self.fabric.signal(node_id, pid, signal.SIGTERM)
         except OSError:
             return "exited"
         if self.wait_rpc_closed(node_id, max(5, grace_s // 3)):
             time.sleep(self.LOCK_SETTLE_S)
             return "sigterm"
         try:
-            os.kill(pid, signal.SIGKILL)
+            self.fabric.signal(node_id, pid, signal.SIGKILL)
         except OSError:
             return "sigterm"
         self.wait_rpc_closed(node_id, 10)

@@ -86,7 +86,7 @@ def assign(
         clients[ca.node_id] = RpcClient.from_datadir(
             chain_home / ca.node_id,
             profile.chain_name,
-            profile.host,
+            profile.rpc_host(ca.node_id),
             ca.rpc_port,
             node_id=ca.node_id,
             timeout=profile.runtime["rpc_timeout_s"],

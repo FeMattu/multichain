@@ -73,6 +73,7 @@ from event_log import (  # noqa: E402
     EventLog,
     run_id as make_run_id,
 )
+import fabric as fabric_module  # noqa: E402
 from node_process import NodeRunner, NodeStartError, write_json  # noqa: E402
 from rpc_client import TRANSPORT, RpcClient, RpcError, RpcTransportError  # noqa: E402
 
@@ -99,7 +100,10 @@ class Orchestrator:
         self.profile = profile
         self.run_dir = run_dir
         self.chain_home = chain_home
-        self.runner = NodeRunner(profile, REPO_ROOT, chain_home)
+        #: The regime. Built here and passed down, so that exactly one object in the run
+        #: knows how to reach a node and how to run a command as one.
+        self.fabric = fabric_module.build(profile, run_dir)
+        self.runner = NodeRunner(profile, REPO_ROOT, chain_home, self.fabric)
         self.addresses: Dict[str, str] = {}
         self.clients: Dict[str, RpcClient] = {}
         self.children: List[Tuple[str, subprocess.Popen]] = []
@@ -121,7 +125,7 @@ class Orchestrator:
             self.clients[node_id] = RpcClient.from_datadir(
                 self.chain_home / node_id,
                 self.profile.chain_name,
-                self.profile.host,
+                self.profile.rpc_host(node_id),
                 node.rpc_port,
                 node_id=node_id,
                 timeout=self.profile.runtime["rpc_timeout_s"],
@@ -151,6 +155,67 @@ class Orchestrator:
         reached = self.admin_rpc.wait_for_height(start + blocks, timeout)
         if reached is None:
             self.log.note("wait timed out", start, blocks=blocks, why=why, timeout_s=timeout)
+
+    # -- 1b. the network ---------------------------------------------------------------
+
+    def start_fabric(self) -> None:
+        """Build the network the nodes will run on, before there are any nodes.
+
+        Nothing happens here in the native regime. Under CORE this is the whole
+        emulation: the namespaces, the cables, their qdiscs, the addresses and the routes.
+        What it built is written to ``<run>/fabric.json`` immediately, because every
+        number in it — which link got which delay, and whether that delay came from the
+        map or from a named profile — is evidence about the run and is of no use
+        reconstructed afterwards.
+        """
+        log_step("building the %s fabric" % self.fabric.name)
+        self.fabric.start()
+        described = self.fabric.describe()
+        write_json(self.run_dir / "fabric.json", described)
+        links = described.get("links") or []
+        if links:
+            delays = [link["forward"]["delay_ms"] for link in links]
+            log_step(
+                "%d site(s), %d cable(s), one-way delay %.2f-%.2f ms"
+                % (
+                    len(described.get("addressing", {}).get("sites", {})),
+                    len(links),
+                    min(delays),
+                    max(delays),
+                )
+            )
+
+    def verify_peers_on_data_plane(self) -> None:
+        """Every peer connection must be on the emulated plane.
+
+        The failure this exists for is silent: a chain that formed its mesh over the
+        control network would run to completion and report numbers describing a network
+        with no delay in it. There is no way to tell from the results afterwards, so it is
+        checked here and it fails the run.
+
+        Nothing to check in the native regime, where there is one plane.
+        """
+        check = getattr(self.fabric, "peers_off_the_data_plane", None)
+        if check is None:
+            return
+        offenders: Dict[str, List[str]] = {}
+        for node in self.profile.nodes:
+            try:
+                peers = self.client(node.node_id).call("getpeerinfo") or []
+            except (RpcError, RpcTransportError):
+                continue
+            addresses = [p.get("addr", "") for p in peers if isinstance(p, dict)]
+            off = check(addresses)
+            if off:
+                offenders[node.node_id] = off
+        if offenders:
+            raise BootstrapError(
+                "peer connection(s) off the emulated plane: %s. The chain would form on "
+                "the unimpaired control network, the run would complete, and every number "
+                "in the report would describe a network nobody configured."
+                % "; ".join("%s -> %s" % (k, ", ".join(v)) for k, v in sorted(offenders.items()))
+            )
+        log_step("every peer connection is on the emulated plane")
 
     # -- 2. the chain ------------------------------------------------------------------
 
@@ -1007,6 +1072,7 @@ def run(profile: Profile, run_dir: Path, chain_home: Path) -> int:
     orchestrator = Orchestrator(profile, run_dir, chain_home)
     status, error, final_height = "ok", "", 0
     try:
+        orchestrator.start_fabric()
         orchestrator.create_chain()
         orchestrator.start_admin()
         orchestrator.make_treasury()
@@ -1017,6 +1083,7 @@ def run(profile: Profile, run_dir: Path, chain_home: Path) -> int:
         orchestrator.join_peers()
         orchestrator.grant_global_permissions()
         orchestrator.launch_peers()
+        orchestrator.verify_peers_on_data_plane()
         orchestrator.create_streams()
         # Entity permissions only exist once their entity does, so this pass has to
         # follow stream creation rather than ride along with the global one.
@@ -1047,10 +1114,14 @@ def run(profile: Profile, run_dir: Path, chain_home: Path) -> int:
             sys.path.insert(0, str(REPO_ROOT / "test" / "shutdown"))
             from stop_network import stop_network  # noqa: E402
 
-            report = stop_network(profile, run_dir, chain_home, snapshot=True)
+            report = stop_network(
+                profile, run_dir, chain_home, snapshot=True, fabric=orchestrator.fabric
+            )
             log_step("nodes stopped: %s" % json.dumps(report.get("nodes", {})))
             orchestrator.log.note("nodes stopped", final_height, **report)
             orchestrator.log.close()
+            # The network last: stopping a node needs the namespace it runs in.
+            orchestrator.fabric.stop()
 
     if status == "ok":
         log_step("run complete at height %d -> %s" % (final_height, run_dir))
@@ -1143,7 +1214,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     log_step("run directory: %s" % run_dir)
     log_step(
         "plan: %d nodes (1 admin, %d CA, %d miners, %d companies), %d epochs of %d blocks, "
-        "target height %d, RPC transport %s"
+        "target height %d, %s fabric%s, RPC transport %s"
         % (
             profile.node_count,
             profile.ca_count,
@@ -1152,6 +1223,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             profile.epoch_count,
             profile.epoch_length,
             profile.target_height,
+            profile.fabric_backend,
+            (" on %s" % profile.topology.name) if profile.topology else "",
             TRANSPORT,
         )
     )

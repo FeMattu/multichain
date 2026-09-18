@@ -271,7 +271,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     rpc = RpcClient.from_datadir(
         chain_home / admin.node_id,
         profile.chain_name,
-        profile.host,
+        profile.rpc_host(admin.node_id),
         admin.rpc_port,
         node_id="malus-detector",
         timeout=profile.runtime["rpc_timeout_s"],

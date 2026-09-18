@@ -28,6 +28,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
+from fabric.addressing import AddressPlan  # noqa: E402
+from fabric.topology import (  # noqa: E402
+    LinkProfile,
+    RealisedLink,
+    Topology,
+    TopologyError,
+    load_link_profile,
+    load_topology,
+)
 from malicious import (  # noqa: E402
     MaliciousConfigError,
     disabled_plan as _disabled_malicious_plan,
@@ -60,6 +69,23 @@ STREAM_WEIGHTS = "wpoa-weights"
 STREAM_MEMBERSHIP = "weight-engine-membership"
 STREAM_ESG = "weight-engine-esg"
 STREAM_MALUS = "wpoa-weights-malus"
+
+#: Everything a profile names by relative path -- a topology, a link profile -- is
+#: relative to this directory, not to the profile's own location. A profile is a
+#: statement about a run; where the shared configuration lives is a property of the
+#: tree, and resolving against the profile would make a profile unmovable.
+CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
+
+#: The roles a node may have. `admin` is special only in being unique.
+ROLES = ("admin", "ca", "miner", "company")
+
+#: A node id is a directory name (``chains/<id>/``, ``logs/<id>/``) and a column value in
+#: every analysis table, so it is restricted to what is safe in both.
+_NODE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+
+#: The regimes. `native` is the default, which is what makes every profile written
+#: before the fabric existed keep working untouched.
+FABRIC_BACKENDS = ("native", "core")
 
 #: The activation flags. Hardcoded on, and rejected if a profile mentions them.
 ACTIVATION_KEYS = (
@@ -141,6 +167,9 @@ _TOP_LEVEL = {
     "traffic",
     "runtime",
     "malicious",
+    "fabric",
+    "topology",
+    "network_profile",
 }
 
 _TRAFFIC_DEFAULTS: Dict[str, Any] = {
@@ -183,6 +212,12 @@ class Node:
     node_id: str       # e.g. "miner-2"; also the log directory name
     port: int
     rpc_port: int
+    #: The topology site this node runs at. Empty in the native regime, where there is
+    #: one place and every node is at it.
+    location: str = ""
+    #: For a company, the miner whose cluster it joins, when the profile declares it
+    #: rather than leaving it to the seed.
+    cluster: str = ""
 
     @property
     def is_admin(self) -> bool:
@@ -219,6 +254,21 @@ class Profile:
     #: and none of them has to test for the key.
     malicious: Dict[str, Any] = field(default_factory=dict)
     nodes: List[Node] = field(default_factory=list)
+    #: Which regime this profile runs in. A profile written before the fabric existed
+    #: carries no ``fabric`` section, so the default is the one that changes nothing.
+    fabric: Dict[str, Any] = field(default_factory=lambda: {"backend": "native"})
+    #: The map, in the CORE regime. ``None`` in the native one, where there is one place
+    #: and every node is at it.
+    topology: Optional[Topology] = None
+    #: A named override of the map's own delay model, and which links it applies to.
+    network_profile: Optional[LinkProfile] = None
+    network_profile_apply_to: str = "all"
+    #: Derived from the topology alone, which is what lets a traffic daemon resolve an
+    #: RPC endpoint without an emulator, and ``--dry-run`` print one without a daemon.
+    address_plan: Optional[AddressPlan] = None
+    #: company node_id -> miner node_id, when the profile states it instead of leaving
+    #: it to the seed.
+    declared_clusters: Dict[str, str] = field(default_factory=dict)
 
     # -- topology ----------------------------------------------------------------------
 
@@ -239,14 +289,68 @@ class Profile:
                 return n
         raise KeyError(node_id)
 
+    # -- the regime, and where a node is -----------------------------------------------
+
+    @property
+    def fabric_backend(self) -> str:
+        return str(self.fabric.get("backend", "native"))
+
+    def site_of(self, node_id: str) -> str:
+        """The topology site this node runs at. Empty in the native regime."""
+        return self.node(node_id).location
+
+    def rpc_host(self, node_id: str) -> str:
+        """Where this node's RPC port is, seen from the harness.
+
+        In the native regime, the one host every node shares. Under CORE, the node's site
+        on the **control** plane, which carries no impairment: the instrument must not sit
+        inside the thing it measures.
+
+        Derived rather than looked up, because the traffic daemons are separate processes
+        that re-load the profile from YAML and must resolve a node without constructing an
+        emulator client or being able to.
+        """
+        if self.address_plan is None:
+            return self.host
+        return self.address_plan.control(self.site_of(node_id))
+
+    def data_host(self, node_id: str) -> str:
+        """Where this node's peer-to-peer port is: the **emulated** plane under CORE.
+
+        Everything the chain does between nodes goes here, and everything here is subject
+        to the map's delay, jitter and loss. Confusing this with :meth:`rpc_host` would
+        build the peer mesh on an unimpaired network and the run would measure nothing —
+        which is why the bootstrap asserts, afterwards, that no peer address is off it.
+        """
+        if self.address_plan is None:
+            return self.host
+        return self.address_plan.identity(self.site_of(node_id))
+
+    def realised_links(self) -> List[RealisedLink]:
+        """Every cable with its impairment resolved. Empty in the native regime."""
+        if self.topology is None:
+            return []
+        return self.topology.realise(self.network_profile, self.network_profile_apply_to)
+
+    @property
+    def network_profile_description(self) -> Optional[Dict[str, Any]]:
+        if self.network_profile is None:
+            return None
+        return {"name": self.network_profile.name, "apply_to": self.network_profile_apply_to}
+
     @property
     def seed_node_address(self) -> str:
         """What a joining node dials.
 
-        Loopback explicitly: ``getinfo``'s ``nodeaddress`` can report a NAT address when
-        the host is containerised, and a joining node would then dial an unreachable one.
+        The admin's **data** address, always. In the native regime that is loopback,
+        stated explicitly because ``getinfo``'s ``nodeaddress`` can report a NAT address
+        when the host is containerised and a joining node would then dial an unreachable
+        one. Under CORE it is the admin's site on the emulated plane: a seed dialled over
+        the control network would build the entire mesh there.
         """
-        return "%s@%s:%d" % (self.chain_name, self.host, self.admin.port)
+        return "%s@%s:%d" % (
+            self.chain_name, self.data_host(self.admin.node_id), self.admin.port
+        )
 
     # -- chain parameters --------------------------------------------------------------
 
@@ -418,11 +522,17 @@ class Profile:
     # -- cluster assignment ------------------------------------------------------------
 
     def cluster_assignment(self) -> Dict[str, str]:
-        """company node_id -> miner node_id, drawn once from the master seed.
+        """company node_id -> miner node_id.
 
-        Every miner receives at least one company: a cluster with no members is not in
-        the cluster map at all, so its head would never receive a published weight.
+        **Declared** when the profile states a ``cluster`` for its companies, **drawn**
+        from the master seed when it does not. The two forms differ in what they fix,
+        never in what they produce: either way the result is one company-to-miner map,
+        recorded in ``clusters.json``, and either way every miner receives at least one
+        company — a cluster with no members is not in the map at all, so its head would
+        never receive a published weight.
         """
+        if self.declared_clusters:
+            return dict(self.declared_clusters)
         miners = self.by_role("miner")
         companies = self.by_role("company")
         rng = self.rng("cluster-assignment")
@@ -481,6 +591,13 @@ class Profile:
                 "base_rpc_port": self.base_rpc_port,
             },
             "epochs": {"count": self.epoch_count, "length_blocks": self.epoch_length},
+            # The regime is recorded, not inferred: a result whose network has to be
+            # guessed from the profile's name is not evidence.
+            "fabric": {
+                "backend": self.fabric_backend,
+                "topology": self.topology.as_dict() if self.topology else None,
+                "network_profile": self.network_profile_description,
+            },
             "derived": {
                 "protocol_setup_floor": self.protocol_setup_floor,
                 "setup_first_blocks_requested": self.setup_first_blocks,
@@ -508,6 +625,9 @@ class Profile:
                     "index": n.index,
                     "port": n.port,
                     "rpc_port": n.rpc_port,
+                    "location": n.location,
+                    "rpc_host": self.rpc_host(n.node_id),
+                    "data_host": self.data_host(n.node_id),
                 }
                 for n in self.nodes
             ],
@@ -643,6 +763,212 @@ def _check_range_pair(traffic: Dict[str, Any], key: str, numeric: str) -> None:
 
 
 # --------------------------------------------------------------------------------------
+# The regime, the map, and where each node sits on it
+# --------------------------------------------------------------------------------------
+
+
+def _parse_fabric(raw: Any) -> Dict[str, Any]:
+    """``fabric: {backend: native|core}``. Absent means native."""
+    given = _require_mapping(raw, "fabric")
+    unknown = sorted(set(given) - {"backend"})
+    if unknown:
+        raise ConfigError("unknown fabric key(s): %s. Only `backend`." % ", ".join(unknown))
+    backend = given.get("backend", "native")
+    if backend not in FABRIC_BACKENDS:
+        raise ConfigError(
+            "fabric.backend must be one of %s, got %r"
+            % (", ".join(FABRIC_BACKENDS), backend)
+        )
+    return {"backend": backend}
+
+
+def _resolve_config_path(value: str, what: str) -> Path:
+    """A path a profile names, resolved against ``test/config/``.
+
+    Against the config directory rather than against the profile's own location: a
+    profile is a statement about a run, and where the shared maps live is a property of
+    the tree. Resolving relative to the profile would make a profile unmovable.
+    """
+    if not isinstance(value, str) or not value:
+        raise ConfigError("%s must be a non-empty path relative to test/config/" % what)
+    candidate = (CONFIG_DIR / value).resolve()
+    if candidate.is_file():
+        return candidate
+    raise ConfigError(
+        "%s names %r, which is not a file under %s" % (what, value, CONFIG_DIR)
+    )
+
+
+def _parse_network_profile(raw: Any) -> Tuple[Optional[LinkProfile], str]:
+    """``network_profile: <name>`` or ``{name: <name>, apply_to: all|backbone|access}``."""
+    if raw is None:
+        return None, "all"
+    if isinstance(raw, str):
+        name, apply_to = raw, "all"
+    else:
+        given = _require_mapping(raw, "network_profile")
+        unknown = sorted(set(given) - {"name", "apply_to"})
+        if unknown:
+            raise ConfigError(
+                "unknown network_profile key(s): %s. Only `name` and `apply_to`."
+                % ", ".join(unknown)
+            )
+        name = given.get("name")
+        apply_to = given.get("apply_to", "all")
+    if not isinstance(name, str) or not name:
+        raise ConfigError("network_profile.name is required and must be a string")
+    if apply_to not in ("all", "backbone", "access"):
+        raise ConfigError(
+            "network_profile.apply_to must be all, backbone or access, got %r" % (apply_to,)
+        )
+    path = _resolve_config_path("network-profiles/%s.yaml" % name, "network_profile")
+    try:
+        return load_link_profile(path), apply_to
+    except TopologyError as exc:
+        raise ConfigError(str(exc)) from exc
+
+
+def _parse_node_list(
+    raw: List[Any], topology: Optional[Topology], backend: str
+) -> Tuple[List[Dict[str, Any]], Dict[str, int], Dict[str, str]]:
+    """The list form of ``nodes``: one entry per node, in the order that fixes the ports.
+
+    Returns the enabled entries, the per-role counts derived from them, and the declared
+    company-to-miner map. Every rejection names the offending id, because a list of twenty
+    nodes is not something to re-read looking for which one was wrong.
+    """
+    specs: List[Dict[str, Any]] = []
+    seen: set = set()
+    for position, entry in enumerate(raw):
+        entry = _require_mapping(entry, "nodes[%d]" % position)
+        unknown = sorted(set(entry) - {"id", "role", "location", "cluster", "enabled"})
+        if unknown:
+            raise ConfigError(
+                "nodes[%d] has unknown key(s): %s. Allowed: id, role, location, cluster, "
+                "enabled." % (position, ", ".join(unknown))
+            )
+        node_id = entry.get("id")
+        if not isinstance(node_id, str) or not _NODE_ID_RE.match(node_id):
+            raise ConfigError(
+                "nodes[%d].id must be 1-64 characters of [a-z0-9._-] starting with a "
+                "letter or digit, got %r. It is a directory name and a column value."
+                % (position, node_id)
+            )
+        if node_id in seen:
+            raise ConfigError(
+                "duplicate node id %r: two nodes would share a data directory and a log"
+                % node_id
+            )
+        seen.add(node_id)
+        role = entry.get("role")
+        if role not in ROLES:
+            raise ConfigError(
+                "nodes[%d] (%s) has role %r, must be one of %s"
+                % (position, node_id, role, ", ".join(ROLES))
+            )
+        enabled = entry.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise ConfigError("nodes[%d] (%s).enabled must be true or false" % (position, node_id))
+
+        location = entry.get("location", "")
+        if backend == "core":
+            if not isinstance(location, str) or not location:
+                raise ConfigError(
+                    "%s has no location. Under the CORE fabric every node names a site of "
+                    "the topology: there is no single place for it to be." % node_id
+                )
+            if topology is not None and location not in topology.sites:
+                raise ConfigError(
+                    "%s is placed at %r, which is not a site of %s. Known sites: %s"
+                    % (node_id, location, topology.path.name, ", ".join(sorted(topology.sites)))
+                )
+        elif location:
+            raise ConfigError(
+                "%s names a location (%r), but this profile has no topology. A location "
+                "without a map is a claim nothing checks." % (node_id, location)
+            )
+
+        cluster = entry.get("cluster", "")
+        if cluster and role != "company":
+            raise ConfigError(
+                "%s is a %s and names a cluster. Only a company joins one: a miner heads "
+                "its own, and the admin and the CAs belong to none." % (node_id, role)
+            )
+        if cluster and not isinstance(cluster, str):
+            raise ConfigError("%s.cluster must be the id of a miner" % node_id)
+
+        if not enabled:
+            continue
+        specs.append(
+            {
+                "id": node_id,
+                "role": role,
+                "location": location or "",
+                "cluster": cluster or "",
+            }
+        )
+
+    if not specs:
+        raise ConfigError("nodes is empty: every entry is disabled, so there is no network")
+
+    by_role: Dict[str, List[str]] = {role: [] for role in ROLES}
+    for spec in specs:
+        by_role[spec["role"]].append(spec["id"])
+
+    if len(by_role["admin"]) != 1:
+        raise ConfigError(
+            "exactly one enabled node must have role `admin`, found %d (%s). The admin "
+            "seals the genesis, holds the premine and funds everyone; two would race and "
+            "none would leave the chain unable to start."
+            % (len(by_role["admin"]), ", ".join(by_role["admin"]) or "none")
+        )
+    reasons = {
+        "ca": "nobody could certify an ESG score, so every cluster would compute W_k = 0 "
+              "and publish the positivity floor of 1, which makes the sortition uniform",
+        "miner": "there would be no validator to elect",
+        "company": "nothing would generate tau",
+    }
+    for role, reason in reasons.items():
+        if not by_role[role]:
+            raise ConfigError("at least one enabled node must have role %r: %s" % (role, reason))
+
+    miners = set(by_role["miner"])
+    declared: Dict[str, str] = {}
+    for spec in specs:
+        if spec["role"] != "company" or not spec["cluster"]:
+            continue
+        if spec["cluster"] not in miners:
+            raise ConfigError(
+                "%s joins cluster %r, which is not an enabled miner. Enabled miners: %s"
+                % (spec["id"], spec["cluster"], ", ".join(sorted(miners)))
+            )
+        declared[spec["id"]] = spec["cluster"]
+
+    if declared:
+        if len(declared) != len(by_role["company"]):
+            silent = sorted(set(by_role["company"]) - set(declared))
+            raise ConfigError(
+                "these companies declare no cluster while others do: %s. Either every "
+                "company states one, or none does and the seed draws them all — a mixture "
+                "would be half a decision." % ", ".join(silent)
+            )
+        headless = sorted(miners - set(declared.values()))
+        if headless:
+            raise ConfigError(
+                "these miners head no cluster: %s. The cluster map is built only from "
+                "confirmed membership records, so a miner nobody joined is never computed "
+                "and never published — silently." % ", ".join(headless)
+            )
+
+    counts = {
+        "ca_count": len(by_role["ca"]),
+        "miner_count": len(by_role["miner"]),
+        "company_count": len(by_role["company"]),
+    }
+    return specs, counts, declared
+
+
+# --------------------------------------------------------------------------------------
 # Entry point
 # --------------------------------------------------------------------------------------
 
@@ -684,28 +1010,76 @@ def load_profile(path: str | os.PathLike) -> Profile:
             "digit, got %r" % (chain_name,)
         )
 
-    # -- node counts -------------------------------------------------------------------
-    nodes_raw = _require_mapping(raw.get("nodes"), "nodes")
-    unknown = sorted(set(nodes_raw) - {"ca_count", "miner_count", "company_count"})
-    if unknown:
+    # -- the regime, and the map it runs on --------------------------------------------
+    # Parsed before the nodes, because what a node entry is allowed to say depends on it.
+    fabric = _parse_fabric(raw.get("fabric"))
+    backend = fabric["backend"]
+
+    topology: Optional[Topology] = None
+    address_plan: Optional[AddressPlan] = None
+    if "topology" in raw and raw["topology"] is not None:
+        if backend != "core":
+            raise ConfigError(
+                "topology is set, but fabric.backend is %r. A map with no emulator to "
+                "build it is a description of a network the run would not have." % backend
+            )
+        try:
+            topology = load_topology(_resolve_config_path(raw["topology"], "topology"))
+            address_plan = AddressPlan(topology)
+        except (TopologyError, ValueError) as exc:
+            raise ConfigError(str(exc)) from exc
+    elif backend == "core":
         raise ConfigError(
-            "unknown nodes key(s): %s. The admin node is always exactly 1 and is not "
-            "configurable." % ", ".join(unknown)
+            "fabric.backend is core, so the profile must name a map with "
+            "`topology: topologies/<name>.yaml`: the emulator has to be told what to build."
         )
-    counts = {}
-    for key in ("ca_count", "miner_count", "company_count"):
-        value = nodes_raw.get(key)
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise ConfigError("nodes.%s is required and must be an integer" % key)
-        if value < 1:
-            counts_reason = {
-                "ca_count": "nobody could certify an ESG score, so every cluster would "
-                            "compute W_k = 0 and publish the positivity floor of 1",
-                "miner_count": "there would be no validator to elect",
-                "company_count": "nothing would generate tau",
-            }[key]
-            raise ConfigError("nodes.%s must be >= 1: %s" % (key, counts_reason))
-        counts[key] = value
+
+    network_profile, network_profile_apply_to = _parse_network_profile(
+        raw.get("network_profile")
+    )
+    if network_profile is not None and backend != "core":
+        raise ConfigError(
+            "network_profile is set, but fabric.backend is %r. There is no link to apply "
+            "it to: the native regime has one host and no cables." % backend
+        )
+
+    # -- the nodes ---------------------------------------------------------------------
+    # Two forms. A mapping of counts, which is what a native profile has always used, or
+    # an explicit list, which is the only form that can say where a node is.
+    nodes_given = raw.get("nodes")
+    node_specs: Optional[List[Dict[str, Any]]] = None
+    declared_clusters: Dict[str, str] = {}
+    if isinstance(nodes_given, list):
+        node_specs, counts, declared_clusters = _parse_node_list(
+            nodes_given, topology, backend
+        )
+    elif backend == "core":
+        raise ConfigError(
+            "under the CORE fabric, nodes must be a list of entries naming each node's "
+            "location: a count cannot say where a node is."
+        )
+    else:
+        nodes_raw = _require_mapping(nodes_given, "nodes")
+        unknown = sorted(set(nodes_raw) - {"ca_count", "miner_count", "company_count"})
+        if unknown:
+            raise ConfigError(
+                "unknown nodes key(s): %s. The admin node is always exactly 1 and is not "
+                "configurable." % ", ".join(unknown)
+            )
+        counts = {}
+        for key in ("ca_count", "miner_count", "company_count"):
+            value = nodes_raw.get(key)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ConfigError("nodes.%s is required and must be an integer" % key)
+            if value < 1:
+                counts_reason = {
+                    "ca_count": "nobody could certify an ESG score, so every cluster would "
+                                "compute W_k = 0 and publish the positivity floor of 1",
+                    "miner_count": "there would be no validator to elect",
+                    "company_count": "nothing would generate tau",
+                }[key]
+                raise ConfigError("nodes.%s must be >= 1: %s" % (key, counts_reason))
+            counts[key] = value
 
     # -- epochs ------------------------------------------------------------------------
     epochs_raw = _require_mapping(raw.get("epochs"), "epochs")
@@ -728,6 +1102,11 @@ def load_profile(path: str | os.PathLike) -> Profile:
     unknown = sorted(set(net_raw) - {"host", "base_port", "base_rpc_port"})
     if unknown:
         raise ConfigError("unknown network key(s): %s" % ", ".join(unknown))
+    if "host" in net_raw and backend == "core":
+        raise ConfigError(
+            "network.host is not set under the CORE fabric: a node's address belongs to "
+            "the site it is placed at and is derived from the map. Remove the key."
+        )
     host = net_raw.get("host", "127.0.0.1")
     if not isinstance(host, str) or not host:
         raise ConfigError("network.host must be a non-empty string")
@@ -868,20 +1247,36 @@ def load_profile(path: str | os.PathLike) -> Profile:
         traffic=traffic,
         runtime=runtime,
         malicious=malicious,
+        fabric=fabric,
+        topology=topology,
+        network_profile=network_profile,
+        network_profile_apply_to=network_profile_apply_to,
+        address_plan=address_plan,
+        declared_clusters=declared_clusters,
     )
-    profile.nodes = _build_nodes(profile)
+    profile.nodes = _build_nodes(profile, node_specs)
     return profile
 
 
-def _build_nodes(profile: Profile) -> List[Node]:
-    """admin, then CAs, then miners, then companies — a fixed order, so the port map is
-    a property of the profile rather than of the run."""
+def _build_nodes(
+    profile: Profile, specs: Optional[List[Dict[str, Any]]] = None
+) -> List[Node]:
+    """The node table, in the order that fixes the port map.
+
+    From counts: admin, then CAs, then miners, then companies — a fixed order, so the port
+    map is a property of the profile rather than of the run. From a list: the order the
+    list is written in, which is the same property stated explicitly. The shipped CORE
+    profiles write them in the same order the counted form would produce, so a profile of
+    either kind puts the same node on the same port.
+    """
     nodes: List[Node] = []
     index = 0
+    role_counter: Dict[str, int] = {role: 0 for role in ROLES}
 
-    def add(role: str, role_index: int) -> None:
+    def add(role: str, node_id: str, location: str = "", cluster: str = "") -> None:
         nonlocal index
-        node_id = "admin" if role == "admin" else "%s-%d" % (role, role_index)
+        role_index = role_counter[role]
+        role_counter[role] += 1
         nodes.append(
             Node(
                 index=index,
@@ -890,17 +1285,24 @@ def _build_nodes(profile: Profile) -> List[Node]:
                 node_id=node_id,
                 port=profile.base_port + index,
                 rpc_port=profile.base_rpc_port + index,
+                location=location,
+                cluster=cluster,
             )
         )
         index += 1
 
-    add("admin", 0)
+    if specs is not None:
+        for spec in specs:
+            add(spec["role"], spec["id"], spec["location"], spec["cluster"])
+        return nodes
+
+    add("admin", "admin")
     for i in range(profile.ca_count):
-        add("ca", i)
+        add("ca", "ca-%d" % i)
     for i in range(profile.miner_count):
-        add("miner", i)
+        add("miner", "miner-%d" % i)
     for i in range(profile.company_count):
-        add("company", i)
+        add("company", "company-%d" % i)
     return nodes
 
 
