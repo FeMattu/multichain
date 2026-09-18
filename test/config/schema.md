@@ -6,14 +6,14 @@ role, which ports, how long an epoch is, which chain parameters to bake into
 exactly one `--config <path-to-profile>`, and **no network or node parameter is
 hardcoded anywhere in the code**.
 
-Ready-made profiles live in [`profiles/`](profiles/):
+Ready-made profiles live in [`profiles/native/`](profiles/native/):
 
 | Profile | admin | CA | miners | companies | epochs × length |
 |---|---|---|---|---|---|
-| [`small.yaml`](profiles/small.yaml) | 1 | 1 | 3 | 5 | 20 × 20 |
-| [`medium.yaml`](profiles/medium.yaml) | 1 | 2 | 5 | 10 | 20 × 30 |
-| [`large.yaml`](profiles/large.yaml) | 1 | 3 | 10 | 20 | 20 × 40 |
-| [`malicious.yaml`](profiles/malicious.yaml) | 1 | 2 | 10 | 15 | 20 × 30 |
+| [`small.yaml`](profiles/native/small.yaml) | 1 | 1 | 3 | 5 | 20 × 20 |
+| [`medium.yaml`](profiles/native/medium.yaml) | 1 | 2 | 5 | 10 | 20 × 30 |
+| [`large.yaml`](profiles/native/large.yaml) | 1 | 3 | 10 | 20 | 20 × 40 |
+| [`malicious.yaml`](profiles/native/malicious.yaml) | 1 | 2 | 10 | 15 | 20 × 30 |
 
 `malicious.yaml` is the only one with a `malicious` section (2 of its 10 miners misbehave);
 the other three leave it out and run the honest baseline. See [§ `malicious`](#malicious-optional).

@@ -21,7 +21,7 @@ sys.path.insert(0, str(_ROOT / "analysis"))
 from pipeline import phase1_collect  # noqa: E402
 from pipeline.phase2_aggregate import Aggregator  # noqa: E402
 
-PROFILE = str(_ROOT / "config" / "profiles" / "small.yaml")
+PROFILE = str(_ROOT / "config" / "profiles" / "native" / "small.yaml")
 ADMIN = "1AdminAddr"
 ATTACKER = "1AttackerAddr"
 VICTIM = "1VictimAddr"

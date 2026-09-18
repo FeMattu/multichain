@@ -302,7 +302,7 @@ Kept, with reasons now recorded in the code rather than implied: explicit stream
 ./src/weight_engine/test/run_unit_tests.sh   # records authorization engine verifier epoch
 
 ./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
-    --config test/config/profiles/small.yaml
+    --config test/config/profiles/native/small.yaml
 ```
 
 Last full run on this branch: **PASS**, 19 measured epochs, `wpoa_activated: true`, zero

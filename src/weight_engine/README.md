@@ -52,7 +52,7 @@ functional run exercises them as one system; see
 ```bash
 # one command: bootstrap -> traffic -> shutdown -> phase1 -> phase2 -> phase3 -> plots
 ./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
-    --config test/config/profiles/small.yaml
+    --config test/config/profiles/native/small.yaml
 ```
 
 Profiles (`small`, `medium`, `large`) are documented in

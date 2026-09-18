@@ -4,7 +4,7 @@
 One command runs the whole thing::
 
     ./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \\
-        --config test/config/profiles/small.yaml
+        --config test/config/profiles/native/small.yaml
 
 Sequence, in order, each step justified in ``test/docs/architecture-notes.md``:
 

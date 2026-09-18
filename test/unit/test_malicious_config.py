@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "traffic"))
 import malicious as M  # noqa: E402
 from config_loader import load_profile  # noqa: E402
 
-PROFILES = Path(__file__).resolve().parent.parent / "config" / "profiles"
+PROFILES = Path(__file__).resolve().parent.parent / "config" / "profiles" / "native"
 
 
 class TestValidate(unittest.TestCase):

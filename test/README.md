@@ -27,7 +27,7 @@ everything goes through the project's container:
 
 # one command: bootstrap -> traffic -> shutdown -> phase1 -> phase2 -> phase3 -> plots
 ./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
-    --config test/config/profiles/small.yaml
+    --config test/config/profiles/native/small.yaml
 ```
 
 That writes `test/results/run-<chain>-<UTC>/`, and finishes with
@@ -74,7 +74,7 @@ test/
   docs/architecture-notes.md   what was read, what was decided, and why  <- read this first
   docs/RPCLIST.md              the node's full RPC reference
   config/schema.md             the profile format, field by field
-  config/profiles/             small.yaml, medium.yaml, large.yaml
+  config/profiles/native/      small.yaml, medium.yaml, large.yaml, malicious.yaml, long*.yaml
   bootstrap/                   config_loader, rpc_client, event_log, node_process,
                                bootstrap_network (entrypoint), admin_daemon, ca_assign_esg,
                                malicious (experiment logic), malus_detector (honest reporter)
@@ -163,12 +163,12 @@ miners inject provable misbehaviour and an honest detector reports it, so the be
 malus can be measured end to end. See
 [`docs/malicious-miners.md`](docs/malicious-miners.md) for the full design and
 [`config/schema.md`](config/schema.md#malicious-optional) for the fields; the example
-profile is [`config/profiles/malicious.yaml`](config/profiles/malicious.yaml).
+profile is [`config/profiles/native/malicious.yaml`](config/profiles/native/malicious.yaml).
 
 ```bash
 # a full malicious run (10 miners, 2 malicious, rate 0.15, 50/50 mix, starts after bootstrap)
 ./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
-    --config test/config/profiles/malicious.yaml
+    --config test/config/profiles/native/malicious.yaml
 ```
 
 Two kinds are implemented, and only two are possible from outside the node:

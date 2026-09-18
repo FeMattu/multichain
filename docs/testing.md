@@ -386,11 +386,11 @@ takes it from bootstrap to a statistical report in one command. Map and entry po
 ```bash
 # bootstrap -> traffic -> shutdown -> phase1 -> phase2 -> phase3 -> plots
 ./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
-    --config test/config/profiles/small.yaml
+    --config test/config/profiles/native/small.yaml
 
 # validate a profile and print the derived plan, without touching a chain
 ./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
-    --config test/config/profiles/small.yaml --dry-run
+    --config test/config/profiles/native/small.yaml --dry-run
 ```
 
 Two node-free checks, still the cheapest thing to run before committing to a run that

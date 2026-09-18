@@ -1,0 +1,8 @@
+name: partitioned
+partition: true
+delay:
+  mean_ms: 0
+loss:
+  percent: 100
+queue:
+  limit_packets: 1

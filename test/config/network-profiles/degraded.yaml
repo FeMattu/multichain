@@ -1,0 +1,27 @@
+name: degraded
+forward:
+  delay:
+    mean_ms: 120
+    jitter_ms: 20
+    correlation_percent: 40
+    distribution: normal
+  loss:
+    percent: 0.5
+    correlation_percent: 25
+  bandwidth:
+    mbps: 100
+  queue:
+    limit_packets: 1000
+reverse:
+  delay:
+    mean_ms: 160
+    jitter_ms: 35
+    correlation_percent: 40
+    distribution: normal
+  loss:
+    percent: 1.0
+    correlation_percent: 25
+  bandwidth:
+    mbps: 10
+  queue:
+    limit_packets: 500

@@ -1,0 +1,12 @@
+name: continental
+delay:
+  mean_ms: 10.4
+  jitter_ms: 2.0
+  correlation_percent: 25
+  distribution: normal
+loss:
+  percent: 0.048
+bandwidth:
+  mbps: 1000
+queue:
+  limit_packets: 1000

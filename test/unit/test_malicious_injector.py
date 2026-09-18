@@ -21,7 +21,7 @@ from event_log import EventLog, replay  # noqa: E402
 from malicious_injector import MaliciousInjector  # noqa: E402
 from rpc_client import RpcError  # noqa: E402
 
-PROFILES = _ROOT / "config" / "profiles"
+PROFILES = _ROOT / "config" / "profiles" / "native"
 
 
 class FakeRpc:

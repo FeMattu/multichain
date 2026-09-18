@@ -1,0 +1,12 @@
+name: regional
+delay:
+  mean_ms: 2.1
+  jitter_ms: 0.3
+  correlation_percent: 25
+  distribution: normal
+loss:
+  percent: 0.025
+bandwidth:
+  mbps: 1000
+queue:
+  limit_packets: 1000
