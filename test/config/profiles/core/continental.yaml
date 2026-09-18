@@ -1,0 +1,100 @@
+# Level 3 - continental: twenty real MultiChain nodes on a European backbone from Lisbon to Bucharest.
+#
+# The geography is the ONLY independent variable across the four level profiles.
+# Node list, roles, clusters, chain parameters, traffic and seed are identical on
+# purpose, so a difference in the results is a difference in the network:
+#
+#   diff test/config/profiles/core/regional.yaml \
+#        test/config/profiles/core/continental.yaml
+#
+# differs by chain_name, topology and the `location` of each node, and by nothing
+# else. Worst one-way path on this map: 27.8 ms.
+#
+# Format and defaults: ../../schema.md. The wPoA/WeightEngine activation flags are
+# NOT configurable: every chain this harness creates runs the full stack.
+
+seed: 20260905
+chain_name: wpoa-core-continental
+
+# One namespace per site of this map, cables carrying netem between them.
+fabric:
+  backend: core
+
+topology: topologies/continental.yaml
+
+# No network_profile: every link's impairment is derived from the map's own
+# latency_model and the endpoints' coordinates. Naming one here would override
+# that flat, which is what the degraded and partitioned profiles are for.
+
+network:
+  base_port: 7827
+  base_rpc_port: 8827
+
+# Every node names a site of the topology. A company also names the miner whose
+# cluster it belongs to: on this map the assignment is a decision, not a draw.
+nodes:
+  - {id: admin,     role: admin,   location: paris}
+  - {id: ca-0,      role: ca,      location: london}
+  - {id: ca-1,      role: ca,      location: bruxelles}
+  - {id: miner-0,   role: miner,   location: milano-c}
+  - {id: miner-1,   role: miner,   location: frankfurt}
+  - {id: miner-2,   role: miner,   location: madrid}
+  - {id: miner-3,   role: miner,   location: wien}
+  - {id: miner-4,   role: miner,   location: stockholm}
+  - {id: miner-5,   role: miner,   location: dublin}
+  - {id: miner-6,   role: miner,   location: bucuresti}
+  - {id: company-0, role: company, location: zurich, cluster: miner-0}
+  - {id: company-1, role: company, location: marseille, cluster: miner-1}
+  - {id: company-2, role: company, location: amsterdam, cluster: miner-2}
+  - {id: company-3, role: company, location: warszawa, cluster: miner-3}
+  - {id: company-4, role: company, location: lisboa, cluster: miner-4}
+  - {id: company-5, role: company, location: praha, cluster: miner-5}
+  - {id: company-6, role: company, location: kobenhavn, cluster: miner-6}
+  - {id: company-7, role: company, location: budapest, cluster: miner-0}
+  - {id: company-8, role: company, location: barcelona, cluster: miner-1}
+  - {id: company-9, role: company, location: oslo, cluster: miner-2}
+
+epochs:
+  count: 20
+  length_blocks: 40
+
+chain:
+  # 10 s, comfortably above the worst round trip of every one of the four maps:
+  # a target below it would measure the emulator's queueing, not the protocol.
+  target-block-time: 10
+  mining-diversity: 0.0
+  mine-empty-rounds: -1
+  mining-requires-peers: false
+  first-block-reward: 100000000000000
+  initial-block-reward: 0
+  minimum-relay-fee: 20000000
+  anyone-can-connect: false
+
+wpoa:
+  dump-function: sqrt
+  wpoa-sortition-delta: 0.5
+  wpoa-sortition-lambda: 0.3
+  wpoa-malus-mu: 0.5
+  wpoa-malus-max: 4.0
+  wpoa-malus-equiv-points: 4.0
+  wpoa-malus-delay-points: 0.25
+  wpoa-malus-selfwrite-points: 1.0
+  wpoa-malus-badweight-points: 2.0
+
+weight_engine:
+  weight-kappa: 100.0
+  weight-alpha: 0.2
+  weight-lambda: 0.5
+
+traffic:
+  event_stream: supply-chain-events
+  company_tx_per_epoch_range: [30, 60]
+  miner_gas_returns_per_epoch_range: [0, 5]
+  esg_score_range: [1, 100]
+  restitution_amount_range: [1.0, 9.0]
+
+runtime:
+  bindir: src
+  rpc_timeout_s: 30
+  startup_timeout_s: 120
+  wpoa_debug: false

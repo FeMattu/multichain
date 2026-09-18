@@ -1,0 +1,75 @@
+# The first thing to run on a machine that has never run a CORE profile.
+#
+# Four chain nodes on three sites, and every property of the fabric is exercised:
+# one two-hop path (pisa -> bologna through the firenze hub, which proves the
+# static routing works), and two nodes at one site (admin and ca-0 both at
+# bologna, which proves co-location works — they share the site's addresses and
+# are told apart by port).
+#
+# Five epochs of twenty blocks at 5 s is roughly twelve minutes of chain plus the
+# bootstrap. It is a smoke test of the plumbing, not a measurement: with a single
+# miner the election has nothing to choose between, and the four level profiles
+# in this directory are where the geography is actually a variable.
+#
+# Format and defaults: ../../schema.md
+
+seed: 20260905
+chain_name: wpoa-core-smoke
+
+fabric:
+  backend: core
+
+topology: topologies/smoke-4n.yaml
+
+network:
+  base_port: 7907
+  base_rpc_port: 8907
+
+nodes:
+  - {id: admin,     role: admin,   location: bologna}
+  - {id: ca-0,      role: ca,      location: bologna}
+  - {id: miner-0,   role: miner,   location: firenze}
+  - {id: company-0, role: company, location: pisa, cluster: miner-0}
+
+epochs:
+  count: 5
+  length_blocks: 20
+
+chain:
+  target-block-time: 5
+  mining-diversity: 0.0
+  mine-empty-rounds: -1
+  mining-requires-peers: false
+  first-block-reward: 100000000000000
+  initial-block-reward: 0
+  minimum-relay-fee: 20000000
+  anyone-can-connect: false
+
+wpoa:
+  dump-function: none
+  wpoa-sortition-delta: 0.5
+  wpoa-sortition-lambda: 0.2
+  wpoa-malus-mu: 0.5
+  wpoa-malus-max: 4.0
+  wpoa-malus-equiv-points: 4.0
+  wpoa-malus-delay-points: 0.25
+  wpoa-malus-selfwrite-points: 1.0
+  wpoa-malus-badweight-points: 2.0
+
+weight_engine:
+  weight-kappa: 100.0
+  weight-alpha: 0.2
+  weight-lambda: 0.5
+
+traffic:
+  event_stream: supply-chain-events
+  company_tx_per_epoch_range: [30, 60]
+  miner_gas_returns_per_epoch_range: [0, 5]
+  esg_score_range: [1, 100]
+  restitution_amount_range: [1.0, 9.0]
+
+runtime:
+  bindir: src
+  rpc_timeout_s: 30
+  startup_timeout_s: 120
+  wpoa_debug: false
