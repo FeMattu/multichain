@@ -26,28 +26,35 @@ weight comes from** — is the question the rest of the harness is built around.
 
 ## 1. What this harness is
 
-A **functional / smoke** harness. Every node is a real `multichaind` process on
-localhost with its own datadir, its own P2P port and its own RPC port. There is **no
-network emulation**: no netem, no jitter, no link delay, no CORE, no namespaces.
+Every node is a real `multichaind` process with its own datadir, its own P2P port and
+its own RPC port. Nothing is simulated.
+
+> **This section describes the harness as it was when these notes were written**, when
+> the only regime was the native one and network behaviour was out of scope. A second
+> regime was added later, and the emulation lives behind
+> [`bootstrap/fabric/`](../bootstrap/fabric/); see
+> [`core-fabric.md`](core-fabric.md) and [`../config/schema.md`](../config/schema.md) §6.
+> What follows is still exactly true of a `native` profile, which remains the baseline
+> every emulated run is compared against.
+
+In the native regime there is **no network emulation**: no netem, no jitter, no link
+delay, no namespaces.
 
 That is the design, not a shortcut. It isolates the *protocol* — weight computation,
 weighted selection, VRF/RANDAO, inter-epoch feedback, malus — from every network
 variable, so a change in an observed quantity has exactly one candidate explanation.
-Network behaviour is the subject of `experiments/`; this harness must never grow a
-dependency on it.
-
-**`experiments/` is read-only for this work.** Logic was re-derived and re-implemented
-here; nothing is imported from it, and no file under it is created, modified or
-deleted.
 
 ### Consequence for the timer-race test
 
-Because there is no emulated latency, the propagation term of the inversion bound
-(`S1`, topology) is **negligible by construction** in this harness. Only `S2` — the
+Because a native run has no emulated latency, the propagation term of the inversion bound
+(`S1`, topology) is **negligible by construction** in that regime. Only `S2` — the
 standard deviation of the scheduler residual — is a real source, and it is the primary
-one here. `stat/timer_race.py` reports `S1` as measured-but-structurally-near-zero and
-does not pretend otherwise. A run of this harness therefore *cannot* refute or confirm
-a latency-driven inversion claim; it can only characterise the scheduler.
+one there. `stat/timer_race.py` reports `S1` as measured-but-structurally-near-zero and
+does not pretend otherwise. A *native* run therefore cannot refute or confirm a
+latency-driven inversion claim; it can only characterise the scheduler. That claim is
+exactly what a `core` profile exists to put a number on, and it is why the statistics
+below were left untouched when the second regime arrived: the same test, given a run
+with real propagation in it, reports a real `S1`.
 
 ## 2. Sources read
 
@@ -62,7 +69,7 @@ a latency-driven inversion claim; it can only characterise the scheduler.
 | `src/weight_engine/{weight_engine.h,weight_streams.h,weight_records.h}`, `src/wpoa/stream_weight_registry.{h,cpp}`, `src/rpc/rpcweightengine.cpp`, `src/rpc/rpcwpoa.cpp`, `src/core/init.cpp`, `src/chainparams/{paramlist.h,params.cpp}` | The authoritative answers. Where a document and the code disagreed, the code won and the divergence is recorded in §10. |
 | [`Create-Blockchain.md`](../../Create-Blockchain.md) | The multi-node localhost bootstrap sequence (§9 of that file: never reuse `-port`/`-rpcport`). |
 | [`RPCLIST.md`](RPCLIST.md) | The node's full RPC reference. Cross-checked against `src/rpc/rpclist.cpp`, which is the authoritative name list. |
-| `experiments/README.md`, `experiments/docs/migration-from-shadow.md`, `experiments/analysis/**` | **Read only.** The three-phase pipeline shape, and the statistical conventions this harness re-implements independently. |
+| A previous, since-removed harness under `experiments/` | **Read only, and now gone.** The three-phase pipeline shape and the statistical conventions were re-derived and re-implemented here; nothing was ever imported from it. Its geographic maps and link profiles survive, as data, under [`../config/topologies/`](../config/topologies/) and [`../config/network-profiles/`](../config/network-profiles/). |
 
 ## 3. THE OPEN QUESTION: the initial weight
 

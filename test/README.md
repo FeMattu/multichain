@@ -1,14 +1,28 @@
-# `test/` — functional harness for wPoA + WeightEngine
+# `test/` — the wPoA + WeightEngine harness
 
-A **functional / smoke** harness. Every node is a real `multichaind` process on localhost,
-with its own data directory, its own P2P port and its own RPC port. There is deliberately
-**no network emulation**: no netem, no jitter, no link delay, no CORE.
+Every node is a real `multichaind` process with its own data directory, its own P2P port
+and its own RPC port. Nothing is simulated: every block, every stream record and every RPC
+answer comes from an actual daemon.
 
-That is the design and not a limitation. It isolates the *protocol* — weight computation,
+The harness runs in either of two **regimes**, and the choice is one line of the profile:
+
+| Regime | Where the nodes are | What the network does |
+|---|---|---|
+| `native` | one host, one namespace, loopback | nothing: no netem, no jitter, no link delay |
+| `core` | one namespace per site of a map | delay, jitter, loss and capacity, per link |
+
+The native regime is the **baseline of correctness**, and its absence of network emulation
+is the design rather than a limitation: it isolates the protocol — weight computation,
 weighted selection, VRF/RANDAO, inter-epoch feedback, malus — from every network variable,
-so a change in an observed quantity has exactly one candidate explanation. Network
-behaviour is [`experiments/`](../experiments/)'s subject; this harness must never grow a
-dependency on it, and nothing here reads from or writes to that directory.
+so a change in an observed quantity has exactly one candidate explanation. The CORE regime
+adds the geography back, one map at a time, and is where latency-driven effects are a
+subject rather than something to be excluded.
+
+Everything between the two is the same code: the same bootstrap sequence, the same
+daemons, the same three analysis phases, the same figures. That is what makes a result
+from one regime comparable with a result from the other, and it is the reason the
+emulation lives behind a narrow seam
+([`bootstrap/fabric/`](bootstrap/fabric/)) rather than in a parallel harness.
 
 Every chain created here runs the **complete wPoA stack**, bottom-up: weights → selection →
 VRF → RANDAO → sortition → malus, with the weight engine on. That is fixed and is not a
@@ -28,6 +42,10 @@ everything goes through the project's container:
 # one command: bootstrap -> traffic -> shutdown -> phase1 -> phase2 -> phase3 -> plots
 ./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
     --config test/config/profiles/native/small.yaml
+
+# the same, on an emulated map: 4 nodes, 3 sites, real delay between them
+./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
+    --config test/config/profiles/core/smoke.yaml
 ```
 
 That writes `test/results/run-<chain>-<UTC>/`, and finishes with
@@ -73,11 +91,17 @@ Every script takes `--config <profile>`; no network or node parameter is hardcod
 test/
   docs/architecture-notes.md   what was read, what was decided, and why  <- read this first
   docs/RPCLIST.md              the node's full RPC reference
+  docs/core-fabric.md          running on an emulated network, and looking inside one
   config/schema.md             the profile format, field by field
   config/profiles/native/      small.yaml, medium.yaml, large.yaml, malicious.yaml, long*.yaml
+  config/profiles/core/        smoke.yaml and the four geographic levels
+  config/topologies/           the maps: sites, cables, and the delay model
+  config/network-profiles/     what a link does to a packet, as a named decision
   bootstrap/                   config_loader, rpc_client, event_log, node_process,
                                bootstrap_network (entrypoint), admin_daemon, ca_assign_esg,
                                malicious (experiment logic), malus_detector (honest reporter)
+  bootstrap/fabric/            the seam between the two regimes: native, core,
+                               topology (the map and its delay model), addressing
   traffic/                     run_company_daemons, company_daemon,
                                run_miner_daemons, miner_gas_daemon, malicious_injector
   shutdown/stop_network.py     teardown, also usable on its own

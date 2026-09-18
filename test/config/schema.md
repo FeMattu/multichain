@@ -1,12 +1,26 @@
 # Experiment profile format
 
-A profile is a single YAML file describing one functional run: how many nodes of each
-role, which ports, how long an epoch is, which chain parameters to bake into
-`params.dat`, and how much traffic to generate. Every entry point of the harness takes
-exactly one `--config <path-to-profile>`, and **no network or node parameter is
-hardcoded anywhere in the code**.
+A profile is a single YAML file describing one functional run: which nodes exist, which
+ports they take, how long an epoch is, which chain parameters to bake into `params.dat`,
+and how much traffic to generate. Every entry point of the harness takes exactly one
+`--config <path-to-profile>`, and **no network or node parameter is hardcoded anywhere in
+the code**.
 
-Ready-made profiles live in [`profiles/native/`](profiles/native/):
+A profile also chooses which of the two **regimes** it runs in, and that is the only thing
+that differs between them structurally. Everything downstream — the bootstrap sequence,
+the daemons, the three analysis phases, the figures — is the same code either way, which
+is what makes a result from one comparable with a result from the other.
+
+| Regime | Where the nodes are | What the network does |
+|---|---|---|
+| `native` | one host, one namespace, loopback | nothing: no netem, no jitter, no link delay |
+| `core` | one namespace per site of a map, cables between them | delay, jitter, loss and capacity, per link |
+
+The native regime is the baseline of correctness: with no network variable, a change in an
+observed quantity has exactly one candidate explanation. The CORE regime is where the
+network becomes a subject rather than a nuisance. See [§6](#6-the-core-regime).
+
+### Native profiles — [`profiles/native/`](profiles/native/)
 
 | Profile | admin | CA | miners | companies | epochs × length |
 |---|---|---|---|---|---|
@@ -17,6 +31,22 @@ Ready-made profiles live in [`profiles/native/`](profiles/native/):
 
 `malicious.yaml` is the only one with a `malicious` section (2 of its 10 miners misbehave);
 the other three leave it out and run the honest baseline. See [§ `malicious`](#malicious-optional).
+The nine `long*.yaml` profiles are the long-running campaign variants of the same three
+sizes, one per `dump-function`.
+
+### CORE profiles — [`profiles/core/`](profiles/core/)
+
+| Profile | nodes | map | worst one-way path |
+|---|---|---|---|
+| [`smoke.yaml`](profiles/core/smoke.yaml) | 4 on 3 sites | [`smoke-4n`](topologies/smoke-4n.yaml) | 3.1 ms |
+| [`regional.yaml`](profiles/core/regional.yaml) | 20 | [`regional`](topologies/regional.yaml) | 5.1 ms |
+| [`national.yaml`](profiles/core/national.yaml) | 20 | [`national`](topologies/national.yaml) | 11.9 ms |
+| [`continental.yaml`](profiles/core/continental.yaml) | 20 | [`continental`](topologies/continental.yaml) | 27.8 ms |
+| [`intercontinental.yaml`](profiles/core/intercontinental.yaml) | 20 | [`intercontinental`](topologies/intercontinental.yaml) | 181.5 ms |
+
+The four level profiles are identical in everything except `chain_name`, `topology` and
+each node's `location`. That is deliberate: the geography is the only independent variable
+across them, so a difference in the results is a difference in the network.
 
 Validation lives in [`../bootstrap/config_loader.py`](../bootstrap/config_loader.py) and is
 strict: an unknown key is an error, not a warning. A typo in a `params.dat` key would
@@ -50,7 +80,7 @@ experiment.
 ### 1.2 The statistical constants
 
 `alpha = 0.05`, Monte-Carlo draws `20000` (GoF) and `10000` (streak), and the analysis
-RNG seed `20260905` are **methodological constants** shared with `experiments/`. They
+RNG seed `20260905` are **methodological constants**, shared by both regimes. They
 live in the code of `analysis/pipeline/stat/` and are not profile fields. The profile's
 own `seed` controls the *network and the traffic*, never the tests.
 
@@ -81,6 +111,11 @@ MultiChain chain name. Lowercase letters, digits and `-`, 1–32 characters.
 
 ### `nodes` *(required)*
 
+Two forms. A native profile may use either; a CORE profile must use the list, because a
+count cannot say where a node is.
+
+#### Counted form — `{ca_count, miner_count, company_count}`
+
 | Field | Type | Constraint |
 |---|---|---|
 | `ca_count` | int | `>= 1` |
@@ -94,11 +129,83 @@ Roles are assigned in a fixed order — `admin`, then CAs, then miners, then com
 and that order also fixes port assignment, so a given profile always produces the same
 node-to-port map.
 
+#### List form — one entry per node
+
+```yaml
+nodes:
+  - {id: admin,     role: admin,   location: modena}
+  - {id: ca-0,      role: ca,      location: parma}
+  - {id: miner-0,   role: miner,   location: firenze}
+  - {id: company-0, role: company, location: pisa, cluster: miner-0}
+```
+
+| Field | Type | Required | Note |
+|---|---|---|---|
+| `id` | string | yes | Unique, `[a-z0-9][a-z0-9._-]*`. It is a directory name (`chains/<id>/`, `logs/<id>/`) and a column value in every analysis table. |
+| `role` | enum | yes | `admin` \| `ca` \| `miner` \| `company`. |
+| `location` | string | CORE only | An `id` in the topology named by [`topology`](#topology-core-only). |
+| `cluster` | string | companies only | The `id` of the miner whose cluster this company joins. |
+| `enabled` | bool | no, default `true` | `false` removes the node from the run entirely, ports included, as though it were not written. |
+
+The list's **order fixes the port map**, exactly as the role order does in the counted
+form. The shipped CORE profiles list `admin`, then the CAs, then the miners, then the
+companies, so a CORE profile and a native profile of the same composition put the same
+node on the same port.
+
+Rejected, with the offending id named: more or fewer than one enabled `admin`; no enabled
+`ca`, `miner` or `company`; a duplicate `id`; a `location` that is not a site of the
+topology; a `cluster` on a non-company; a `cluster` naming something that is not an
+enabled miner; and **a miner that heads no cluster** — the cluster map is built only from
+confirmed membership records, so a miner nobody joined is never computed and never
+published, silently.
+
+#### `cluster` and the seed
+
+In the counted form the company→miner assignment is *drawn* from `seed` and recorded in
+`clusters.json`. In the list form it is *declared*, and the same file records the same
+thing. A list-form profile that declares no `cluster` anywhere falls back to the draw, so
+the two forms differ in what they fix, never in what they produce.
+
+### `fabric` *(optional)*
+
+| Field | Type | Default | Note |
+|---|---|---|---|
+| `backend` | enum | `native` | `native` \| `core`. |
+
+Absent means `native`, which is why every profile written before the fabric existed still
+runs untouched. `core` is what selects the emulator; see [§6](#6-the-core-regime).
+
+### `topology` *(CORE only)*
+
+Path to a map, relative to `test/config/` — for example `topologies/continental.yaml`.
+Required when `fabric.backend` is `core`, rejected otherwise. The map declares the sites
+a node's `location` may name, the cables between them, and the physical model their delay
+is derived from. See [§6.2](#62-where-a-links-numbers-come-from).
+
+### `network_profile` *(optional, CORE only)*
+
+Overrides the derived impairment with a named one from `network-profiles/`.
+
+```yaml
+network_profile: continental                          # every link
+network_profile: {name: degraded, apply_to: access}   # the access links only
+```
+
+| Field | Type | Default | Note |
+|---|---|---|---|
+| `name` | string | — | A file in [`network-profiles/`](network-profiles/). |
+| `apply_to` | enum | `all` | `all` \| `backbone` \| `access`. |
+
+It **overrides** rather than adds: a link the profile applies to takes its numbers whole
+and its coordinates stop mattering. `apply_to` exists because the two operating-point
+profiles are meaningless applied flat — `partitioned` on every link is a dead network, and
+`degraded` on every link is not a geography.
+
 ### `network` *(required)*
 
 | Field | Type | Default | Note |
 |---|---|---|---|
-| `host` | string | `127.0.0.1` | Peers dial loopback explicitly; `getinfo nodeaddress` can report a NAT address. |
+| `host` | string | `127.0.0.1` | **Native only.** Peers dial loopback explicitly; `getinfo nodeaddress` can report a NAT address. A CORE profile is rejected if it sets this: there, an address belongs to a site of the map and is derived from it. |
 | `base_port` | int | — | First P2P port; node *i* gets `base_port + i`. |
 | `base_rpc_port` | int | — | First RPC port; node *i* gets `base_rpc_port + i`. |
 
@@ -313,6 +420,8 @@ target_height = verify_height + 6 + 9
 
 ## 5. Minimal example
 
+A native profile:
+
 ```yaml
 seed: 20260905
 chain_name: wpoa-smoke-small
@@ -331,4 +440,139 @@ epochs:
   length_blocks: 20
 ```
 
+The same run on an emulated map:
+
+```yaml
+seed: 20260905
+chain_name: wpoa-core-smoke
+
+fabric:
+  backend: core
+topology: topologies/smoke-4n.yaml
+
+nodes:
+  - {id: admin,     role: admin,   location: bologna}
+  - {id: ca-0,      role: ca,      location: bologna}
+  - {id: miner-0,   role: miner,   location: firenze}
+  - {id: company-0, role: company, location: pisa, cluster: miner-0}
+
+network:
+  base_port: 7907
+  base_rpc_port: 8907
+
+epochs:
+  count: 5
+  length_blocks: 20
+```
+
 Everything else takes the documented default.
+
+---
+
+## 6. The CORE regime
+
+### 6.1 Two planes, and why the control plane is not emulated
+
+```
+DATA PLANE (emulated)                    CONTROL PLANE (out of band)
+one namespace per site of the map        one bridge, created by CORE
+one /30 per cable, netem on each end     no netem, no shaping
+static routes from the map               reaches every node from the host
+carries: MultiChain peer-to-peer         carries: the harness's RPC
+10.60.0.<site>/32 identities             172.30.0.0/24
+```
+
+The orchestrator, the observer, the CA assigner, the malus detector and every traffic
+daemon stay ordinary processes on the host and reach each node over the control plane.
+That is a **declared property of the method**, not a convenience: pushing them into the
+namespaces would make every RPC call pay the emulated latency, and the instrument would
+then sit inside the thing it measures. What the emulation acts on is the traffic between
+nodes — blocks, transactions, stream records — which is what the geography is a claim
+about.
+
+The corollary is the one failure that would invalidate a campaign silently: if the chain
+formed its peer mesh on the *control* plane, every run would complete, every report would
+read normally, and every number in it would describe a network with no delay. Four things
+prevent it, and the fourth is an assertion rather than a precaution:
+
+1. `-bind=<identity>` — the peer-to-peer listener exists only on the data address.
+2. `-externalip=<identity>` with `-discover=0` — the node advertises that address instead
+   of choosing one of its two interfaces.
+3. The seed address a joining node dials is the admin's data address.
+4. After the bootstrap, every address in every node's `getpeerinfo` is checked against the
+   map's identities. One address that is not on the data plane fails the run.
+
+### 6.2 Where a link's numbers come from
+
+Either the map's own physical model, or a named profile — never both, and every realised
+link records which, in `<run>/fabric.json`, as `derived:latency-model` or
+`profile:<name>`. A delay that cannot be traced back to a model or to a stated assumption
+is not evidence.
+
+The physical model, from the map's `latency_model`:
+
+```
+one_way_ms = propagation_ms_per_km · D_km · routing_factor + overhead
+             overhead = 0.5 ms on a backbone hop, 1.0 ms on an access hop
+loss_%     = access:   loss_access                              (constant)
+             backbone: loss_backbone_base + loss_backbone_per_km · D_km
+bandwidth  = backbone: defaults.bandwidth_hub_mbps
+             access:   defaults.bandwidth_leaf_mbps
+```
+
+`D_km` is the great-circle distance between the two sites' coordinates. Three published
+check points pin it, in `test/unit/test_topology_model.py`: Milan–Rome 477 km → 7.7 ms
+RTT, Milan–Madrid 1188 km → 17.6 ms, Milan–New York 6464 km → 91.5 ms. A change that moves
+them changes the meaning of every figure produced under any map, so they fail rather than
+being updated.
+
+**Jitter is a declared assumption, not a measurement.** No map carries a jitter term, so a
+derived link takes `0.15 × delay`, floored at 0.02 ms. That ratio is the one the seven
+shipped link profiles use (2.1/0.3, 5.1/0.8, 10.4/2.0, 45.8/8.0 — 0.14 to 0.17). It is
+stated here, in one place, rather than left implicit in seven files.
+
+CORE applies the impairment at **each end** of a cable, so `delay` is one way and the round
+trip is twice it — which is what `mean_ms` means in every profile. An asymmetric profile
+(`degraded`) is the one case where the two ends differ; it becomes two unidirectional
+statements rather than an average, because an average would be a third network nobody
+configured.
+
+### 6.3 Addressing and routing
+
+| Plane | Prefix | Assigned by |
+|---|---|---|
+| identity | `10.60.0.<site index>/32`, on `lo` | the address plan |
+| cable | `10.61.<link index>.0/30` | the address plan |
+| control | `172.30.0.<site index>/24` | CORE |
+
+The site index is the map's own order, so the plan is a **pure function of the topology
+file**: `--dry-run` prints the whole address map with no emulator running, and a traffic
+daemon that re-loads the profile resolves an RPC endpoint without asking CORE anything.
+What CORE actually assigned is read back at start and written to `<run>/fabric.json`; a
+disagreement with the prediction fails the start rather than becoming a mystery later.
+
+**A site's identity is what chain nodes bind to, not an address per node.** Nodes placed
+at the same site run in the same namespace, share its addresses, and are told apart by
+port — which is exactly what `base_port + index` already guarantees. Two nodes at one
+location are two processes at one place, which is what co-location means.
+
+Routing is static, computed from the map by shortest path weighted by delay, and only ever
+*to a /32*: each site holds one route per other site and none for the cables, which
+nothing is ever addressed to. There is no routing daemon, because a protocol's convergence
+time is wall-clock nondeterminism and it would land in the one part of a measurement
+harness that must not have any.
+
+### 6.4 What a CORE run needs
+
+CORE, its namespaces and netem live in the project's container. A CORE profile run outside
+it fails saying so; it does not fall back to the native regime, because a run that changed
+regime by itself would be labelled, read and compared exactly like one that had not.
+
+```bash
+./docker/mcsim preflight      # is the emulator here, and can it build a namespace?
+./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
+    --config test/config/profiles/core/smoke.yaml
+```
+
+`--dry-run` needs none of that: it validates the profile and prints the plan, addresses
+included, wherever Python and PyYAML are.

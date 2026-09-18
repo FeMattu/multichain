@@ -1,6 +1,6 @@
 """The run's own event log: one JSON Lines file per node process.
 
-Deliberately **not** the ``runtime/data/*/debug.log`` format of ``experiments/``. That
+Deliberately **not** a ``debug.log``-shaped format. That
 format is the node's, shaped by what the C++ chose to print; this one is the harness's,
 shaped by what phase 1 has to read. One line is one fact, and every line is traceable to
 a single RPC call or a single txid.
