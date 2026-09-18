@@ -1,6 +1,6 @@
 # Level 4 - intercontinental: twenty real MultiChain nodes on seven hubs on five continents, worst hop across the Pacific.
 #
-# Time: 60*120 = 7200 blocks + 126 of setup = 7326 blocks, 10 s each ~20 hours wall clock. 
+# Time: 60*120 = 7200 blocks + 126 of setup = 7326 blocks, 10 s each ~20h21m hours wall clock. 
 # This is the longest-running test profile, and the one that most closely resembles a real-world deployment. 
 # It is also the one that is most likely to reveal bugs in the harness or the protocol, 
 # because it runs for a long time and has the worst network conditions of any of the four level profiles.
@@ -51,8 +51,6 @@ nodes:
   - {id: miner-7,   role: miner,   location: los-angeles}
   - {id: miner-8,   role: miner,   location: seoul}
   - {id: miner-9,   role: miner,   location: buenos-aires}
-  - {id: miner-10,  role: miner,   location: toronto}
-  - {id: miner-11,  role: miner,   location: sydney}
   - {id: company-0, role: company, location: zurich-i, cluster: miner-0}
   - {id: company-1, role: company, location: marseille-i, cluster: miner-1}
   - {id: company-2, role: company, location: amsterdam-i, cluster: miner-2}
@@ -60,11 +58,19 @@ nodes:
   - {id: company-4, role: company, location: toronto, cluster: miner-4}
   - {id: company-5, role: company, location: sydney, cluster: miner-5}
   - {id: company-6, role: company, location: mumbai, cluster: miner-6}
-  - {id: company-7, role: company, location: los-angeles, cluster: miner-0}
-  - {id: company-8, role: company, location: seoul, cluster: miner-1}
-  - {id: company-9, role: company, location: buenos-aires, cluster: miner-2}
+  - {id: company-7, role: company, location: los-angeles, cluster: miner-7}
+  - {id: company-8, role: company, location: seoul, cluster: miner-8}
+  - {id: company-9, role: company, location: buenos-aires, cluster: miner-9}
   - {id: company-10, role: company, location: dubai, cluster: miner-3}
   - {id: company-11, role: company, location: paris-i, cluster: miner-4}
+  - {id: company-12, role: company, location: tokyo, cluster: miner-5}
+  - {id: company-13, role: company, location: johannesburg, cluster: miner-6}
+  - {id: company-14, role: company, location: milano-i, cluster: miner-7}
+  - {id: company-15, role: company, location: frankfurt-i, cluster: miner-8}
+  - {id: company-16, role: company, location: new-york, cluster: miner-9}
+  - {id: company-17, role: company, location: singapore, cluster: miner-0}
+  - {id: company-18, role: company, location: sao-paulo, cluster: miner-1}
+  - {id: company-19, role: company, location: zurich-i, cluster: miner-2}
 
 epochs:
   count: 60
