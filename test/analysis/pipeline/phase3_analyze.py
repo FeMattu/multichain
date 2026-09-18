@@ -1134,6 +1134,142 @@ class Analysis:
 
     # -- reports -----------------------------------------------------------------------
 
+    def write_streak(self) -> Path:
+        """Streaks and repeats, in its own file rather than a section of report.md."""
+        path = self.out / "streak.md"
+        lines: List[str] = []
+        lines.append("# Streaks and repeats")
+        lines.append("")
+        lines.append("> Does a validator win more consecutive rounds, or repeat more often, than a weighted draw would produce? Both are compared against a Monte-Carlo reference built from the same weights the election used.")
+        lines.append("")
+        lines.append("")
+        lines.append("| epoch | L_max obs | L_max MC mean | p | repeat obs | repeat MC mean | p |")
+        lines.append("|---|---:|---:|---:|---:|---:|---:|")
+        for row in self.tables["wpoa_epoch_tests"]:
+            lines.append(
+                "| %s | %s | %s | %s | %s | %s | %s |"
+                % (
+                    row.get("epoch"),
+                    row.get("L_max_observed"),
+                    _fmt(row.get("L_max_mc_mean"), 2),
+                    _fmt(row.get("L_max_mc_p_value"), 4),
+                    _fmt(row.get("repeat_prob_observed"), 4),
+                    _fmt(row.get("repeat_prob_mc_mean"), 4),
+                    _fmt(row.get("repeat_prob_mc_p_value"), 4),
+                )
+            )
+        lines.append("")
+
+        lines.append("![p value uniformity](../plots/p_value_uniformity.png)")
+        lines.append("")
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return path
+
+    def write_timer_race(self) -> Path:
+        """The timer race, in its own file rather than a section of report.md."""
+        path = self.out / "timer_race.md"
+        lines: List[str] = []
+        lines.append("# The timer race")
+        lines.append("")
+        lines.append("> The margin between the two fastest delays is the window in which an inversion can occur. This report carries the margin itself, what the timing noise is made of, and the two propositions that bound it.")
+        lines.append("")
+        lines.append("")
+        timer = (self.tables.get("wpoa_timer_race") or [{}])[0]
+        lines.append("| quantity | value |")
+        lines.append("|---|---|")
+        for label, key, digits in (
+            ("rounds measured", "n_rounds_measured", 0),
+            ("margins observed", "n_margins", 0),
+            ("mean margin G (s)", "G_mean_s", 5),
+            ("KS vs Beta(1,n) — straw man, p", "ks_beta_p", 5),
+            ("KS vs simulated exact — reference, p", "ks_mc_p", 5),
+            ("sigma S1 (topology)", "inversion_bound_sigma_S1", 6),
+            ("sigma S2 (scheduler residual)", "inversion_bound_sigma_S2", 6),
+            ("inversion bound (Prop. 5.18)", "inversion_bound", 5),
+            ("inversion probability, MC with sigma_S2", "inversion_mc_prob_gaussian_sigma_S2", 5),
+            ("inversions observed", "inversion_observed_n", 0),
+            ("inversion rate observed", "inversion_observed_rate", 5),
+        ):
+            lines.append("| %s | %s |" % (label, _fmt(timer.get(key), digits)))
+        lines.append("")
+        lines.append(
+            "The Beta(1,n) test is a **straw man**: it assumes uniform weights and is "
+            "expected to reject whenever they are not uniform. The reference test is the "
+            "KS against the simulated exact distribution of the implemented sortition."
+        )
+        lines.append("")
+        lines.append(
+            "**S1 is structurally negligible in this harness** — every node is a local "
+            "process and there is no emulated latency, so a run here cannot speak to "
+            "latency-driven inversion. S2, the scheduler residual, is the primary source."
+        )
+        lines.append("")
+
+        lines.append("![margin distribution](../plots/margin_distribution.png)")
+        lines.append("![sigma decomposition](../plots/sigma_decomposition.png)")
+        lines.append("![prop517 gap by validator](../plots/prop517_gap_by_validator.png)")
+        lines.append("![inversion bound vs observed](../plots/inversion_bound_vs_observed.png)")
+        lines.append("")
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return path
+
+    def write_longitudinal(self) -> Path:
+        """Longitudinal behaviour, in its own file rather than a section of report.md."""
+        path = self.out / "longitudinal.md"
+        lines: List[str] = []
+        lines.append("# Longitudinal behaviour")
+        lines.append("")
+        lines.append("> Across epochs rather than within one: does a validator's share move with its weight, and does it move in proportion?")
+        lines.append("")
+        lines.append("")
+        for row in self.tables.get("wpoa_longitudinal_fits", []):
+            if row.get("fit") == "binomial_logit_glm_log_weight":
+                lines.append(
+                    "- **GLM logit on log(weight)**: beta1 = %s (95%% CI [%s, %s], n = %s, "
+                    "converged = %s). H0 of weighted sortition is beta1 = 1 — %s."
+                    % (
+                        _fmt(row.get("beta1"), 4),
+                        _fmt(row.get("beta1_ci_low"), 4),
+                        _fmt(row.get("beta1_ci_high"), 4),
+                        row.get("n_points"),
+                        row.get("converged"),
+                        "consistent" if row.get("beta1_consistent_with_1")
+                        else ("NOT consistent" if row.get("beta1_consistent_with_1") is False
+                              else "not computable"),
+                    )
+                )
+            elif row.get("fit") == "log_ratio_regression":
+                lines.append(
+                    "- **Pairwise log-ratio regression**: slope = %s, intercept = %s, "
+                    "Pearson r = %s (p = %s), n = %s pairs. Proportional selection implies "
+                    "slope 1 and intercept 0."
+                    % (
+                        _fmt(row.get("slope"), 4),
+                        _fmt(row.get("intercept"), 4),
+                        _fmt(row.get("pearson_r"), 4),
+                        _fmt(row.get("pearson_p"), 4),
+                        row.get("n_pairs"),
+                    )
+                )
+        signs = [r for r in self.tables.get("wpoa_longitudinal_fits", [])
+                 if r.get("fit") == "monotonicity" and r.get("sign_test_p_greater") is not None]
+        if signs:
+            lines.append(
+                "- **Sign test (weight ↔ share monotonicity)**: %d validator(s) tested; "
+                "p-values %s."
+                % (
+                    len(signs),
+                    ", ".join(_fmt(s.get("sign_test_p_greater"), 4) for s in signs[:6]),
+                )
+            )
+        lines.append("")
+
+        lines.append("![longitudinal logratio](../plots/longitudinal_logratio.png)")
+        lines.append("![sign test by validator](../plots/sign_test_by_validator.png)")
+        lines.append("")
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return path
+
     def write_weight_vs_election(self) -> Path:
         """The dedicated report for the comparison this experiment exists for."""
         path = self.out / "weight_vs_election.md"
@@ -1570,98 +1706,26 @@ class Analysis:
 
         lines.append("## 4. Streaks")
         lines.append("")
-        lines.append("| epoch | L_max obs | L_max MC mean | p | repeat obs | repeat MC mean | p |")
-        lines.append("|---|---:|---:|---:|---:|---:|---:|")
-        for row in self.tables["wpoa_epoch_tests"]:
-            lines.append(
-                "| %s | %s | %s | %s | %s | %s | %s |"
-                % (
-                    row.get("epoch"),
-                    row.get("L_max_observed"),
-                    _fmt(row.get("L_max_mc_mean"), 2),
-                    _fmt(row.get("L_max_mc_p_value"), 4),
-                    _fmt(row.get("repeat_prob_observed"), 4),
-                    _fmt(row.get("repeat_prob_mc_mean"), 4),
-                    _fmt(row.get("repeat_prob_mc_p_value"), 4),
-                )
-            )
+        lines.append(
+            "The per-epoch streak and repeat tests have a report of their "
+            "own: [`streak.md`](streak.md)."
+        )
         lines.append("")
 
         lines.append("## 5. Timer race")
         lines.append("")
-        timer = (self.tables.get("wpoa_timer_race") or [{}])[0]
-        lines.append("| quantity | value |")
-        lines.append("|---|---|")
-        for label, key, digits in (
-            ("rounds measured", "n_rounds_measured", 0),
-            ("margins observed", "n_margins", 0),
-            ("mean margin G (s)", "G_mean_s", 5),
-            ("KS vs Beta(1,n) — straw man, p", "ks_beta_p", 5),
-            ("KS vs simulated exact — reference, p", "ks_mc_p", 5),
-            ("sigma S1 (topology)", "inversion_bound_sigma_S1", 6),
-            ("sigma S2 (scheduler residual)", "inversion_bound_sigma_S2", 6),
-            ("inversion bound (Prop. 5.18)", "inversion_bound", 5),
-            ("inversion probability, MC with sigma_S2", "inversion_mc_prob_gaussian_sigma_S2", 5),
-            ("inversions observed", "inversion_observed_n", 0),
-            ("inversion rate observed", "inversion_observed_rate", 5),
-        ):
-            lines.append("| %s | %s |" % (label, _fmt(timer.get(key), digits)))
-        lines.append("")
         lines.append(
-            "The Beta(1,n) test is a **straw man**: it assumes uniform weights and is "
-            "expected to reject whenever they are not uniform. The reference test is the "
-            "KS against the simulated exact distribution of the implemented sortition."
-        )
-        lines.append("")
-        lines.append(
-            "**S1 is structurally negligible in this harness** — every node is a local "
-            "process and there is no emulated latency, so a run here cannot speak to "
-            "latency-driven inversion. S2, the scheduler residual, is the primary source."
+            "The margin, the sigma decomposition and Props. 5.17/5.18 have a "
+            "report of their own: [`timer_race.md`](timer_race.md)."
         )
         lines.append("")
 
         lines.append("## 6. Longitudinal")
         lines.append("")
-        for row in self.tables.get("wpoa_longitudinal_fits", []):
-            if row.get("fit") == "binomial_logit_glm_log_weight":
-                lines.append(
-                    "- **GLM logit on log(weight)**: beta1 = %s (95%% CI [%s, %s], n = %s, "
-                    "converged = %s). H0 of weighted sortition is beta1 = 1 — %s."
-                    % (
-                        _fmt(row.get("beta1"), 4),
-                        _fmt(row.get("beta1_ci_low"), 4),
-                        _fmt(row.get("beta1_ci_high"), 4),
-                        row.get("n_points"),
-                        row.get("converged"),
-                        "consistent" if row.get("beta1_consistent_with_1")
-                        else ("NOT consistent" if row.get("beta1_consistent_with_1") is False
-                              else "not computable"),
-                    )
-                )
-            elif row.get("fit") == "log_ratio_regression":
-                lines.append(
-                    "- **Pairwise log-ratio regression**: slope = %s, intercept = %s, "
-                    "Pearson r = %s (p = %s), n = %s pairs. Proportional selection implies "
-                    "slope 1 and intercept 0."
-                    % (
-                        _fmt(row.get("slope"), 4),
-                        _fmt(row.get("intercept"), 4),
-                        _fmt(row.get("pearson_r"), 4),
-                        _fmt(row.get("pearson_p"), 4),
-                        row.get("n_pairs"),
-                    )
-                )
-        signs = [r for r in self.tables.get("wpoa_longitudinal_fits", [])
-                 if r.get("fit") == "monotonicity" and r.get("sign_test_p_greater") is not None]
-        if signs:
-            lines.append(
-                "- **Sign test (weight ↔ share monotonicity)**: %d validator(s) tested; "
-                "p-values %s."
-                % (
-                    len(signs),
-                    ", ".join(_fmt(s.get("sign_test_p_greater"), 4) for s in signs[:6]),
-                )
-            )
+        lines.append(
+            "Monotonicity, the GLM and the log-ratio regression have a report "
+            "of their own: [`longitudinal.md`](longitudinal.md)."
+        )
         lines.append("")
 
         lines.append("## 7. WeightEngine feedback")
@@ -1783,6 +1847,9 @@ class Analysis:
         )
 
         self.write_weight_vs_election()
+        self.write_streak()
+        self.write_timer_race()
+        self.write_longitudinal()
         self.write_malus_report()
         self.write_report()
 
