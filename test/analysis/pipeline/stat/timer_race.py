@@ -34,11 +34,12 @@ test 2 localises the fault to the transform rather than to the draw.
 **The inversion bound.** ``P[inversion] <= (3/2) * (n*sigma/D_max)^(2/3)`` (Prop. 5.18),
 where ``sigma`` is the standard deviation of the perturbation. Two sources:
 
-* ``S1`` — propagation/topology. **Structurally negligible in the native regime**, where
-  every node is a local process and there is no emulated latency; a native run therefore
-  cannot say anything about a latency-driven inversion. Under the ``core`` regime the same
-  term is measured against a real emulated topology and stops being negligible, which is
-  what makes the two regimes comparable on this quantity rather than only on the others.
+* ``S1`` — propagation/topology. **Not measured by this version of the harness.** No
+  caller supplies ``topology_latencies``, so it is reported as 0 in either regime — which
+  is an absence of measurement, not a measurement that came out small. A native run has no
+  emulated latency for it to carry; an emulated one does, and carrying it through to here
+  is separate work that has not been done. Until it is, no run of either regime can say
+  anything about a latency-driven inversion.
 * ``S2`` — the standard deviation of the scheduler residual, i.e. how far actual block
   spacing departs from the delay that was supposed to produce it. **This is the primary
   source here**, and the one the bound is evaluated with.
@@ -297,9 +298,10 @@ def sigma_rows(
             "sigma_s": sd(topology_latencies) or 0.0,
             "n": len(topology_latencies),
             "note": (
-                "measured from the observed propagation. It is structurally negligible in "
-                "the native regime, where every node is a local process with no emulated "
-                "latency; under an emulated map it is a real quantity."
+                "not measured by this version of the harness: no caller supplies "
+                "topology_latencies, so this is 0 in either regime rather than a "
+                "measurement that came out small. Wiring an emulated map's per-link "
+                "latency through to here is separate, unstarted work."
             ),
         },
         {

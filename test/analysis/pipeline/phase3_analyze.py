@@ -1199,7 +1199,7 @@ class Analysis:
         )
         lines.append("")
         lines.append(
-            "**S1 is structurally negligible in this harness** — every node is a local "
+            "S1 is the propagation term. It is **not measured by this version of the harness**: phase 3 has no source of per-link latency to give it, so it is reported as 0 whichever regime the run used. A native run has no emulated latency for it to carry anyway; an emulated one does, and wiring that through is a separate piece of work. Until then S1 says nothing, and S2 -- the scheduler residual -- is the only source the bound rests on."
             "process and there is no emulated latency, so a run here cannot speak to "
             "latency-driven inversion. S2, the scheduler residual, is the primary source."
         )

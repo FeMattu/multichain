@@ -46,15 +46,17 @@ variable, so a change in an observed quantity has exactly one candidate explanat
 
 ### Consequence for the timer-race test
 
-Because a native run has no emulated latency, the propagation term of the inversion bound
-(`S1`, topology) is **negligible by construction** in that regime. Only `S2` — the
-standard deviation of the scheduler residual — is a real source, and it is the primary
-one there. `stat/timer_race.py` reports `S1` as measured-but-structurally-near-zero and
-does not pretend otherwise. A *native* run therefore cannot refute or confirm a
-latency-driven inversion claim; it can only characterise the scheduler. That claim is
-exactly what a `core` profile exists to put a number on, and it is why the statistics
-below were left untouched when the second regime arrived: the same test, given a run
-with real propagation in it, reports a real `S1`.
+A native run has no emulated latency, so the propagation term of the inversion bound
+(`S1`, topology) has nothing to carry in that regime, and `S2` — the standard deviation of
+the scheduler residual — is the only real source there.
+
+**`S1` is not measured at all, in either regime** (verified 2026-09-18): nothing supplies
+`topology_latencies` to `stat/timer_race.py`, so the 0 it reports is an absence of
+measurement rather than a measurement that came out small. Under a `core` profile there
+now *is* real propagation to measure, and carrying it through to the timer-race statistics
+is separate work that has not been started. Until it is, no run of either regime can
+refute or confirm a latency-driven inversion claim; both can only characterise the
+scheduler.
 
 ## 2. Sources read
 

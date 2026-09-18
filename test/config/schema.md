@@ -298,7 +298,32 @@ Both endpoints of every range must satisfy `low <= high`.
 | `rpc_timeout_s` | `30` | Per-call HTTP timeout. |
 | `startup_timeout_s` | `120` | How long to wait for a node's RPC to answer `getinfo`. |
 | `wpoa_debug` | `false` | Adds `-wpoadebug` to every daemon. Verbose. |
+| `api_decimal_digits` | *unset* | `-apidecimaldigits`. **Every shipped profile sets 17**; see below. |
 | `shutdown_grace_s` | `30` | Time a node gets to answer `stop` before `SIGTERM`. |
+
+#### Why every profile sets `api_decimal_digits: 17`
+
+The node's JSON writer decides how many decimals a double needs by **rounding** it
+(`sprintf` at `src/json/json_spirit_writer_template.h:257`) and then, when that probe
+concludes none survive, emits it by **truncating** it (`os_ << (int64_t)value` at `:349`).
+A value whose fractional part rounds up to `1.000…0` at the default of fourteen decimals
+is therefore reported as its floor: `0.99999999999999944` is printed as `0`, and a delay
+of `14.999999999999995` as `14`.
+
+That is not a rounding nuisance. It is a whole unit, and on the audit RPCs it made the
+harness and the node appear to disagree about the sortition mechanism itself — the
+`delay_recompute_mismatch_rounds_is_zero` check, which invalidates every timer-race result
+when it fails.
+
+Seventeen is a double's round-trip precision, so the probe never concludes that no decimal
+survives and the truncating branch is never reached. Measured, on the same profile with
+the same seed: **26 corrupted values at the default of 14, none at 17.**
+
+Currency amounts are not affected and never were: an amount is an exact multiple of
+1e-8, so its fraction has at most eight decimals and cannot round up at the fourteenth.
+Only computed, unquantised doubles are exposed — which is to say the wPoA audit values.
+`test/analysis/pipeline/tools/verify_json_double_rendering.py` reproduces the writer and
+checks any run against it.
 
 ### `malicious` *(optional)*
 
