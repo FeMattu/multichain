@@ -5,6 +5,13 @@
 > rebuilt as a Python harness. The references are kept as written because they record the
 > work as it was done; for the current structure see
 > [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
+>
+> **Note on paths (2026-09-18).** The same applies to every reference here to a `shadow/`
+> tree and to the emulation harness that replaced it: both are gone. Network emulation is
+> now a regime of the `test/` harness, built on CORE — see
+> [`../test/docs/core-fabric.md`](../test/docs/core-fabric.md). The references below are
+> kept as written, because a forensic report that is edited to match a later tree stops
+> being a record of what was found.
 
 
 Repo: `/home/mattu/multichain` — fork di MultiChain 2.3

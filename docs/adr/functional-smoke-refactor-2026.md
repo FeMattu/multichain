@@ -3,6 +3,11 @@
 > **Status:** analysis complete; three divergences raised for decision (§7). Implementation
 > not started — the mandate's §2 gate ("no code before this report") is what this document
 > discharges.
+> **Note (2026-09-18).** `/experiments` no longer exists. What it did is now the `core`
+> regime of the `test/` harness ([`core-emulation-2026.md`](core-emulation-2026.md)), and
+> the paths this document cites under it were removed with it. The text is kept as
+> written: it is a record of a decision taken when that tree was still there.
+>
 > **Scope:** `test/functional/` in its entirety. Explicitly **out of scope, and untouched:**
 > `/experiments` (the CORE/netns emulation framework) and
 > `src/weight_engine/test/experimental/` (the MyLedger economic simulation harness —
