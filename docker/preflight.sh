@@ -5,10 +5,10 @@
 #   mc-preflight              report, always exit 0
 #   mc-preflight --strict     exit non-zero when something mandatory is missing
 #
-# The harness has its own, more detailed check
-# (experiments/scripts/check_environment.sh). This one covers what is specific
-# to being inside a container: the userspace version, the capabilities, the
-# namespace, CORE, the limits, the resources.
+# This covers what is specific to being inside a container: the userspace
+# version, the capabilities, the namespace, CORE, the limits, the resources.
+# A profile's own plan is checked separately, and needs none of it:
+#   bootstrap_network.py --config <profile> --dry-run
 #
 # Every check here does the real operation rather than probing for the tool
 # that performs it. `ip netns list` succeeds in a container that cannot create
@@ -83,9 +83,9 @@ else
 fi
 
 # --- forwarding ------------------------------------------------------------
-# The netns fabric enables it in every router namespace with `sysctl -q -w`,
-# which exits 0 even when /proc/sys is read-only. A container that fails this
-# check does not fail its run: it produces a backbone that does not route.
+# The CORE fabric enables it in every site namespace, and a `sysctl -w` against
+# a read-only /proc/sys fails loudly there. A container that fails this check
+# would otherwise produce a backbone that does not route.
 if [ -w /proc/sys/net/ipv4/ip_forward ]; then
     ok "/proc/sys is writable (routers can enable IPv4 forwarding)"
 else
@@ -134,9 +134,9 @@ fi
 # Python API reachable from the SYSTEM interpreter (the .pth bridge out of
 # /opt/core/venv), and a daemon actually answering.
 #
-# The middle one is the one that breaks quietly. The harness imports
-# `core.api.grpc` with python3, not with the venv's interpreter, so CORE can
-# be perfectly installed and still be invisible to the fabric.
+# The middle one is the one that breaks quietly. test/bootstrap/fabric/core.py
+# imports `core.api.grpc` with python3, not with the venv's interpreter, so
+# CORE can be perfectly installed and still be invisible to the fabric.
 CORE_ADDRESS="${CORE_GRPC_ADDRESS:-127.0.0.1:50051}"
 if command -v core-daemon >/dev/null 2>&1; then
     ok "core-daemon: $(command -v core-daemon)"
@@ -160,8 +160,10 @@ PY
         ok "CORE daemon answering at $CORE_ADDRESS"
     else
         bad "no CORE daemon answering at $CORE_ADDRESS. The entrypoint starts it;
-      run 'core-up' to see why it did not come up. Without it an experiment with
-      fabric.backend: auto stops and asks whether to use netns instead."
+      run 'core-up' to see why it did not come up. Without it a profile with
+      fabric.backend: core refuses to start — it does not fall back to the
+      native regime, because a run that changed regime by itself would be
+      labelled and compared exactly like one that had not."
     fi
 else
     bad "core-daemon is not in this image, so the CORE fabric cannot run.
@@ -183,10 +185,10 @@ else
     note "multichaind not built yet — run 'mc-build'"
 fi
 
-if [ -d "$ROOT/experiments" ]; then
-    ok "the harness is mounted at $ROOT/experiments"
+if [ -d "$ROOT/test/bootstrap" ]; then
+    ok "the harness is mounted at $ROOT/test"
 else
-    bad "no experiments/ under $ROOT — is the repository bind-mounted?"
+    bad "no test/bootstrap under $ROOT — is the repository bind-mounted?"
 fi
 
 echo

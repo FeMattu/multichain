@@ -12,9 +12,9 @@
 #   * the Python analysis stack, pinned to the archive versions;
 #   * the harness itself, bind-mounted at run time.
 #
-# Shadow is gone. Nothing in this image, in mcsim, in docker-compose.yml or in
-# the entrypoint installs, configures or tunes for it; the harness's fabrics
-# are CORE and plain network namespaces, both of which are kernel primitives.
+# Nothing in this image simulates a network. CORE builds real network
+# namespaces joined by real veth pairs, and the impairment is the kernel's own
+# netem, so a run goes at the host's speed and every delay is a real queue.
 #
 # Why a container at all: MultiChain compiles against GCC 11 / Boost 1.74 and
 # CORE ships a .deb for 22.04, while the host may run something newer. The
@@ -30,7 +30,7 @@
 #
 # It is NOT `mode: docker`, which would put each NODE in its own container.
 # That one is declared and deliberately deferred; the obstacle is the shared
-# run directory, not the network. See experiments/docs/architecture.md,
+# run directory, not the network. See test/docs/core-fabric.md,
 # "Why native first".
 #
 # WHAT THE CONTAINER NEEDS FROM THE HOST
@@ -62,7 +62,7 @@ ARG CORE_VERSION=9.2.1
 ARG OSPF_MDR_REPO=https://github.com/USNavalResearchLaboratory/ospf-mdr.git
 
 # OSPF-MDR is the MANET routing daemon CORE's zebra/OSPFv3 services call. The
-# topologies in experiments/configs use CORE SWITCH nodes and static
+# topologies in test/config/topologies use point-to-point links and static
 # addressing, so nothing here needs it — but it is part of the official
 # install and costs a few minutes, so it stays on by default and can be
 # turned off for a fast rebuild.
@@ -240,7 +240,7 @@ RUN if [ "${WITH_EMANE}" = "1" ]; then \
 #
 # The .deb confines CORE to /opt/core/venv, while the harness runs on the
 # system python3 (that is where the apt-pinned numpy/pandas/networkx live).
-# `experiments.runtime.fabric.core_emulator` does `from core.api.grpc import
+# `test/bootstrap/fabric/core.py` does `from core.api.grpc import
 # client`, so the system interpreter has to see the venv.
 #
 # A .pth file is the right tool rather than PYTHONPATH: it survives `sudo`

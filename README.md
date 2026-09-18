@@ -19,24 +19,35 @@ C++ compilers are memory-hungry, so it is recommended to have at least 1 GB of m
 Network experiments (wPoA / POESIA)
 -----------------------------------
 
-This fork carries a harness that runs the real MultiChain binaries on an emulated
-network — CORE Network Emulator, or plain Linux namespaces with `tc`/netem — and
-produces the CSVs, plots and reports the wPoA analysis needs. Twenty nodes by
-default: 7 miners, 10 companies, 3 administrative.
+This fork carries a harness that runs the real MultiChain binaries — every block, every
+stream record and every RPC answer comes from an actual `multichaind` — and produces the
+tables, figures and reports the wPoA analysis needs. It runs in either of two regimes,
+with the same bootstrap, the same collection and the same statistics in both:
 
-    experiments/scripts/check_environment.sh          # can this machine do it?
-    python3 -m experiments.cli experiment dry-run \
-        --experiment experiments/configs/experiments/regional.yaml
-    sudo -E experiments/scripts/run_experiment.sh \
-        --experiment experiments/configs/experiments/smoke-3n.yaml
+* **native** — every node a process on one host, dialling loopback. No netem, no jitter,
+  no link delay. This is the baseline of correctness: with no network variable, a change
+  in an observed quantity has exactly one candidate explanation.
+* **core** — every site of a map its own network namespace, joined by veth pairs carrying
+  netem, built by the [CORE Network Emulator](https://github.com/coreemu/core). Four maps
+  ship, from a regional one to an intercontinental one, and the geography is the only
+  thing that differs between them.
 
-Start at [experiments/README.md](experiments/README.md).
+Because the two regimes differ only in where the nodes are, a result from one is directly
+comparable with a result from the other.
 
-It replaces the Shadow simulation suite that used to live in `shadow/`. What moved,
-what was archived and what changed is in
-[experiments/docs/migration-from-shadow.md](experiments/docs/migration-from-shadow.md);
-the archived campaign itself is preserved and labelled in
-[experiments/analysis/historical/](experiments/analysis/historical/).
+    # validate a profile and print its plan: no chain, no emulator, no privileges
+    python3 test/bootstrap/bootstrap_network.py \
+        --config test/config/profiles/core/regional.yaml --dry-run
+
+    # the smallest real run of each regime
+    ./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
+        --config test/config/profiles/native/small.yaml
+    ./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
+        --config test/config/profiles/core/smoke.yaml
+
+Start at [test/README.md](test/README.md); the profile format is
+[test/config/schema.md](test/config/schema.md) and the emulated regime is
+[test/docs/core-fabric.md](test/docs/core-fabric.md).
 
 Reproducible environment (Docker)
 ---------------------------------
@@ -52,11 +63,12 @@ inside the container, by CORE:
     ./docker/mcsim build                  # 22.04 + GCC 11 + CORE + the analysis stack
     ./docker/mcsim run mc-build           # compiles multichaind into src/
     ./docker/mcsim preflight              # can this container build a network?
-    ./docker/mcsim exp experiments/configs/experiments/smoke-3n.yaml
+    ./docker/mcsim exp test/config/profiles/core/smoke.yaml
 
-The entrypoint starts `core-daemon` and waits for its gRPC API, so a descriptor asking
-for `fabric.backend: auto` resolves to CORE inside the container rather than dropping to
-the namespace fallback.
+The entrypoint starts `core-daemon` and waits for its gRPC API, so a profile asking for
+`fabric.backend: core` finds an emulator ready. Outside the container it finds none and
+refuses to start: a run that quietly changed regime would be labelled, read and compared
+exactly like one that had not.
 
 An experiment started this way is given **the whole machine** — every CPU, all the
 memory, no quota of any kind. Pass `--cpus=`, `--cpuset=` or `--memory=` only when you

@@ -11,12 +11,12 @@ author's own scratch directory.
 
 The container in [`..`](..) already installs CORE, exactly this way, next to
 the MultiChain toolchain, the analysis stack and the harness. That is the one
-environment the experiments run in:
+environment the runs happen in:
 
 ```bash
 ./docker/mcsim build
 ./docker/mcsim run mc-build
-./docker/mcsim exp experiments/configs/experiments/smoke-3n.yaml
+./docker/mcsim exp test/config/profiles/core/smoke.yaml
 ```
 
 This directory used to hold a second, CORE-only `Dockerfile` and

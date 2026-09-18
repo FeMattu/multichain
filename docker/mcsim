@@ -13,7 +13,7 @@
 #   ./docker/mcsim build [--no-cache] [--with-emane] [--no-ospf]
 #   ./docker/mcsim shell [resource flags]
 #   ./docker/mcsim run  <command...>
-#   ./docker/mcsim exp  experiments/configs/experiments/<name>.yaml
+#   ./docker/mcsim exp  test/config/profiles/<regime>/<name>.yaml
 #   ./docker/mcsim preflight
 #   ./docker/mcsim cpus                 physical-core-only CPU list for --cpuset
 #
@@ -23,7 +23,7 @@
 #                       topology here is wired, so it is a long from-source
 #                       build nothing loads.
 #   --no-ospf           skip OSPF-MDR. Faster rebuild; only CORE's zebra and
-#                       OSPFv3 services need it, and these experiments do not.
+#                       OSPFv3 services need it, and this harness does not.
 #
 # Resources. With no resource flag the container is UNCONSTRAINED: every CPU
 # and all the memory the host has. That is the default on purpose — a run whose
@@ -192,12 +192,13 @@ cmd_run()       { [ "$#" -gt 0 ] || die "run: nothing to run"; run_in_container 
 cmd_preflight() { MC_PREFLIGHT=0 run_in_container mc-preflight --strict; }
 
 cmd_exp() {
-    [ "$#" -ge 1 ] || die "exp: expected an experiment descriptor path"
-    local descriptor="$1"; shift
-    [ -f "$REPO/$descriptor" ] || [ -f "$descriptor" ] || \
-        die "exp: no such descriptor: $descriptor"
-    run_in_container experiments/scripts/run_experiment.sh \
-        --experiment "$descriptor" "$@"
+    [ "$#" -ge 1 ] || die "exp: expected a profile path"
+    local profile="$1"; shift
+    [ -f "$REPO/$profile" ] || [ -f "$profile" ] || \
+        die "exp: no such profile: $profile
+      Profiles live under test/config/profiles/{native,core}/."
+    run_in_container python3 test/bootstrap/bootstrap_network.py \
+        --config "$profile" "$@"
 }
 
 # Physical cores only: with hyper-threading, pinning to sibling threads costs

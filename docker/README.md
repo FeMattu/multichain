@@ -10,10 +10,9 @@ ones and a run goes at native speed. The container supplies the *userspace* —
 which is the point: MultiChain compiles against GCC 11 / Boost 1.74 and CORE
 ships a `.deb` for 22.04, while the host may run something newer.
 
-**Shadow is not involved anywhere.** Nothing in the image, in `mcsim`, in
-`docker-compose.yml`, in the entrypoint or in `host-tune.sh` installs,
-configures or tunes for it. The fabrics are CORE and plain Linux network
-namespaces, and both are kernel primitives.
+**Nothing here simulates a network.** CORE builds real Linux network
+namespaces joined by real veth pairs, and the impairment is the kernel's own
+netem. Every packet a node sends is a packet; every delay it meets is a queue.
 
 ## What is containerised, and what is not
 
@@ -21,11 +20,10 @@ One container runs **the harness and CORE together**. CORE builds the emulated
 network inside that container's own network namespace, and the `multichaind`
 processes are ordinary processes inside the node namespaces CORE created.
 
-It is **not** `mode: docker`, which would put each *node* in its own
-container. That is declared in the harness and deliberately deferred; the
-obstacle is the shared run directory, not the network. See
-[../experiments/docs/architecture.md](../experiments/docs/architecture.md),
-"Why native first".
+It is **not** one container per node. The obstacle would be the shared run
+directory rather than the network, and there is nothing to gain: a CORE node
+is already an isolated network namespace, which is the only isolation the
+measurement needs. See [../test/docs/core-fabric.md](../test/docs/core-fabric.md).
 
 ## Use
 
@@ -34,17 +32,18 @@ obstacle is the shared run directory, not the network. See
 ./docker/mcsim run mc-build          # compile MultiChain into src/
 ./docker/mcsim preflight             # can this container do it?
 
-./docker/mcsim exp experiments/configs/experiments/smoke-3n.yaml
+./docker/mcsim exp test/config/profiles/core/smoke.yaml
 ./docker/mcsim shell                 # poke around
 ```
 
-`smoke-3n` is the right first run: three nodes, one of each role, and it
-exercises the whole path from CORE session to analysis.
+`core/smoke.yaml` is the right first run: four nodes, one of each role, on
+three sites, and it exercises the whole path from CORE session to analysis in
+about a quarter of an hour.
 
-Every descriptor in `experiments/configs/experiments/` except `e2e-5n` asks
-for `fabric.backend: auto`, and inside this image `auto` resolves to **CORE**,
-because the entrypoint has already started `core-daemon` and waited for its
-gRPC API to answer.
+A profile under `test/config/profiles/core/` asks for `fabric.backend: core`,
+and inside this image that works because the entrypoint has already started
+`core-daemon` and waited for its gRPC API to answer. A profile under
+`native/` ignores the emulator entirely and runs every node on loopback.
 
 `docker compose` works too — copy `.env.example` to `.env` first; see the
 header of `docker-compose.yml`.
@@ -53,7 +52,7 @@ Keep the output off the repository volume when you run anything large:
 
 ```bash
 RESULTS_DIR=/data/poesia-runs ./docker/mcsim exp \
-    experiments/configs/experiments/intercontinental.yaml
+    test/config/profiles/core/intercontinental.yaml
 ```
 
 `RESULTS_DIR` is bind-mounted at `/results` and exported as
@@ -85,7 +84,7 @@ Control it from the host with `MC_CORE=0` (do not start it), `MC_CORE=1`
 **It makes CORE's Python API visible to the harness.** The `.deb` confines
 CORE to its own virtualenv at `/opt/core/venv`, while the harness runs on the
 system `python3` — that is where the apt-pinned numpy, pandas and networkx
-live. `experiments.runtime.fabric.core_emulator` does
+live. `test/bootstrap/fabric/core.py` does
 `from core.api.grpc import client`, so the system interpreter has to see the
 venv. The image writes a `.pth` file into `/usr/lib/python3/dist-packages`
 pointing at the venv's `site-packages`.
@@ -95,15 +94,15 @@ environment, and because `site` appends it *after* `dist-packages` — so the
 apt versions of the analysis stack keep winning over anything CORE vendors.
 Both interpreters are the same python3.10, so the venv's compiled wheels load
 unchanged. The Dockerfile asserts all of this at build time; `mc-preflight`
-re-checks it at run time, because a broken bridge otherwise surfaces only as
-"CORE is not available" at fabric-selection time.
+re-checks it at run time, because a broken bridge otherwise surfaces only when
+a run that asked for CORE refuses to start.
 
 ### EMANE and OSPF-MDR
 
 | | default | why |
 |---|---|---|
 | OSPF-MDR | **on** | Part of the official install; CORE's zebra and OSPFv3 services call it. These topologies use static addressing and never start those services, so `./docker/mcsim build --no-ospf` is a safe, faster build. |
-| EMANE | **off** | EMANE models *wireless* channels. Every topology in `experiments/configs` is wired — locations are L2 bridges, links are veth with netem — so EMANE is a long from-source build and a large layer that no experiment ever loads. `./docker/mcsim build --with-emane` turns it on. |
+| EMANE | **off** | EMANE models *wireless* channels. Every topology in `test/config/topologies/` is wired — locations are L2 bridges, links are veth with netem — so EMANE is a long from-source build and a large layer that no experiment ever loads. `./docker/mcsim build --with-emane` turns it on. |
 
 ## Why each flag
 
@@ -226,6 +225,6 @@ The harness's own environment check is more detailed and runs inside the
 container too:
 
 ```bash
-./docker/mcsim run experiments/scripts/check_environment.sh \
-    --experiment experiments/configs/experiments/smoke-3n.yaml
+./docker/mcsim run python3 test/bootstrap/bootstrap_network.py \
+    --config test/config/profiles/core/smoke.yaml --dry-run
 ```

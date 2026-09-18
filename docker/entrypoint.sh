@@ -64,11 +64,11 @@ if [ -t 1 ]; then
     core-status / core-up / core-down          the CORE daemon
     mc-preflight                               re-run the environment report
 
-    experiments/scripts/check_environment.sh   can this container do it?
-    experiments/scripts/run_experiment.sh \
-        --experiment experiments/configs/experiments/smoke-3n.yaml
+    mc-preflight                               can this container do it?
+    python3 test/bootstrap/bootstrap_network.py \
+        --config test/config/profiles/core/smoke.yaml
 
-    python3 -m experiments.cli --help          every command
+    python3 test/bootstrap/bootstrap_network.py --help
 
 BANNER
 fi
