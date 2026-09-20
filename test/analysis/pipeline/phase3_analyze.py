@@ -46,6 +46,12 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 from pipeline.stat import ALPHA, ANALYSIS_SEED, MC_GOF, MC_STREAK  # noqa: E402
+
+#: How close to the top of the delay band a round has to land to count as won
+#: *at* the band top. A twentieth of a second: the two populations are separated
+#: by seconds (median gap ~3.5 s on instrument-1800), so the split is insensitive
+#: to this anywhere in 0.01-0.1 s.
+BAND_TOP_TOL_S = 0.05
 from pipeline.stat import concentration as CONC  # noqa: E402
 from pipeline.stat import gof as GOF  # noqa: E402
 from pipeline.stat import longitudinal as LONG  # noqa: E402
@@ -539,6 +545,30 @@ class Analysis:
         fresh = [r for r in measured if b(r.get("weight_epoch_stale")) is not True]
         stats(fresh, "_fresh_weights")
         row["true_n_rounds_weight_epoch_stale"] = len(measured) - len(fresh)
+
+        # Rounds won AT the top of the delay band, i.e. by a validator whose timer had
+        # run all the way out: band_max = T(1+delta) + lambda*Phi, per round because Phi
+        # moves. They are a cluster, not a tail -- the median round sits seconds below
+        # the top -- and they are not an ordering failure: their winner's score is its
+        # OWN draw rather than the minimum of the field, which is what a round with a
+        # single effective candidate looks like. Reported apart because they are the
+        # whole reason the pooled KS rejects while the mean sits on 0.5.
+        racing: List[Dict[str, Any]] = []
+        n_band_top = 0
+        for r in measured:
+            d, t = f(r.get("delay_true_s")), f(r.get("target_block_time"))
+            de, lam, phi = f(r.get("delta")), f(r.get("lambda_s")), f(r.get("phi_s"))
+            if None in (d, t, de, lam, phi):
+                continue
+            if (t * (1.0 + de) + lam * phi) - d <= BAND_TOP_TOL_S:
+                n_band_top += 1
+            else:
+                racing.append(r)
+        stats(racing, "_racing")
+        row["true_n_rounds_band_top"] = n_band_top
+        row["true_frac_band_top"] = (
+            n_band_top / len(measured) if measured else None
+        )
 
     # -- 4. longitudinal ---------------------------------------------------------------
 
@@ -1316,6 +1346,33 @@ class Analysis:
             "regard to score carries its own score instead, whose normalised value piles "
             "up against 1."
         )
+        lines.append("")
+        lines.append(
+            "**Read the pooled KS line with the split below, not on its own.** A round "
+            "won *at the top of the delay band* — the winner's timer ran all the way out "
+            "to `T(1+delta) + lambda*Phi` — is a round in which the lower-score "
+            "validators did not propose at all. Its winner scores against its own draw "
+            "rather than the minimum of the field, so its `score_norm` sits against 1 by "
+            "construction. That is a liveness question, not an ordering one, and pooling "
+            "it with the racing rounds makes a KS test reject a mechanism that the "
+            "racing rounds show working."
+        )
+        lines.append("")
+        lines.append("| quantity | racing rounds | won at the band top |")
+        lines.append("|---|---:|---:|")
+        lines.append("| rounds | %s | %s |"
+                     % (_fmt(timer.get("true_n_rounds_racing"), 0),
+                        _fmt(timer.get("true_n_rounds_band_top"), 0)))
+        lines.append("| share of measured rounds | | %s |"
+                     % _fmt(timer.get("true_frac_band_top"), 5))
+        for label, key, digits in (
+            ("corr(dt_prev, delay_true)", "true_corr_dt_delay", 5),
+            ("residual sd (s)", "true_residual_sd_s", 5),
+            ("mean score_norm of winner", "true_score_norm_mean", 5),
+            ("KS vs U(0,1), p", "true_score_norm_ks_p_uniform", 5),
+        ):
+            lines.append("| %s | %s | — |"
+                         % (label, _fmt(timer.get(key + "_racing"), digits)))
         lines.append("")
         lines.append(
             "Weights are read as of the sampling tip, so a round sampled after its own "
