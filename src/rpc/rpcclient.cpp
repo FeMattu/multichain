@@ -655,6 +655,8 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "wpoalistscores", 0 },
     { "wpoagetlocaldelay", 0 },
     { "wpoalistdelays", 0 },
+    { "wpoagetblocksortition", 0 },
+    { "wpoalistblocksortition", 0 },
     { "wpoagetlocaleffectiveweight", 0 },
     { "wpoalisteffectiveweights", 0 },
     { "wpoagetlocalfinalweight", 0 },

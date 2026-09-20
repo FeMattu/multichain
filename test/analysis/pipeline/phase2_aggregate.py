@@ -69,22 +69,38 @@ _TRAFFIC_KEY = re.compile(r"^lot-(\d+)-")
 
 COLUMNS: "OrderedDict[str, List[str]]" = OrderedDict(
     [
+        # ``*_public`` marks every quantity derived from the PUBLIC Efraimidis score
+        # (HMAC-SHA256(seed, address)), which is what wpoalistscores/wpoalistdelays can
+        # compute for a validator whose secret key this node does not hold. Under private
+        # sortition the election draws from a VRF under each proposer's own key, so these
+        # are a model audit and are statistically independent of the real draw. The
+        # winner's REAL score arrives instead from phase 1's ``block_sortition`` and is
+        # suffixed ``_true``. See GUIDA-STATISTICHE-E-GRAFICI.md, regola 10.
         (
             "candidate_long",
             ["height", "epoch", "in_setup", "address", "weight_raw", "malus", "malus_factor",
              "weight_after_malus", "weight_effective", "W_tot_effective", "p_theoretical",
-             "score", "score_norm", "score_norm_recomputed", "score_norm_mismatch",
-             "delay_logged_s", "delay_recomputed_s", "delay_mismatch_s", "delay_recompute_ok",
-             "eligible", "is_winner", "rank_by_delay", "rank_by_score"],
+             "score_public", "score_norm_public", "score_norm_recomputed_public",
+             "score_norm_mismatch_public", "delay_logged_public_s",
+             "delay_recomputed_public_s", "delay_mismatch_public_s",
+             "delay_recompute_ok_public", "eligible", "is_winner",
+             "rank_by_delay_public", "rank_by_score_public"],
         ),
         (
             "round_level",
             ["height", "epoch", "in_setup", "winner_address", "n_candidates", "n_eligible",
-             "delay_min_s", "delay_winner_s", "margin_G_s", "score_min", "score_second",
-             "score_gap_2_1", "W_tot_effective", "weff_argmin", "p_winner", "phi_s",
-             "target_block_time", "delta", "lambda_s", "argmin_delay_address",
-             "inversion", "winner_rank_by_delay", "block_time", "dt_prev_s",
-             "scheduler_residual_s", "txcount", "n_delay_mismatch"],
+             "delay_min_public_s", "delay_winner_public_s", "margin_G_public_s",
+             "score_min_public", "score_second_public", "score_gap_2_1_public",
+             "W_tot_effective", "weff_argmin_public", "p_winner", "phi_s",
+             "target_block_time", "delta", "lambda_s", "argmin_delay_address_public",
+             "inversion_public", "winner_rank_by_delay_public", "block_time", "dt_prev_s",
+             "scheduler_residual_public_s", "txcount", "n_delay_mismatch_public",
+             # The winner's REAL private score, recomputed from the VRF reveal its block
+             # carries. These are the columns a statement about proposer ordering may
+             # rest on.
+             "score_true", "score_norm_true", "delay_true_s", "earliest_time_true",
+             "residual_true_s", "weff_winner_true", "verdict_true",
+             "true_winner_mismatch", "weight_epoch_stale"],
         ),
         (
             "epoch_level",
@@ -92,8 +108,8 @@ COLUMNS: "OrderedDict[str, List[str]]" = OrderedDict(
              "n_rounds_with_scores", "p_theoretical_blockweighted", "p_theoretical_start",
              "p_theoretical_end", "share_changed_within_epoch", "p_observed", "E_i",
              "w_raw_start", "w_raw_end", "w_eff_start", "w_eff_end", "psi",
-             "delay_mean_s", "delay_min_s", "delay_max_s", "epoch_start_height",
-             "epoch_end_height"],
+             "delay_mean_public_s", "delay_min_public_s", "delay_max_public_s",
+             "epoch_start_height", "epoch_end_height"],
         ),
         (
             "epoch_engine",
@@ -254,6 +270,14 @@ class Aggregator:
         delays = read_table(self.phase1, "round_delays")
         scores = read_table(self.phase1, "round_scores")
         blocks = read_table(self.phase1, "blocks")
+        # The winner's real score, one row per height, keyed the same way. Absent on a
+        # run recorded before this table existed, in which case every *_true column is
+        # simply empty and the *_public ones behave as they always did.
+        true_by_height = {
+            i(row["height"]): row
+            for row in (read_table(self.phase1, "block_sortition")
+                        if (self.phase1 / "block_sortition.csv").is_file() else [])
+        }
 
         winner_by_height = {
             i(row["height"]): row.get("miner_address", "") for row in blocks
@@ -365,14 +389,14 @@ class Aggregator:
                         "weight_effective": weff[address],
                         "W_tot_effective": w_tot,
                         "p_theoretical": (weff[address] / w_tot) if w_tot > 0 else None,
-                        "score": score,
-                        "score_norm": score_norm,
-                        "score_norm_recomputed": norm_recomputed,
-                        "score_norm_mismatch": norm_mismatch,
-                        "delay_logged_s": delay_logged,
-                        "delay_recomputed_s": delay_recomputed,
-                        "delay_mismatch_s": delay_mismatch,
-                        "delay_recompute_ok": delay_ok,
+                        "score_public": score,
+                        "score_norm_public": score_norm,
+                        "score_norm_recomputed_public": norm_recomputed,
+                        "score_norm_mismatch_public": norm_mismatch,
+                        "delay_logged_public_s": delay_logged,
+                        "delay_recomputed_public_s": delay_recomputed,
+                        "delay_mismatch_public_s": delay_mismatch,
+                        "delay_recompute_ok_public": delay_ok,
                         "eligible": b(row.get("eligible")),
                         "is_winner": address == winner,
                     }
@@ -383,8 +407,8 @@ class Aggregator:
             delay_rank = {address: n for n, (_, address) in enumerate(ranked_delay, start=1)}
             score_rank = {address: n for n, (_, address) in enumerate(ranked_score, start=1)}
             for row in candidate_rows:
-                row["rank_by_delay"] = delay_rank.get(row["address"])
-                row["rank_by_score"] = score_rank.get(row["address"])
+                row["rank_by_delay_public"] = delay_rank.get(row["address"])
+                row["rank_by_score_public"] = score_rank.get(row["address"])
                 self.tables["candidate_long"].append(row)
 
             argmin_delay = ranked_delay[0][1] if ranked_delay else ""
@@ -407,6 +431,25 @@ class Aggregator:
             )
             first_delay_row = delay_by.get((height, argmin_delay), {}) if argmin_delay else {}
 
+            # The real score is only claimable when the audit actually recomputed one AND
+            # it belongs to the block this round settled on -- a row whose miner does not
+            # match the winner recorded in `blocks` describes a different branch, which
+            # happens when `blocks` captured a block that was later reorged away (phase 1
+            # keeps the FIRST row seen per height). Such a round is dropped from the
+            # *_true columns but its verdict and the mismatch are still reported, so the
+            # gap is counted rather than silently absent.
+            true_raw = true_by_height.get(height, {})
+            true_mismatch = bool(
+                winner and true_raw.get("miner_address")
+                and true_raw.get("miner_address") != winner
+            )
+            true_row = (
+                true_raw
+                if (true_raw.get("verdict") == "ok" and not true_mismatch)
+                else {}
+            )
+            delay_true = f(true_row.get("delay_s"))
+
             self.tables["round_level"].append(
                 {
                     "height": height,
@@ -415,37 +458,59 @@ class Aggregator:
                     "winner_address": winner,
                     "n_candidates": len(entries),
                     "n_eligible": sum(1 for r in candidate_rows if r["eligible"]),
-                    "delay_min_s": delay_min,
-                    "delay_winner_s": delay_winner,
-                    "margin_G_s": (
+                    "delay_min_public_s": delay_min,
+                    "delay_winner_public_s": delay_winner,
+                    "margin_G_public_s": (
                         None if (delay_min is None or delay_second is None)
                         else delay_second - delay_min
                     ),
-                    "score_min": score_min,
-                    "score_second": score_second,
-                    "score_gap_2_1": (
+                    "score_min_public": score_min,
+                    "score_second_public": score_second,
+                    "score_gap_2_1_public": (
                         None if (score_min is None or score_second is None)
                         else score_second - score_min
                     ),
                     "W_tot_effective": w_tot,
-                    "weff_argmin": weff.get(argmin_delay),
+                    "weff_argmin_public": weff.get(argmin_delay),
                     "p_winner": (weff.get(winner, 0.0) / w_tot) if w_tot > 0 else None,
                     "phi_s": f(first_delay_row.get("feedback_phi")),
                     "target_block_time": f(first_delay_row.get("target_block_time")),
                     "delta": f(first_delay_row.get("delta")),
                     "lambda_s": f(first_delay_row.get("lambda_s")),
-                    "argmin_delay_address": argmin_delay,
-                    # An inversion is the round where the smallest delay did not win. It is
-                    # only meaningful when both are known and a winner was recorded.
-                    "inversion": (
+                    "argmin_delay_address_public": argmin_delay,
+                    # An inversion is the round where the smallest delay did not win.
+                    #
+                    # PUBLIC FORM, and therefore uninformative about the real ordering:
+                    # argmin_delay_address_public is the argmin of the HMAC scores, which
+                    # no validator's timer was ever set from, so this flag is true with
+                    # probability 1 - 1/n whatever the protocol does. Kept because it has
+                    # been published; read inversion_true_* in phase 3 instead.
+                    "inversion_public": (
                         None if (not winner or not argmin_delay) else winner != argmin_delay
                     ),
-                    "winner_rank_by_delay": delay_rank.get(winner),
+                    "winner_rank_by_delay_public": delay_rank.get(winner),
                     "block_time": this_time,
                     "dt_prev_s": dt_prev,
-                    "scheduler_residual_s": residual,
+                    "scheduler_residual_public_s": residual,
                     "txcount": txcount.get(height),
-                    "n_delay_mismatch": mismatches,
+                    "n_delay_mismatch_public": mismatches,
+                    # -- the winner's REAL score, from its block's VRF reveal ------------
+                    "score_true": f(true_row.get("score")),
+                    "score_norm_true": f(true_row.get("score_norm")),
+                    "delay_true_s": delay_true,
+                    "earliest_time_true": f(true_row.get("earliest_time")),
+                    # What the realised spacing departed from the delay the winner's OWN
+                    # score entitled it to. Unlike scheduler_residual_public_s this is a
+                    # residual of one quantity against itself, so its spread is the real
+                    # timing noise.
+                    "residual_true_s": (
+                        None if (dt_prev is None or delay_true is None)
+                        else dt_prev - delay_true
+                    ),
+                    "weff_winner_true": f(true_row.get("effective_weight")),
+                    "verdict_true": true_raw.get("verdict", ""),
+                    "true_winner_mismatch": true_mismatch,
+                    "weight_epoch_stale": b(true_raw.get("weight_epoch_stale")),
                 }
             )
             if this_time is not None:
@@ -493,8 +558,8 @@ class Aggregator:
                 entry["w_raw"].append(row["weight_raw"])
             if row["malus_factor"] is not None:
                 entry["psi"].append(row["malus_factor"])
-            if row["delay_logged_s"] is not None:
-                entry["delays"].append(row["delay_logged_s"])
+            if row["delay_logged_public_s"] is not None:
+                entry["delays"].append(row["delay_logged_public_s"])
 
         for (epoch, address) in sorted(agg):
             entry = agg[(epoch, address)]
@@ -527,11 +592,11 @@ class Aggregator:
                     "w_eff_start": entry["weights"][0] if entry["weights"] else None,
                     "w_eff_end": entry["weights"][-1] if entry["weights"] else None,
                     "psi": entry["psi"][-1] if entry["psi"] else None,
-                    "delay_mean_s": (
+                    "delay_mean_public_s": (
                         sum(entry["delays"]) / len(entry["delays"]) if entry["delays"] else None
                     ),
-                    "delay_min_s": min(entry["delays"]) if entry["delays"] else None,
-                    "delay_max_s": max(entry["delays"]) if entry["delays"] else None,
+                    "delay_min_public_s": min(entry["delays"]) if entry["delays"] else None,
+                    "delay_max_public_s": max(entry["delays"]) if entry["delays"] else None,
                     "epoch_start_height": heights[0] if heights else None,
                     "epoch_end_height": heights[-1] if heights else None,
                 }
@@ -1058,9 +1123,13 @@ class Aggregator:
     def summary(self) -> Dict[str, Any]:
         rounds = self.tables["round_level"]
         candidates = self.tables["candidate_long"]
-        mismatch_rounds = [r["height"] for r in rounds if (r["n_delay_mismatch"] or 0) > 0]
-        inversions = [r for r in rounds if r["inversion"] is True]
+        mismatch_rounds = [r["height"] for r in rounds
+                           if (r["n_delay_mismatch_public"] or 0) > 0]
         measured = [r for r in rounds if not r["in_setup"]]
+        # Over `measured`, not over `rounds`: the denominator below is the measured
+        # count, and counting setup rounds in the numerator made the "rate" exceed 1
+        # (1.508 on a smoke run with 95 setup rounds and 65 measured ones).
+        inversions = [r for r in measured if r["inversion_public"] is True]
         epochs = sorted({r["epoch"] for r in self.tables["epoch_level"] if r["epoch"] is not None})
         measured_epochs = sorted(
             {r["epoch"] for r in self.tables["epoch_level"] if not r["in_setup"]}
@@ -1069,16 +1138,27 @@ class Aggregator:
             "n_rounds": len(rounds),
             "n_rounds_measured": len(measured),
             "n_candidate_rows": len(candidates),
-            "n_inversions": len(inversions),
-            "inversion_rate": (len(inversions) / len(measured)) if measured else None,
+            "n_inversions_public": len(inversions),
+            "inversion_rate_public": (len(inversions) / len(measured)) if measured else None,
+            "n_rounds_with_true_score": sum(
+                1 for r in measured if r["score_norm_true"] is not None
+            ),
+            "n_rounds_weight_epoch_stale": sum(
+                1 for r in measured if r["weight_epoch_stale"] is True
+            ),
+            # A height whose recorded block is not the one on the active chain: phase 1
+            # keeps the first block seen per height, which can be a reorged-away branch.
+            "n_rounds_true_winner_mismatch": sum(
+                1 for r in measured if r["true_winner_mismatch"]
+            ),
             # A pass condition of the functional test: the harness and the node must agree
             # about the delay formula, or every timer-race result is meaningless.
             "delay_recompute_mismatch_rounds": len(mismatch_rounds),
             "delay_recompute_mismatch_heights": mismatch_rounds[:50],
             "delay_recompute_tolerance_s": DELAY_TOL_S,
             "max_abs_delay_mismatch_s": max(
-                (abs(r["delay_mismatch_s"]) for r in candidates
-                 if r["delay_mismatch_s"] is not None),
+                (abs(r["delay_mismatch_public_s"]) for r in candidates
+                 if r["delay_mismatch_public_s"] is not None),
                 default=None,
             ),
             "epochs_seen": epochs,

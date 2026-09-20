@@ -27,6 +27,8 @@
 #include "wpoa/malus_record.h"              // MalusAccumulator, mc_MalusKind*
 #include "wpoa/wpoa_selector.h"             // WPoASelector, g_dumping_function
 #include "wpoa/private_sortition.h"         // WPoARoundContext, PrivateSortition, Phi
+#include "wpoa/randao_accumulator.h"        // WPoAExtractBlockReveal (thread-safe)
+#include "wpoa/vrf_wrapper.h"               // WPoAVRF::OUTPUT_SIZE
 #include "chainparams/chainparams.h"        // Params().TargetSpacing()
 #include "weight_engine/weight_engine.h"    // HeightToEpoch (shared height->epoch map)
 #include "weight_engine/weight_streams.h"   // MC_WEIGHT_MEMBERSHIP_STREAM_NAME
@@ -35,6 +37,9 @@
 #include "core/main.h"                      // chainActive, cs_main
 
 #include <cmath>
+
+/** Cap on one wpoalistblocksortition call: the audit reads every block from disk. */
+#define MC_WPOA_MAX_SORTITION_AUDIT_ROWS 1000
 
 // ---------------------------------------------------------------------------
 // Weight registry
@@ -964,4 +969,251 @@ Value wpoalistfinalweights(const Array& params, bool fHelp)
     obj.push_back(Pair("validators", (int)r.ctx.raw_weights.size()));
     obj.push_back(Pair("final_weights", weights));
     return obj;
+}
+
+// ---------------------------------------------------------------------------
+// Block sortition audit — the winner's REAL, private score
+// ---------------------------------------------------------------------------
+// Everything above this line scores candidates with the PUBLIC Efraimidis form
+// (HMAC-SHA256(seed, address)), which is all a node can compute for a validator
+// whose secret key it does not hold. On a sortition-governed chain that form is a
+// model audit, NOT the quantity the election ran on — the real score is drawn from
+// a VRF under the proposer's own secret key.
+//
+// For the WINNER of a round, though, the real score IS publicly recomputable: the
+// block carries the VRF reveal y_i, and score_i = -ln(top64(y_i)/2^64) / f(w_eff,i)
+// follows from it and the signer's registry weight. That is exactly what
+// WPoASortitionVerifyProposer recomputes to enforce the time bar at accept time
+// (private_sortition.cpp), so these handlers re-expose a consensus computation
+// read-only rather than introducing a second one.
+//
+// This is the only audit surface in this file that reports the score the protocol
+// actually used. Anything comparing realised timing against "the score" must read
+// it from here, not from the *score/*delay families above.
+
+/** The reveal a block carries, or false when it carries none.
+ *
+ *  A short reveal is refused rather than scored: FoldTop64 reads the top 8 bytes
+ *  unconditionally, and unlike the validation path this audit does not re-verify
+ *  the proof (VerifyBlockMinerWPoA already did, at accept time), so nothing else
+ *  here would notice a truncated one.
+ */
+static bool RpcBlockReveal(const CBlock& block, std::vector<unsigned char>& reveal_out)
+{
+    unsigned char buf[255];
+    int len = sizeof(buf);
+    if (!WPoAExtractBlockReveal(block, buf, &len) ||
+        len <= 0 || (size_t)len < WPoAVRF::OUTPUT_SIZE)
+    {
+        return false;
+    }
+    reveal_out.assign(buf, buf + len);
+    return true;
+}
+
+/** The address that signed a block, "" when it carries no usable signer. */
+static std::string RpcBlockSigner(const CBlock& block)
+{
+    if (block.vSigner[0] == 0)
+    {
+        return "";
+    }
+    std::vector<unsigned char> vchPubKey(block.vSigner + 1,
+                                         block.vSigner + 1 + block.vSigner[0]);
+    CPubKey pubkey(vchPubKey);
+    if (!pubkey.IsValid())
+    {
+        return "";
+    }
+    return CBitcoinAddress(pubkey.GetID()).ToString();
+}
+
+/**
+ * One height's answer. `verdict` names why a row carries no score, so a gap in the
+ * series is always explained rather than silently absent:
+ *
+ *   ok             — score recomputed from the block's reveal
+ *   not-sortition  — the height is not sortition-governed (setup, or an earlier phase)
+ *   no-reveal      — sortition-governed but the block carries no VRF reveal
+ *   no-signer      — the block carries no usable signer pubkey
+ *   no-weight      — the signer is absent from the registry, or its w_eff is 0
+ *   unevaluable    — seed or weight map unavailable on this node right now
+ */
+static Object RpcBlockSortitionEntry(int height, int sample_height)
+{
+    Object o;
+    o.push_back(Pair("height", height));
+
+    const CBlockIndex* pindex = NULL;
+    const CBlockIndex* pprev  = NULL;
+    CBlock block;
+    bool have_block = false;
+
+    {
+        LOCK(cs_main);
+        pindex = chainActive[height];
+        if (pindex != NULL)
+        {
+            pprev = pindex->pprev;
+            if ((pindex->nStatus & BLOCK_HAVE_DATA) != 0)
+            {
+                have_block = ReadBlockFromDisk(block, pindex);
+            }
+        }
+    }
+
+    if (pindex == NULL)
+    {
+        o.push_back(Pair("verdict", "no-block"));
+        return o;
+    }
+
+    o.push_back(Pair("hash", pindex->GetBlockHash().ToString()));
+    o.push_back(Pair("block_time", (int64_t)pindex->GetBlockTime()));
+    o.push_back(Pair("parent_time", pprev ? (int64_t)pprev->GetBlockTime() : (int64_t)0));
+    o.push_back(Pair("dt_prev", pprev
+                     ? (int64_t)(pindex->GetBlockTime() - pprev->GetBlockTime())
+                     : (int64_t)0));
+    // The LOCAL arrival wall-clock of this block on THIS node, sub-second. Unlike
+    // block_time (the proposer's own header timestamp, 1 s resolution) it is not
+    // consensus data and differs per node -- which is exactly what makes it the
+    // right clock for measuring propagation, and the wrong one for anything else.
+    o.push_back(Pair("time_received", pindex->dTimeReceived));
+    o.push_back(Pair("epoch", (int64_t)HeightToEpoch(height)));
+    o.push_back(Pair("sample_height", sample_height));
+    // Weights are read as of NOW, not as of `height`: the registry has no
+    // height-bound read (see WPoABuildRoundContext). They only change on an epoch
+    // boundary, so a sample taken inside the audited height's own epoch is exact,
+    // and this flag marks the rows where it cannot be.
+    o.push_back(Pair("sample_epoch", (int64_t)HeightToEpoch(sample_height)));
+    o.push_back(Pair("weight_epoch_stale",
+                     HeightToEpoch(sample_height) != HeightToEpoch(height)));
+
+    if (!WPoASortitionActiveAtHeight(height))
+    {
+        o.push_back(Pair("verdict", "not-sortition"));
+        return o;
+    }
+
+    const std::string signer = have_block ? RpcBlockSigner(block) : "";
+    o.push_back(Pair("miner", signer));
+    if (!have_block || signer.empty())
+    {
+        o.push_back(Pair("verdict", have_block ? "no-signer" : "no-block-data"));
+        return o;
+    }
+
+    std::vector<unsigned char> reveal;
+    if (!RpcBlockReveal(block, reveal))
+    {
+        o.push_back(Pair("verdict", "no-reveal"));
+        return o;
+    }
+
+    // The same context the miner and the validator consumed for this round: the
+    // beacon seed over the parent, the malus-corrected weight map, and Sigma f(w).
+    WPoARoundContext ctx;
+    if (pprev == NULL || !WPoABuildRoundContext(pprev, height, ctx))
+    {
+        o.push_back(Pair("verdict", "unevaluable"));
+        return o;
+    }
+    const double feedback = WPoASortitionFeedback(pprev);
+
+    std::map<std::string, uint32_t>::const_iterator it = ctx.weights.find(signer);
+    const uint32_t weff = (it != ctx.weights.end()) ? it->second : 0;
+    o.push_back(Pair("effective_weight", (int64_t)weff));
+    if (weff == 0)
+    {
+        o.push_back(Pair("verdict", "no-weight"));
+        return o;
+    }
+
+    const double score = PrivateSortition::ScoreFromVRFOutput(reveal.data(), weff,
+                                                              g_dumping_function);
+    const double score_norm = PrivateSortition::NormalizedScore(score, ctx.total_eff_weight);
+    const double delay = PrivateSortition::MiningDelay(score, ctx.total_eff_weight,
+                                                       (double)Params().TargetSpacing(),
+                                                       g_wpoa_sortition_delta,
+                                                       g_wpoa_sortition_lambda,
+                                                       feedback);
+
+    o.push_back(Pair("score", std::isfinite(score) ? Value(score) : Value::null));
+    o.push_back(Pair("score_norm", score_norm));
+    o.push_back(Pair("delay", delay));
+    // The bar VerifyBlockMinerWPoA enforced: floor(delay), because block times have
+    // 1 s resolution (private_sortition.cpp, step 3).
+    o.push_back(Pair("earliest_time",
+                     (int64_t)(pprev->GetBlockTime() + (int64_t)delay)));
+    o.push_back(Pair("total_effective_weight", ctx.total_eff_weight));
+    o.push_back(Pair("target_block_time", (int64_t)Params().TargetSpacing()));
+    o.push_back(Pair("delta", g_wpoa_sortition_delta));
+    o.push_back(Pair("lambda", g_wpoa_sortition_lambda));
+    o.push_back(Pair("feedback", feedback));
+    o.push_back(Pair("seed", HexStr(ctx.seed, ctx.seed + sizeof(ctx.seed))));
+    o.push_back(Pair("seed_source", ctx.randao_seed ? "randao" : "prevblockhash"));
+    o.push_back(Pair("dumping_function", RpcDumpingName(g_dumping_function)));
+    o.push_back(Pair("verdict", "ok"));
+    return o;
+}
+
+/** The tip this answer was computed against — the staleness reference. */
+static int RpcSampleHeight()
+{
+    LOCK(cs_main);
+    return (chainActive.Tip() != NULL) ? chainActive.Height() : -1;
+}
+
+Value wpoagetblocksortition(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error("Help message not found\n");
+    }
+    const int sample_height = RpcSampleHeight();
+    if (sample_height < 0)
+    {
+        throw JSONRPCError(RPC_MISC_ERROR, "No chain tip yet");
+    }
+
+    const int64_t height = RpcInteger(params[0], "height");
+    if (height < 0 || height > (int64_t)sample_height)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER,
+                           strprintf("height %d is not on the active chain (tip = %d)",
+                                     (int)height, sample_height));
+    }
+    return RpcBlockSortitionEntry((int)height, sample_height);
+}
+
+Value wpoalistblocksortition(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error("Help message not found\n");
+    }
+    const int sample_height = RpcSampleHeight();
+    if (sample_height < 0)
+    {
+        throw JSONRPCError(RPC_MISC_ERROR, "No chain tip yet");
+    }
+
+    // Same block-set grammar as listblocks ("100-199", "100", an array, ...), so an
+    // observer can pass the window it already built for that call.
+    std::vector<int> heights = ParseBlockSetIdentifier(params[0]);
+    if (heights.size() > MC_WPOA_MAX_SORTITION_AUDIT_ROWS)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER,
+                           strprintf("too many blocks requested (%d): this audit reads every "
+                                     "block from disk, so it is capped at %d per call",
+                                     (int)heights.size(),
+                                     (int)MC_WPOA_MAX_SORTITION_AUDIT_ROWS));
+    }
+
+    Array rows;
+    for (unsigned int i = 0; i < heights.size(); i++)
+    {
+        rows.push_back(RpcBlockSortitionEntry(heights[i], sample_height));
+    }
+    return rows;
 }

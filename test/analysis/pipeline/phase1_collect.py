@@ -54,6 +54,18 @@ COLUMNS: "OrderedDict[str, List[str]]" = OrderedDict(
                             "path_delay_ms"]),
         ("blocks", ["height", "hash", "miner_address", "time", "txcount", "confirmations",
                     "epoch", "in_setup"]),
+        # The winner's REAL private score, recomputed from the VRF reveal its block
+        # carries (wpoagetblocksortition). This is the only table here whose score is
+        # the one the election ran on: round_scores/round_delays below carry the PUBLIC
+        # HMAC form, which no validator's timer was ever set from. See
+        # GUIDA-STATISTICHE-E-GRAFICI.md, regola 10.
+        ("block_sortition", ["height", "epoch", "in_setup", "hash", "miner_address",
+                             "score", "score_norm", "delay_s", "earliest_time",
+                             "block_time", "parent_time", "dt_prev_s", "time_received",
+                             "effective_weight", "total_effective_weight",
+                             "target_block_time", "delta", "lambda_s", "feedback_phi",
+                             "seed", "seed_source", "dumping_function", "verdict",
+                             "sample_height", "sample_epoch", "weight_epoch_stale"]),
         ("round_scores", ["round_height", "epoch", "in_setup", "address", "score", "weight",
                           "effective_weight", "eligible", "seed", "seed_source",
                           "dumping_function", "total_effective_weight", "sample_height"]),
@@ -429,6 +441,49 @@ class Collector:
                 confirmations=block.get("confirmations", ""),
                 epoch=self.epoch_of(block_height),
                 in_setup=self.in_setup(block_height),
+            )
+
+    def _snap_wpoalistblocksortition(self, payload: Dict[str, Any], data: Any,
+                                     height: Any) -> None:
+        """The per-block sortition audit: one row per height, first sample wins.
+
+        Keyed on its own ``_once`` store rather than the ``blocks`` one: the two tables
+        are filled from different RPCs and a block can reach one before the other.
+        """
+        for entry in data or []:
+            if not isinstance(entry, dict):
+                continue
+            block_height = entry.get("height")
+            if block_height is None or not self._once("block_sortition", block_height):
+                continue
+            self.add(
+                "block_sortition",
+                height=block_height,
+                epoch=self.epoch_of(block_height),
+                in_setup=self.in_setup(block_height),
+                hash=entry.get("hash", ""),
+                miner_address=entry.get("miner", ""),
+                score=_num(entry.get("score")),
+                score_norm=_num(entry.get("score_norm")),
+                delay_s=_num(entry.get("delay")),
+                earliest_time=_num(entry.get("earliest_time")),
+                block_time=_num(entry.get("block_time")),
+                parent_time=_num(entry.get("parent_time")),
+                dt_prev_s=_num(entry.get("dt_prev")),
+                time_received=_num(entry.get("time_received")),
+                effective_weight=_num(entry.get("effective_weight")),
+                total_effective_weight=_num(entry.get("total_effective_weight")),
+                target_block_time=_num(entry.get("target_block_time")),
+                delta=_num(entry.get("delta")),
+                lambda_s=_num(entry.get("lambda")),
+                feedback_phi=_num(entry.get("feedback")),
+                seed=entry.get("seed", ""),
+                seed_source=entry.get("seed_source", ""),
+                dumping_function=entry.get("dumping_function", ""),
+                verdict=entry.get("verdict", ""),
+                sample_height=_num(entry.get("sample_height")),
+                sample_epoch=_num(entry.get("sample_epoch")),
+                weight_epoch_stale=entry.get("weight_epoch_stale", ""),
             )
 
     def _snap_getlastblockinfo(self, payload: Dict[str, Any], data: Any, height: Any) -> None:

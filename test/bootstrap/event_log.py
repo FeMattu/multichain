@@ -90,6 +90,7 @@ SNAPSHOT_KINDS = (
     "getblockchaininfo",
     "getlastblockinfo",
     "listblocks",
+    "wpoalistblocksortition",
     "getallweights",
     "getallmalus",
     "wpoalistscores",

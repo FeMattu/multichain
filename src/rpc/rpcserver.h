@@ -397,6 +397,8 @@ extern json_spirit::Value wpoalistscores(const json_spirit::Array& params, bool 
 extern json_spirit::Value wpoagetlocaldelay(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value wpoagetnodedelay(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value wpoalistdelays(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value wpoagetblocksortition(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value wpoalistblocksortition(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value wpoagetlocaleffectiveweight(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value wpoagetnodeeffectiveweight(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value wpoalisteffectiveweights(const json_spirit::Array& params, bool fHelp);

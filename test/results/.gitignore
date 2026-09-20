@@ -4,3 +4,8 @@
 *
 !.gitignore
 !.gitkeep
+# The reading guide is the exception: it is documentation that happens to live beside
+# the evidence, not evidence. Its rules — §9 in particular — are what keep the next
+# reader from misreading a column, so they have to travel with the code that produces
+# those columns.
+!GUIDA-STATISTICHE-E-GRAFICI.md

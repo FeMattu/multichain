@@ -178,6 +178,8 @@ Files **modified** in the host tree (integration points):
 | Startup flags | [`../../core/init.cpp`](../src/core/init.cpp) | Parse `-enablewpoasortition`/`-wpoasortitiondelta`/`-wpoasortitionlambda`; require RANDAO and `k >= 1`; range-check the band; help lines; log. | [node-startup.md](node-startup.md) |
 | Miner | [`../../miner/miner.cpp`](../src/miner/miner.cpp) | Sortition branch in `GetMinerAndExpectedMiningStartTime` (score-timed start + anti-respin guard); switch the reveal-embed input to the sortition input in `CreateBlockSignature`; mark the proposed height after `ProcessBlockFound`. | [sortition-miner.md](sortition-miner.md) |
 | Validator | [`../../protocol/multichainblock.cpp`](../src/protocol/multichainblock.cpp) | Sortition branch in `VerifyBlockMinerWPoA`: VRF-verify over the sortition input + score recompute + time bar, replacing the argmin equality on sortition heights. | [sortition-validator.md](sortition-validator.md) |
+| Audit RPC | [`../../rpc/rpcwpoa.cpp`](../src/rpc/rpcwpoa.cpp) | `wpoagetblocksortition` / `wpoalistblocksortition`: re-expose, read-only, the score recompute the validator already performs — the winner's **real** private score, from the VRF reveal its block carries. | §13 |
+| Reveal extractor | [`../randao_accumulator.h`](../src/wpoa/randao_accumulator.h) | Declare `WPoAExtractBlockReveal` (was a static in `randao_accumulator.cpp`) so the audit RPCs get the stack-local, thread-safe extraction rather than the validation path's shared scratch buffer. | §13 |
 | Build | [`../../Makefile.am`](../src/Makefile.am) | Compile `wpoa/private_sortition.cpp`; track the header. | §10 |
 
 Depends on:
@@ -498,6 +500,22 @@ waits for weight convergence, drives the chain past setup, and asserts:
   measure-zero (like the tie-break). See §11 for the integer-comparison hardening.
 - **Flag/parameter uniformity (accepted).** `-enablewpoasortition`, `-wpoasortitiondelta` and `-wpoasortitionlambda` are
   consensus-affecting and must match across validators, like the Phase 2/3a/3b flags.
+- **Only the WINNER's score is observable (structural).** The privacy this phase buys has a
+  measurement cost: no node can recompute another validator's score, so no node can name the
+  round's argmin. The `wpoa*score` / `wpoa*delay` RPCs answer with the **public** Phase-2 form
+  `HMAC-SHA256(seed, address)`, which is a different random variable from the VRF draw the
+  timers were armed with — a model audit, never a statement about who should have won. Any
+  metric built on it (an "inversion rate" against that argmin, a correlation between block
+  timing and that delay) returns its own null value whatever the protocol does; measured on
+  `core-intercontinental`, an inversion rate of 0.9103 against the `1 − 1/n` = 0.90 predicted
+  for an unrelated comparison.
+  The winner is the one candidate whose real score IS publicly recomputable, because its block
+  publishes the reveal: `wpoagetblocksortition` returns it. Two questions follow from that
+  single series, without any node's secret key — whether the delay was honoured
+  (`corr(dt_prev, delay_true)`), and whether the winner was the argmin (the winner's
+  `score_norm` is `U(0,1)` iff it was, by Prop. 5.10; ~`1 − 1/(n+1)` if the outcome is
+  score-independent). The harness collects them per block and phase 3 reports both at the top
+  of `timer_race.md`.
 - **Requires `k ≥ 1` (enforced).** The seed↔reveal acyclicity constraint is validated in
   AppInit2; `k = 0` is rejected when sortition is enabled.
 - **Phase 5 hook.** The last-revealer bias the RANDAO layer only bounds (Cleve; thesis §7.3)

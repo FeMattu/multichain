@@ -165,6 +165,8 @@ static const CRPCCommand vRPCCommands[] =
     { "wpoa",               "wpoagetlocaldelay",      &wpoagetlocaldelay,      true,      false,      true },
     { "wpoa",               "wpoagetnodedelay",       &wpoagetnodedelay,       true,      false,      true },
     { "wpoa",               "wpoalistdelays",         &wpoalistdelays,         true,      false,      true },
+    { "wpoa",               "wpoagetblocksortition",  &wpoagetblocksortition,  true,      false,      true },
+    { "wpoa",               "wpoalistblocksortition", &wpoalistblocksortition, true,      false,      true },
     { "wpoa",               "wpoagetlocaleffectiveweight", &wpoagetlocaleffectiveweight, true,      false,      true },
     { "wpoa",               "wpoagetnodeeffectiveweight", &wpoagetnodeeffectiveweight, true,      false,      true },
     { "wpoa",               "wpoalisteffectiveweights", &wpoalisteffectiveweights, true,      false,      true },

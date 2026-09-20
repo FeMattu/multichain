@@ -63,8 +63,11 @@ static uint256 GenesisAccumulator()
 // of mc_gState->m_TmpScript1: the accumulator runs on the miner thread too, and
 // the shared validation-path scratch buffer must not be touched from there.
 // Returns true and fills reveal_out/reveal_len on success.
-static bool ExtractBlockReveal(const CBlock& block,
-                               unsigned char* reveal_out, int* reveal_len)
+//
+// Declared in the header (not static) because the read-only sortition audit RPCs
+// need the same thread-safe extraction from an RPC thread.
+bool WPoAExtractBlockReveal(const CBlock& block,
+                            unsigned char* reveal_out, int* reveal_len)
 {
     mc_Script scriptTmp; // local instance -> thread-safe (no shared temp buffers)
 
@@ -157,7 +160,7 @@ static uint256 GetAccumulator(const CBlockIndex* pindex)
         CBlock blk;
 
         if (((b->nStatus & BLOCK_HAVE_DATA) != 0) && ReadBlockFromDisk(blk, b) &&
-            ExtractBlockReveal(blk, reveal, &reveal_len))
+            WPoAExtractBlockReveal(blk, reveal, &reveal_len))
         {
             RandaoAccumulator::Fold(rtot.begin(), reveal, (size_t)reveal_len, out);
         }

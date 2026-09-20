@@ -328,16 +328,18 @@ class Analysis:
             round_rows = self.rounds_of(epoch)
             row["n_rounds"] = len(round_rows)
             row["delay_recompute_mismatch_rounds"] = sum(
-                1 for r in round_rows if (i(r.get("n_delay_mismatch")) or 0) > 0
+                1 for r in round_rows if (i(r.get("n_delay_mismatch_public")) or 0) > 0
             )
-            inversions = [r for r in round_rows if b(r.get("inversion")) is True]
-            decided = [r for r in round_rows if b(r.get("inversion")) is not None]
-            row["inversion_n"] = len(inversions)
-            row["inversion_rounds"] = len(decided)
-            row["inversion_rate"] = (len(inversions) / len(decided)) if decided else None
+            inversions = [r for r in round_rows if b(r.get("inversion_public")) is True]
+            decided = [r for r in round_rows if b(r.get("inversion_public")) is not None]
+            row["inversion_public_n"] = len(inversions)
+            row["inversion_public_rounds"] = len(decided)
+            row["inversion_public_rate"] = (
+                (len(inversions) / len(decided)) if decided else None
+            )
             low, high = WILSON.wilson_interval(len(inversions), len(decided))
-            row["inversion_wilson95_low"] = low
-            row["inversion_wilson95_high"] = high
+            row["inversion_public_wilson95_low"] = low
+            row["inversion_public_wilson95_high"] = high
             rows.append(row)
 
         self.tables["wpoa_epoch_tests"] = rows
@@ -346,7 +348,7 @@ class Analysis:
 
     def analyse_timer_race(self) -> None:
         measured = [r for r in self.rounds if b(r.get("in_setup")) is False]
-        margins = [f(r.get("margin_G_s")) for r in measured]
+        margins = [f(r.get("margin_G_public_s")) for r in measured]
         margins = [m for m in margins if m is not None]
 
         tbt = next((f(r.get("target_block_time")) for r in measured
@@ -402,9 +404,9 @@ class Analysis:
         weights: Dict[str, List[float]] = defaultdict(list)
         for entry in measured:
             winner = entry.get("winner_address", "")
-            gap = f(entry.get("score_gap_2_1"))
+            gap = f(entry.get("score_gap_2_1_public"))
             total = f(entry.get("W_tot_effective"))
-            weight = f(entry.get("weff_argmin"))
+            weight = f(entry.get("weff_argmin_public"))
             if winner and gap is not None and total is not None and weight is not None:
                 gaps[winner].append(gap)
                 totals[winner].append(total)
@@ -412,10 +414,11 @@ class Analysis:
         self.tables["wpoa_prop517"] = TIMER.prop517_test(gaps, totals, weights)
 
         # The perturbation budget and the inversion bound.
-        residuals = [f(r.get("scheduler_residual_s")) for r in measured]
+        residuals = [f(r.get("scheduler_residual_public_s")) for r in measured]
         residuals = [r for r in residuals if r is not None]
         inversion_gaps = [
-            f(r.get("margin_G_s")) for r in measured if b(r.get("inversion")) is True
+            f(r.get("margin_G_public_s")) for r in measured
+            if b(r.get("inversion_public")) is True
         ]
         inversion_gaps = [g for g in inversion_gaps if g is not None]
         # S1: the spread of propagation between validator pairs, from the emulated map.
@@ -439,19 +442,103 @@ class Analysis:
         row["inversion_bound_sigma_S1"] = next(
             (r["sigma_s"] for r in sigma_rows if r["source"] == "S1_topology"), 0.0
         )
-        row["inversion_bound_sigma_S2"] = sigma_s2
-        row["inversion_bound"] = TIMER.inversion_bound(n_candidates, sigma_s2 or 0.0, dmax or 0.0)
-        row["inversion_mc_prob_gaussian_sigma_S2"] = (
+        row["inversion_bound_sigma_S2_public"] = sigma_s2
+        row["inversion_bound_public"] = TIMER.inversion_bound(
+            n_candidates, sigma_s2 or 0.0, dmax or 0.0
+        )
+        row["inversion_mc_prob_gaussian_sigma_S2_public"] = (
             TIMER.mc_inversion_probability(
                 matrix, tbt, delta, lam, phi, sigma_s2 or 0.0, MC_GOF, ANALYSIS_SEED
             )
             if matrix
             else None
         )
-        inversions = [r for r in measured if b(r.get("inversion")) is True]
-        decided = [r for r in measured if b(r.get("inversion")) is not None]
-        row["inversion_observed_n"] = len(inversions)
-        row["inversion_observed_rate"] = (len(inversions) / len(decided)) if decided else None
+        inversions = [r for r in measured if b(r.get("inversion_public")) is True]
+        decided = [r for r in measured if b(r.get("inversion_public")) is not None]
+        row["inversion_observed_n_public"] = len(inversions)
+        row["inversion_observed_rate_public"] = (
+            (len(inversions) / len(decided)) if decided else None
+        )
+
+        self.analyse_true_score(measured, row)
+
+    # -- 3b. the winner's real score ---------------------------------------------------
+
+    def analyse_true_score(self, measured: List[Dict[str, Any]], row: Dict[str, Any]) -> None:
+        """Q1 and Q2, from the only score the election actually ran on.
+
+        Everything in analyse_timer_race above is built on the PUBLIC Efraimidis score,
+        which no validator's timer was ever set from, so it cannot answer either
+        question -- ``inversion_*_public`` has expectation 1 - 1/n whatever the protocol
+        does. These two tests use the winner's REAL score, recomputed from the VRF reveal
+        its own block carries (phase 1 ``block_sortition``).
+
+        **Q1, is the delay honoured?** ``corr(dt_prev, delay_true)``. If each proposer
+        waits the delay its score entitles it to, the realised spacing IS that delay, so
+        the correlation is ~1 and ``residual_true_s`` has the spread of the timing noise
+        alone. Decoupled timing gives ~0.
+
+        **Q2, is the winner the argmin?** The winner's ``score_norm_true``. The minimum
+        of the field is ``Exp(W)``-distributed, so ``1 - exp(-W*min)`` is exactly U(0,1)
+        (Prop. 5.10) -- mean 0.5. A winner drawn without regard to score instead carries
+        its OWN score, whose normalised value is ``1 - exp(-X)`` with ``X ~ Exp(f(w)/W)``
+        of mean ~n: it piles up against 1, with mean ~1 - 1/(n+1). One sample of the
+        winner per round is therefore enough to separate the two, WITHOUT the private
+        scores of the validators that did not win.
+
+        Both are also computed on the subset that excludes the rows where the weight
+        read was taken in a later epoch than the round (``weight_epoch_stale``), so the
+        record-and-flag choice about that staleness is confirmed, or not, a posteriori.
+        """
+        from pipeline.stat import ks_pvalue_one_sample, pearson  # noqa: E402
+        from pipeline.stat import ks_statistic_against_cdf  # noqa: E402
+
+        def sd(values: Sequence[float]) -> Optional[float]:
+            n = len(values)
+            if n < 2:
+                return None
+            mean = sum(values) / n
+            return math.sqrt(sum((v - mean) ** 2 for v in values) / (n - 1))
+
+        def stats(rows: List[Dict[str, Any]], suffix: str) -> None:
+            dt = [f(r.get("dt_prev_s")) for r in rows]
+            dl = [f(r.get("delay_true_s")) for r in rows]
+            pairs = [(a, x) for a, x in zip(dt, dl) if a is not None and x is not None]
+            r_dt, p_dt, n_dt = pearson([a for a, _ in pairs], [x for _, x in pairs])
+            row["true_n_rounds" + suffix] = n_dt
+            row["true_corr_dt_delay" + suffix] = r_dt
+            row["true_corr_dt_delay_p" + suffix] = p_dt
+
+            residuals = [f(r.get("residual_true_s")) for r in rows]
+            residuals = [x for x in residuals if x is not None]
+            row["true_residual_mean_s" + suffix] = (
+                sum(residuals) / len(residuals) if residuals else None
+            )
+            row["true_residual_sd_s" + suffix] = sd(residuals)
+
+            norms = [f(r.get("score_norm_true")) for r in rows]
+            norms = [x for x in norms if x is not None and 0.0 <= x <= 1.0]
+            row["true_score_norm_n" + suffix] = len(norms)
+            row["true_score_norm_mean" + suffix] = (
+                sum(norms) / len(norms) if norms else None
+            )
+            # Against U(0,1): not rejected => the winner is the argmin of the field.
+            ks_d = ks_statistic_against_cdf(norms, lambda v: min(max(v, 0.0), 1.0)) \
+                if len(norms) > 4 else None
+            row["true_score_norm_ks_d" + suffix] = ks_d
+            row["true_score_norm_ks_p_uniform" + suffix] = (
+                ks_pvalue_one_sample(ks_d, len(norms)) if ks_d is not None else None
+            )
+            row["true_score_norm_uniform" + suffix] = (
+                None
+                if row["true_score_norm_ks_p_uniform" + suffix] is None
+                else row["true_score_norm_ks_p_uniform" + suffix] >= ALPHA
+            )
+
+        stats(measured, "")
+        fresh = [r for r in measured if b(r.get("weight_epoch_stale")) is not True]
+        stats(fresh, "_fresh_weights")
+        row["true_n_rounds_weight_epoch_stale"] = len(measured) - len(fresh)
 
     # -- 4. longitudinal ---------------------------------------------------------------
 
@@ -1189,6 +1276,76 @@ class Analysis:
         lines.append("")
         lines.append("")
         timer = (self.tables.get("wpoa_timer_race") or [{}])[0]
+
+        lines.append("## The winner's real score")
+        lines.append("")
+        lines.append(
+            "Every `_public` quantity in the next section is derived from the PUBLIC "
+            "Efraimidis score, `HMAC-SHA256(seed, address)` — the only form computable "
+            "for a validator whose secret key this node does not hold. Under private "
+            "sortition the election draws from a VRF under each proposer's own key, so "
+            "the public score is **statistically independent** of the one the timers "
+            "were set from: `inversion_rate_public` has expectation `1 - 1/n` whatever "
+            "the protocol does, and `corr(dt_prev, delay_public)` has expectation 0. "
+            "Those columns cannot show the mechanism working **or** broken."
+        )
+        lines.append("")
+        lines.append(
+            "This section uses the winner's REAL score instead, recomputed from the VRF "
+            "reveal its own block carries — the same recomputation the validator "
+            "performs to enforce the time bar."
+        )
+        lines.append("")
+        lines.append("| quantity | value | works | decoupled |")
+        lines.append("|---|---:|---:|---:|")
+        for label, key, digits, ok, bad in (
+            ("rounds with a real score", "true_n_rounds", 0, "", ""),
+            ("corr(dt_prev, delay_true) — Q1", "true_corr_dt_delay", 5, "~1", "~0"),
+            ("residual mean (s)", "true_residual_mean_s", 5, "~0", "< 0"),
+            ("residual sd (s)", "true_residual_sd_s", 5, "~sigma S1", "~sd(band)"),
+            ("mean score_norm of winner — Q2", "true_score_norm_mean", 5, "0.5", "~1"),
+            ("KS vs U(0,1), p — Q2", "true_score_norm_ks_p_uniform", 5, "not rej.", "~0"),
+            ("winner is the argmin (KS not rejected)", "true_score_norm_uniform", 0, "true", "false"),
+        ):
+            lines.append("| %s | %s | %s | %s |"
+                         % (label, _fmt(timer.get(key), digits), ok, bad))
+        lines.append("")
+        lines.append(
+            "Q2 needs only the winner because the minimum of the field is `Exp(W)`, so "
+            "`1 - exp(-W*min)` is exactly `U(0,1)` (Prop. 5.10); a winner drawn without "
+            "regard to score carries its own score instead, whose normalised value piles "
+            "up against 1."
+        )
+        lines.append("")
+        lines.append(
+            "Weights are read as of the sampling tip, so a round sampled after its own "
+            "epoch closed may be scored on the next epoch's weights. Those rows are "
+            "flagged and the same two tests are repeated without them — if the verdict "
+            "is unchanged, the staleness does not matter here."
+        )
+        lines.append("")
+        lines.append("| quantity | all rounds | fresh weights only |")
+        lines.append("|---|---:|---:|")
+        for label, key, digits in (
+            ("rounds", "true_n_rounds", 0),
+            ("corr(dt_prev, delay_true)", "true_corr_dt_delay", 5),
+            ("mean score_norm of winner", "true_score_norm_mean", 5),
+            ("KS vs U(0,1), p", "true_score_norm_ks_p_uniform", 5),
+        ):
+            lines.append("| %s | %s | %s |" % (label, _fmt(timer.get(key), digits),
+                                               _fmt(timer.get(key + "_fresh_weights"), digits)))
+        lines.append("| rounds excluded as stale | %s | — |"
+                     % _fmt(timer.get("true_n_rounds_weight_epoch_stale"), 0))
+        lines.append("")
+
+        lines.append("## The public-score model audit")
+        lines.append("")
+        lines.append(
+            "Kept, and suffixed `_public`, because these numbers have been published. "
+            "Read them as an audit of the model and its inputs, never as a statement "
+            "about who actually won."
+        )
+        lines.append("")
         lines.append("| quantity | value |")
         lines.append("|---|---|")
         for label, key, digits in (
@@ -1198,11 +1355,12 @@ class Analysis:
             ("KS vs Beta(1,n) — straw man, p", "ks_beta_p", 5),
             ("KS vs simulated exact — reference, p", "ks_mc_p", 5),
             ("sigma S1 (topology)", "inversion_bound_sigma_S1", 6),
-            ("sigma S2 (scheduler residual)", "inversion_bound_sigma_S2", 6),
-            ("inversion bound (Prop. 5.18)", "inversion_bound", 5),
-            ("inversion probability, MC with sigma_S2", "inversion_mc_prob_gaussian_sigma_S2", 5),
-            ("inversions observed", "inversion_observed_n", 0),
-            ("inversion rate observed", "inversion_observed_rate", 5),
+            ("sigma S2 (scheduler residual, public)", "inversion_bound_sigma_S2_public", 6),
+            ("inversion bound (Prop. 5.18, public)", "inversion_bound_public", 5),
+            ("inversion probability, MC with sigma_S2 (public)",
+             "inversion_mc_prob_gaussian_sigma_S2_public", 5),
+            ("inversions observed (public)", "inversion_observed_n_public", 0),
+            ("inversion rate observed (public)", "inversion_observed_rate_public", 5),
         ):
             lines.append("| %s | %s |" % (label, _fmt(timer.get(key), digits)))
         lines.append("")

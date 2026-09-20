@@ -856,9 +856,9 @@ class Plotter:
     def plot_margin(self) -> None:
         path = self.out / "margin_distribution.png"
         margins = [
-            f(r.get("margin_G_s"))
+            f(r.get("margin_G_public_s"))
             for r in self.round_level
-            if b(r.get("in_setup")) is False and f(r.get("margin_G_s")) is not None
+            if b(r.get("in_setup")) is False and f(r.get("margin_G_public_s")) is not None
         ]
         if len(margins) < 3:
             self.record(empty(path, "Timer-race margin",
@@ -994,7 +994,8 @@ class Plotter:
         """
         path = self.out / "delay_recompute_mismatch.png"
         rows = [r for r in self.candidates
-                if i(r.get("epoch")) is not None and f(r.get("delay_mismatch_s")) is not None]
+                if i(r.get("epoch")) is not None
+                and f(r.get("delay_mismatch_public_s")) is not None]
         if not rows:
             self.record(empty(path, "Delay recompute mismatch",
                               "no candidate row carries both an epoch and a mismatch"))
@@ -1006,7 +1007,7 @@ class Plotter:
         def draw(subset: Sequence[Dict[str, str]], title: str, colour_by_address: bool):
             one, ax = plt.subplots(figsize=FIGSIZE)
             for address in sorted({r.get("address", "") for r in subset}):
-                points = [(i(r["epoch"]), abs(f(r["delay_mismatch_s"])),
+                points = [(i(r["epoch"]), abs(f(r["delay_mismatch_public_s"])),
                            b(r.get("delay_recompute_ok")))
                           for r in subset if r.get("address") == address]
                 points = [(e, v, ok) for e, v, ok in points if e is not None and v is not None]
@@ -1243,10 +1244,10 @@ class Plotter:
         path = self.out / "inversion_bound_vs_observed.png"
         timer = self.timer[0] if self.timer else {}
         entries = [
-            ("Prop. 5.18 bound", f(timer.get("inversion_bound")), PALETTE[0]),
-            ("Monte Carlo, sigma S2", f(timer.get("inversion_mc_prob_gaussian_sigma_S2")),
-             PALETTE[2]),
-            ("observed rate", f(timer.get("inversion_observed_rate")), PALETTE[1]),
+            ("Prop. 5.18 bound", f(timer.get("inversion_bound_public")), PALETTE[0]),
+            ("Monte Carlo, sigma S2",
+             f(timer.get("inversion_mc_prob_gaussian_sigma_S2_public")), PALETTE[2]),
+            ("observed rate", f(timer.get("inversion_observed_rate_public")), PALETTE[1]),
         ]
         entries = [e for e in entries if e[1] is not None]
         if not entries:
@@ -1263,16 +1264,19 @@ class Plotter:
         ax.set_xticks(xs)
         ax.set_xticklabels([e[0] for e in entries], fontsize=9)
         ax.set_ylabel("probability of an inversion per round")
-        ax.set_title("Prop. 5.18: the bound, the simulation and the observation")
+        ax.set_title("Prop. 5.18, PUBLIC score: the bound, the simulation, the observation")
         ax.grid(axis="y", alpha=0.25)
         self.record(finish(
             fig, path,
-            "Global, not per validator: the bound is a function of the candidate count, "
-            "sigma and D_max, which are properties of the round. D_max = %s s, "
-            "candidates = %s, observed over %s round(s). The bound is an upper limit: "
-            "the observation sitting below it is the expected result, not a weak one."
+            "PUBLIC-SCORE AUDIT: every quantity here is derived from the public "
+            "Efraimidis score, which is independent of the private VRF score the "
+            "election ran on, so the observed rate is ~1-1/n whatever the protocol "
+            "does. Read timer_race.md for the real-score test. Global, not per "
+            "validator: the bound is a function of the candidate count, sigma and "
+            "D_max, which are properties of the round. D_max = %s s, candidates = %s, "
+            "observed over %s round(s)."
             % (timer.get("D_max", "-"), timer.get("n_candidates", "-"),
-               timer.get("inversion_observed_n", "-")),
+               timer.get("inversion_observed_n_public", "-")),
             invalid_reason=self.invalid_if("delay_recompute_mismatch_rounds_is_zero"),
         ))
 

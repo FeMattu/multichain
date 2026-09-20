@@ -15,7 +15,7 @@ shape would break every existing consumer — but it has to be *written down*.
 |---|---|---|
 | **A — address → object** | `{"scores": {"1Abc...": {"score": …, "weight": …}}}` | `wpoalistscores`, `wpoalistdelays`, `wpoalisteffectiveweights`, `wpoalistfinalweights`, `weightlistcontributions`, `weightlistclusterweights`, `weightlistearnings` |
 | **B — address → bare number** | `{"weights": {"1Abc...": 4200}}` | `getallweights`, `weightlistreturns`, `weightlistbalances` |
-| **C — array of objects** | `{"entries": [{"address": …, "verdict": …}]}` | `weightverifyweights` |
+| **C — array of objects** | `{"entries": [{"address": …, "verdict": …}]}` | `weightverifyweights`, `wpoalistblocksortition` (a bare array, no wrapper key) |
 
 A consumer that assumes shape A will read shape B as `4200["score"]` and raise; one that
 assumes B will read A as a dict where a number was expected. Both failures happen at parse
@@ -45,6 +45,44 @@ add `target_block_time`, `delta`, `lambda`, `feedback` (Φ).
 > dumping function alone. `wpoalistfinalweights` reports `g(w·Ψ)`, after the malus factor
 > too, and *that* is what the selector draws on. Comparing observed block shares against
 > the effective weight rather than the final one tests a null the selector never used.
+
+> ⛔ **Which *score* these four report — the trap that outlives the shape traps.** All of
+> them score with the **public** Efraimidis form `HMAC-SHA256(seed, address)`, the only one
+> computable for a validator whose secret key the answering node does not hold. Under private
+> sortition (Phase 4) the election draws from a VRF under each proposer's own key, so these
+> scores are an audit of the model and its inputs and are *statistically independent* of the
+> draw that armed the timers. They cannot name the round's argmin, and a metric that treats
+> them as if they could returns its own null value whatever the protocol does. The block
+> audit below is the surface that reports the real thing.
+
+### Block sortition audit — shape C
+
+`wpoagetblocksortition <height>` returns one object; `wpoalistblocksortition
+<block-set-identifier>` returns a **bare JSON array** of the same objects — no wrapper key,
+unlike every shape-A answer above. The block-set grammar is `listblocks`'s, and one call is
+capped at 1000 heights because each one is read from disk.
+
+These report the **winner's real private score**, recomputed from the VRF reveal its block
+carries — the same recompute `WPoASortitionVerifyProposer` performs to enforce the time bar.
+It is the only score surface that describes the election that actually happened, and it
+exists only for the winner: no node can produce the others.
+
+| Field group | Fields |
+|---|---|
+| identity | `height`, `hash`, `miner`, `epoch` |
+| the real draw | `score`, `score_norm`, `delay`, `earliest_time`, `effective_weight` |
+| timing | `block_time`, `parent_time`, `dt_prev`, `time_received` (**local** sub-second arrival, per-node, not consensus data) |
+| round context | `total_effective_weight`, `target_block_time`, `delta`, `lambda`, `feedback`, `seed`, `seed_source`, `dumping_function` |
+| provenance | `sample_height`, `sample_epoch`, `weight_epoch_stale`, `verdict` |
+
+`verdict` is always present and names why a row carries no score rather than leaving a hole:
+`ok`, `not-sortition`, `no-reveal`, `no-signer`, `no-weight`, `no-block`, `no-block-data`,
+`unevaluable`.
+
+> **Weights are read as of the answering tip, not as of `height`.** The registry has no
+> height-bound read, and weights only move on an epoch boundary, so an answer is exact
+> whenever `sample_epoch == epoch`; `weight_epoch_stale` flags the rows where it is not
+> (roughly one per epoch when sampled per block).
 
 ### WeightEngine epoch audit
 

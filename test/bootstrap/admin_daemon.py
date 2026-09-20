@@ -130,6 +130,25 @@ class AdminDaemon:
         self.log.snapshot("listblocks", tip, blocks, window_first=first, window_last=last)
         self._last_block_sampled = last
 
+        # The same window, audited for the winner's REAL private score. Sampled here
+        # rather than in sample_round because it is a property of a block that exists,
+        # not of a round being decided -- and because the weights it reads are only
+        # exact while the tip is still inside the audited height's own epoch, which a
+        # per-block cadence keeps true (the answer carries weight_epoch_stale either
+        # way). The round RPCs above score the PUBLIC Efraimidis form, which is not the
+        # quantity the election ran on; this is.
+        try:
+            self.log.snapshot(
+                "wpoalistblocksortition",
+                tip,
+                self.rpc.call("wpoalistblocksortition", "%d-%d" % (first, last)),
+                window_first=first,
+                window_last=last,
+            )
+        except (RpcError, RpcTransportError) as exc:
+            self.log.rpc_error("wpoalistblocksortition", exc, tip,
+                               window="%d-%d" % (first, last))
+
         try:
             self.log.snapshot("getlastblockinfo", tip, self.rpc.call("getlastblockinfo", 0))
         except (RpcError, RpcTransportError) as exc:

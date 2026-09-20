@@ -1,0 +1,89 @@
+# The confirmation run for the block-sortition audit: does the winner's REAL private
+# score govern the timing, and is the winner the argmin?
+#
+# 1 admin, 3 CAs, 12 miners, 24 companies -> 40 nodes. 30 epochs of 60 blocks -> 1800
+# configured blocks at 7 s/block ~= 3h30m of pure mining, a little more once the
+# harness's auto-derived setup-first-blocks are added.
+#
+# NATIVE on purpose. Q1 (is the delay honoured?) and Q2 (is the winner the argmin?) are
+# questions about the local chain score -> delay -> mining-start, and sigma_S1 is already
+# known to be two orders of magnitude below sigma_S2 in both regimes. An emulated map
+# would add hours of wall clock and propagation noise without adding discriminating
+# power; the geography belongs in the core/ profiles, which answer a different question.
+#
+# 1800 rounds is deliberately well above the minimum. The effect size that separates the
+# two hypotheses is enormous -- mean score_norm of the winner 0.50 against ~0.92 with 12
+# miners, corr(dt_prev, delay_true) ~1 against ~0 -- and a few hundred rounds would
+# already do it. But this run is what decides whether the whole C2/VDF direction still
+# has a reason to exist, and on a run this cheap the margin over the strict minimum is
+# worth more than the hours it costs.
+#
+# Everything except epochs.count, the node mix and the ports is copied from
+# long10h-medium-sqrt.yaml, so the two are comparable term by term.
+#
+# Format and defaults: ../schema.md
+# The wPoA/WeightEngine activation flags are NOT configurable here: every chain this
+# harness creates runs the full stack (weights -> selection -> vrf -> randao ->
+# sortition -> malus) plus the weight engine.
+
+seed: 20260905
+chain_name: wpoa-instrument-1800
+
+nodes:
+  ca_count: 3
+  miner_count: 12
+  company_count: 24
+
+network:
+  host: 127.0.0.1
+  base_port: 10720
+  base_rpc_port: 20720
+
+epochs:
+  count: 30
+  length_blocks: 60
+
+chain:
+  target-block-time: 7
+  mining-diversity: 0.0
+  mine-empty-rounds: -1
+  mining-requires-peers: false
+  first-block-reward: 100000000000000
+  initial-block-reward: 0
+  minimum-relay-fee: 20000000
+  anyone-can-connect: false
+
+wpoa:
+  dump-function: sqrt
+  wpoa-sortition-delta: 0.5
+  wpoa-sortition-lambda: 0.3
+  wpoa-malus-mu: 0.5
+  wpoa-malus-max: 4.0
+  wpoa-malus-equiv-points: 4.0
+  wpoa-malus-delay-points: 0.25
+  wpoa-malus-selfwrite-points: 1.0
+  wpoa-malus-badweight-points: 2.0
+
+weight_engine:
+  weight-kappa: 100.0
+  weight-alpha: 0.2
+  weight-lambda: 0.5
+
+traffic:
+  event_stream: supply-chain-events
+  company_tx_per_epoch_range: [30, 60]
+  miner_gas_returns_per_epoch_range: [0, 5]
+  esg_score_range: [1, 100]
+  restitution_amount_range: [1.0, 9.0]
+
+runtime:
+  # The node's JSON writer decides how many decimals a double needs by rounding
+  # it and then emits it by truncating it, so a value whose fraction rounds up
+  # to 1.000...0 at the default of 14 is reported as its floor. 17 is a double's
+  # round-trip precision, which puts that boundary out of reach. See
+  # ../../schema.md and analysis/pipeline/tools/verify_json_double_rendering.py.
+  api_decimal_digits: 17
+  bindir: src
+  rpc_timeout_s: 30
+  startup_timeout_s: 120
+  wpoa_debug: false

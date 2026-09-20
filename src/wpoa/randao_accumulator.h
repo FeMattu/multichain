@@ -208,6 +208,7 @@ private:
 // ---------------------------------------------------------------------------
 
 class CBlockIndex;   // forward-declared: the glue walks the block index
+class CBlock;        // forward-declared: the reveal extractor reads a whole block
 
 /**
  * Set once from -enablewpoarandao in AppInit2. Default false = Phase 3a behavior:
@@ -255,5 +256,23 @@ bool WPoARANDAOActiveAtHeight(int height);
  * @return true if a seed was produced.
  */
 bool WPoARandaoSelectionSeed(const CBlockIndex* pindexTip, unsigned char* seed_out);
+
+/**
+ * Read the VRF reveal a block carries in its coinbase OP_RETURN.
+ *
+ * Same extraction FindBlockVRF (multichainblock.cpp) performs on the validation
+ * path, but with a STACK-LOCAL mc_Script instead of the shared scratch buffer
+ * mc_gState->m_TmpScript1 — so it is safe to call from the miner thread and from
+ * an RPC thread, which the validation-path version is not. The proof is not
+ * returned: a caller auditing a block already in the index is looking at a reveal
+ * whose proof VerifyBlockMinerWPoA checked at accept time.
+ *
+ * @param block       the block to read.
+ * @param reveal_out  [out] buffer for the reveal.
+ * @param reveal_len  [in] capacity of reveal_out; [out] bytes written.
+ * @return true if the block carries a reveal.
+ */
+bool WPoAExtractBlockReveal(const CBlock& block,
+                            unsigned char* reveal_out, int* reveal_len);
 
 #endif // WPOA_RANDAO_ACCUMULATOR_H
