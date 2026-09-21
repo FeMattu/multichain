@@ -228,11 +228,13 @@ class NodeRunner:
         if self.profile.runtime.get("wpoa_debug"):
             args.append("-wpoadebug")
         if self.profile.runtime.get("fork_score"):
-            # The mechanism, and the only channel that reports it. ``-debug=wpoafork``
-            # is not optional decoration: LogPrint emits nothing unless its category is
-            # listed there (src/utils/util.cpp, LogAcceptCategory), so without it the
-            # per-candidate lines the analysis reads simply would not exist.
             args.append("-enablewpoaforkscore=1")
+        if self.profile.runtime.get("fork_score") or self.profile.runtime.get("fork_score_log"):
+            # ``-debug=wpoafork`` is not optional decoration: LogPrint emits nothing
+            # unless its category is listed there (src/utils/util.cpp,
+            # LogAcceptCategory), so without it the per-candidate lines the analysis
+            # reads simply would not exist. Passed for the control arm too, where the
+            # mechanism is off and the log is the whole point.
             args.append("-debug=wpoafork")
         digits = self.profile.runtime.get("api_decimal_digits")
         if digits is not None:

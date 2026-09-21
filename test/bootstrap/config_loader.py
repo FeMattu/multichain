@@ -210,6 +210,13 @@ _RUNTIME_DEFAULTS: Dict[str, Any] = {
     # on does not change which blocks are valid, only which of two equally valid
     # same-height blocks a node prefers while neither has been extended.
     "fork_score": False,
+    # The candidate log WITHOUT the mechanism (-debug=wpoafork alone). This is what
+    # makes a control arm possible: the log, the cached scores and the reconstructed
+    # legacy winner are all independent of -enablewpoaforkscore -- only the comparator's
+    # score test reads it -- so a run with fork_score off and this on observes exactly
+    # the same candidate sets and reports what first-seen alone does with them.
+    # Implied by fork_score, so a measured arm never has to set both.
+    "fork_score_log": False,
     # None = do not pass the flag, which is the node's own default of 14.
     "api_decimal_digits": None,
 }
@@ -1266,6 +1273,8 @@ def load_profile(path: str | os.PathLike) -> Profile:
         raise ConfigError("runtime.wpoa_debug must be true or false")
     if not isinstance(runtime["fork_score"], bool):
         raise ConfigError("runtime.fork_score must be true or false")
+    if not isinstance(runtime["fork_score_log"], bool):
+        raise ConfigError("runtime.fork_score_log must be true or false")
     digits = runtime["api_decimal_digits"]
     if digits is not None:
         if isinstance(digits, bool) or not isinstance(digits, int) or not (1 <= digits <= 30):
