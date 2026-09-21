@@ -217,6 +217,14 @@ _RUNTIME_DEFAULTS: Dict[str, Any] = {
     # the same candidate sets and reports what first-seen alone does with them.
     # Implied by fork_score, so a measured arm never has to set both.
     "fork_score_log": False,
+    # The sortition miner's own narration (-debug=wpoa): the score/delay it computed for
+    # each round, and the "already proposed, waiting for tip to advance" stand-down. Kept
+    # separate from fork_score_log because it is the miner's side of the story, not the
+    # fork choice's, and because it is far noisier -- every LogPrint("wpoa", ...) in the
+    # tree turns on with it. Note this MUST travel as its own -debug= argument: category
+    # matching is an exact string compare over the raw argument values (util.cpp,
+    # LogAcceptCategory), so "-debug=a,b" enables neither a nor b.
+    "sortition_miner_log": False,
     # None = do not pass the flag, which is the node's own default of 14.
     "api_decimal_digits": None,
 }
@@ -1275,6 +1283,8 @@ def load_profile(path: str | os.PathLike) -> Profile:
         raise ConfigError("runtime.fork_score must be true or false")
     if not isinstance(runtime["fork_score_log"], bool):
         raise ConfigError("runtime.fork_score_log must be true or false")
+    if not isinstance(runtime["sortition_miner_log"], bool):
+        raise ConfigError("runtime.sortition_miner_log must be true or false")
     digits = runtime["api_decimal_digits"]
     if digits is not None:
         if isinstance(digits, bool) or not isinstance(digits, int) or not (1 <= digits <= 30):

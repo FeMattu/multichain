@@ -236,6 +236,10 @@ class NodeRunner:
             # reads simply would not exist. Passed for the control arm too, where the
             # mechanism is off and the log is the whole point.
             args.append("-debug=wpoafork")
+        if self.profile.runtime.get("sortition_miner_log"):
+            # Its own argument, never appended to the one above: categories are matched
+            # as exact strings against each raw -debug= value.
+            args.append("-debug=wpoa")
         digits = self.profile.runtime.get("api_decimal_digits")
         if digits is not None:
             # How many decimals the node's JSON writer keeps. It is a *diagnostic* lever,
