@@ -14,6 +14,7 @@
 #include "utils/util.h"         // GetArg, LogPrintf, RenameThread, GetBoolArg
 #include "utils/utiltime.h"     // MilliSleep, GetTime
 #include "wpoa/weight_record.h" // mc_ParseWeightRecordJson, mc_AccumulateLatestWeight
+#include "wpoa/wpoa_selector.h"  // WPoAWeightRecordInScope
 
 #include <boost/foreach.hpp>
 
@@ -531,7 +532,8 @@ bool WPoAEverElectable()
 
 bool StreamWeightRegistry::ReadAllRecords(std::map<std::string, uint32_t>& out_latest,
                                           std::map<std::string, uint32_t>* out_epochs,
-                                          int* out_first_positive_block)
+                                          int* out_first_positive_block,
+                                          int max_block)
 {
     // Verbose, per-read tracing of the stream read path. Off by default; enable
     // with -wpoadebug for troubleshooting (see src/wpoa/TESTING.md).
@@ -637,6 +639,23 @@ bool StreamWeightRegistry::ReadAllRecords(std::map<std::string, uint32_t>& out_l
         if (er->m_Flags & MC_TFL_IS_EXTENSION)
         {
             if (dbg) LogPrintf("[wpoa-dbg]   row %d: extension row, skipped\n", i);
+            continue;
+        }
+
+        // Height scope. With a bound in force this read answers "what had the registry
+        // confirmed as of block max_block?" rather than "what has THIS node seen by now?"
+        // -- the difference between a value every node agrees on and one that depends on
+        // each node's sync point. Applied here, before the record is decoded, so a row
+        // outside the scope cannot influence the newest-wins accumulation below.
+        //
+        // m_Block < 0 means the item is not attributed to a block. The confirmed prefix
+        // should not contain such rows, but if one appears it is excluded under a bound:
+        // a record with no height cannot be shown to precede max_block, and guessing
+        // would reintroduce exactly the per-node divergence this bound exists to remove.
+        if (!WPoAWeightRecordInScope(er->m_Block, max_block))
+        {
+            if (dbg) LogPrintf("[wpoa-dbg]   row %d: block %d outside scope (<= %d), skipped\n",
+                               i, er->m_Block, max_block);
             continue;
         }
 
@@ -763,19 +782,37 @@ void StreamWeightRegistry::GetAllNodesWeightsWithEpoch(std::map<std::string, uin
     ReadAllRecords(weights, &epochs);
 }
 
-std::map<std::string, uint32_t> StreamWeightRegistry::GetAllNodesWeights()
+std::map<std::string, uint32_t> StreamWeightRegistry::GetAllNodesWeightsAsOf(int max_block)
 {
     std::map<std::string, uint32_t> weights;
-    ReadAllRecords(weights);
+    ReadAllRecords(weights, NULL, NULL, max_block);
 
     uint64_t total = 0;
     for (std::map<std::string, uint32_t>::const_iterator it = weights.begin(); it != weights.end(); ++it)
     {
         total += it->second;
     }
-    LogPrintf("[StreamWeightRegistry] All nodes weights: %u validators, total=%llu\n",
-              (unsigned)weights.size(), (unsigned long long)total);
+    // The scope is part of the reading, not decoration: a run's logs are how a divergence
+    // between two nodes gets reconstructed afterwards, and "7 validators, total=717514" is
+    // not interpretable without knowing which chain prefix produced it.
+    if (max_block >= 0)
+    {
+        LogPrintf("[StreamWeightRegistry] All nodes weights as of block %d: %u validators, total=%llu\n",
+                  max_block, (unsigned)weights.size(), (unsigned long long)total);
+    }
+    else
+    {
+        LogPrintf("[StreamWeightRegistry] All nodes weights: %u validators, total=%llu\n",
+                  (unsigned)weights.size(), (unsigned long long)total);
+    }
     return weights;
+}
+
+std::map<std::string, uint32_t> StreamWeightRegistry::GetAllNodesWeights()
+{
+    // One implementation, two entry points: an unbounded scope IS the unscoped read, so
+    // there is no second copy of the accumulation logic to drift out of step.
+    return GetAllNodesWeightsAsOf(-1);
 }
 
 bool StreamWeightRegistry::IsLocalWeightRegistered()

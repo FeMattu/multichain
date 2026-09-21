@@ -100,8 +100,46 @@ public:
     /** Latest confirmed weight for this node, or 0 if not yet registered. */
     uint32_t GetLocalWeight();
 
-    /** address -> latest confirmed weight, for every validator on the stream. */
+    /** address -> latest confirmed weight, for every validator on the stream.
+     *
+     *  UNSCOPED: this is the evaluating node's view RIGHT NOW, which depends on how far
+     *  it happens to have synced. Correct for "what is the registry today?" questions
+     *  (the read RPCs, the miner scoring the round it is about to propose), WRONG for
+     *  anything that must reproduce a decision taken at a past height -- two nodes at
+     *  different sync points answer differently. Those callers want GetAllNodesWeightsAsOf. */
     std::map<std::string, uint32_t> GetAllNodesWeights();
+
+    /**
+     * address -> latest weight confirmed AT OR BEFORE `max_block`.
+     *
+     * The height-scoped read, and the one every consensus path must use.
+     *
+     * Why this closes a divergence that GetAllNodesWeights cannot. A weight record only
+     * counts once its transaction is mined, so "the registry" is really a function of
+     * how much chain the reader has. Two nodes evaluating the IDENTICAL already-broadcast
+     * block at different sync points therefore read different weight maps, compute
+     * different w_eff, and derive different sortition delays -- and since the delay bar
+     * decides validity, they can reach opposite verdicts on the same block. Bounding the
+     * read by the block's PARENT height makes the map a pure function of the chain
+     * prefix instead, so every node that can evaluate the block at all computes the same
+     * one. That property is self-enforcing rather than merely hoped for: to evaluate a
+     * block at h+1 a node must already hold its parent, and holding the parent means
+     * holding every transaction confirmed at or before h.
+     *
+     * This is the same discipline the malus layer already applies by reading a SETTLED
+     * epoch (WPoAApplyMalus -> GetAccumulators(epoch-1)) rather than the live one, and
+     * it is strictly stronger: an epoch scope still lets a late-confirming record differ
+     * between nodes, a height scope cannot.
+     *
+     * @param max_block  Highest confirming block height still in scope, normally the
+     *                   parent height of the block being evaluated. NEGATIVE means
+     *                   unbounded, i.e. exactly GetAllNodesWeights -- so the two share
+     *                   one implementation and cannot drift apart.
+     *
+     * Records not attributed to a block (m_Block < 0) are excluded when a bound is in
+     * force: an unconfirmed record has no height, so it cannot be shown to precede one.
+     */
+    std::map<std::string, uint32_t> GetAllNodesWeightsAsOf(int max_block);
 
     /** Height of the first block confirming a positive weight, or -1 if none yet.
      *
@@ -155,10 +193,16 @@ private:
      *  `out_first_positive_block`, when given, receives the height of the FIRST block
      *  that confirmed a record with weight > 0, or -1 if there is none. That height is
      *  the activation point of wPoA: before it the registry cannot elect anybody, so the
-     *  chain runs under the native MultiChain rules instead of stalling. */
+     *  chain runs under the native MultiChain rules instead of stalling.
+     *
+     *  `max_block`, when >= 0, restricts the scan to records confirmed at or before that
+     *  height; records with no block of their own are then skipped. Negative means the
+     *  whole confirmed prefix. See GetAllNodesWeightsAsOf for why consensus callers bound
+     *  this and read RPCs do not. */
     bool ReadAllRecords(std::map<std::string, uint32_t>& out_latest,
                         std::map<std::string, uint32_t>* out_epochs = NULL,
-                        int* out_first_positive_block = NULL);
+                        int* out_first_positive_block = NULL,
+                        int max_block = -1);
 };
 
 /**

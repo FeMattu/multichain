@@ -291,3 +291,100 @@ BOOST_AUTO_TEST_CASE(zero_total_weight_is_safe)
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+// ---------------------------------------------------------------------------
+// WPoAWeightRecordInScope — the height bound on the weight-registry read
+// ---------------------------------------------------------------------------
+//
+// The registry is read from the node's own confirmed stream subscription, so an
+// UNBOUNDED read answers "what has this node synced by now?" — a different question on
+// every node, and therefore the wrong one for anything that decides validity. Two nodes
+// evaluating the identical already-broadcast block could read different weight maps,
+// derive different w_eff, and disagree about whether the block cleared its sortition
+// delay bar.
+//
+// Bounding the read by the block's PARENT height replaces that with "what had confirmed
+// as of this chain prefix?", which every node able to evaluate the block necessarily
+// shares: to evaluate a block at h+1 you must hold its parent, and holding the parent
+// means holding every transaction confirmed at or before h.
+//
+// This is that rule, isolated so it can be pinned without a wallet, a chain or a node.
+
+BOOST_AUTO_TEST_SUITE(wpoa_weight_record_height_scope)
+
+// A negative bound is the unscoped read: it must admit everything the confirmed prefix
+// contains, so that GetAllNodesWeights and GetAllNodesWeightsAsOf(-1) are the same read
+// and cannot drift apart.
+BOOST_AUTO_TEST_CASE(a_negative_bound_admits_every_record)
+{
+    BOOST_CHECK(WPoAWeightRecordInScope(0,      -1));
+    BOOST_CHECK(WPoAWeightRecordInScope(1,      -1));
+    BOOST_CHECK(WPoAWeightRecordInScope(999999, -1));
+}
+
+// The bound is INCLUSIVE of its own height: a weight confirmed in the parent block was
+// on-chain before the block under evaluation was built, so the miner scoring that round
+// could see it and the validator must too.
+BOOST_AUTO_TEST_CASE(the_bound_includes_its_own_height)
+{
+    BOOST_CHECK(WPoAWeightRecordInScope(100, 100));
+    BOOST_CHECK(WPoAWeightRecordInScope(99,  100));
+    BOOST_CHECK(!WPoAWeightRecordInScope(101, 100));
+}
+
+// The point of the whole exercise: a record that confirms LATER than the parent cannot
+// influence the verdict, however long ago that was and no matter how far the evaluating
+// node has since synced. This is the case that used to differ between nodes.
+BOOST_AUTO_TEST_CASE(a_later_record_never_enters_an_earlier_round)
+{
+    for (int ahead = 1; ahead <= 50; ahead++)
+    {
+        BOOST_CHECK(!WPoAWeightRecordInScope(500 + ahead, 500));
+    }
+}
+
+// A record not attributed to a block has no height, so under a bound it cannot be shown
+// to precede it and is excluded. Admitting it on a guess would reintroduce exactly the
+// per-node divergence the bound removes, because whether a node holds an unconfirmed
+// record is a property of that node and not of the chain.
+BOOST_AUTO_TEST_CASE(an_unconfirmed_record_is_excluded_under_a_bound)
+{
+    BOOST_CHECK(!WPoAWeightRecordInScope(-1, 100));
+    BOOST_CHECK(!WPoAWeightRecordInScope(-1, 0));
+    // ...but with no bound there is nothing to place it against, so it stays.
+    BOOST_CHECK(WPoAWeightRecordInScope(-1, -1));
+}
+
+// Genesis-adjacent bound: a zero bound admits only what confirmed in block 0, which is
+// the honest answer for a chain that has no prefix yet, rather than an empty-map special
+// case somewhere up the call stack.
+BOOST_AUTO_TEST_CASE(a_zero_bound_admits_only_block_zero)
+{
+    BOOST_CHECK(WPoAWeightRecordInScope(0, 0));
+    BOOST_CHECK(!WPoAWeightRecordInScope(1, 0));
+}
+
+// The scope is MONOTONE in the bound: raising it can only admit more records, never
+// retract one. That is what lets a node replay an old round and get the same answer it
+// got live, and what makes the audit RPCs reproduce history rather than approximate it.
+BOOST_AUTO_TEST_CASE(raising_the_bound_only_ever_admits_more)
+{
+    const int record = 250;
+    bool seen_in_scope = false;
+    for (int bound = 0; bound <= 500; bound++)
+    {
+        const bool in = WPoAWeightRecordInScope(record, bound);
+        if (in)
+        {
+            seen_in_scope = true;
+        }
+        else
+        {
+            // once in scope, never out again as the bound grows
+            BOOST_CHECK(!seen_in_scope);
+        }
+    }
+    BOOST_CHECK(seen_in_scope);
+}
+
+BOOST_AUTO_TEST_SUITE_END()

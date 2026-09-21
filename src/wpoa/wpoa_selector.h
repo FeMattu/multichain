@@ -326,6 +326,38 @@ inline bool WPoAShouldFallBackToNative(bool proposer_found, bool ever_electable)
     return !ever_electable;   // no proposer AND never activated -> native rules
 }
 
+/**
+ * Is a weight record confirmed in block `record_block` within the scope of a read
+ * bounded at `max_block`?
+ *
+ * The whole point of a height-bounded registry read, reduced to the one predicate that
+ * decides it, so that it is testable without a wallet, a chain or a node — and so that
+ * there is one statement of the rule rather than a condition buried in a loop.
+ *
+ *  * `max_block < 0` means unbounded: every confirmed record is in scope.
+ *  * A record with `record_block < 0` is not attributed to a block. Under a bound it is
+ *    EXCLUDED: with no height of its own it cannot be shown to precede max_block, and
+ *    admitting it on a guess would restore precisely the per-node divergence the bound
+ *    exists to remove. Unbounded, there is nothing to compare it against, so it stays.
+ *  * Otherwise the record is in scope iff it confirmed at or before max_block.
+ *
+ * Callers pass the PARENT height of the block being evaluated, which is what makes the
+ * resulting weight map a pure function of the chain prefix: any node holding the block's
+ * parent holds every transaction confirmed at or before it.
+ */
+inline bool WPoAWeightRecordInScope(int record_block, int max_block)
+{
+    if (max_block < 0)
+    {
+        return true;            // unbounded read: the whole confirmed prefix
+    }
+    if (record_block < 0)
+    {
+        return false;           // no height of its own -> cannot be placed before the bound
+    }
+    return record_block <= max_block;
+}
+
 /** True once this node has seen a registry carrying at least one positive weight.
  *
  *  Latched, never cleared: wPoA does not lapse back to native because a later round
