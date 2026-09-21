@@ -100,7 +100,7 @@ COLUMNS: "OrderedDict[str, List[str]]" = OrderedDict(
              # rest on.
              "score_true", "score_norm_true", "delay_true_s", "earliest_time_true",
              "residual_true_s", "weff_winner_true", "verdict_true",
-             "true_winner_mismatch", "weight_epoch_stale"],
+             "true_winner_mismatch"],
         ),
         (
             "epoch_level",
@@ -510,7 +510,6 @@ class Aggregator:
                     "weff_winner_true": f(true_row.get("effective_weight")),
                     "verdict_true": true_raw.get("verdict", ""),
                     "true_winner_mismatch": true_mismatch,
-                    "weight_epoch_stale": b(true_raw.get("weight_epoch_stale")),
                 }
             )
             if this_time is not None:
@@ -1142,9 +1141,6 @@ class Aggregator:
             "inversion_rate_public": (len(inversions) / len(measured)) if measured else None,
             "n_rounds_with_true_score": sum(
                 1 for r in measured if r["score_norm_true"] is not None
-            ),
-            "n_rounds_weight_epoch_stale": sum(
-                1 for r in measured if r["weight_epoch_stale"] is True
             ),
             # A height whose recorded block is not the one on the active chain: phase 1
             # keeps the first block seen per height, which can be a reorged-away branch.

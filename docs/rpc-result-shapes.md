@@ -73,16 +73,17 @@ exists only for the winner: no node can produce the others.
 | the real draw | `score`, `score_norm`, `delay`, `earliest_time`, `effective_weight` |
 | timing | `block_time`, `parent_time`, `dt_prev`, `time_received` (**local** sub-second arrival, per-node, not consensus data) |
 | round context | `total_effective_weight`, `target_block_time`, `delta`, `lambda`, `feedback`, `seed`, `seed_source`, `dumping_function` |
-| provenance | `sample_height`, `sample_epoch`, `weight_epoch_stale`, `verdict` |
+| provenance | `sample_height`, `verdict` |
 
 `verdict` is always present and names why a row carries no score rather than leaving a hole:
 `ok`, `not-sortition`, `no-reveal`, `no-signer`, `no-weight`, `no-block`, `no-block-data`,
 `unevaluable`.
 
-> **Weights are read as of the answering tip, not as of `height`.** The registry has no
-> height-bound read, and weights only move on an epoch boundary, so an answer is exact
-> whenever `sample_epoch == epoch`; `weight_epoch_stale` flags the rows where it is not
-> (roughly one per epoch when sampled per block).
+> **Weights are read as of `height`'s parent, not as of the answering tip.** The registry
+> read is height-scoped (`StreamWeightRegistry::GetAllNodesWeightsAsOf`), so the answer
+> reproduces the weight map the round actually ran on however long after the fact it is
+> asked for. `sample_height` still reports which tip answered, as provenance; there is no
+> staleness flag because there is no staleness left to flag.
 
 ### WeightEngine epoch audit
 

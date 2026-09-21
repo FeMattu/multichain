@@ -159,11 +159,11 @@ class AdminDaemon:
 
         # The same window, audited for the winner's REAL private score. Sampled here
         # rather than in sample_round because it is a property of a block that exists,
-        # not of a round being decided -- and because the weights it reads are only
-        # exact while the tip is still inside the audited height's own epoch, which a
-        # per-block cadence keeps true (the answer carries weight_epoch_stale either
-        # way). The round RPCs above score the PUBLIC Efraimidis form, which is not the
-        # quantity the election ran on; this is.
+        # not of a round being decided. The weights it reads are height-scoped at the
+        # node (as of the audited height's parent), so the answer is exact whatever the
+        # sampling cadence and however far the tip has moved on. The round RPCs above
+        # score the PUBLIC Efraimidis form, which is not the quantity the election ran
+        # on; this is.
         try:
             self.log.snapshot(
                 "wpoalistblocksortition",

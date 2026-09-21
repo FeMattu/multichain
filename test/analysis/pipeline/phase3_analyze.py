@@ -492,9 +492,12 @@ class Analysis:
         winner per round is therefore enough to separate the two, WITHOUT the private
         scores of the validators that did not win.
 
-        Both are also computed on the subset that excludes the rows where the weight
-        read was taken in a later epoch than the round (``weight_epoch_stale``), so the
-        record-and-flag choice about that staleness is confirmed, or not, a posteriori.
+        The weight read is height-scoped at the node (the sortition path reads the
+        registry as of the round's parent, see StreamWeightRegistry::GetAllNodesWeightsAsOf),
+        so a round is always scored on the weights that actually governed it however long
+        after the fact it is sampled. There is no stale-weight subset to compare against
+        any more, and the second arm that used to exist here has been removed rather than
+        left computing a copy of the first.
         """
         from pipeline.stat import ks_pvalue_one_sample, pearson  # noqa: E402
         from pipeline.stat import ks_statistic_against_cdf  # noqa: E402
@@ -542,9 +545,6 @@ class Analysis:
             )
 
         stats(measured, "")
-        fresh = [r for r in measured if b(r.get("weight_epoch_stale")) is not True]
-        stats(fresh, "_fresh_weights")
-        row["true_n_rounds_weight_epoch_stale"] = len(measured) - len(fresh)
 
         # Rounds won AT the top of the delay band, i.e. by a validator whose timer had
         # run all the way out: band_max = T(1+delta) + lambda*Phi, per round because Phi
@@ -1373,26 +1373,6 @@ class Analysis:
         ):
             lines.append("| %s | %s | — |"
                          % (label, _fmt(timer.get(key + "_racing"), digits)))
-        lines.append("")
-        lines.append(
-            "Weights are read as of the sampling tip, so a round sampled after its own "
-            "epoch closed may be scored on the next epoch's weights. Those rows are "
-            "flagged and the same two tests are repeated without them — if the verdict "
-            "is unchanged, the staleness does not matter here."
-        )
-        lines.append("")
-        lines.append("| quantity | all rounds | fresh weights only |")
-        lines.append("|---|---:|---:|")
-        for label, key, digits in (
-            ("rounds", "true_n_rounds", 0),
-            ("corr(dt_prev, delay_true)", "true_corr_dt_delay", 5),
-            ("mean score_norm of winner", "true_score_norm_mean", 5),
-            ("KS vs U(0,1), p", "true_score_norm_ks_p_uniform", 5),
-        ):
-            lines.append("| %s | %s | %s |" % (label, _fmt(timer.get(key), digits),
-                                               _fmt(timer.get(key + "_fresh_weights"), digits)))
-        lines.append("| rounds excluded as stale | %s | — |"
-                     % _fmt(timer.get("true_n_rounds_weight_epoch_stale"), 0))
         lines.append("")
 
         lines.append("## The public-score model audit")

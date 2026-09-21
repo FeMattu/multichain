@@ -1087,21 +1087,14 @@ static Object RpcBlockSortitionEntry(int height, int sample_height)
     o.push_back(Pair("time_received", pindex->dTimeReceived));
     o.push_back(Pair("epoch", (int64_t)HeightToEpoch(height)));
     o.push_back(Pair("sample_height", sample_height));
-    // Weights are now read AS OF the audited height's parent, not as of now:
-    // WPoABuildRoundContext bounds the registry read by height (see
-    // StreamWeightRegistry::GetAllNodesWeightsAsOf). This entry therefore reproduces the
-    // weight map the round actually ran on, however long ago it was, instead of
-    // approximating it with the current one and flagging the rows where the
-    // approximation could not hold.
-    //
-    // Both fields are KEPT rather than removed: the analysis pipeline reads them
-    // (phase1_collect.py schema, phase2_aggregate.py, phase3_analyze.py), and dropping
-    // them would break every consumer for no gain. weight_epoch_stale is now
-    // structurally false -- a height-bound read cannot be stale with respect to its own
-    // height -- so the "fresh" sample the pipeline builds from it is simply the whole
-    // sample now.
-    o.push_back(Pair("sample_epoch", (int64_t)HeightToEpoch(sample_height)));
-    o.push_back(Pair("weight_epoch_stale", false));
+    // NOTE: there is deliberately no sample_epoch / weight_epoch_stale here any more.
+    // Weights are read AS OF the audited height's parent (WPoABuildRoundContext ->
+    // StreamWeightRegistry::GetAllNodesWeightsAsOf), so this entry reproduces the weight
+    // map the round actually ran on however long after the fact it is asked for. The two
+    // fields existed to flag rows where reading the CURRENT registry could not be exact;
+    // that failure mode no longer exists, so a field that is structurally false is worse
+    // than no field at all -- it invites a consumer to branch on it. sample_height stays
+    // because which tip answered is still real provenance.
 
     if (!WPoASortitionActiveAtHeight(height))
     {

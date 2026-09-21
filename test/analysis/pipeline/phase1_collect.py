@@ -65,7 +65,7 @@ COLUMNS: "OrderedDict[str, List[str]]" = OrderedDict(
                              "effective_weight", "total_effective_weight",
                              "target_block_time", "delta", "lambda_s", "feedback_phi",
                              "seed", "seed_source", "dumping_function", "verdict",
-                             "sample_height", "sample_epoch", "weight_epoch_stale"]),
+                             "sample_height"]),
         ("round_scores", ["round_height", "epoch", "in_setup", "address", "score", "weight",
                           "effective_weight", "eligible", "seed", "seed_source",
                           "dumping_function", "total_effective_weight", "sample_height"]),
@@ -482,8 +482,6 @@ class Collector:
                 dumping_function=entry.get("dumping_function", ""),
                 verdict=entry.get("verdict", ""),
                 sample_height=_num(entry.get("sample_height")),
-                sample_epoch=_num(entry.get("sample_epoch")),
-                weight_epoch_stale=entry.get("weight_epoch_stale", ""),
             )
 
     def _snap_getlastblockinfo(self, payload: Dict[str, Any], data: Any, height: Any) -> None:
