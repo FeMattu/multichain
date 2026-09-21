@@ -347,7 +347,8 @@ bool CreateBlockSignature(CBlock *block,uint32_t hash_type,CWallet *pwallet,uint
 
 /* MCHN START */    
 //CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn)
-CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn,CWallet *pwallet,CPubKey *ppubkey,int *canMine,CBlockIndex** ppPrev)
+CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn,CWallet *pwallet,CPubKey *ppubkey,int *canMine,CBlockIndex** ppPrev,
+                               const uint256* phExpectedPrev=NULL,bool* lpfStaleParent=NULL)
 /* MCHN END */    
 {
     // Create new block
@@ -408,6 +409,47 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn,CWallet *pwallet,CP
                 
         CBlockIndex* pindexPrev = chainActive.Tip();
         const int nHeight = pindexPrev->nHeight + 1;
+
+/* MCHN START - wPoA Phase 4: refuse to retarget a sortition round to a new height */
+        // This read of the tip is the THIRD in a mining attempt, and the only one that
+        // decides hashPrevBlock: the loop's own read (before the countdown gate) is
+        // overwritten through *ppPrev just below, and the gate's read
+        // (GetMinerAndExpectedMiningStartTime) takes no lock at all. Nothing held cs_main
+        // across the gap, so the tip can advance in it -- and until this guard existed the
+        // retarget was silent: the block was built one height higher than the height the
+        // sortition delay had been computed and waited out for, and the node's own
+        // validator then rejected it as "mined too early for its sortition score" (the
+        // delay budget belonged to the previous parent).
+        //
+        // The check has to live HERE rather than at the call site: checking the tip under
+        // a separate cs_main acquisition and then calling in would be check-then-act, and
+        // could still lose the race in between. Here the comparison and the read that
+        // fixes hashPrevBlock are the same acquisition, so it is race-free by construction.
+        //
+        // Scoped to sortition-governed heights, evaluated under this same lock on this
+        // same tip. The misalignment is conceivable on the Phase 2/3b and native paths too
+        // -- their election is per-height as well -- but changing those would alter every
+        // other MultiChain deployment, and no such failure has been observed there.
+        if( (phExpectedPrev != NULL) && WPoASortitionActiveAtHeight(nHeight) &&
+            (pindexPrev->GetBlockHash() != *phExpectedPrev) )
+        {
+            if(lpfStaleParent)
+            {
+                *lpfStaleParent=true;
+            }
+            LogPrint("wpoafork","[wpoa-fork] retarget-abort scheduled_for=%s tip_now=%s tip_height=%d\n",
+                     phExpectedPrev->ToString().c_str(),
+                     pindexPrev->GetBlockHash().ToString().c_str(),pindexPrev->nHeight);
+            return NULL;                                                // *ppPrev left untouched
+        }
+        if(phExpectedPrev != NULL)
+        {
+            LogPrint("wpoafork","[wpoa-fork] build height=%d prev=%s expected=%s\n",
+                     nHeight,pindexPrev->GetBlockHash().ToString().c_str(),
+                     phExpectedPrev->ToString().c_str());
+        }
+/* MCHN END */
+
         if(ppPrev)
         {
             *ppPrev=pindexPrev;
@@ -1197,8 +1239,9 @@ double GetMinerAndExpectedMiningStartTime(CWallet *pwallet,CPubKey *lpkMiner,set
         // the block's nTime (WPoASortitionVerifyProposer), so mining earlier than
         // this would produce a block peers reject as "too early for its score".
         *lpdMiningStartTime=mc_TimeNowAsDouble()+dDelay;
-        LogPrint("wpoa","mchn-miner: wPoA-sortition height=%d score=%.9g delay=%.3fs -> start in %.3fs (local=%s)\n",
-                         nHeight,dScore,dDelay,dDelay,sLocalAddr.c_str());
+        LogPrint("wpoa","mchn-miner: wPoA-sortition height=%d tip=%s score=%.9g delay=%.3fs -> start in %.3fs (local=%s)\n",
+                         nHeight,pindexTip->GetBlockHash().ToString().c_str(),
+                         dScore,dDelay,dDelay,sLocalAddr.c_str());
         return *lpdMiningStartTime;
     }
 /* MCHN END */
@@ -1797,8 +1840,28 @@ void static BitcoinMiner(CWallet *pwallet)
                 memcpy(pubkey_hash,&pkhash,20);    
                 CScript scriptPubKey = CScript() << OP_DUP << OP_HASH160 << vector<unsigned char>(pubkey_hash, pubkey_hash + 20) << OP_EQUALVERIFY << OP_CHECKSIG;
                 canMine=prevCanMine;
-                auto_ptr<CBlockTemplate> pblocktemplate(CreateNewBlock(scriptPubKey,pwallet,&kMiner,&canMine,&pindexPrev));            
+/* MCHN START - wPoA Phase 4: build only against the parent the countdown was earned for */
+                // hLastBlockHash is not a second copy of that parent -- it IS the key
+                // GetMinerAndExpectedMiningStartTime memoises dMiningStartTime under, so by
+                // construction it names the tip the current countdown belongs to. Passing it
+                // down lets CreateNewBlock refuse the attempt atomically; see the guard there.
+                bool fStaleParent=false;
+                auto_ptr<CBlockTemplate> pblocktemplate(CreateNewBlock(scriptPubKey,pwallet,&kMiner,&canMine,&pindexPrev,
+                                                                      &hLastBlockHash,&fStaleParent));
                 prevCanMine=canMine;
+                if(fStaleParent)
+                {
+                    // The tip advanced while we were on our way in. Building here would
+                    // produce a block our own validator rejects, and -- worse -- would mark
+                    // the NEW height proposed (WPoASortitionMarkProposed, below) on account
+                    // of a block that never reaches the network, standing this node down for
+                    // a round it never actually contested. Drop the attempt; the next
+                    // iteration earns a fresh countdown against the new tip.
+                    nLastStatus=nMiningStatus;
+                    __US_Sleep(100);
+                    boost::this_thread::interruption_point();
+                    continue;
+                }
 /* MCHN END */    
             if (!pblocktemplate.get())
             {
