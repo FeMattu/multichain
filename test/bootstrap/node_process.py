@@ -227,6 +227,13 @@ class NodeRunner:
             args.append("-weighttreasuryaddress=%s" % self.treasury_address)
         if self.profile.runtime.get("wpoa_debug"):
             args.append("-wpoadebug")
+        if self.profile.runtime.get("fork_score"):
+            # The mechanism, and the only channel that reports it. ``-debug=wpoafork``
+            # is not optional decoration: LogPrint emits nothing unless its category is
+            # listed there (src/utils/util.cpp, LogAcceptCategory), so without it the
+            # per-candidate lines the analysis reads simply would not exist.
+            args.append("-enablewpoaforkscore=1")
+            args.append("-debug=wpoafork")
         digits = self.profile.runtime.get("api_decimal_digits")
         if digits is not None:
             # How many decimals the node's JSON writer keeps. It is a *diagnostic* lever,

@@ -344,6 +344,32 @@ extern double g_wpoa_sortition_delta;
  */
 extern double g_wpoa_sortition_lambda;
 
+/**
+ * Fork choice: break a same-height tie on the TRUE sortition score instead of on
+ * first-seen arrival order (nSequenceId). Set once from -enablewpoaforkscore in
+ * AppInit2, before any block is processed, and read unlocked by the chain
+ * comparator (CBlockIndexWorkComparator, main.cpp) on a hot path under cs_main.
+ *
+ * NOT CONSENSUS-CRITICAL, unlike every other flag in this header. Fork choice picks
+ * between blocks that are already equally VALID, so it is local policy: a node that
+ * runs this while its peers do not still accepts exactly the same blocks, it just
+ * converges on a contested height differently. A mixed validator set is therefore
+ * safe -- it converges more slowly on contested rounds, it does not fork. That is
+ * also why this flag stays out of the params.dat inheritance/uniformity machinery
+ * the consensus switches above go through.
+ *
+ * MUST NOT be flipped after startup: it changes the ordering of a live std::set
+ * (setBlockIndexCandidates), which would corrupt that container's invariant.
+ *
+ * What it does and does NOT buy, because the distinction matters and is easy to
+ * overstate: the score test sits BELOW nChainWork in the comparator, so it only ever
+ * runs on candidates that are still tied on work -- same height, neither extended. It
+ * reduces score inversions in exactly that case. Once any node has built a block on
+ * top of the worse-scored candidate, that branch has strictly more work and no
+ * tie-break reaches it; those inversions remain.
+ */
+extern bool g_wpoa_fork_score_enabled;
+
 #define MC_WPOA_DEFAULT_SORTITION_DELTA  0.5
 #define MC_WPOA_DEFAULT_SORTITION_LAMBDA 0.0
 
@@ -492,6 +518,14 @@ enum WPoASortitionVerdict
  * @param vrf_proof     The block-carried VRF proof π (WPoAVRF::PROOF_SIZE bytes).
  * @param block_ntime   The block's nTime (seconds).
  * @param reason_out    [out, optional] human-readable reason on REJECT (for logging).
+ * @param score_out     [out, optional] the recomputed raw score, written ONLY on
+ *                      WPOA_SORTITION_OK. This is the same quantity the time bar was
+ *                      just enforced against, handed back so the fork-choice cache on
+ *                      CBlockIndex is populated from the consensus computation itself
+ *                      rather than from a second, separately-drifting one. Left
+ *                      untouched on REJECT and SKIP, so the caller's NaN survives.
+ * @param weff_out      [out, optional] W = sum_j g(w_eff_j) for the round, same rules.
+ *                      Only needed to derive the normalized score for logging.
  * @return a WPoASortitionVerdict.
  */
 WPoASortitionVerdict WPoASortitionVerifyProposer(const CBlockIndex* pindexParent,
@@ -501,7 +535,9 @@ WPoASortitionVerdict WPoASortitionVerifyProposer(const CBlockIndex* pindexParent
                                                  const std::vector<unsigned char>& vrf_reveal,
                                                  const std::vector<unsigned char>& vrf_proof,
                                                  uint32_t block_ntime,
-                                                 std::string* reason_out);
+                                                 std::string* reason_out,
+                                                 double* score_out = NULL,
+                                                 double* weff_out = NULL);
 
 /**
  * Miner-loop guard against re-proposing a height whose tip has not advanced.

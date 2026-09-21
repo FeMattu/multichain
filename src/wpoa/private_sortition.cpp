@@ -31,6 +31,7 @@ using namespace std;
 // Default off: with the flag unset the node behaves exactly as in Phase 3b — the
 // PUBLIC Efraimidis argmin over the beacon seed. Set once from -enablewpoasortition.
 bool g_wpoa_sortition_enabled = false;
+bool g_wpoa_fork_score_enabled = false;
 
 // Band half-width as a fraction of target-block-time, and the feedback gain. Bound
 // once from -wpoasortitiondelta / -wpoasortitionlambda in AppInit2.
@@ -289,7 +290,9 @@ WPoASortitionVerdict WPoASortitionVerifyProposer(const CBlockIndex* pindexParent
                                                  const std::vector<unsigned char>& vrf_reveal,
                                                  const std::vector<unsigned char>& vrf_proof,
                                                  uint32_t block_ntime,
-                                                 std::string* reason_out)
+                                                 std::string* reason_out,
+                                                 double* score_out,
+                                                 double* weff_out)
 {
     // Recompute the beacon seed over the parent (the same tip the honest miner saw).
     // If it cannot be recomputed locally (degenerate tip), accept leniently rather
@@ -374,6 +377,12 @@ WPoASortitionVerdict WPoASortitionVerifyProposer(const CBlockIndex* pindexParent
         }
         return WPOA_SORTITION_REJECT;
     }
+
+    // Hand the caller the score the bar was just enforced against. Written only on
+    // the OK path: on REJECT and SKIP the outputs stay untouched, so a caller that
+    // seeded them with NaN keeps its "unknown" marker instead of a stale or zero one.
+    if (score_out) *score_out = score;
+    if (weff_out)  *weff_out  = weff;
 
     if (fDebug)
     {

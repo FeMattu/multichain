@@ -47,6 +47,25 @@ from event_log import (  # noqa: E402
 )
 from rpc_client import RpcClient, RpcError, RpcTransportError  # noqa: E402
 
+#: How far behind the tip the per-block sampler stays.
+#:
+#: A block at the tip can still be displaced. Under wPoA fork choice on the true
+#: sortition score (``-enablewpoaforkscore``) a later-arriving same-height block
+#: replaces the tip whenever its score is better, so sampling *at* the tip and never
+#: revisiting that height — which is what ``_last_block_sampled`` guarantees — would
+#: record the loser of a contested round as its winner. That is precisely the round
+#: this instrumentation exists to measure, so the error would land exactly where it
+#: does the most damage.
+#:
+#: A same-height reorg can only ever displace an UNEXTENDED tip: once any block is
+#: built on top, the branch has strictly more work and no tie-break reaches it. So one
+#: block of burial is already sufficient; two is margin against the race between
+#: reading the height and issuing the windowed call, during which the tip can move.
+#:
+#: The cost is that the last couple of heights are sampled one poll later. The final
+#: sweep in ``run()`` passes ``settled_only=False`` so nothing is lost at shutdown.
+BLOCK_SAMPLE_SETTLE_DEPTH = 2
+
 #: Audit RPCs whose answer is defined for a single round (block height).
 ROUND_RPCS = (
     "wpoalistscores",
@@ -111,17 +130,25 @@ class AdminDaemon:
 
     # -- sampling ----------------------------------------------------------------------
 
-    def sample_blocks(self, tip: int) -> None:
-        """Every block since the last sample, plus its round-level audit.
+    def sample_blocks(self, tip: int, settled_only: bool = True) -> None:
+        """Every settled block since the last sample, plus its round-level audit.
 
         ``listblocks`` takes a ``from-to`` string. The window is capped so that a daemon
         that fell behind — or one started against a chain already in progress — cannot
         ask for ten thousand blocks in one call and time out.
+
+        Sampling stops ``BLOCK_SAMPLE_SETTLE_DEPTH`` blocks short of the tip, because a
+        height is only final once it is buried: an unextended tip can still be displaced
+        by a better-scored same-height block. ``_last_block_sampled`` never goes
+        backwards, so a height recorded too early would never be corrected. Pass
+        ``settled_only=False`` to flush the unburied tail — the final sweep does, since
+        at shutdown there is no later poll to catch it.
         """
-        if tip <= self._last_block_sampled:
+        horizon = tip - BLOCK_SAMPLE_SETTLE_DEPTH if settled_only else tip
+        if horizon <= self._last_block_sampled:
             return
         first = self._last_block_sampled + 1
-        last = min(tip, first + 199)
+        last = min(horizon, first + 199)
         try:
             blocks = self.rpc.call("listblocks", "%d-%d" % (first, last), True)
         except (RpcError, RpcTransportError) as exc:
@@ -293,8 +320,11 @@ class AdminDaemon:
             time.sleep(poll_s)
 
         # One last full sweep: the final epoch is the one most likely to be half-written,
-        # and this is the cheapest possible insurance against losing it.
-        self.sample_blocks(tip)
+        # and this is the cheapest possible insurance against losing it. This is also the
+        # one call that samples up to the tip itself — the run is over, so there is no
+        # later poll to pick the last couple of heights up, and an unsettled tail is
+        # better than a missing one.
+        self.sample_blocks(tip, settled_only=False)
         self.sample_registry(tip)
         self.sample_epoch(tip, self.profile.last_buried_epoch(tip))
         self.sample_streams(tip)

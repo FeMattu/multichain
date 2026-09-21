@@ -204,6 +204,12 @@ _RUNTIME_DEFAULTS: Dict[str, Any] = {
     "startup_timeout_s": 120,
     "shutdown_grace_s": 30,
     "wpoa_debug": False,
+    # wPoA fork choice on the true sortition score (-enablewpoaforkscore), plus the
+    # per-candidate log the before/after comparison is recovered from. Local policy on
+    # the node, so it is a runtime knob here rather than a chain parameter: turning it
+    # on does not change which blocks are valid, only which of two equally valid
+    # same-height blocks a node prefers while neither has been extended.
+    "fork_score": False,
     # None = do not pass the flag, which is the node's own default of 14.
     "api_decimal_digits": None,
 }
@@ -1258,6 +1264,8 @@ def load_profile(path: str | os.PathLike) -> Profile:
             raise ConfigError("runtime.%s must be an integer >= 1" % key)
     if not isinstance(runtime["wpoa_debug"], bool):
         raise ConfigError("runtime.wpoa_debug must be true or false")
+    if not isinstance(runtime["fork_score"], bool):
+        raise ConfigError("runtime.fork_score must be true or false")
     digits = runtime["api_decimal_digits"]
     if digits is not None:
         if isinstance(digits, bool) or not isinstance(digits, int) or not (1 <= digits <= 30):

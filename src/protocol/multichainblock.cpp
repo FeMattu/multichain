@@ -766,7 +766,7 @@ bool ReadTxFromDisk(CBlockIndex* pindex,int32_t offset,CTransaction& tx)
 // confirmed weight registry. Replaces the native mining-diversity replay for
 // wPoA-governed blocks. Returns false to reject; sets fPassedMinerPrecheck on
 // acceptance, exactly as the native path does.
-static bool VerifyBlockMinerWPoA(CBlock *block_in,CBlockIndex* pindexNew)
+static bool VerifyBlockMinerWPoA(CBlock *block_in,CBlockIndex* pindexNew,bool fAtAdmission)
 {
     CBlock block_disk;
     CBlock *pblock=block_in;
@@ -822,9 +822,11 @@ static bool VerifyBlockMinerWPoA(CBlock *block_in,CBlockIndex* pindexNew)
         }
 
         std::string sReason;
+        double dScore=std::numeric_limits<double>::quiet_NaN();
+        double dWeff=std::numeric_limits<double>::quiet_NaN();
         WPoASortitionVerdict verdict=WPoASortitionVerifyProposer(
                 pindexNew->pprev,pindexNew->nHeight,vchPubKey,sMinerAddr,
-                vrf_reveal,vrf_proof,pblock->nTime,&sReason);
+                vrf_reveal,vrf_proof,pblock->nTime,&sReason,&dScore,&dWeff);
 
         if(verdict == WPOA_SORTITION_REJECT)
         {
@@ -840,8 +842,32 @@ static bool VerifyBlockMinerWPoA(CBlock *block_in,CBlockIndex* pindexNew)
             // empty-registry leniency of the Phase 2/3b path.
             LogPrintf("VerifyBlockMinerWPoA: Block %s (height %d): sortition unverifiable locally, miner check skipped\n",
                       pindexNew->GetBlockHash().ToString().c_str(),pindexNew->nHeight);
+            // No score exists for this block on this node, and the fork-choice cache
+            // must say exactly that. Written explicitly rather than left to SetNull, so
+            // the "unknown" marker is established by the path that decides it: a real
+            // score is >= 0, so any numeric value here -- zero above all -- would read
+            // back as a genuine, and winning, score.
+            if(fAtAdmission)
+            {
+                pindexNew->dSortitionScore=std::numeric_limits<double>::quiet_NaN();
+                pindexNew->dSortitionScoreNorm=std::numeric_limits<double>::quiet_NaN();
+            }
             pindexNew->fPassedMinerPrecheck=true;
             return true;
+        }
+
+        // wPoA fork choice: cache the TRUE score for the chain comparator. ONLY at
+        // admission -- AcceptBlock calls us before ReceivedBlockTransactions makes
+        // the index a key of setBlockIndexCandidates, so the write happens while the
+        // index is in no ordered container. The FindMostWorkChain calls re-verify
+        // indices that are ALREADY keys of that set, and must leave the fields alone.
+        if(fAtAdmission)
+        {
+            pindexNew->dSortitionScore=dScore;
+            pindexNew->dSortitionScoreNorm=
+                    (!std::isnan(dScore) && !std::isnan(dWeff))
+                        ? PrivateSortition::NormalizedScore(dScore,dWeff)
+                        : std::numeric_limits<double>::quiet_NaN();
         }
 
         LogPrint("wpoa","VerifyBlockMinerWPoA: sortition OK block %s (height %d) proposer %s\n",
@@ -920,7 +946,7 @@ static bool VerifyBlockMinerWPoA(CBlock *block_in,CBlockIndex* pindexNew)
 }
 /* MCHN END */
 
-bool VerifyBlockMiner(CBlock *block_in,CBlockIndex* pindexNew)
+bool VerifyBlockMiner(CBlock *block_in,CBlockIndex* pindexNew,bool fAtAdmission)
 {
     if( (mc_gState->m_NetworkParams->IsProtocolMultichain() == 0) ||
         (mc_gState->m_NetworkParams->GetInt64Param("supportminerprecheck") == 0) ||
@@ -941,7 +967,7 @@ bool VerifyBlockMiner(CBlock *block_in,CBlockIndex* pindexNew)
     // replay below.
     if(WPoAActiveAtHeight(pindexNew->nHeight))
     {
-        return VerifyBlockMinerWPoA(block_in,pindexNew);
+        return VerifyBlockMinerWPoA(block_in,pindexNew,fAtAdmission);
     }
 
     bool fReject=false;

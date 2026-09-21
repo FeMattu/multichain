@@ -32,6 +32,7 @@
 #include "wallet/wallettxs.h"
 #include "script/script.h"
 #include "protocol/relay.h"
+#include "wpoa/private_sortition.h"
 
 
 extern mc_WalletTxs* pwalletTxsMain;
@@ -61,7 +62,7 @@ int64_t TotalMempoolsSize();
 int64_t TotalMempoolTxSize();
 bool VerifyBlockSignatureType(CBlock *block);
 bool VerifyBlockSignature(CBlock *block,bool force);
-bool VerifyBlockMiner(CBlock *block,CBlockIndex* pindexNew);
+bool VerifyBlockMiner(CBlock *block,CBlockIndex* pindexNew,bool fAtAdmission=false);
 bool CheckBlockPermissions(const CBlock& block,CBlockIndex* prev_block,unsigned char *lpMinerAddress);
 bool ProcessMultichainRelay(CNode* pfrom, CDataStream& vRecv, CValidationState &state);
 bool ProcessMultichainVerack(CNode* pfrom, CDataStream& vRecv,bool fIsVerackack,bool *disconnect_flag);
@@ -157,14 +158,68 @@ const string strMessageMagic = "MultiChain Signed Message:\n";
 // Internal stuff
 namespace {
 
-    struct CBlockIndexWorkComparator
+    /**
+     * The one chain-ordering rule, with the wPoA score test switchable.
+     *
+     * Two wrappers below bind fUseScore: CBlockIndexWorkComparator is what orders
+     * setBlockIndexCandidates and therefore what actually chooses the tip, and
+     * CBlockIndexLegacyWorkComparator pins the pre-wPoA ordering so the fork-choice
+     * instrumentation can report what this node WOULD have selected from the very
+     * same observed candidate set. Sharing one body is the point: the reconstructed
+     * "before" arm cannot drift away from the real rule if there is only one rule.
+     */
+    struct CBlockIndexWorkComparatorBase
     {
-        bool operator()(CBlockIndex *pa, CBlockIndex *pb) {
+        bool operator()(CBlockIndex *pa, CBlockIndex *pb, bool fUseScore) const {
             // First sort by most total work, ...
             if (pa->nChainWork > pb->nChainWork) return false;
             if (pa->nChainWork < pb->nChainWork) return true;
             
             
+/* MCHN START - wPoA fork choice: prefer the better TRUE sortition score */
+            // Reaching this point means the two candidates are tied on work. Work per
+            // block is constant on a wPoA chain (target-adjust-freq defaults to -1, so
+            // GetNextWorkRequired returns the constant ProofOfWorkLimit and nChainWork
+            // is height * const), so a work tie IS a height tie -- which is what makes
+            // the cached per-round score safe to compare here: two candidates that
+            // reach this test are always from the same round.
+            //
+            // The score is read, never computed: this comparator runs on every set
+            // insert and lookup under cs_main, and a VRF/HMAC evaluation here would be
+            // ruinous. dSortitionScore is populated exactly once, at admission
+            // (VerifyBlockMinerWPoA with fAtAdmission), from the value the eligibility
+            // check already produced.
+            //
+            // NaN ("unknown") ranks WORST, uniformly -- never "skip the test when one
+            // side lacks a score". That tempting variant is not a strict weak ordering:
+            // with A and B scored and C unscored, nSequenceId can place C between them
+            // while the score puts A above B, which is a cycle and undefined behaviour
+            // in std::set. Ordering by the key (has_score ? 0 : 1, score) is total.
+            //
+            // Unknown scores are in practice confined to indices restored by
+            // LoadBlockIndexDB (the score is memory-only): the WPOA_SORTITION_SKIP
+            // verdict depends only on node-global state (wallet tx store, registry
+            // sync, total effective weight) and never on a block's contents, so within
+            // one round a node scores either all candidates or none. A proposer cannot
+            // craft a block that lands in the unknown bucket -- every per-block failure
+            // is a REJECT, not a SKIP.
+            if(fUseScore)
+            {
+                const bool a_has = !std::isnan(pa->dSortitionScore);
+                const bool b_has = !std::isnan(pb->dSortitionScore);
+                if( a_has && !b_has) return false;
+                if(!a_has &&  b_has) return true;
+                if( a_has &&  b_has)
+                {
+                    // Smaller score wins the election (argmin), so it is the better tip.
+                    if (pa->dSortitionScore < pb->dSortitionScore) return false;
+                    if (pa->dSortitionScore > pb->dSortitionScore) return true;
+                    // Exact tie: fall through. Measure-zero for a continuous score, but
+                    // the ordering must stay total, so nSequenceId below decides.
+                }
+            }
+/* MCHN END */
+
 /* MCHN START */
             // Prefer chains we mined long time ago 
             if(mc_gState->m_NetworkParams->IsProtocolMultichain())
@@ -190,6 +245,24 @@ namespace {
 
             // Identical blocks.
             return false;
+        }
+    };
+
+    /** The live rule: the score test is on iff -enablewpoaforkscore is. */
+    struct CBlockIndexWorkComparator
+    {
+        bool operator()(CBlockIndex *pa, CBlockIndex *pb) const {
+            return CBlockIndexWorkComparatorBase()(pa, pb, g_wpoa_fork_score_enabled);
+        }
+    };
+
+    /** The pre-wPoA rule, for the instrumentation's reconstructed "before" arm only.
+     *  Never used to order a container, so it is free of the write-once constraints
+     *  the live comparator imposes on dSortitionScore. */
+    struct CBlockIndexLegacyWorkComparator
+    {
+        bool operator()(CBlockIndex *pa, CBlockIndex *pb) const {
+            return CBlockIndexWorkComparatorBase()(pa, pb, false);
         }
     };
 
@@ -3526,6 +3599,11 @@ static CBlockIndex* FindMostWorkChain() {
             bool take_it=false;
             uint32_t max_work,work;
             int max_count;
+            // wPoA fork-choice instrumentation: the max-work group, i.e. every candidate
+            // this node holds that is still tied for best and therefore actually reaches
+            // the score test in the comparator. Collected unconditionally (a handful of
+            // pointers) and only logged when the group is contested.
+            std::vector<CBlockIndex*> vForkCandidates;
             if(setBlockIndexCandidates.size() > 1)
             {
                 max_work=0;
@@ -3547,6 +3625,7 @@ static CBlockIndex* FindMostWorkChain() {
                     if(work == max_work)
                     {
                         max_count++;
+                        vForkCandidates.push_back(pindex);
                         VerifyBlockMiner(NULL,pindex);                          // Optimization in case of very long forks - start from the end
                     }                            
                 }
@@ -3645,6 +3724,57 @@ static CBlockIndex* FindMostWorkChain() {
             if (it == setTempBlockIndexCandidates.rend())
                 return NULL;
             pindexNew = *it;
+/* MCHN START - wPoA fork-choice instrumentation */
+            // Log the contested rounds: every candidate that was actually in play, with
+            // the quantity the new rule ordered on (the true sortition score) AND the
+            // quantity the old one ordered on (arrival order), plus both arms' winners.
+            // That is what lets the analysis recover the before/after comparison from a
+            // single run, on the identical observed candidate set.
+            //
+            // The honest scope of "observed": this is the set THIS node held at THIS
+            // moment. A block it never received, or one that arrives after the decision,
+            // cannot appear here -- which is precisely the limitation the no-window
+            // design accepts.
+            if(take_it && fDebug)
+            {
+                // The reconstructed "before" arm, taken over setTempBlockIndexCandidates
+                // rather than the raw candidate set, so both arms choose from exactly the
+                // same miner-prechecked members.
+                CBlockIndexLegacyWorkComparator legacy;
+                CBlockIndex *pindexLegacy=NULL;
+                std::set<CBlockIndex*, CBlockIndexWorkComparator>::iterator lit;
+                for (lit = setTempBlockIndexCandidates.begin(); lit != setTempBlockIndexCandidates.end(); ++lit)
+                {
+                    if( (pindexLegacy == NULL) || legacy(pindexLegacy,*lit) )
+                    {
+                        pindexLegacy=*lit;
+                    }
+                }
+
+                for(unsigned int c=0;c<vForkCandidates.size();c++)
+                {
+                    CBlockIndex *pc=vForkCandidates[c];
+                    std::string sSigner="";
+                    if( (pc->nStatus & BLOCK_HAVE_MINER_PUBKEY) && pc->kMiner.IsValid() )
+                    {
+                        sSigner=CBitcoinAddress(pc->kMiner.GetID()).ToString();
+                    }
+                    LogPrint("wpoafork","[wpoa-fork] cand height=%d hash=%s signer=%s score=%.9g score_norm=%.9g seq=%u recv=%.3f can_mine=%d mined_by_me=%d eligible=%d\n",
+                            pc->nHeight,pc->GetBlockHash().ToString().c_str(),sSigner.c_str(),
+                            pc->dSortitionScore,pc->dSortitionScoreNorm,
+                            (unsigned int)pc->nSequenceId,pc->dTimeReceived,
+                            (int)pc->nCanMine,(pc->nHeightMinedByMe == pc->nHeight) ? 1 : 0,
+                            (setTempBlockIndexCandidates.find(pc) != setTempBlockIndexCandidates.end()) ? 1 : 0);
+                }
+                LogPrint("wpoafork","[wpoa-fork] round height=%d candidates=%d forkscore=%d selected=%s legacy=%s tip=%s differs=%d\n",
+                        pindexNew->nHeight,(int)vForkCandidates.size(),
+                        (int)g_wpoa_fork_score_enabled,
+                        pindexNew->GetBlockHash().ToString().c_str(),
+                        pindexLegacy ? pindexLegacy->GetBlockHash().ToString().c_str() : "none",
+                        chainActive.Tip() ? chainActive.Tip()->GetBlockHash().ToString().c_str() : "none",
+                        (pindexLegacy && pindexLegacy != pindexNew) ? 1 : 0);
+            }
+/* MCHN END */
 /* MCHN START */            
             if(take_it)
             {
@@ -3977,6 +4107,19 @@ bool ActivateBestChain(CValidationState &state, CBlock *pblock) {
                     {
                         if(fDebug)LogPrint("mcblock","mchn-block: Same-height reorg: %d %d(%d)->%d(%d)\n",attempt,chainActive.Tip()->nCanMine,chainActive.Tip()->nHeight-chainActive.Tip()->nHeightMinedByMe,
                                 pindexMostWork->nCanMine,pindexMostWork->nHeight-pindexMostWork->nHeightMinedByMe);                        
+                        // The tip is about to be displaced at an unchanged height. Logged
+                        // with both scores so a displacement is greppable on its own, and
+                        // so the analysis can tell a score-driven switch from one the
+                        // pre-existing nCanMine / nHeightMinedByMe rule would have made
+                        // anyway. Relay needs nothing extra here: the loop below pushes
+                        // the new tip's inventory after any switch, same-height included.
+                        if(fDebug)LogPrint("wpoafork","[wpoa-fork] displace height=%d from=%s score=%.9g seq=%u to=%s score=%.9g seq=%u forkscore=%d\n",
+                                pindexMostWork->nHeight,
+                                chainActive.Tip()->GetBlockHash().ToString().c_str(),
+                                chainActive.Tip()->dSortitionScore,(unsigned int)chainActive.Tip()->nSequenceId,
+                                pindexMostWork->GetBlockHash().ToString().c_str(),
+                                pindexMostWork->dSortitionScore,(unsigned int)pindexMostWork->nSequenceId,
+                                (int)g_wpoa_fork_score_enabled);
                     }
                 }
                 attempt++;
@@ -5120,7 +5263,12 @@ bool AcceptBlock(CBlock& block, CValidationState& state, CBlockIndex** ppindex, 
 
     int nHeight = pindex->nHeight;
 
-    if(!VerifyBlockMiner(&block,pindex))
+    // fAtAdmission=true: the ONLY call site permitted to cache the sortition score on
+    // the index. It runs before ReceivedBlockTransactions inserts pindex into
+    // setBlockIndexCandidates, so the write lands while pindex is not yet a key of any
+    // comparator-ordered container. (The two VerifyBlockMiner calls in
+    // FindMostWorkChain deliberately keep the default false.)
+    if(!VerifyBlockMiner(&block,pindex,true))
     {
         pindex->nStatus |= BLOCK_FAILED_VALID;
         setDirtyBlockIndex.insert(pindex);

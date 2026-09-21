@@ -13,6 +13,8 @@
 #include "structs/uint256.h"
 #include "keys/pubkey.h"
 
+#include <cmath>
+#include <limits>
 #include <vector>
 
 #include <boost/foreach.hpp>
@@ -156,6 +158,29 @@ public:
     bool fPassedMinerPrecheck;
     int32_t nFirstSuccessor;
     CBlockIndex *pNextOnThisHeight;
+
+    //! (memory only) wPoA Phase 4 fork choice: this block's TRUE private-sortition
+    //! score, and its normalized form 1-e^{-W*score}. Cached from the admission-time
+    //! eligibility check (WPoASortitionVerifyProposer, via VerifyBlockMiner called
+    //! with fAtAdmission), which already computes both -- the fork-choice comparator
+    //! runs on a hot path under cs_main and must NEVER recompute a VRF score itself.
+    //!
+    //! WRITE-ONCE, AND ONLY BEFORE THE INDEX BECOMES A COMPARATOR KEY. AcceptBlock
+    //! runs VerifyBlockMiner before ReceivedBlockTransactions inserts the index into
+    //! setBlockIndexCandidates, so the admission write lands while the index is in no
+    //! ordered container. The two VerifyBlockMiner calls inside FindMostWorkChain run
+    //! on indices that ARE already set keys, so they must not write these fields --
+    //! mutating a live std::set key silently corrupts its ordering invariant.
+    //!
+    //! NaN means "unknown", which the comparator ranks WORST. Unknown is reachable
+    //! three ways: the WPOA_SORTITION_SKIP verdict (node-global: no wallet tx store,
+    //! unsynced weight registry, zero total effective weight), indices restored by
+    //! LoadBlockIndexDB (the score is memory-only and deliberately not persisted),
+    //! and non-sortition heights. Never zero, never a numeric default: a real score
+    //! is >= 0, so any numeric sentinel would compare as a genuine -- and winning --
+    //! score.
+    double dSortitionScore;
+    double dSortitionScoreNorm;
 /* MCHN END */
     
     void SetNull()
@@ -187,6 +212,8 @@ public:
         nFirstSuccessor=0;
         pNextOnThisHeight=NULL;
         nSize=0;
+        dSortitionScore=std::numeric_limits<double>::quiet_NaN();
+        dSortitionScoreNorm=std::numeric_limits<double>::quiet_NaN();
 /* MCHN END */
     }
 

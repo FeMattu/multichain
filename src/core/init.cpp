@@ -577,6 +577,7 @@ std::string HelpMessage(HelpMessageMode mode)                                   
     strUsage += "  -enablewpoasortition                     " + _("wPoA Phase 4: private (VRF-scored) sortition; each validator scores itself privately under its own secret key and self-elects via a score-proportional mining delay, so the next proposer is unpredictable until it acts (default: 0). Requires -enablewpoarandao (and lookback >= 1). Inherited from params.dat. Must be identical on all nodes.") + "\n";
     strUsage += "  -wpoasortitiondelta=<x>                  " + strprintf(_("wPoA sortition delay band half-width as a fraction of target-block-time, delta in (0,1): D = T + delta*T*(2*score_norm-1) + lambda*Phi. Larger values spread proposers further apart in time, reducing forks at the cost of latency on the unfavoured candidates (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_SORTITION_DELTA) + "\n";
     strUsage += "  -wpoasortitionlambda=<x>                 " + strprintf(_("wPoA sortition feedback gain lambda in [0,1]: weight of the global correction Phi that recentres the observed mean block time on target-block-time, derived from a moving average of past block timestamps. 0 disables it (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_SORTITION_LAMBDA) + "\n";
+    strUsage += "  -enablewpoaforkscore                     " + _("wPoA fork choice: when two same-height blocks are both valid and neither has been extended, prefer the one with the better true VRF sortition score instead of the one seen first (default: 0). Local policy, NOT consensus-critical: it does not change which blocks are valid, so it need not match the rest of the validator set. Requires -enablewpoasortition.") + "\n";
     strUsage += "  -enablewpoamalus                         " + _("wPoA behavioural malus: run the open wpoa-weights-malus report stream and feed the election the effective weight w_eff = w * Psi instead of the raw registry weight (default: 0). Requires -enablewpoasortition. Inherited from params.dat. Must be identical on all nodes.") + "\n";
     strUsage += "  -wpoamalusmu=<x>                         " + strprintf(_("wPoA malus accumulator persistence mu in [0,1): the fraction of M carried into the next epoch, so a proved violation decays instead of banning permanently (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_MALUS_MU) + "\n";
     strUsage += "  -wpoamalusmax=<x>                        " + strprintf(_("wPoA malus threshold M_max > 0: the accumulator value at which Psi reaches 0 and the validator becomes ineligible (default: %g). Inherited from params.dat. Must be identical on all nodes."), (double)MC_WPOA_DEFAULT_MALUS_MAX) + "\n";
@@ -3458,6 +3459,23 @@ bool AppInit2(boost::thread_group& threadGroup,int OutputPipe)
         g_wpoa_sortition_delta   = sortition_delta;
         g_wpoa_sortition_lambda  = sortition_lambda;
         g_dumping_function       = dump_fn;
+
+        // Fork choice on the true sortition score. Deliberately NOT routed through the
+        // params.dat inheritance above and deliberately not checked for uniformity: it
+        // is local policy, not a consensus switch (see private_sortition.h). Committed
+        // here, once, before any block is processed -- the chain comparator reads it
+        // unlocked, and flipping it later would reorder a live std::set.
+        bool fork_score = GetBoolArg("-enablewpoaforkscore", false);
+        if (fork_score && !sortition)
+        {
+            return InitError(_("wPoA: -enablewpoaforkscore requires private sortition (-enablewpoasortition): the tie-break orders candidates by the true VRF score, which only exists once sortition elects them."));
+        }
+        g_wpoa_fork_score_enabled = fork_score;
+        if (fork_score)
+        {
+            LogPrintf("[wPoA] fork choice: same-height ties break on the true sortition score "
+                      "(local policy; peers need not match).\n");
+        }
 
         // Warn when a runtime flag diverges from the inherited chain configuration: the
         // wPoA switches are consensus-critical, so a local override that does not match
