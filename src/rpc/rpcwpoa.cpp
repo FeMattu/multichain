@@ -92,6 +92,9 @@ Value getallweights(const Array& params, bool fHelp)
         throw JSONRPCError(RPC_WALLET_ERROR, "Wallet not available");
     }
 
+    // Deliberately UNSCOPED. "getallweights" answers what the registry holds now, which
+    // is this node's current view by definition; it feeds no consensus decision, so the
+    // height-bound read the sortition paths use would be the wrong question here.
     StreamWeightRegistry registry(pwalletTxsMain);
     std::map<std::string, uint32_t> weights = registry.GetAllNodesWeights();
 
@@ -187,6 +190,9 @@ Value getallmalus(const Array& params, bool fHelp)
 
     const uint32_t epoch = GoverningMalusEpoch();
 
+    // Deliberately UNSCOPED, like getallweights: this report describes the malus state
+    // in force NOW, so the current registry is the matching weight view. It feeds no
+    // consensus decision.
     StreamWeightRegistry wregistry(pwalletTxsMain);
     std::map<std::string, uint32_t> weights = wregistry.GetAllNodesWeights();
 
@@ -1081,13 +1087,21 @@ static Object RpcBlockSortitionEntry(int height, int sample_height)
     o.push_back(Pair("time_received", pindex->dTimeReceived));
     o.push_back(Pair("epoch", (int64_t)HeightToEpoch(height)));
     o.push_back(Pair("sample_height", sample_height));
-    // Weights are read as of NOW, not as of `height`: the registry has no
-    // height-bound read (see WPoABuildRoundContext). They only change on an epoch
-    // boundary, so a sample taken inside the audited height's own epoch is exact,
-    // and this flag marks the rows where it cannot be.
+    // Weights are now read AS OF the audited height's parent, not as of now:
+    // WPoABuildRoundContext bounds the registry read by height (see
+    // StreamWeightRegistry::GetAllNodesWeightsAsOf). This entry therefore reproduces the
+    // weight map the round actually ran on, however long ago it was, instead of
+    // approximating it with the current one and flagging the rows where the
+    // approximation could not hold.
+    //
+    // Both fields are KEPT rather than removed: the analysis pipeline reads them
+    // (phase1_collect.py schema, phase2_aggregate.py, phase3_analyze.py), and dropping
+    // them would break every consumer for no gain. weight_epoch_stale is now
+    // structurally false -- a height-bound read cannot be stale with respect to its own
+    // height -- so the "fresh" sample the pipeline builds from it is simply the whole
+    // sample now.
     o.push_back(Pair("sample_epoch", (int64_t)HeightToEpoch(sample_height)));
-    o.push_back(Pair("weight_epoch_stale",
-                     HeightToEpoch(sample_height) != HeightToEpoch(height)));
+    o.push_back(Pair("weight_epoch_stale", false));
 
     if (!WPoASortitionActiveAtHeight(height))
     {

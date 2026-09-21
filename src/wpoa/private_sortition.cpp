@@ -178,8 +178,14 @@ bool WPoABuildRoundContext(const CBlockIndex* pindexTip, int height,
         ctx.randao_seed = false;
     }
 
+    // Height-scoped: the weights that had been CONFIRMED as of the parent, not whatever
+    // this node has synced by now. The bound is derived from the block's own height
+    // rather than from pindexTip->nHeight so that the miner scoring a round, the
+    // validator checking the resulting block and an audit RPC replaying it long
+    // afterwards all compute the identical bound from the one quantity they are
+    // guaranteed to agree on. See StreamWeightRegistry::GetAllNodesWeightsAsOf.
     StreamWeightRegistry registry(pwalletTxsMain);
-    ctx.raw_weights = registry.GetAllNodesWeights();
+    ctx.raw_weights = registry.GetAllNodesWeightsAsOf(height - 1);
     if (ctx.raw_weights.empty())
     {
         return false;
@@ -298,6 +304,17 @@ WPoASortitionVerdict WPoASortitionVerifyProposer(const CBlockIndex* pindexParent
     // If it cannot be recomputed locally (degenerate tip), accept leniently rather
     // than stall — an honest block stays valid on any node that CAN recompute it.
     unsigned char seed[32];
+    // The beacon must actually govern this height before its seed may be used. The sole
+    // caller (VerifyBlockMinerWPoA) is already gated on WPoASortitionActiveAtHeight, which
+    // subsumes this check, so today the guard never fires -- it is here because this
+    // function is not otherwise self-contained, unlike WPoABuildRoundContext which makes
+    // the same test for the same reason. Without it, a future caller at a non-beacon
+    // height would derive a RANDAO seed while the miner used the previous block hash,
+    // producing a different VRF input and rejecting a perfectly honest block.
+    if (!WPoARANDAOActiveAtHeight(height))
+    {
+        return WPOA_SORTITION_SKIP;
+    }
     if (pindexParent == NULL || !WPoARandaoSelectionSeed(pindexParent, seed))
     {
         return WPOA_SORTITION_SKIP;
@@ -320,8 +337,16 @@ WPoASortitionVerdict WPoASortitionVerifyProposer(const CBlockIndex* pindexParent
     {
         return WPOA_SORTITION_SKIP;
     }
+    // Height-scoped, and this is the call the whole fix turns on. Reading the node's
+    // CURRENT registry here made the verdict depend on the verifier's sync point: two
+    // nodes evaluating the identical already-broadcast block could read different weight
+    // maps, derive different w_eff and hence different delays, and disagree about whether
+    // the block cleared its time bar. Bounding the read by the parent height makes the
+    // map a function of the chain prefix, which every node able to evaluate this block
+    // necessarily shares. Same bound as the miner used (WPoABuildRoundContext), derived
+    // the same way from the block's own height.
     StreamWeightRegistry registry(pwalletTxsMain);
-    std::map<std::string, uint32_t> weights = registry.GetAllNodesWeights();
+    std::map<std::string, uint32_t> weights = registry.GetAllNodesWeightsAsOf(height - 1);
     if (weights.empty())
     {
         return WPOA_SORTITION_SKIP;
@@ -342,12 +367,14 @@ WPoASortitionVerdict WPoASortitionVerifyProposer(const CBlockIndex* pindexParent
     }
     uint32_t weight = it->second;
 
-    double weff = 0.0;
-    for (std::map<std::string, uint32_t>::const_iterator jt = weights.begin();
-         jt != weights.end(); ++jt)
-    {
-        weff += WPoASelector::ApplyDumping(jt->second, g_dumping_function);
-    }
+    // The SAME normalizer the miner used, via the same function. This was an open-coded
+    // loop that summed f(w) over every entry while WPoASelector::TotalEffectiveWeight --
+    // which the miner side calls -- skips zero-weight entries. The two agree today only
+    // because f(0) == 0 for all three dumping functions (0, sqrt(0), ln(1)) and adding
+    // 0.0 to a double is exact; a dumping function with f(0) != 0 would silently split
+    // the miner's band normalizer from the validator's. Consensus-critical arithmetic
+    // gets one implementation, not two that happen to agree.
+    double weff = WPoASelector::TotalEffectiveWeight(weights, g_dumping_function);
     if (!(weff > 0.0))
     {
         return WPOA_SORTITION_SKIP;
@@ -386,9 +413,15 @@ WPoASortitionVerdict WPoASortitionVerifyProposer(const CBlockIndex* pindexParent
 
     if (fDebug)
     {
-        LogPrint("wpoa", "[wpoa-sortition] verify OK height=%d signer=%s score=%.9g delay=%ds "
-                 "nTime=%u parent=%ld\n",
-                 height, miner_addr.c_str(), score, (int)delay, block_ntime, (long)parent_ntime);
+        // weff and the scope that produced it are logged because without them a
+        // divergence between two nodes cannot be reconstructed after the fact: score and
+        // delay alone do not say WHICH weight map each node read. Establishing the
+        // severity of this very bug needed that and had to infer it by correlating
+        // timestamps against an unrelated registry log line.
+        LogPrint("wpoa", "[wpoa-sortition] verify OK height=%d signer=%s score=%.9g weff=%.9g "
+                 "validators=%u as_of=%d delay=%ds nTime=%u parent=%ld\n",
+                 height, miner_addr.c_str(), score, weff, (unsigned)weights.size(),
+                 height - 1, (int)delay, block_ntime, (long)parent_ntime);
     }
     return WPOA_SORTITION_OK;
 }

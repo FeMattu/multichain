@@ -140,8 +140,14 @@ std::string WPoASelectProposer(const unsigned char* seed, size_t seed_len, int h
         return "";
     }
 
+    // Height-scoped for the same reason as the sortition path: this election is replayed
+    // by every validator in VerifyBlockMinerWPoA to check the argmin, so reading the
+    // node's current registry let two validators at different sync points elect two
+    // different proposers for the identical block -- one accepting it, the other
+    // rejecting it as not from the elected proposer. Bounding at the parent height makes
+    // the election a function of the chain prefix. See GetAllNodesWeightsAsOf.
     StreamWeightRegistry registry(pwalletTxsMain);
-    std::map<std::string, uint32_t> weights = registry.GetAllNodesWeights();
+    std::map<std::string, uint32_t> weights = registry.GetAllNodesWeightsAsOf(height - 1);
 
 
     // The election consumes the EFFECTIVE weight w_eff = w * Psi (Def. 5.22): the
@@ -155,8 +161,8 @@ std::string WPoASelectProposer(const unsigned char* seed, size_t seed_len, int h
 
     if (fDebug)
     {
-        LogPrint("wpoa", "[wpoa] SelectProposer height=%d validators=%u dumping=%s -> %s\n",
-                 height, (unsigned)weights.size(),
+        LogPrint("wpoa", "[wpoa] SelectProposer height=%d as_of=%d validators=%u dumping=%s -> %s\n",
+                 height, height - 1, (unsigned)weights.size(),
                  DumpingFunctionName(g_dumping_function),
                  proposer.empty() ? "(none)" : proposer.c_str());
     }

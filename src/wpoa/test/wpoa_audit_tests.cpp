@@ -388,3 +388,57 @@ BOOST_AUTO_TEST_CASE(raising_the_bound_only_ever_admits_more)
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+// ---------------------------------------------------------------------------
+// The band normalizer has ONE implementation
+// ---------------------------------------------------------------------------
+//
+// The sortition validator used to sum f(w) over the weight map with its own open-coded
+// loop while the miner side called WPoASelector::TotalEffectiveWeight, which SKIPS
+// zero-weight entries. The two agreed only because f(0) == 0 for all three dumping
+// functions and adding 0.0 to a double is exact — an accident, not a guarantee. The
+// validator now calls the shared function; this pins the equivalence that made the
+// change safe, and would fail first if a dumping function with f(0) != 0 were added.
+
+BOOST_AUTO_TEST_SUITE(wpoa_band_normalizer_single_implementation)
+
+static double OpenCodedTotal(const std::map<std::string, uint32_t>& w, DumpingFunction f)
+{
+    double total = 0.0;   // the loop the validator used to run: no zero-skip
+    for (std::map<std::string, uint32_t>::const_iterator it = w.begin(); it != w.end(); ++it)
+    {
+        total += WPoASelector::ApplyDumping(it->second, f);
+    }
+    return total;
+}
+
+BOOST_AUTO_TEST_CASE(zero_weights_do_not_change_the_total_under_any_dumping)
+{
+    std::map<std::string, uint32_t> w;
+    w["a"] = 100;
+    w["b"] = 0;        // never registered, or zeroed by the malus
+    w["c"] = 4;
+    w["d"] = 0;
+
+    const DumpingFunction fns[3] = { DUMP_NONE, DUMP_SQRT, DUMP_LOG };
+    for (int i = 0; i < 3; i++)
+    {
+        // bit-exact, not merely close: adding 0.0 to a double must not perturb the sum,
+        // or miner and validator would disagree on the band by one ULP and eventually
+        // on a verdict.
+        BOOST_CHECK_EQUAL(WPoASelector::TotalEffectiveWeight(w, fns[i]),
+                          OpenCodedTotal(w, fns[i]));
+    }
+}
+
+// f(0) == 0 is the property the equivalence above rests on. Pinned explicitly so that a
+// new dumping function breaks HERE, with a clear reason, rather than silently splitting
+// the two paths apart.
+BOOST_AUTO_TEST_CASE(every_dumping_function_maps_zero_to_zero)
+{
+    BOOST_CHECK_EQUAL(WPoASelector::ApplyDumping(0, DUMP_NONE), 0.0);
+    BOOST_CHECK_EQUAL(WPoASelector::ApplyDumping(0, DUMP_SQRT), 0.0);
+    BOOST_CHECK_EQUAL(WPoASelector::ApplyDumping(0, DUMP_LOG),  0.0);
+}
+
+BOOST_AUTO_TEST_SUITE_END()
