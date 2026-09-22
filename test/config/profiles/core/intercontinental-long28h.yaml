@@ -1,19 +1,7 @@
 # Level 4 - intercontinental: twenty real MultiChain nodes on seven hubs on five continents, worst hop across the Pacific.
 #
-# Time: 60*120 = 7200 blocks + 126 of setup = 7326 blocks, 10 s each ~20h21m hours wall clock. 
-# This is the longest-running test profile, and the one that most closely resembles a real-world deployment. 
-# It is also the one that is most likely to reveal bugs in the harness or the protocol, 
-# because it runs for a long time and has the worst network conditions of any of the four level profiles.
-#
-# The geography is the ONLY independent variable across the four level profiles.
-# Node list, roles, clusters, chain parameters, traffic and seed are identical on
-# purpose, so a difference in the results is a difference in the network:
-#
-#   diff test/config/profiles/core/regional.yaml \
-#        test/config/profiles/core/intercontinental.yaml
-#
-# differs by chain_name, topology and the `location` of each node, and by nothing
-# else. Worst one-way path on this map: 181.5 ms.
+# ETA: 100 epochs of 100 blocks each, 10 s target block time = 100*100*10 = 100000s = 27h30m. plus bootstrap 209*10 = 2090s = ~35m
+# ETA: ~ 28h.
 #
 # Format and defaults: ../../schema.md. The wPoA/WeightEngine activation flags are
 # NOT configurable: every chain this harness creates runs the full stack.
@@ -46,35 +34,30 @@ nodes:
   - {id: miner-2,   role: miner,   location: new-york}
   - {id: miner-3,   role: miner,   location: singapore}
   - {id: miner-4,   role: miner,   location: sao-paulo}
-  - {id: miner-5,   role: miner,   location: tokyo}
-  - {id: miner-6,   role: miner,   location: johannesburg}
-  - {id: miner-7,   role: miner,   location: los-angeles}
-  - {id: miner-8,   role: miner,   location: seoul}
-  - {id: miner-9,   role: miner,   location: buenos-aires}
   - {id: company-0, role: company, location: zurich-i, cluster: miner-0}
   - {id: company-1, role: company, location: marseille-i, cluster: miner-1}
   - {id: company-2, role: company, location: amsterdam-i, cluster: miner-2}
   - {id: company-3, role: company, location: warszawa-i, cluster: miner-3}
   - {id: company-4, role: company, location: toronto, cluster: miner-4}
-  - {id: company-5, role: company, location: sydney, cluster: miner-5}
-  - {id: company-6, role: company, location: mumbai, cluster: miner-6}
-  - {id: company-7, role: company, location: los-angeles, cluster: miner-7}
-  - {id: company-8, role: company, location: seoul, cluster: miner-8}
-  - {id: company-9, role: company, location: buenos-aires, cluster: miner-9}
-  - {id: company-10, role: company, location: dubai, cluster: miner-3}
-  - {id: company-11, role: company, location: paris-i, cluster: miner-4}
-  - {id: company-12, role: company, location: tokyo, cluster: miner-5}
-  - {id: company-13, role: company, location: johannesburg, cluster: miner-6}
-  - {id: company-14, role: company, location: milano-i, cluster: miner-7}
-  - {id: company-15, role: company, location: frankfurt-i, cluster: miner-8}
-  - {id: company-16, role: company, location: new-york, cluster: miner-9}
-  - {id: company-17, role: company, location: singapore, cluster: miner-0}
-  - {id: company-18, role: company, location: sao-paulo, cluster: miner-1}
-  - {id: company-19, role: company, location: zurich-i, cluster: miner-2}
+  - {id: company-5, role: company, location: sydney, cluster: miner-0}
+  - {id: company-6, role: company, location: mumbai, cluster: miner-1}
+  - {id: company-7, role: company, location: los-angeles, cluster: miner-2}
+  - {id: company-8, role: company, location: seoul, cluster: miner-3}
+  - {id: company-9, role: company, location: buenos-aires, cluster: miner-4}
+  - {id: company-10, role: company, location: dubai, cluster: miner-0}
+  - {id: company-11, role: company, location: paris-i, cluster: miner-1}
+  - {id: company-12, role: company, location: tokyo, cluster: miner-2}
+  - {id: company-13, role: company, location: johannesburg, cluster: miner-3}
+  - {id: company-14, role: company, location: milano-i, cluster: miner-4}
+  - {id: company-15, role: company, location: frankfurt-i, cluster: miner-0}
+  - {id: company-16, role: company, location: new-york, cluster: miner-1}
+  - {id: company-17, role: company, location: singapore, cluster: miner-2}
+  - {id: company-18, role: company, location: sao-paulo, cluster: miner-3}
+  - {id: company-19, role: company, location: zurich-i, cluster: miner-4}
 
 epochs:
-  count: 60
-  length_blocks: 120
+  count: 100
+  length_blocks: 100
 
 chain:
   # 10 s, comfortably above the worst round trip of every one of the four maps:
@@ -106,7 +89,7 @@ weight_engine:
 
 traffic:
   event_stream: supply-chain-events
-  company_tx_per_epoch_range: [40, 80]
+  company_tx_per_epoch_range: [30, 60]
   miner_gas_returns_per_epoch_range: [0, 7]
   esg_score_range: [1, 100]
   restitution_amount_range: [1.0, 100.0]
@@ -121,4 +104,6 @@ runtime:
   bindir: src
   rpc_timeout_s: 30
   startup_timeout_s: 120
-  wpoa_debug: true
+  wpoa_debug: false
+  fork_score: true
+  sortition_miner_log: true
