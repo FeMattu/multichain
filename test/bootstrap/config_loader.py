@@ -228,7 +228,15 @@ _RUNTIME_DEFAULTS: Dict[str, Any] = {
     # the node, so it is a runtime knob here rather than a chain parameter: turning it
     # on does not change which blocks are valid, only which of two equally valid
     # same-height blocks a node prefers while neither has been extended.
-    "fork_score": False,
+    #
+    # ON by default HERE, and only here. The node keeps -enablewpoaforkscore off unless
+    # asked (src/wpoa), which is the right default for MultiChain: it is an opt-in change
+    # of local policy. But this harness exists to run the mechanism, so a profile that
+    # says nothing should get the complete stack rather than the legacy tie-break --
+    # the same reasoning that hardcodes the wPoA and weight-engine activation keys on.
+    # An arm that wants the baseline states `fork_score: false`, which is what makes it
+    # a control: a measured configuration should be written down, not inherited.
+    "fork_score": True,
     # The candidate log WITHOUT the mechanism (-debug=wpoafork alone). This is what
     # makes a control arm possible: the log, the cached scores and the reconstructed
     # legacy winner are all independent of -enablewpoaforkscore -- only the comparator's

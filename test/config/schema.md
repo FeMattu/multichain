@@ -299,6 +299,9 @@ Both endpoints of every range must satisfy `low <= high`.
 | `rpc_timeout_s` | `30` | Per-call HTTP timeout. |
 | `startup_timeout_s` | `120` | How long to wait for a node's RPC to answer `getinfo`. |
 | `wpoa_debug` | `false` | Adds `-wpoadebug` to every daemon. **A smoke-test flag, not a campaign one.** It logs every row of the weight registry on every read — including the rows it discards for being outside the height scope — through an unbuffered, globally mutexed logger, on the path the mining thread runs. The number of rows grows by one per validator per epoch, so the total cost grows with `epochs.count` **squared**. The loader refuses the flag when the projection exceeds 2 GB across the run. |
+| `fork_score` | **`true`** | Adds `-enablewpoaforkscore=1`, and with it `-debug=wpoafork`. **Default-on in the harness only.** The node ships it off, because for MultiChain it is an opt-in change of local policy; this harness exists to run the mechanism, so a profile that says nothing gets the complete stack — the same reasoning that hardcodes the wPoA and weight-engine activation keys on. A control arm states `fork_score: false` explicitly, which is what makes it a control. Cheap: it logs per fork-choice *candidate*, ~341 lines in a 48-minute run, not per registry row. |
+| `fork_score_log` | `false` | `-debug=wpoafork` **without** `-enablewpoaforkscore`. Only useful on a control arm: with `fork_score` on the log comes along anyway. |
+| `sortition_miner_log` | `false` | `-debug=wpoa`: the miner's own narration of the score and delay it computed each round, and the stand-down. Far noisier than `fork_score_log` — every `LogPrint("wpoa", …)` in the tree turns on with it. Travels as its own `-debug=` argument; `-debug=a,b` enables neither. |
 | `api_decimal_digits` | *unset* | `-apidecimaldigits`. **Every shipped profile sets 17**; see below. |
 | `shutdown_grace_s` | `30` | Time a node gets to answer `stop` before `SIGTERM`. |
 
