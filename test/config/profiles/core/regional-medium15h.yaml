@@ -1,0 +1,92 @@
+# Level 1 - regional: twenty real MultiChain nodes on a Tuscany / Liguria / Emilia-Romagna map, seven backbone hubs.
+#
+# ETA: 30 epochs of 150 blocks each, 12 s target block time = 30*150*12 = 54000s = 15h. plus bootstrap ~40m ~ 15h30m. 
+
+# Format and defaults: ../../schema.md. The wPoA/WeightEngine activation flags are
+# NOT configurable: every chain this harness creates runs the full stack.
+
+seed: 20260905
+chain_name: wpoa-core-regional
+
+fabric:
+  backend: core
+
+topology: topologies/regional.yaml
+
+network:
+  base_port: 7747
+  base_rpc_port: 8747
+
+nodes:
+  - {id: admin,     role: admin,   location: modena}
+  - {id: ca-0,      role: ca,      location: parma}
+  - {id: ca-1,      role: ca,      location: forli}
+  - {id: miner-0,   role: miner,   location: firenze}
+  - {id: miner-1,   role: miner,   location: genova}
+  - {id: miner-2,   role: miner,   location: bologna}
+  - {id: miner-3,   role: miner,   location: livorno}
+  - {id: miner-4,   role: miner,   location: lucca}
+  - {id: company-0, role: company, location: pisa, cluster: miner-0}
+  - {id: company-1, role: company, location: siena, cluster: miner-1}
+  - {id: company-2, role: company, location: la-spezia, cluster: miner-2}
+  - {id: company-3, role: company, location: savona, cluster: miner-3}
+  - {id: company-4, role: company, location: ravenna, cluster: miner-4}
+  - {id: company-5, role: company, location: arezzo, cluster: miner-0}
+  - {id: company-6, role: company, location: prato, cluster: miner-1}
+  - {id: company-7, role: company, location: grosseto, cluster: miner-2}
+  - {id: company-8, role: company, location: ferrara, cluster: miner-3}
+  - {id: company-9, role: company, location: rimini, cluster: miner-4}
+  - {id: company-10, role: company, location: imperia, cluster: miner-0}
+  - {id: company-11, role: company, location: parma, cluster: miner-1}
+  - {id: company-12, role: company, location: lucca, cluster: miner-2}
+  - {id: company-13, role: company, location: prato, cluster: miner-3}
+  - {id: company-14, role: company, location: la-spezia, cluster: miner-4}
+  - {id: company-15, role: company, location: livorno, cluster: miner-0}
+  - {id: company-16, role: company, location: modena, cluster: miner-1}
+  - {id: company-17, role: company, location: parma, cluster: miner-2}
+  - {id: company-18, role: company, location: reggio-emilia, cluster: miner-3}
+  - {id: company-19, role: company, location: bologna, cluster: miner-4}
+
+epochs:
+  count: 30
+  length_blocks: 150
+
+chain:
+  target-block-time: 12
+  mining-diversity: 0.0
+  mine-empty-rounds: -1
+  mining-requires-peers: false
+  first-block-reward: 100000000000000
+  initial-block-reward: 0
+  minimum-relay-fee: 20000000
+  anyone-can-connect: false
+
+wpoa:
+  dump-function: none
+  wpoa-sortition-delta: 0.5
+  wpoa-sortition-lambda: 0.3
+  wpoa-malus-mu: 0.5
+  wpoa-malus-max: 4.0
+  wpoa-malus-equiv-points: 4.0
+  wpoa-malus-delay-points: 0.25
+  wpoa-malus-selfwrite-points: 1.0
+  wpoa-malus-badweight-points: 2.0
+
+weight_engine:
+  weight-kappa: 100.0
+  weight-alpha: 0.2
+  weight-lambda: 0.5
+
+traffic:
+  event_stream: supply-chain-events
+  company_tx_per_epoch_range: [30, 60]
+  miner_gas_returns_per_epoch_range: [0, 20]
+  esg_score_range: [1, 100]
+  restitution_amount_range: [50.0, 250.0]
+
+runtime:
+  api_decimal_digits: 17
+  bindir: src
+  rpc_timeout_s: 30
+  startup_timeout_s: 120
+  wpoa_debug: false
