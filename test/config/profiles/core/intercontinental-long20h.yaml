@@ -121,4 +121,4 @@ runtime:
   bindir: src
   rpc_timeout_s: 30
   startup_timeout_s: 120
-  wpoa_debug: true
+  wpoa_debug: false

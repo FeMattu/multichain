@@ -238,7 +238,8 @@ Standard MultiChain `params.dat` keys, written before the first daemon start.
 | `mining-turnover` | `0.5` | Not hash-enforced. |
 | `mine-empty-rounds` | `-1` | Unlimited: the chain must keep producing blocks through quiet stretches, or the epoch clock stops. |
 | `mining-requires-peers` | `false` | The admin must be able to mine alone during bootstrap. |
-| `first-block-reward` | `100000000000000` | The premine. Thesis §4.2.1: the currency is issued up front. |
+| `maximum-per-output` | `100000000000000` | **`MAX_MONEY` on this chain** (`src/utils/utilwrapper.cpp`). Caps every single output, the premine coinbase included, so it must be raised alongside `first-block-reward`. Over it, the node mines block 1 and then rejects its own block with `txout.nValue too high`, once a second, forever: the chain never leaves height 0 and the bootstrap stops after `starting the admin node` with no error of its own. |
+| `first-block-reward` | `100000000000000` | The premine. Thesis §4.2.1: the currency is issued up front. Must be `<= maximum-per-output` **and** `>= gas_demand` (§GAS budgets); both are checked by the loader. |
 | `initial-block-reward` | `0` | No incremental minting. |
 | `minimum-relay-fee` | `20000000` | 0.2 GAS per 1000 bytes. |
 | `anyone-can-connect` | `false` | Permissions are granted explicitly, as the model requires. |
@@ -297,7 +298,7 @@ Both endpoints of every range must satisfy `low <= high`.
 | `results_root` | `test/results` | Run directories. |
 | `rpc_timeout_s` | `30` | Per-call HTTP timeout. |
 | `startup_timeout_s` | `120` | How long to wait for a node's RPC to answer `getinfo`. |
-| `wpoa_debug` | `false` | Adds `-wpoadebug` to every daemon. Verbose. |
+| `wpoa_debug` | `false` | Adds `-wpoadebug` to every daemon. **A smoke-test flag, not a campaign one.** It logs every row of the weight registry on every read — including the rows it discards for being outside the height scope — through an unbuffered, globally mutexed logger, on the path the mining thread runs. The number of rows grows by one per validator per epoch, so the total cost grows with `epochs.count` **squared**. The loader refuses the flag when the projection exceeds 2 GB across the run. |
 | `api_decimal_digits` | *unset* | `-apidecimaldigits`. **Every shipped profile sets 17**; see below. |
 | `shutdown_grace_s` | `30` | Time a node gets to answer `stop` before `SIGTERM`. |
 
@@ -418,8 +419,21 @@ gas_per_tx = minimum-relay-fee / 100000000            # 1 KB per tx, a deliberat
 gas_floor  = tx_max * gas_per_tx * 2                  # refuel trigger: covers one more worst-case epoch
 gas_seed   = tx_max * gas_per_tx * epochs.count * 1.5 + 50
 gas_topup  = gas_seed / 2
-miner_seed = returns_max * epochs.count * 40 + 200    # miners must have something to return in epoch 1
+miner_seed = returns_max * epochs.count * restitution_hi * 1.2 + 200   # something to return in epoch 1
+
+gas_demand = miner_count * miner_seed + (node_count - 1 - miner_count) * gas_seed
 ```
+
+`gas_demand` is what `seed_gas` sends in one round, straight from the premine. It has to
+fit: `gas_demand <= first-block-reward / 100000000 <= maximum-per-output / 100000000`.
+Below the demand, `seed_gas` funds the nodes it reaches and the rest come back `-704`
+("Insufficient funds") several minutes into the run, with the fabric, the chain and every
+daemon already up. The loader checks both inequalities before anything starts.
+
+Note which term dominates: `miner_seed` is a product of three maxima, so
+`restitution_amount_range` and `miner_gas_returns_per_epoch_range` matter as much as the
+epoch count. A 222-epoch profile at `restitution_amount_range: [1.0, 9.0]` needs 12 188
+per miner; a 100-epoch one at `[50.0, 250.0]` needs 600 200.
 
 ### Target height
 

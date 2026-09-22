@@ -59,7 +59,10 @@ chain:
   mining-diversity: 0.0
   mine-empty-rounds: -1
   mining-requires-peers: false
-  first-block-reward: 1000000000000000
+  # MAX_MONEY on this chain: it caps every single output, the premine coinbase
+  # included, so it has to be raised alongside first-block-reward.
+  maximum-per-output: 400000000000000
+  first-block-reward:  350000000000000
   initial-block-reward: 0
   minimum-relay-fee: 20000000
   anyone-can-connect: false
@@ -94,7 +97,7 @@ runtime:
   startup_timeout_s: 120
   fork_score: true
   fork_score_log: true
-  wpoa_debug: true
+  wpoa_debug: false
   sortition_miner_log: true
 
 

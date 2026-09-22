@@ -103,6 +103,21 @@ BOOTSTRAP_SYNC_POINTS = 16
 #: four, which is what the shipped maps run at.
 MAX_PROPAGATION_SHARE_OF_SORTITION_WINDOW = 0.25
 
+#: The cost of ``runtime.wpoa_debug``, measured rather than guessed. ``-wpoadebug`` puts
+#: four ``LogPrintf`` calls inside the per-row loop of ``StreamWeightRegistry::ReadAllRecords``
+#: (src/wpoa/stream_weight_registry.cpp), including on the branch that DISCARDS a row for
+#: being outside the height scope — so every historical record is written on every read.
+#: The logger takes a process-global mutex and is unbuffered (src/utils/util.cpp), so each
+#: of those lines is a serialised write(2) on the path the mining thread runs.
+#:
+#: Measured on the admin of run-wpoa-core-intercontinental-20260922T181502Z: 147 reads in
+#: 62 s, ~179 bytes per row line.
+WPOA_DEBUG_READS_PER_S = 2.37
+WPOA_DEBUG_BYTES_PER_ROW = 179
+#: Projected debug.log budget for a whole run, across every node. Two gigabytes is already
+#: far more than a diagnostic needs; the profiles that tripped this were projecting ~300.
+WPOA_DEBUG_BUDGET_BYTES = 2 * 1024 ** 3
+
 #: The activation flags. Hardcoded on, and rejected if a profile mentions them.
 ACTIVATION_KEYS = (
     "enable-wpoa",
@@ -156,6 +171,10 @@ _CHAIN_PARAMS: Dict[str, tuple] = {
     "mine-empty-rounds": (-1, "int", -1, 1000, True, True),
     "mining-requires-peers": (False, "bool"),
     "lock-admin-mine-rounds": (10, "int", 0, 10_000, True, True),
+    # MAX_MONEY *is* this parameter (src/utils/utilwrapper.cpp), so it caps every
+    # single output, the premine coinbase included. Exposed because a premine large
+    # enough to fund a long run needs it raised with it.
+    "maximum-per-output": (100_000_000_000_000, "int", 0, 10**18, True, True),
     "first-block-reward": (100_000_000_000_000, "int", -1, 10**18, True, True),
     "initial-block-reward": (0, "int", 0, 10**18, True, True),
     "minimum-relay-fee": (20_000_000, "int", 0, 1_000_000_000, True, True),
@@ -527,6 +546,49 @@ class Profile:
         hi = self.traffic["restitution_amount_range"][1]
         return round(ret_max * self.epoch_count * hi * 1.2 + 200, 4)
 
+    @property
+    def max_per_output(self) -> float:
+        """MAX_MONEY on this chain, in display units."""
+        return int(self.chain_params["maximum-per-output"]) / COIN
+
+    @property
+    def premine(self) -> float:
+        """The admin's opening balance: the first block's coinbase, in display units."""
+        return int(self.chain_params["first-block-reward"]) / COIN
+
+    @property
+    def gas_demand(self) -> float:
+        """Everything ``seed_gas`` will try to send, before any refuel.
+
+        One ``miner_seed_gas`` per miner and one ``gas_seed`` for every other non-admin
+        node, which is exactly the loop in ``BootstrapNetwork.seed_gas``.
+        """
+        others = self.node_count - 1 - self.miner_count
+        return round(self.miner_count * self.miner_seed_gas + others * self.gas_seed, 4)
+
+    # -- diagnostics that do not come free ------------------------------------------------
+
+    @property
+    def wpoa_debug_projected_bytes(self) -> float:
+        """Debug output ``-wpoadebug`` would write over the whole run, every node summed.
+
+        The per-read cost is proportional to the number of rows the weight stream holds,
+        and that grows by one record per validator per epoch — so the total over a run of
+        ``E`` epochs goes with ``E**2 / 2``, not with ``E``. That is the whole reason this
+        flag is safe on a smoke test and ruinous on a campaign.
+        """
+        if not self.runtime.get("wpoa_debug"):
+            return 0.0
+        run_seconds = self.epoch_count * self.epoch_length * self.target_block_time
+        rows_integral = self.miner_count * self.epoch_count / 2.0
+        return (
+            WPOA_DEBUG_READS_PER_S
+            * WPOA_DEBUG_BYTES_PER_ROW
+            * self.node_count
+            * rows_integral
+            * run_seconds
+        )
+
     # -- the malicious-miner experiment --------------------------------------------------
 
     @property
@@ -671,6 +733,10 @@ class Profile:
                 "gas_floor": self.gas_floor,
                 "gas_topup": self.gas_topup,
                 "miner_seed_gas": self.miner_seed_gas,
+                "premine": self.premine,
+                "max_per_output": self.max_per_output,
+                "gas_demand": self.gas_demand,
+                "wpoa_debug_projected_bytes": round(self.wpoa_debug_projected_bytes),
                 "stability_margin": STABILITY_MARGIN,
                 "setup_publish_margin": SETUP_PUBLISH_MARGIN,
             },
@@ -1331,6 +1397,66 @@ def load_profile(path: str | os.PathLike) -> Profile:
         declared_clusters=declared_clusters,
     )
     profile.nodes = _build_nodes(profile, node_specs)
+
+    # The premine has to clear MAX_MONEY first, and then cover the funding round. Both
+    # failures are silent and expensive, which is why they are checked here rather than
+    # left to the run.
+    #
+    # Over the ceiling, the node mines block 1 and then rejects its OWN block with
+    # "CheckTransaction() : txout.nValue too high", once a second, forever: the chain
+    # never leaves height 0 and the bootstrap simply stops after "starting the admin
+    # node" with no error of its own.
+    if profile.premine > profile.max_per_output:
+        raise ConfigError(
+            "chain.first-block-reward is %.0f, above chain.maximum-per-output (%.0f). "
+            "maximum-per-output IS MAX_MONEY on this chain, and the premine is a single "
+            "coinbase output, so the node would mine block 1 and reject it for "
+            "'txout.nValue too high' in a loop — the chain would never leave height 0. "
+            "Raise chain.maximum-per-output to at least %.0f, or lower the premine."
+            % (profile.premine, profile.max_per_output, profile.premine)
+        )
+    # Under the demand, seed_gas funds the nodes it can reach and the rest come back
+    # -704 ("Insufficient funds"), several minutes into the run, after the fabric, the
+    # chain and every daemon are already up.
+    if profile.gas_demand > profile.premine:
+        raise ConfigError(
+            "the premine (chain.first-block-reward = %.0f) cannot cover the funding "
+            "round, which needs %.4f: %d miner(s) x %.4f (miner_seed_gas) + %d other "
+            "node(s) x %.4f (gas_seed). seed_gas would fund the first few and fail the "
+            "rest with -704. Raise chain.first-block-reward to at least %.0f (and "
+            "chain.maximum-per-output with it), or lower "
+            "traffic.restitution_amount_range / traffic.miner_gas_returns_per_epoch_range "
+            "/ epochs.count."
+            % (
+                profile.premine,
+                profile.gas_demand,
+                profile.miner_count,
+                profile.miner_seed_gas,
+                profile.node_count - 1 - profile.miner_count,
+                profile.gas_seed,
+                math.ceil(profile.gas_demand),
+            )
+        )
+
+    # -wpoadebug is a smoke-test flag. Its cost grows with the SQUARE of the epoch count,
+    # so a profile that is fine at 5 epochs writes hundreds of gigabytes at 100 — and
+    # every one of those lines is a serialised, unbuffered write on the mining thread's
+    # path, which is what actually stalls the run long before the disk fills.
+    projected = profile.wpoa_debug_projected_bytes
+    if projected > WPOA_DEBUG_BUDGET_BYTES:
+        raise ConfigError(
+            "runtime.wpoa_debug is on and this profile projects %.0f GB of debug.log "
+            "across %d node(s) over %d epoch(s) — the budget is %.0f GB. -wpoadebug logs "
+            "every row of the weight registry on every read, including the rows it "
+            "discards, so the cost grows with epochs squared. Set runtime.wpoa_debug: "
+            "false for a run this long; it is meant for a smoke profile."
+            % (
+                projected / 1024 ** 3,
+                profile.node_count,
+                profile.epoch_count,
+                WPOA_DEBUG_BUDGET_BYTES / 1024 ** 3,
+            )
+        )
 
     # The block time has to clear the network, and by a margin. Checked here rather than
     # left to the results, because a chain whose propagation is comparable with its own
