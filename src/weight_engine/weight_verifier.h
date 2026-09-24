@@ -349,6 +349,11 @@ bool WeightEngineVerifyAndCacheEpoch(WeightStreamReader& reader, uint32_t epoch,
  * re-running the identical pipeline is the entire proof, so the verifier must be able to
  * run it without depending on whether this node happened to cache that epoch.
  *
+ * Memoized per epoch (weight_verifier.cpp, "Recomputation memo"): the malus fold calls
+ * this once per `badweight` report on every round, so an uncached walk from epoch 1 would
+ * put seconds of work per report on the consensus path. The memo key holds everything
+ * the result depends on, so a hit returns what the walk would return now.
+ *
  * @param epoch       The epoch to recompute (1-based).
  * @param address     The cluster whose weight is wanted.
  * @param is_cluster  [out] false when `address` heads no cluster in that epoch, in which

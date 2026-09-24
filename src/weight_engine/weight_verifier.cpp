@@ -11,8 +11,10 @@
 
 #include "weight_engine/weight_engine.h"   // HeightToEpoch, g_weight_engine_enabled
 #include "weight_engine/weight_reader.h"   // WeightStreamReader
+#include "weight_engine/weight_streams.h"  // MC_WEIGHT_DEFAULT_STABILITY_MARGIN
 
 #include "core/init.h"          // pwalletTxsMain
+#include "core/main.h"          // chainActive, cs_main, CBlockIndex
 #include "utils/util.h"         // LogPrintf
 #include "utils/sync.h"         // CCriticalSection, LOCK
 
@@ -121,6 +123,91 @@ bool WeightEngineVerifyAndCacheEpoch(WeightStreamReader& reader, uint32_t epoch,
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Recomputation memo
+// ---------------------------------------------------------------------------
+// WHY. The malus fold (MalusRegistry::GetAccumulators) re-validates EVERY report on
+// every call, and it is called on the consensus path: once per round by each miner,
+// once per received block by every node (under cs_main), and by every audit RPC. For a
+// `badweight` report the validation is a full recomputation, which walks every block
+// from epoch 1. Measured on a 100-epoch regional run, one walk near the end costs 2-3 s,
+// so a few dozen accepted reports turn each fold into tens of seconds against an 8 s
+// block time. The recomputation of a buried epoch is a pure function of inputs that do
+// not change once buried, so the second and every later call can be answered from here.
+//
+// WHAT IT IS A FUNCTION OF, and so what the key holds — all of it, so that a hit returns
+// exactly what WeightEngineComputeAllWeightsForEpoch would return now:
+//   * the block prefix up to the epoch's last height. The hash of the active chain's
+//     block at that height commits to every block before it;
+//   * the membership and ESG maps. These are read "latest confirmed wins", NOT scoped to
+//     a height, so a record confirmed later can change a past epoch's recomputation.
+//     They are re-read on every call (a small stream read) and compared whole.
+// The params (kappa, lambda, epoch length, treasury) are hash-enforced and fixed for the
+// process. The burial gate is re-applied on every call, before the memo is consulted, so
+// an epoch a reorg has un-buried fails exactly as it would without the memo.
+//
+// The one input not in the key is the block DATA being readable: a node that pruned an
+// epoch after memoizing it would answer where the uncached walk fails closed. This
+// fork's nodes do not prune (weight_reader.cpp fails closed on BLOCK_HAVE_DATA for that
+// reason), so the case is noted rather than handled.
+//
+// Guarded by its own lock, never held while cs_main is taken or while computing: the
+// consensus-path callers may already hold cs_main, so the only order that occurs is
+// cs_main -> cs_recomputeMemo.
+
+namespace {
+
+struct RecomputeMemoKey
+{
+    uint256 last_block_hash;                                   // active chain at lastH
+    std::map<std::string, std::set<std::string> > clusters;   // membership, as read
+    std::map<std::string, double> esg;                         // ESG, as read
+
+    bool operator==(const RecomputeMemoKey& o) const
+    {
+        return last_block_hash == o.last_block_hash && clusters == o.clusters && esg == o.esg;
+    }
+};
+
+struct RecomputeMemoEntry
+{
+    RecomputeMemoKey key;
+    std::map<std::string, uint32_t> weights;
+};
+
+CCriticalSection cs_recomputeMemo;
+std::map<uint32_t, RecomputeMemoEntry> g_recompute_memo;   // one entry per epoch
+
+// The key for `epoch` as the chain and the streams stand now. False when the epoch is not
+// buried (the same gate as WeightStreamReader::ComputeEpochFacts) or the static inputs
+// are unreadable -- the two cases the uncached walk also fails on before scanning.
+bool CurrentRecomputeKey(WeightStreamReader& reader, uint32_t epoch, RecomputeMemoKey& out)
+{
+    const int len = g_weight_epoch_length;
+    if (len < 1)
+    {
+        return false;
+    }
+    const int64_t lastH = (int64_t)epoch * (int64_t)len - 1;
+    {
+        LOCK(cs_main);
+        const int stableHeight = chainActive.Height() - MC_WEIGHT_DEFAULT_STABILITY_MARGIN;
+        if (lastH < 0 || lastH > (int64_t)stableHeight)
+        {
+            return false;
+        }
+        CBlockIndex* p = chainActive[(int)lastH];
+        if (p == NULL)
+        {
+            return false;
+        }
+        out.last_block_hash = p->GetBlockHash();
+    }
+    return reader.ReadMembership(out.clusters) && reader.ReadEsg(out.esg);
+}
+
+} // namespace
+
 bool WeightEngineRecomputeWeightForEpoch(uint32_t epoch, const std::string& address,
                                          bool& is_cluster, uint32_t& out_weight)
 {
@@ -138,10 +225,41 @@ bool WeightEngineRecomputeWeightForEpoch(uint32_t epoch, const std::string& addr
     // guards, so a short-lived instance is cheap and avoids any cross-thread sharing.
     WeightStreamReader reader(pwalletTxsMain);
 
-    std::map<std::string, uint32_t> all;
-    if (!WeightEngineComputeAllWeightsForEpoch(reader, epoch, all))
+    RecomputeMemoKey key;
+    if (!CurrentRecomputeKey(reader, epoch, key))
     {
-        return false;   // undecided: inputs unreadable, epoch not buried, pruned
+        return false;   // undecided: epoch not buried, or static inputs unreadable
+    }
+
+    std::map<std::string, uint32_t> all;
+    bool hit = false;
+    {
+        LOCK(cs_recomputeMemo);
+        std::map<uint32_t, RecomputeMemoEntry>::const_iterator mi = g_recompute_memo.find(epoch);
+        if (mi != g_recompute_memo.end() && mi->second.key == key)
+        {
+            all = mi->second.weights;
+            hit = true;
+        }
+    }
+
+    if (!hit)
+    {
+        if (!WeightEngineComputeAllWeightsForEpoch(reader, epoch, all))
+        {
+            return false;   // undecided: inputs unreadable, epoch not buried, pruned
+        }
+        // Store only if nothing the result depends on moved while it was computed: the
+        // walk takes its own snapshot of the chain and the streams, and a reorg or a new
+        // membership/ESG record in between would pair this result with the wrong key.
+        RecomputeMemoKey after;
+        if (CurrentRecomputeKey(reader, epoch, after) && after == key)
+        {
+            LOCK(cs_recomputeMemo);
+            RecomputeMemoEntry& entry = g_recompute_memo[epoch];
+            entry.key = key;
+            entry.weights = all;
+        }
     }
 
     std::map<std::string, uint32_t>::const_iterator it = all.find(address);
