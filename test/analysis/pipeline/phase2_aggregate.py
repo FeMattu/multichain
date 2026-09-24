@@ -433,11 +433,13 @@ class Aggregator:
 
             # The real score is only claimable when the audit actually recomputed one AND
             # it belongs to the block this round settled on -- a row whose miner does not
-            # match the winner recorded in `blocks` describes a different branch, which
-            # happens when `blocks` captured a block that was later reorged away (phase 1
-            # keeps the FIRST row seen per height). Such a round is dropped from the
-            # *_true columns but its verdict and the mismatch are still reported, so the
-            # gap is counted rather than silently absent.
+            # match the winner recorded in `blocks` describes a different branch. Phase 1
+            # resolves `blocks` from the settled listblocks/wpoalistblocksortition sample
+            # whenever one exists (finalize_blocks() in phase1_collect.py), so this should
+            # now be rare -- a residual case is a height where even the settled window's
+            # burial depth was not enough. Such a round is dropped from the *_true columns
+            # but its verdict and the mismatch are still reported, so the gap is counted
+            # rather than silently absent.
             true_raw = true_by_height.get(height, {})
             true_mismatch = bool(
                 winner and true_raw.get("miner_address")

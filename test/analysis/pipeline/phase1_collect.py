@@ -216,6 +216,11 @@ class Collector:
         self._seen_stream_items: set = set()
         self._seen_rounds: Dict[str, set] = {}
         self._seen_epoch_rows: Dict[str, set] = {}
+        #: height -> row, from listblocks/getlastblockinfo, resolved into ``blocks`` by
+        #: finalize_blocks() once every event has been read. See that method for why the
+        #: two raw samples cannot simply be appended as they arrive.
+        self._blocks_settled: Dict[int, Dict[str, Any]] = {}
+        self._blocks_tip_probe: Dict[int, Dict[str, Any]] = {}
 
     # -- helpers -----------------------------------------------------------------------
 
@@ -427,12 +432,17 @@ class Collector:
             handler(payload, data, height)
 
     def _snap_listblocks(self, payload: Dict[str, Any], data: Any, height: Any) -> None:
+        """The settled read: only reaches a height once it is buried two blocks deep.
+
+        Buffered rather than appended straight to ``blocks`` -- see finalize_blocks() for
+        why the settled and unsettled samples of the same height have to be reconciled
+        after the fact rather than raced against each other as they arrive.
+        """
         for block in data or []:
             block_height = block.get("height")
-            if block_height is None or not self._once("blocks", block_height):
+            if block_height is None:
                 continue
-            self.add(
-                "blocks",
+            self._blocks_settled[block_height] = dict(
                 height=block_height,
                 hash=block.get("hash", ""),
                 miner_address=block.get("miner", ""),
@@ -485,13 +495,18 @@ class Collector:
             )
 
     def _snap_getlastblockinfo(self, payload: Dict[str, Any], data: Any, height: Any) -> None:
+        """The unsettled read: the raw tip, sampled every poll, no burial depth at all.
+
+        A pure fallback for finalize_blocks() -- see there. Kept as last-sample-wins
+        rather than first, since among two unsettled reads of the same still-moving tip
+        the later one is the closer of the two to the truth.
+        """
         if not isinstance(data, dict):
             return
         block_height = data.get("height")
-        if block_height is None or not self._once("blocks", block_height):
+        if block_height is None:
             return
-        self.add(
-            "blocks",
+        self._blocks_tip_probe[block_height] = dict(
             height=block_height,
             hash=data.get("hash", ""),
             miner_address=data.get("miner", ""),
@@ -1035,6 +1050,40 @@ class Collector:
                 context_json=json.dumps(context, separators=(",", ":"))[:600],
             )
 
+    # -- reconciliation ------------------------------------------------------------------
+
+    def finalize_blocks(self) -> None:
+        """Resolve the settled and unsettled block samples into ``blocks``, one row per
+        height, once every event has been read.
+
+        ``admin_daemon.py`` samples a height's block two ways: ``listblocks`` /
+        ``wpoalistblocksortition``, gated behind ``BLOCK_SAMPLE_SETTLE_DEPTH`` so they
+        only look at a height once two more blocks are buried on top of it, and
+        ``getlastblockinfo(0)``, which reads the raw, unsettled tip on every single poll,
+        the moment a height first becomes the tip. Under wPoA's score-based fork choice a
+        same-height block can still displace an unextended tip, so the height the
+        unsettled probe recorded first is not guaranteed to be the one still there two
+        blocks later.
+
+        Appending both straight into ``blocks`` as they arrived -- what this used to do,
+        keyed on "first row wins" -- let the unsettled probe win every time: it reaches a
+        height many polls before the settled window ever does, so it always claimed the
+        slot first, and a later reorg away from that block could never be reflected. That
+        is what put an orphaned block, of whichever miner the admin node's tip happened to
+        favour for a moment, into ``blocks`` (and everything phase 2/3 derive from it --
+        ``round_level.winner_address``, the epoch win counts, every quota test) at roughly
+        one height in nine on a contested run. ``block_sortition`` never had this problem:
+        nothing else writes to it, so its settled sample was never pre-empted.
+
+        The fix is symmetric with that table: once every event has been read, the settled
+        sample wins whenever one exists, and the unsettled probe is used only for a height
+        the settled window never got to sample before the run ended.
+        """
+        heights = set(self._blocks_settled) | set(self._blocks_tip_probe)
+        for block_height in sorted(heights):
+            row = self._blocks_settled.get(block_height) or self._blocks_tip_probe[block_height]
+            self.add("blocks", **row)
+
     # -- output ------------------------------------------------------------------------
 
     def write(self, out_dir: Path) -> Dict[str, int]:
@@ -1070,6 +1119,7 @@ def collect(run_dir: Path, profile_path: Optional[Path] = None) -> Dict[str, Any
     collector.collect_malicious_plan()
     for event in read_events(run_dir):
         collector.collect_event(event)
+    collector.finalize_blocks()
 
     out_dir = run_dir / "analysis" / "phase1"
     counts = collector.write(out_dir)
