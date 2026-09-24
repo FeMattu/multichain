@@ -412,7 +412,7 @@ comportamento corretto, non un bug**.
 | `fabric.json` | (solo regime `core`) la mappa di rete emulata: siti, cavi, impairment. |
 | `shutdown.json` | esito della chiusura dei nodi. |
 | `logs/<node>/events.jsonl` | log JSON Lines per singolo daemon. **Fonte di ultima istanza**: usalo solo se un dato manca in `analysis/`. |
-| `chains/<node>/` | data directory dei nodi. Spesso non leggibile (permessi `root`). Non serve. |
+| `chains/<node>/` | data directory dei nodi. Spesso non leggibile (permessi `root`). Non serve, **tranne** che per il passo §3.2(E)/§3.5.1: i daemon sono lanciati con `-debug=wpoa -debug=wpoafork`, quindi `chains/<node>/<chain>/debug.log` (dentro la data directory, non `chains/<node>/daemon.out` che è solo lo stdout di avvio) porta, per ogni nodo, lo **score privato** che quel nodo ha calcolato per ogni round che ha valutato — vincente o no — e i suoi eventi di cambio-tip/fork locali. Se non è leggibile in quella run, scrivilo esplicitamente e ometti §3.5.1 (vedi §3.3, regola anti-falso-allarme sui file mancanti). |
 
 ### 2.2 `analysis/` — la struttura delle tre fasi
 
@@ -797,6 +797,56 @@ figure `margin_distribution.png`, `sigma_decomposition.png`, `prop517_gap_by_val
   è la causa candidata numero uno di una quota osservata che non segue il peso, **pur restando
   la sortition formalmente corretta** (§1.3(f)). Leggi `inversion_rate` anche per epoca in
   `wpoa_epoch_tests.csv` con il suo intervallo di Wilson, per vedere se cresce nel tempo.
+- **Vantaggio del miner uscente** — da `round_level.csv`, verifica se il vincitore del round
+  precedente arma/riceve il proprio blocco candidato sistematicamente prima degli altri nel round
+  successivo (confronta il suo `delay_winner_public_s`/tempo di ricezione con quello degli altri
+  candidati dello stesso round, height per height). Se presente, quantificalo in secondi e per
+  terzo della run (l'effetto tipicamente cresce nel tempo insieme al rumore di scheduling
+  `S2_scheduler_residual_sd`): è una causa plausibile di inversioni reali concentrate sul miner
+  uscente, da riportare qui **prima** di §3.5.1(b), che la misura direttamente sugli score
+  privati.
+
+**§3.5.1 — vincitore designato, inversioni reali e fork (obbligatorio quando `chains/<node>/`
+è leggibile; altrimenti scrivilo esplicitamente e ometti la sottosezione).**
+
+Questa parte usa lo score **privato** di ogni miner (da `chains/<node>/<chain>/debug.log`,
+righe `-debug=wpoa`/`-debug=wpoafork`), non lo score pubblico HMAC di `round_scores`/
+`round_delays` (§1.3, nota su regola 10): è l'unico modo di sapere chi la sortition avrebbe
+**davvero** dovuto eleggere in ogni round, candidato per candidato, e non solo per il round in
+cui quel candidato ha effettivamente vinto (l'unico caso coperto da `block_sortition.csv`).
+Raccogli, per ogni round valutato da almeno un nodo, lo score privato di tutti i miner che lo
+hanno valutato e il relativo "vincitore designato" (l'`argmin` del delay/lo score migliore fra i
+candidati osservati).
+
+- **(a) Sortition privata.** Ricontrolla la qualità della VRF sugli score privati raccolti (media
+  di `E_i`, test KS, come al punto (A) ma su questa fonte) e la quota di round in cui il
+  designato coincide con il miner del round precedente (atteso circa `1/n_miner` se non c'è
+  correlazione). Se le quote dei vincitori designati si scostano dalla quota teorica per un
+  miner in particolare, verifica se è compatibile con un disallineamento fra il prefisso del
+  registro pesi letto dal nodo e quello letto dalla pipeline, prima di concludere un difetto di
+  elezione.
+- **(b) Inversioni reali.** Confronta il designato (score privato) con il vincitore effettivo
+  sulla catena finale (§3.2(E) sopra: la stessa nozione di "chi ha vinto" che va usata ovunque,
+  quindi dopo la correzione di fase 1 sul blocco orfano). Riporta il tasso di inversione
+  complessivo, il suo andamento per terzo di run, e la quota di inversioni che va al miner
+  uscente rispetto a un candidato qualunque — è la controparte quantitativa, sugli score veri,
+  del punto sul vantaggio del miner uscente in §3.5.
+- **(c) Fork.** Usa gli eventi di cambio-tip/fork nei `debug.log` per contare: la quota di round
+  con un fork (più di un blocco proposto alla stessa altezza), la profondità massima di
+  riorganizzazione osservata, quante volte il tie-break per score sceglie il candidato con lo
+  score migliore fra i contendenti (confrontalo con quante ne sceglierebbe la regola nativa, per
+  quantificare quante inversioni il tie-break per score evita), e per quanto tempo al massimo un
+  nodo è rimasto fermo su un blocco poi risultato orfano.
+- **(d) Prop. 5.18 sui delay reali.** Ripeti il confronto fra il bound di Prop. 5.18 e i dati,
+  questa volta simulando due modelli sui delay reali di ogni round: un rumore di scheduling
+  puramente simmetrico, e un rumore con un vantaggio sistematico al miner uscente (dal punto
+  precedente in §3.5). Riporta quale dei due riproduce meglio non solo il tasso di inversione ma
+  **anche chi ne beneficia**, e se il vantaggio/il jitter del modello vincente cresce nel tempo
+  (per terzo di run, come al punto (b)).
+
+Il numero di round coperti da questa sottosezione dipende da quanti nodi hanno `debug.log`
+leggibile: dichiaralo esplicitamente (es. "score privati di N miner su M, K round"), così un
+lettore sa se la copertura è completa o parziale.
 
 ---
 
@@ -1023,6 +1073,18 @@ Da controllare sempre, perché invalidano tutto il resto se falliscono:
 - **Ultima epoca**: è quasi sempre **parziale** (la run si ferma a metà epoca). Le sue metriche
   hanno pochi blocchi, intervalli larghi e concentrazione apparentemente più alta. **Trattala
   separatamente e non usarla per concludere una tendenza.**
+- **Blocco orfano in `phase1/blocks.csv`.** Fino alla correzione di `finalize_blocks()` in
+  `phase1_collect.py`, un'altezza poteva registrare il primo blocco visto invece di quello
+  rimasto sulla catena finale, perché il campione non assestato di `getlastblockinfo` (ogni poll,
+  senza margine di sepoltura) e quello assestato di `listblocks`/`wpoalistblocksortition`
+  (`BLOCK_SAMPLE_SETTLE_DEPTH` blocchi di margine) scrivevano nella stessa tabella a chi arriva
+  prima. Se la run che stai analizzando è stata raccolta con una `phase1_collect.py` precedente a
+  questa correzione, **rigenera la fase 1** prima di fidarti di `winner_address`,
+  `round_level.csv`, delle quote per epoca e di ogni test che ne dipende — il sintomo è un
+  vincitore che non corrisponde a `block_sortition.csv` per quell'altezza pur con `verdict = ok`
+  (`true_winner_mismatch` in `round_level.csv`). Su una run già corretta, un residuo di 1-2
+  altezze su alcune migliaia è atteso (il margine di sepoltura non è infallibile) e non è un
+  difetto da riportare come tale.
 
 ---
 
@@ -1115,6 +1177,7 @@ apertura perché invalida tutto il resto.>
 ### 3.3 Quota di blocchi contro peso
 ### 3.4 Comportamento longitudinale
 ### 3.5 Timer race, margine e inversioni
+#### 3.5.1 Vincitore designato, inversioni reali e fork (score privati)
 ### 3.6 Stabilità del block time e correzione globale
 ### 3.7 Evoluzione dei pesi e retroazione inter-epoca
 ### 3.8 Concentrazione
