@@ -80,10 +80,18 @@ epochs reached.
 ## 3. Timing, idempotency, logging
 
 - **Window and order inside the epoch.** The opportunity fires *first* in the epoch, before
-  the honest restitutions, and a `badweight` targets the newest **buried** epoch — the one
-  the honest weight engine has already published its own weight for — so the injection
-  follows the correct publication rather than racing it, and the offence is immediately
-  recomputable by a detector.
+  the honest restitutions. A `badweight` then waits, bounded at three times
+  `STABILITY_MARGIN + 2` blocks, for the miner's **honest** weight for the epoch that just
+  ended to confirm, targets that epoch, and inflates that honest value (the registry's
+  published integer, not the real-valued `w_k`). The registry the election reads is
+  newest-wins whatever epoch a record states, so the forged record is in force from its
+  confirmation until the next honest publication — about one epoch, every time — and the
+  offence is immediately recomputable by a detector. Before, the injection could land
+  before or after the honest publication depending on when the daemon's poll noticed the
+  epoch, so the forged weight held for a few blocks or for most of an epoch. A send that
+  timed out waiting is published anyway against the newest buried epoch and carries
+  `honest_weight_confirmed: false`. Every action is published with `publishfrom` the
+  miner's own address: a badweight signed by another address would be a selfwrite.
 - **Idempotency.** Every action has a deterministic `action_id = sha256(run, miner, epoch,
   opportunity_index, action)[:24]`, used as the stream-item **key**. Before publishing, the
   injector asks `liststreamkeyitems <stream> <action_id>`; if the action is already on

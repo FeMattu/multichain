@@ -25,40 +25,62 @@ PROFILES = _ROOT / "config" / "profiles" / "native"
 
 
 class FakeRpc:
-    """Records publishes; answers reads from an in-memory stream keyed by item key."""
+    """Records publishes; answers reads from an in-memory stream keyed by item key.
+
+    The attacker's honest weight record (keyed by its own address, as the node publishes
+    it) is present for every epoch unless ``honest_weight`` is set to ``None``.
+    """
 
     def __init__(self):
         self.published = []                 # (stream, key, payload)
+        self.signers = []                   # the address each publish was made from
         self.items = {}                     # (stream, key) -> [item, ...]
         self.calls = 0
         self.failures = 0
         self.fail_publish = False
+        self.honest_weight = 50000          # registry scale (the published integer)
+        self.tip = 70
 
     def own_address(self):
         return "ATTACKER"
 
+    def block_height(self):
+        return self.tip
+
     def call(self, method, *args):
         self.calls += 1
-        if method == "publish":
+        if method == "publishfrom":
             if self.fail_publish:
                 self.failures += 1
-                raise RpcError("publish", -6, "fee policy")
-            stream, key, payload = args
+                raise RpcError("publishfrom", -6, "fee policy")
+            signer, stream, key, payload = args
             txid = "tx-%s-%d" % (key, len(self.published))
             self.published.append((stream, key, payload))
+            self.signers.append(signer)
             self.items.setdefault((stream, key), []).append(
                 {"txid": txid, "blockheight": 100 + len(self.published),
-                 "confirmations": 1, "keys": [key]}
+                 "confirmations": 1, "keys": [key], "data": payload}
             )
             return txid
         if method == "weightgetnodeclusterweight":
-            return {"final_cluster_weight": 500}
+            # Both scales, as the real RPC reports them: the fallback must pick the
+            # published integer, not the real-valued w_k.
+            return {"final_cluster_weight": 500.0, "published_weight": 50000}
         if method == "getnodeweight":
-            return {"address": args[0], "weight": 500}
+            return {"address": args[0], "weight": 50000}
         raise RpcError(method, -32601, "unexpected method in test")
 
     def stream_key_items(self, stream, key, count=100000):
-        return list(self.items.get((stream, key), []))
+        items = list(self.items.get((stream, key), []))
+        if stream == "wpoa-weights" and key == "ATTACKER" and self.honest_weight is not None:
+            items += [
+                {"txid": "honest-%d" % e, "blockheight": 10 * e, "confirmations": 5,
+                 "keys": [key],
+                 "data": {"json": {"node_address": key, "weight": self.honest_weight,
+                                   "epoch": e}}}
+                for e in range(1, 20)
+            ]
+        return items
 
 
 def _plan():
@@ -89,11 +111,11 @@ class InjectorTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.dir, ignore_errors=True)
 
-    def _injector(self, rpc=None):
+    def _injector(self, rpc=None, honest_wait_s=0.0):
         log = EventLog(self.dir, "miner-0", "miner", epoch_length=self.profile.epoch_length)
         return MaliciousInjector(
             self.profile, _plan(), "miner-0", "ATTACKER", rpc or FakeRpc(), log, "run-x",
-            all_addresses=self.addr,
+            all_addresses=self.addr, poll_s=0.0, honest_wait_s=honest_wait_s,
         ), log
 
     def test_decision_replay_is_deterministic(self):
@@ -176,6 +198,46 @@ class InjectorTest(unittest.TestCase):
         # but the opportunity was still recorded
         opps = list(replay(self.dir, "miner-0", ("malicious_opportunity",)))
         self.assertEqual(len(opps), 1)
+
+    def _sent(self):
+        sent = list(replay(self.dir, "miner-0", ("malicious_action_sent",)))
+        self.assertEqual(len(sent), 1)
+        return sent[0]["payload"]
+
+    def test_badweight_signed_by_the_attacker(self):
+        # A badweight signed by any other address would be a selfwrite: the signer is named.
+        rpc = FakeRpc()
+        inj, log = self._injector(rpc)
+        inj.run_opportunity(3, tip=70)
+        log.close()
+        self.assertEqual(rpc.signers, ["ATTACKER"])
+
+    def test_badweight_follows_the_honest_record_and_inflates_it(self):
+        rpc = FakeRpc()
+        inj, log = self._injector(rpc)
+        inj.run_opportunity(3, tip=70)
+        log.close()
+        sent = self._sent()
+        self.assertTrue(sent["honest_weight_confirmed"])
+        self.assertEqual(sent["target_epoch"], 3)            # the epoch that just ended
+        self.assertEqual(sent["true_weight"], 50000)         # the registry's own value
+        self.assertGreater(sent["declared_weight"], 50000)   # an inflation, never a cut
+        _, _, payload = rpc.published[0]
+        self.assertEqual(payload["json"]["epoch"], 3)
+        self.assertEqual(payload["json"]["weight"], sent["declared_weight"])
+
+    def test_badweight_without_honest_record_falls_back_on_registry_scale(self):
+        rpc = FakeRpc()
+        rpc.honest_weight = None                             # never confirms
+        inj, log = self._injector(rpc, honest_wait_s=0.0)
+        inj.run_opportunity(3, tip=70)
+        log.close()
+        sent = self._sent()
+        self.assertFalse(sent["honest_weight_confirmed"])
+        # published_weight (50000), not final_cluster_weight (500): the x100 scale.
+        self.assertEqual(sent["true_weight"], 50000)
+        self.assertGreater(sent["declared_weight"], 50000)
+        self.assertEqual(sent["target_epoch"], self.profile.last_buried_epoch(rpc.tip))
 
 
 if __name__ == "__main__":

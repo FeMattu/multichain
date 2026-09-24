@@ -14,7 +14,8 @@ What one opportunity does, in order:
    the realised rate is a logged fact and not an inference;
 3. **if it acted** — build the payload for the chosen kind, skip it if this exact action
    (keyed by its deterministic ``action_id``) is already on chain, otherwise publish it
-   and log the send;
+   and log the send. A ``badweight`` first waits for this miner's honest weight for the
+   epoch that just ended to confirm (see :meth:`MaliciousInjector._await_honest_weight`);
 4. **sweep confirmations** — check which previously-sent actions have now confirmed, and
    log each the first time it does.
 
@@ -31,6 +32,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import malicious as M
+from config_loader import STABILITY_MARGIN, STREAM_WEIGHTS
 from event_log import (
     EVENT_MALICIOUS_ACTION_CONFIRMED,
     EVENT_MALICIOUS_ACTION_SENT,
@@ -54,6 +56,8 @@ class MaliciousInjector:
         log: EventLog,
         run_id: str,
         all_addresses: Optional[Dict[str, str]] = None,
+        poll_s: float = 2.0,
+        honest_wait_s: Optional[float] = None,
     ) -> None:
         self.profile = profile
         self.plan = plan
@@ -62,6 +66,10 @@ class MaliciousInjector:
         self.rpc = rpc
         self.log = log
         self.run_id = run_id
+        self.poll_s = poll_s
+        #: How long a badweight waits for the honest weight; None = derived from the
+        #: profile (see _await_honest_weight). Settable so a test need not sleep.
+        self.honest_wait_s = honest_wait_s
         self.seed = int(plan["seed"])
         self.start_epoch = int(plan["start_epoch"])
         self.rate = float(plan.get("per_miner_target_rate", {}).get(node_id, 0.0))
@@ -224,8 +232,14 @@ class MaliciousInjector:
                                 existing.get("txid", ""), payload, index)
             return
 
+        # publishFROM, not publish, for the reason StreamWeightRegistry::PublishWeightRecord
+        # gives: plain publish lets the wallet pick whichever address funds the transaction.
+        # The kind of the offence is decided by who signed it -- a badweight signed by any
+        # address other than the one it declares is a selfwrite -- so the signer is named.
         try:
-            txid = self.rpc.call("publish", stream, action_id, {"json": payload["json"]})
+            txid = self.rpc.call(
+                "publishfrom", self.own_address, stream, action_id, {"json": payload["json"]}
+            )
         except (RpcError, RpcTransportError) as exc:
             self.log.rpc_error(
                 "publish", exc, tip, epoch=epoch, action=action, action_id=action_id,
@@ -255,6 +269,7 @@ class MaliciousInjector:
                 "declared_weight": payload.get("declared_weight"),
                 "true_weight": payload.get("true_weight"),
                 "target_epoch": payload.get("target_epoch"),
+                "honest_weight_confirmed": payload.get("honest_weight_confirmed"),
             },
             node_address=self.own_address,
         )
@@ -283,18 +298,29 @@ class MaliciousInjector:
     def _build_badweight(self, epoch: int, tip: int):
         """A ``wpoa-weights`` record about this miner, carrying a false value.
 
-        The stated epoch is the newest buried one at the opportunity, so the honest
-        detector can immediately recompute it and disagree; the false value is derived
-        from the true weight (queried per that epoch) so the record is guaranteed to be a
-        genuine ``badweight`` and not a coincidentally-correct one, which the registry
-        would refuse.
+        The stated epoch is the one that just ended, and the record is published only once
+        this miner's HONEST weight for that epoch has confirmed. The registry the election
+        reads is newest-wins whatever epoch a record states
+        (``StreamWeightRegistry::ReadAllRecords``), so the forged record is in force from
+        its confirmation until the next honest publication, one epoch later. Published
+        before the honest one instead, it would be superseded within a few blocks; which of
+        the two happened used to depend on when this daemon's poll noticed the new epoch,
+        so the size of the attack was a property of the scheduler rather than of the
+        experiment. Waiting fixes it at "about one epoch", every time.
+
+        The false value is derived from the true weight on the registry's own scale (the
+        published integer, not the real-valued ``w_k``), so it is always an inflation, and
+        forced to differ from it so the record is a genuine ``badweight`` and not a
+        coincidentally-correct one, which the registry would refuse.
         """
-        target_epoch = self.profile.last_buried_epoch(tip)
+        honest = self._await_honest_weight(epoch)
+        target_epoch = epoch if honest is not None else self.profile.last_buried_epoch(
+            self._tip_or(tip))
         if target_epoch < 1:
             # Nothing is buried, so a badweight cannot be substantiated by any node.
             # Skip cleanly rather than publish an unprovable record.
             return "wpoa-weights", None
-        true_weight = self._true_weight(target_epoch)
+        true_weight = honest if honest is not None else self._true_weight(target_epoch)
         rng = M.opportunity_rng(self.seed, self.node_id, epoch, "badweight-value")
         false_weight = M.falsify_weight(true_weight, rng)
         body = M.badweight_payload(self.own_address, false_weight, target_epoch)
@@ -304,18 +330,76 @@ class MaliciousInjector:
             "declared_weight": false_weight,
             "true_weight": true_weight,
             "target_epoch": target_epoch,
+            "honest_weight_confirmed": honest is not None,
         }
 
-    def _true_weight(self, epoch: int) -> int:
-        """The weight the honest pipeline yields for this miner's cluster in ``epoch``.
+    def _tip_or(self, fallback: int) -> int:
+        try:
+            return int(self.rpc.block_height())
+        except (RpcError, RpcTransportError, AttributeError):
+            return fallback
 
-        Best effort: the per-epoch cluster weight when the audit RPC answers, else the
-        current published weight, else a nominal 100. The value only sets what to falsify
-        *away from*; ``falsify_weight`` forces a strict difference regardless, so an
-        imperfect read cannot make the record accidentally correct.
+    def _honest_weight_for(self, epoch: int) -> Optional[int]:
+        """This miner's own confirmed ``wpoa-weights`` value for ``epoch``, or ``None``.
+
+        The node publishes it under its own address as the item key
+        (``StreamWeightRegistry::PublishWeightRecord``); a forged record is keyed by its
+        ``action_id``, so reading by that key sees only the honest ones.
+        """
+        try:
+            items = self.rpc.stream_key_items(STREAM_WEIGHTS, self.own_address)
+        except (RpcError, RpcTransportError):
+            return None
+        for item in reversed(items or []):
+            if item.get("blockheight") is None and not (item.get("confirmations") or 0):
+                continue
+            data = item.get("data")
+            inner = data.get("json", data) if isinstance(data, dict) else None
+            if not isinstance(inner, dict):
+                continue
+            try:
+                if int(inner.get("epoch") or 0) != int(epoch):
+                    continue
+                weight = int(inner.get("weight") or 0)
+            except (TypeError, ValueError):
+                continue
+            if weight > 0:
+                return weight
+        return None
+
+    def _await_honest_weight(self, epoch: int) -> Optional[int]:
+        """Wait, bounded, for this miner's honest weight for ``epoch`` to confirm.
+
+        The engine publishes it once ``epoch`` buries, STABILITY_MARGIN blocks after the
+        epoch ends, and it confirms a block later. The bound allows three times that at the
+        target block time; past it the record is published anyway against the newest
+        buried epoch and the send is marked ``honest_weight_confirmed = false``, so phase 2
+        can tell the two timings apart instead of mixing them.
+        """
+        budget_s = self.honest_wait_s
+        if budget_s is None:
+            budget_s = (STABILITY_MARGIN + 2) * self.profile.target_block_time * 3
+        deadline = time.time() + budget_s
+        while True:
+            weight = self._honest_weight_for(epoch)
+            if weight is not None or time.time() >= deadline:
+                return weight
+            time.sleep(self.poll_s)
+
+    def _true_weight(self, epoch: int) -> int:
+        """The weight the honest pipeline yields for this miner's cluster in ``epoch``,
+        on the registry's scale.
+
+        Only the fallback of :meth:`_build_badweight`, when the honest record never showed
+        up. ``published_weight`` is the integer the registry holds; ``final_cluster_weight``
+        is the real-valued ``w_k`` before that scaling (x100 on the shipped chains), and
+        inflating THAT would have written a weight tens of times smaller than the true one.
+        Best effort: the audit RPC, else the current registry weight, else a nominal 100.
+        ``falsify_weight`` forces a strict difference regardless, so an imperfect read
+        cannot make the record accidentally correct.
         """
         for method, args, key in (
-            ("weightgetnodeclusterweight", (self.own_address, epoch), "final_cluster_weight"),
+            ("weightgetnodeclusterweight", (self.own_address, epoch), "published_weight"),
             ("getnodeweight", (self.own_address,), "weight"),
         ):
             try:

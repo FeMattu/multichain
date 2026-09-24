@@ -140,7 +140,7 @@ COLUMNS: "OrderedDict[str, List[str]]" = OrderedDict(
         ("malicious_actions", ["timestamp_utc", "block_height", "epoch", "miner",
                                "node_address", "opportunity_index", "action", "action_id",
                                "stream", "txid", "declared_address", "declared_weight",
-                               "true_weight", "target_epoch"]),
+                               "true_weight", "target_epoch", "honest_weight_confirmed"]),
         ("malicious_confirmations", ["timestamp_utc", "block_height", "epoch", "miner",
                                      "node_address", "action", "action_id", "stream", "txid",
                                      "confirm_height", "declared_address", "declared_weight",
@@ -998,6 +998,9 @@ class Collector:
                 declared_weight=_num(payload.get("declared_weight")),
                 true_weight=_num(payload.get("true_weight")),
                 target_epoch=_num(payload.get("target_epoch")),
+                # Absent (not False) for selfwrite and for runs before the badweight
+                # waited on the honest record: "did not wait" and "timed out" differ.
+                honest_weight_confirmed=payload.get("honest_weight_confirmed"),
             )
         elif kind == "malicious_action_confirmed":
             self.add(

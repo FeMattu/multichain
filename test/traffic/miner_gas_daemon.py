@@ -261,9 +261,10 @@ class MinerGasDaemon:
                 # The malicious opportunity comes FIRST in the epoch, before the honest
                 # restitutions, and is fired once per epoch — the one contabilizzabile
                 # grain that does not depend on wins or on the poll schedule. A badweight
-                # published here targets the newest buried epoch, which the honest engine
-                # has already published its own weight for, so the injection follows the
-                # correct publication rather than racing it.
+                # waits here (bounded, ~STABILITY_MARGIN blocks) for this miner's honest
+                # weight for the epoch just ended to confirm, and targets that epoch, so the
+                # forged record always follows the honest one and stays newest for about
+                # one epoch (MaliciousInjector._build_badweight).
                 if self.injector is not None:
                     try:
                         self.injector.run_opportunity(epoch, tip)
