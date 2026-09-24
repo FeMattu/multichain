@@ -1,13 +1,19 @@
-# Regional - Real MultiChain nodes on a Tuscany / Liguria / Emilia-Romagna map, seven backbone hubs.
+# Regional, malus - regional-long23h-feedback plus two malicious miners.
 #
-# ETA: 100 epochs of 100 blocks each, 10 s target block time = 100*100*10 = 100000s = 27h30m. plus bootstrap 209*10 = 2090s = ~35m 
-# ETA: ~ 28h.
-
-# Format and defaults: ../../schema.md. The wPoA/WeightEngine activation flags are
-# NOT configurable: every chain this harness creates runs the full stack.
+# Identical to regional-long23h-feedback.yaml (same seed, map, nodes, epochs, traffic,
+# params.dat) except for the `malicious` section at the bottom: A vs B isolates the
+# behavioural malus, with the restitution feedback equally active in both. The two runs
+# share every traffic draw, so a difference in the election is the malus.
+#
+# What it exercises: Psi = max(0, 1 - M / M_max), M = mu*M + points. With mu = 0.5,
+# M_max = 3.0, selfwrite = 1, badweight = 2: a lone badweight gives Psi = 1/3, two
+# badweights in consecutive epochs give M = 3 and exclusion (Psi = 0), cleared after
+# one clean epoch. Only selfwrite and badweight are injectable from the harness.
+#
+# ETA: 100 epochs x 100 blocks x 8 s = 22h13m, plus bootstrap ~28m: ~23h.
 
 seed: 20260905
-chain_name: wpoa-core-regional
+chain_name: wpoa-core-regional-malus
 
 fabric:
   backend: core
@@ -49,13 +55,23 @@ nodes:
   - {id: company-17, role: company, location: parma, cluster: miner-2}
   - {id: company-18, role: company, location: reggio-emilia, cluster: miner-3}
   - {id: company-19, role: company, location: bologna, cluster: miner-4}
+  - {id: company-20, role: company, location: firenze, cluster: miner-0}
+  - {id: company-21, role: company, location: genova, cluster: miner-1}
+  - {id: company-22, role: company, location: bologna, cluster: miner-2}
+  - {id: company-23, role: company, location: livorno, cluster: miner-3}
+  - {id: company-24, role: company, location: lucca, cluster: miner-4}
+  - {id: company-25, role: company, location: pisa, cluster: miner-0}
+  - {id: company-26, role: company, location: siena, cluster: miner-1}
+  - {id: company-27, role: company, location: la-spezia, cluster: miner-2}
+  - {id: company-28, role: company, location: savona, cluster: miner-3}
+  - {id: company-29, role: company, location: ravenna, cluster: miner-4}
 
 epochs:
   count: 100
   length_blocks: 100
 
 chain:
-  target-block-time: 10
+  target-block-time: 8
   mining-diversity: 0.0
   mine-empty-rounds: -1
   mining-requires-peers: false
@@ -72,7 +88,13 @@ wpoa:
   wpoa-sortition-delta: 0.5
   wpoa-sortition-lambda: 0.3
   wpoa-malus-mu: 0.5
-  wpoa-malus-max: 4.0
+  # 4.0 in regional-long23h. With one opportunity per miner-epoch and mu = 0.5, M can
+  # never reach 4 (sup M = 2 / (1 - 0.5) = 4, not attained), so Psi = 0 is unreachable.
+  # At 3.0 two badweights in consecutive epochs (0.5 * 2 + 2 = 3) exclude, and one
+  # clean epoch clears it (3 -> 1.5).
+  # Inert on honest behaviour (no proved malus -> Psi = 1), so the feedback run carries
+  # it too and the two runs share params.dat exactly.
+  wpoa-malus-max: 3.0
   wpoa-malus-equiv-points: 4.0
   wpoa-malus-delay-points: 0.25
   wpoa-malus-selfwrite-points: 1.0
@@ -81,7 +103,12 @@ wpoa:
 weight_engine:
   weight-kappa: 100.0
   weight-alpha: 0.2
-  weight-lambda: 0.5
+  # 0.5 in regional-long23h. The feedback factor is 1 - lambda + lambda*rho and rho is
+  # structurally small here (rho <= ~1/(1.2*epochs), see the header): at 0.5 every miner
+  # sits at ~0.50 and the feedback is a uniform scaling. At 0.99 the floor drops to 0.01,
+  # so rho in [0, 0.006] moves a miner's factor between 0.010 and 0.016 -- up to ~60%
+  # between miners, epoch by epoch. lambda < 1 still guarantees w_k > 0.
+  weight-lambda: 0.99
 
 traffic:
   event_stream: supply-chain-events
@@ -90,14 +117,26 @@ traffic:
   esg_score_range: [1, 100]
   restitution_amount_range: [50.0, 250.0]
 
+# Two of the five miners, drawn by the run seed (malicious.seed defaults to it), misbehave
+# in epochs 20-60 only: 19 clean epochs before, 40 after, to watch penalty, exclusion,
+# decay and clearance on the same run. Both miners share one aggregate target, split by
+# initial weight share. badweight carries the heavier share because it is the kind that
+# can reach the exclusion threshold (2 points; two in a row = 3 = wpoa-malus-max).
+malicious:
+  enabled: true
+  miner_count: 2
+  target_action_rate: 0.4
+  actions:
+    selfwrite: 0.4
+    badweight: 0.6
+  start_epoch: 20
+  stop_epoch: 60
+  selfwrite_stream: weight-engine-membership
+
 runtime:
   api_decimal_digits: 17
   bindir: src
   rpc_timeout_s: 30
   startup_timeout_s: 120
-  fork_score: true
-  fork_score_log: true
   wpoa_debug: false
   sortition_miner_log: true
-
-
