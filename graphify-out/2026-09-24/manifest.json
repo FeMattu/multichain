@@ -3834,9 +3834,9 @@
     "semantic_hash": ""
   },
   "test/bootstrap/config_loader.py": {
-    "mtime": 1790107465.1334324,
-    "seen": 1790107644.8021374,
-    "ast_hash": "a8695cf69e385e01d863a56c1c430c07",
+    "mtime": 1790108037.9046576,
+    "seen": 1790108115.7812705,
+    "ast_hash": "4eb73d4399da94a130baef9b64efe2c3",
     "semantic_hash": ""
   },
   "test/bootstrap/event_log.py": {
@@ -3894,9 +3894,9 @@
     "semantic_hash": ""
   },
   "test/config/schema.md": {
-    "mtime": 1790107519.9148803,
-    "seen": 1790107644.8022687,
-    "ast_hash": "fc1020986954ab8b79ebcee7dc618357",
+    "mtime": 1790108048.250796,
+    "seen": 1790108115.7813947,
+    "ast_hash": "93b4c7b4e930b2c5081e082ae48ecdbd",
     "semantic_hash": ""
   },
   "test/docs/RPCLIST.md": {
@@ -4295,28 +4295,10 @@
     "ast_hash": "6c21cdab0100a099f7432ca20ecf4c1d",
     "semantic_hash": ""
   },
-  "test/config/profiles/core/forkscore-1h-control.yaml": {
-    "mtime": 1790007174.7879074,
-    "seen": 1790007207.194349,
-    "ast_hash": "e28924ecb02914e28b0c03bacb835483",
-    "semantic_hash": ""
-  },
-  "test/config/profiles/core/forkscore-1h.yaml": {
-    "mtime": 1790001283.2397184,
-    "seen": 1790007207.1943502,
-    "ast_hash": "58744ec78b43967139c84f1f8f4b7846",
-    "semantic_hash": ""
-  },
   "docs/evidence/local-gossip-hint-inert-2026-09-21.md": {
     "mtime": 1790014576.2738314,
     "seen": 1790014609.6318316,
     "ast_hash": "9debdfe41e5afc95fc3d6c0d407fc08d",
-    "semantic_hash": ""
-  },
-  "test/config/profiles/core/forkscore-1h-minerlog.yaml": {
-    "mtime": 1790015614.8281627,
-    "seen": 1790015644.6578095,
-    "ast_hash": "bbbbefbfde00b58ac34389d0e00672a2",
     "semantic_hash": ""
   },
   "test/config/profiles/core/regional-medium15h.yaml": {
@@ -4347,6 +4329,12 @@
     "mtime": 1790106982.1249173,
     "seen": 1790107644.802248,
     "ast_hash": "c1b93b3a528cae6c0b547fb4539f5a1c",
+    "semantic_hash": ""
+  },
+  "test/unit/test_runtime_fork_score_default.py": {
+    "mtime": 1790108073.9046865,
+    "seen": 1790108115.781298,
+    "ast_hash": "c33f5042a5944317b5039d0890c70cdb",
     "semantic_hash": ""
   }
 }

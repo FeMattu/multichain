@@ -3744,15 +3744,15 @@
     "semantic_hash": ""
   },
   "test/analysis/pipeline/phase1_collect.py": {
-    "mtime": 1790094309.9996464,
-    "seen": 1790094322.2889183,
-    "ast_hash": "33e2afd57e18ae655d66eca6d95ff5a1",
+    "mtime": 1790263889.810579,
+    "seen": 1790264172.8558705,
+    "ast_hash": "e73f82ef958fb8ace97f037294b56f48",
     "semantic_hash": ""
   },
   "test/analysis/pipeline/phase2_aggregate.py": {
-    "mtime": 1790094309.999904,
-    "seen": 1790094322.2889192,
-    "ast_hash": "c09e466b83b3080f09d6b0b912b49d51",
+    "mtime": 1790263903.9693928,
+    "seen": 1790264172.8558722,
+    "ast_hash": "7505b77ef3f0744f9aebf2d0e3e229b7",
     "semantic_hash": ""
   },
   "test/analysis/pipeline/phase3_analyze.py": {
@@ -3834,9 +3834,9 @@
     "semantic_hash": ""
   },
   "test/bootstrap/config_loader.py": {
-    "mtime": 1790015602.3367088,
-    "seen": 1790015644.6577086,
-    "ast_hash": "db7c15a5ef48de29fcba2872a4e1575c",
+    "mtime": 1790108037.9046576,
+    "seen": 1790108115.7812705,
+    "ast_hash": "4eb73d4399da94a130baef9b64efe2c3",
     "semantic_hash": ""
   },
   "test/bootstrap/event_log.py": {
@@ -3894,9 +3894,9 @@
     "semantic_hash": ""
   },
   "test/config/schema.md": {
-    "mtime": 1789751378.5401707,
-    "seen": 1789751447.6014953,
-    "ast_hash": "d832c043197d18623d3f00cff367be0c",
+    "mtime": 1790108048.250796,
+    "seen": 1790108115.7813947,
+    "ast_hash": "93b4c7b4e930b2c5081e082ae48ecdbd",
     "semantic_hash": ""
   },
   "test/docs/RPCLIST.md": {
@@ -4260,9 +4260,9 @@
     "semantic_hash": ""
   },
   "test/config/profiles/core/intercontinental-long20h.yaml": {
-    "mtime": 1789762442.1104946,
-    "seen": 1789922642.514128,
-    "ast_hash": "7a11a1ae5a1640d0b0d32fcc5136cea7",
+    "mtime": 1790107482.9998503,
+    "seen": 1790107644.8022468,
+    "ast_hash": "4186b62952dff11204ab4d915ffc95ee",
     "semantic_hash": ""
   },
   "test/config/profiles/native/instrument-1800.yaml": {
@@ -4278,9 +4278,9 @@
     "semantic_hash": ""
   },
   "test/docs/PROMPT_ANALISI_WPOA.md": {
-    "mtime": 1790094310.0009325,
-    "seen": 1790094322.2890694,
-    "ast_hash": "7805e41a1346a2803a9aee7fc843189c",
+    "mtime": 1790264121.6316702,
+    "seen": 1790264172.8560164,
+    "ast_hash": "5633a13c9c09747beb75eb0b9fa3fdfc",
     "semantic_hash": ""
   },
   "test/docs/PROMPT_ANALISI_WPOA_GLOBALE.md": {
@@ -4295,34 +4295,16 @@
     "ast_hash": "6c21cdab0100a099f7432ca20ecf4c1d",
     "semantic_hash": ""
   },
-  "test/config/profiles/core/forkscore-1h-control.yaml": {
-    "mtime": 1790007174.7879074,
-    "seen": 1790007207.194349,
-    "ast_hash": "e28924ecb02914e28b0c03bacb835483",
-    "semantic_hash": ""
-  },
-  "test/config/profiles/core/forkscore-1h.yaml": {
-    "mtime": 1790001283.2397184,
-    "seen": 1790007207.1943502,
-    "ast_hash": "58744ec78b43967139c84f1f8f4b7846",
-    "semantic_hash": ""
-  },
   "docs/evidence/local-gossip-hint-inert-2026-09-21.md": {
     "mtime": 1790014576.2738314,
     "seen": 1790014609.6318316,
     "ast_hash": "9debdfe41e5afc95fc3d6c0d407fc08d",
     "semantic_hash": ""
   },
-  "test/config/profiles/core/forkscore-1h-minerlog.yaml": {
-    "mtime": 1790015614.8281627,
-    "seen": 1790015644.6578095,
-    "ast_hash": "bbbbefbfde00b58ac34389d0e00672a2",
-    "semantic_hash": ""
-  },
   "test/config/profiles/core/regional-medium15h.yaml": {
-    "mtime": 1790103937.014176,
-    "seen": 1790103944.1963894,
-    "ast_hash": "61681991308436614fc0e8275265aa65",
+    "mtime": 1790107482.9997416,
+    "seen": 1790107644.802252,
+    "ast_hash": "50e9030107ff47ecfde464facc4e1400",
     "semantic_hash": ""
   },
   ".mc_exp_launch.sh": {
@@ -4331,10 +4313,46 @@
     "ast_hash": "e520b5f913b45942268115e6b81fe7e9",
     "semantic_hash": ""
   },
-  "test/config/profiles/core/regional-long28h.yaml": {
-    "mtime": 1790103937.0141156,
-    "seen": 1790103944.196388,
-    "ast_hash": "dbade3151822073dd36afdf4c4eecd31",
+  "test/unit/test_premine_and_debug_guards.py": {
+    "mtime": 1790107577.6314342,
+    "seen": 1790107644.8021631,
+    "ast_hash": "f4b68837a058f07f7ecb3d81919a632a",
+    "semantic_hash": ""
+  },
+  "test/config/profiles/core/intercontinental-long28h.yaml": {
+    "mtime": 1790108342.0671644,
+    "seen": 1790264172.8559895,
+    "ast_hash": "267dd98c81b9bce20e7af27ccb92a9a7",
+    "semantic_hash": ""
+  },
+  "test/unit/test_runtime_fork_score_default.py": {
+    "mtime": 1790108073.9046865,
+    "seen": 1790108115.781298,
+    "ast_hash": "c33f5042a5944317b5039d0890c70cdb",
+    "semantic_hash": ""
+  },
+  "test/config/profiles/core/regional-long23h.yaml": {
+    "mtime": 1790108584.9999478,
+    "seen": 1790264172.8559926,
+    "ast_hash": "91e5d97f5419b8d0bd9bc1efabe112fd",
+    "semantic_hash": ""
+  },
+  "test/config/profiles/core/regional-long23h-e25x400.yaml": {
+    "mtime": 1790265891.3482697,
+    "seen": 1790265907.1240854,
+    "ast_hash": "ee7b0e7332189711574ea17529bfd11f",
+    "semantic_hash": ""
+  },
+  "test/config/profiles/core/regional-long23h-feedback.yaml": {
+    "mtime": 1790265891.3478847,
+    "seen": 1790265907.1240876,
+    "ast_hash": "59013b593b447211e038a59321202f18",
+    "semantic_hash": ""
+  },
+  "test/config/profiles/core/regional-long23h-malus.yaml": {
+    "mtime": 1790265891.348089,
+    "seen": 1790265907.1240885,
+    "ast_hash": "64b7df0218c7cac7b9788dcb0d2191b6",
     "semantic_hash": ""
   }
 }

@@ -1,0 +1,9 @@
+test/config/profiles/core/forkscore-1h-control.yaml
+test/config/profiles/core/forkscore-1h-minerlog.yaml
+test/config/profiles/core/forkscore-1h.yaml
+test/config/profiles/core/intercontinental-long28h.yaml
+test/config/profiles/core/regional-long23h-e25x400.yaml
+test/config/profiles/core/regional-long23h-feedback.yaml
+test/config/profiles/core/regional-long23h-malus.yaml
+test/config/profiles/core/regional-long23h.yaml
+test/docs/PROMPT_ANALISI_WPOA.md
