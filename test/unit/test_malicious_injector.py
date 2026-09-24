@@ -5,6 +5,7 @@ restart behaviour has to use the real one) and a fake RPC that records what it w
 publish, so the test never needs a chain.
 """
 
+import json
 import shutil
 import sys
 import tempfile
@@ -19,6 +20,7 @@ import malicious as M  # noqa: E402
 from config_loader import load_profile  # noqa: E402
 from event_log import EventLog, replay  # noqa: E402
 from malicious_injector import MaliciousInjector  # noqa: E402
+from miner_gas_daemon import read_run_addresses  # noqa: E402
 from rpc_client import RpcError  # noqa: E402
 
 PROFILES = _ROOT / "config" / "profiles" / "native"
@@ -238,6 +240,52 @@ class InjectorTest(unittest.TestCase):
         self.assertEqual(sent["true_weight"], 50000)
         self.assertGreater(sent["declared_weight"], 50000)
         self.assertEqual(sent["target_epoch"], self.profile.last_buried_epoch(rpc.tip))
+
+    def test_selfwrite_names_a_victim_and_is_published(self):
+        rpc = FakeRpc()
+        log = EventLog(self.dir, "miner-0", "miner", epoch_length=self.profile.epoch_length)
+        plan = dict(_plan(), actions={"selfwrite": 1.0})
+        inj = MaliciousInjector(
+            self.profile, plan, "miner-0", "ATTACKER", rpc, log, "run-x",
+            all_addresses=self.addr, poll_s=0.0, honest_wait_s=0.0,
+        )
+        inj.run_opportunity(3, tip=70)
+        log.close()
+        self.assertEqual(len(rpc.published), 1)
+        stream, _, payload = rpc.published[0]
+        self.assertEqual(stream, "weight-engine-membership")
+        self.assertIn(payload["json"]["node_address"], {"VICTIM", "OTHER"})
+        self.assertEqual(rpc.signers, ["ATTACKER"])
+
+
+class RunAddressesTest(unittest.TestCase):
+    """Where a running injector finds every node's address.
+
+    The victim pool of a selfwrite is built from it, so an empty answer silently turns
+    every selfwrite into "payload not constructible".
+    """
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def _write(self, name, doc):
+        (self.dir / name).write_text(json.dumps(doc), encoding="utf-8")
+
+    def test_reads_addresses_json_written_at_bootstrap(self):
+        # Mid-run: addresses.json exists, the manifest does not carry addresses yet.
+        self._write("addresses.json", {"miner-0": "A", "company-0": "B"})
+        self._write("manifest.json", {"seed": 1})
+        self.assertEqual(read_run_addresses(self.dir), {"miner-0": "A", "company-0": "B"})
+
+    def test_falls_back_on_the_final_manifest(self):
+        self._write("manifest.json", {"addresses": {"miner-0": "A"}})
+        self.assertEqual(read_run_addresses(self.dir), {"miner-0": "A"})
+
+    def test_empty_when_nothing_is_there(self):
+        self.assertEqual(read_run_addresses(self.dir), {})
 
 
 if __name__ == "__main__":

@@ -37,7 +37,7 @@ import signal
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import Dict, List, Optional, Set
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "bootstrap"))
@@ -329,6 +329,32 @@ def read_malicious_plan(run_dir: Path, profile: Profile) -> dict:
     return profile.malicious_plan()
 
 
+def read_run_addresses(run_dir: Path) -> Dict[str, str]:
+    """Every node's address, as the bootstrap recorded it: ``node_id -> address``.
+
+    ``addresses.json`` first. The orchestrator writes it while the nodes join, well before
+    it starts any daemon, whereas ``manifest.json`` gains its ``addresses`` only when the
+    run ends -- so reading the manifest alone gave a running injector an empty map, an
+    empty victim pool, and a selfwrite that could never be built ("payload not
+    constructible", every time). The manifest stays as the fallback for a run directory
+    that predates ``addresses.json``.
+    """
+    for name, pick in (
+        ("addresses.json", lambda doc: doc),
+        ("manifest.json", lambda doc: doc.get("addresses")),
+    ):
+        path = run_dir / name
+        if not path.is_file():
+            continue
+        try:
+            found = pick(json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(found, dict) and found:
+            return {str(k): str(v) for k, v in found.items() if v}
+    return {}
+
+
 def build_injector(
     profile: Profile, node_id: str, run_dir: Path, rpc: RpcClient, log: EventLog
 ):
@@ -340,12 +366,8 @@ def build_injector(
     plan = read_malicious_plan(run_dir, profile)
     if not plan.get("enabled") or node_id not in set(plan.get("malicious_miner_ids", [])):
         return None
-    manifest_path = run_dir / "manifest.json"
-    all_addresses = {}
+    all_addresses = read_run_addresses(run_dir)
     run_identifier = run_dir.name
-    if manifest_path.is_file():
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        all_addresses = manifest.get("addresses", {}) or {}
     own_address = all_addresses.get(node_id) or rpc.own_address()
     return MaliciousInjector(
         profile, plan, node_id, own_address, rpc, log, run_identifier, all_addresses
