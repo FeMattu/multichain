@@ -3876,9 +3876,9 @@
     "semantic_hash": ""
   },
   "test/traffic/miner_gas_daemon.py": {
-    "mtime": 1790267126.9498348,
-    "seen": 1790267319.936041,
-    "ast_hash": "29c41998c498123581fd6f62fafc4027",
+    "mtime": 1790288495.0966828,
+    "seen": 1790288529.1290646,
+    "ast_hash": "265ca97c7777ca823d516fcc512dba64",
     "semantic_hash": ""
   },
   "test/traffic/run_company_daemons.py": {
@@ -3978,9 +3978,9 @@
     "semantic_hash": ""
   },
   "test/unit/test_malicious_injector.py": {
-    "mtime": 1790267151.0747588,
-    "seen": 1790267319.936048,
-    "ast_hash": "492d0dbd226a80086076070f4d705ff8",
+    "mtime": 1790288495.1100798,
+    "seen": 1790288529.129072,
+    "ast_hash": "79b61c898c1bbd544690d162d4b139a6",
     "semantic_hash": ""
   },
   "test/unit/test_malicious_logic.py": {

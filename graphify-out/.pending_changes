@@ -1,5 +1,0 @@
-test/analysis/pipeline/phase1_collect.py
-test/docs/malicious-miners.md
-test/traffic/malicious_injector.py
-test/traffic/miner_gas_daemon.py
-test/unit/test_malicious_injector.py
