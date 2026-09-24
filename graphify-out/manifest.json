@@ -3156,15 +3156,15 @@
     "semantic_hash": "1a24bada84c5a8c99a52e7d2167a5434"
   },
   "src/weight_engine/weight_verifier.cpp": {
-    "mtime": 1789594591.6673522,
-    "seen": 1789601216.1133168,
-    "ast_hash": "0d1b7e91ca70a54fe61b5d836f80a38f",
+    "mtime": 1790267049.0805292,
+    "seen": 1790267319.9359794,
+    "ast_hash": "4ae1d476201c7326a202800b96989dd1",
     "semantic_hash": ""
   },
   "src/weight_engine/weight_verifier.h": {
-    "mtime": 1789594591.6674645,
-    "seen": 1789601216.1133177,
-    "ast_hash": "6636ce8d9cdbf5a26770acb07f7cb947",
+    "mtime": 1790267054.4407601,
+    "seen": 1790267319.935981,
+    "ast_hash": "916338d50a61d4c7c25ee0ba775b574b",
     "semantic_hash": ""
   },
   "src/wpoa/malus_record.h": {
@@ -3744,9 +3744,9 @@
     "semantic_hash": ""
   },
   "test/analysis/pipeline/phase1_collect.py": {
-    "mtime": 1790263889.810579,
-    "seen": 1790264172.8558705,
-    "ast_hash": "e73f82ef958fb8ace97f037294b56f48",
+    "mtime": 1790267284.5809624,
+    "seen": 1790267319.9360073,
+    "ast_hash": "8c3e49414206cbea49dbe81f11ef360d",
     "semantic_hash": ""
   },
   "test/analysis/pipeline/phase2_aggregate.py": {
@@ -3876,9 +3876,9 @@
     "semantic_hash": ""
   },
   "test/traffic/miner_gas_daemon.py": {
-    "mtime": 1789729614.6555557,
-    "seen": 1789730439.304076,
-    "ast_hash": "f68113233f04a242abc3286fd473beff",
+    "mtime": 1790267126.9498348,
+    "seen": 1790267319.936041,
+    "ast_hash": "29c41998c498123581fd6f62fafc4027",
     "semantic_hash": ""
   },
   "test/traffic/run_company_daemons.py": {
@@ -3960,9 +3960,9 @@
     "semantic_hash": ""
   },
   "test/traffic/malicious_injector.py": {
-    "mtime": 1789719026.5912366,
-    "seen": 1789725895.579357,
-    "ast_hash": "fe652581b4b01c7415d2fa9d39795bec",
+    "mtime": 1790267151.074532,
+    "seen": 1790267319.9360404,
+    "ast_hash": "399cb9688ab703d61b5a417b57815fa3",
     "semantic_hash": ""
   },
   "test/unit/__init__.py": {
@@ -3978,9 +3978,9 @@
     "semantic_hash": ""
   },
   "test/unit/test_malicious_injector.py": {
-    "mtime": 1789726543.2871826,
-    "seen": 1789726639.2450557,
-    "ast_hash": "2037dd3749b6662a9ae058887bc3c870",
+    "mtime": 1790267151.0747588,
+    "seen": 1790267319.936048,
+    "ast_hash": "492d0dbd226a80086076070f4d705ff8",
     "semantic_hash": ""
   },
   "test/unit/test_malicious_logic.py": {
@@ -4002,9 +4002,9 @@
     "semantic_hash": ""
   },
   "test/docs/malicious-miners.md": {
-    "mtime": 1789719026.5900733,
-    "seen": 1789725895.579502,
-    "ast_hash": "e76258b2fdf3d4088f62db1d157e4bf3",
+    "mtime": 1790267273.2166743,
+    "seen": 1790267319.9361632,
+    "ast_hash": "976d0634879b5abce572d093a00d060a",
     "semantic_hash": ""
   },
   "docs/adr/core-emulation-2026.md": {
@@ -4353,6 +4353,12 @@
     "mtime": 1790265891.348089,
     "seen": 1790265907.1240885,
     "ast_hash": "64b7df0218c7cac7b9788dcb0d2191b6",
+    "semantic_hash": ""
+  },
+  "test/config/profiles/core/regional-malus-smoke2h.yaml": {
+    "mtime": 1790267207.4750166,
+    "seen": 1790267319.9361339,
+    "ast_hash": "53b3f063ed81720cf5b8c3384ec9396c",
     "semantic_hash": ""
   }
 }
