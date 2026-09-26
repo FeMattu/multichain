@@ -1,13 +1,15 @@
 # ADR — the RANDAO fold returns to the bare XOR of Definition 5.3
 
-> **Status:** accepted, implemented.
-> **Scope:** `RandaoAccumulator::Fold` ([../../randao_accumulator.h](../../src/wpoa/randao_accumulator.h)),
-> thesis Def. 5.3 / §5.4 (global accumulator update). The seed derivation `seed[n+1] =
-> H(R_tot[n-k] ‖ h[n] ‖ n+1)` is untouched.
-> **Register: technical-direct.** Decision record: the problem, the options weighed, the
-> decision and its consequences. Module reference:
-> [../randao-accumulator.md](../randao-accumulator.md); design context:
-> [../phase3b-implementation-guide.md §5.1](../phase3b-implementation-guide.md#51-the-fold-is-the-thesis-def-53-itself-a-bare-xor).
+> **Type:** historical record (ADR) · **Date:** 2026-09-13 · **Status:** accepted, implemented
+>
+> Kept as written: it records the work as it was done and is **not** updated when the
+> code changes, so paths, identifiers and line numbers may no longer match the tree.
+>
+> **Scope:** `RandaoAccumulator::Fold` ([randao_accumulator.h](../../src/wpoa/randao_accumulator.h)),
+> thesis Def. 5.3 / §5.4. The seed derivation `seed[n+1] = H(R_tot[n-k] ‖ h[n] ‖ n+1)` is
+> untouched. Design context: [../phase3b-implementation-guide.md §5.1](../phase3b-implementation-guide.md#51-the-fold-is-the-thesis-def-53-itself-a-bare-xor).
+>
+> **For the system as it is now:** [../randao-accumulator.md](../randao-accumulator.md).
 
 ---
 

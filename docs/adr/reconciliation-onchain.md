@@ -1,17 +1,17 @@
 # ADR — `R_k^(e)` becomes chain-derived, and the reconciliation stream is removed
 
-> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
-> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
-> rebuilt as a Python harness. The references are kept as written because they record the
-> work as it was done; for the current structure see
-> [`../../test/README.md`](../../test/README.md) and [`../../test/docs/fixes-changelog.md`](../../test/docs/fixes-changelog.md).
-
-
-> **Status:** accepted, implemented.
-> **Scope:** `weight-engine-reconciliation`, `weight-engine-activity`, `R_k^(e)`
-> (thesis Def. 6.7), `tau_i^(e)` (Def. 6.3).
-> **Register: technical-direct.** Decision record: the problem, the options weighed, the
-> decision and its consequences. Module reference: [../weight-engine.md](../weight-engine.md).
+> **Type:** historical record (ADR) · **Date:** 2026-08-24 · **Status:** accepted, implemented
+>
+> Kept as written: it records the work as it was done and is **not** updated when the
+> code changes, so paths, identifiers and line numbers may no longer match the tree.
+>
+> **Scope:** `weight-engine-reconciliation`, `weight-engine-activity`, `R_k^(e)` (thesis
+> Def. 6.7), `tau_i^(e)` (Def. 6.3). The test paths it cites (`test/functional/`,
+> `test/experimental/`) were replaced by the Python harness in [`test/`](../../test/README.md);
+> `ComputeActivityAndReconciliationForEpoch` is now a thin wrapper over
+> `WeightStreamReader::ComputeEpochFacts`, which also derives the flows behind `saldo_k`.
+>
+> **For the system as it is now:** [../weight-engine.md](../weight-engine.md).
 
 ---
 
@@ -38,8 +38,8 @@ claim meant:
 - that actor could understate a competitor's reconciliation — depressing `rho_k^(e-1)`
   and hence `w_k^(e)` — or overstate its own, and no node could contradict it, because
   the stream carried no link to the transfers it described;
-- the record could contradict the ledger outright: the [experimental harness's own
-  notes](../../../weight_engine/test/experimental/helpers/stream_writer.py) record that
+- the record could contradict the ledger outright: the experimental harness's own
+  notes record that
   `R_k` had originally been a random draw *"with no on-chain counterpart — the stream
   asserted a reconciliation that never happened"*.
 

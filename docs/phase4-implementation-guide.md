@@ -1,18 +1,23 @@
 # wPoA Private Sortition — Implementation Guide (Phase 4)
 
-> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
-> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
-> rebuilt as a Python harness. The references are kept as written because they record the
-> work as it was done; for the current structure see
-> [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
-
-
-> **Register: technical-direct.** A developer reference: APIs, function signatures,
-> data structures and control flow, with code terminology left verbatim. For the
-> theoretical consensus model see
-> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
-> [protocol-parameters.md](protocol-parameters.md); for implementation status see
-> [implementation-status.md](implementation-status.md).
+> **Type:** historical record (phase guide) · **Date:** 2026-07-16 · **Status:** Phase 4 complete
+>
+> Kept as written: it records the work as it was done and is **not** updated when the
+> code changes, so paths, identifiers and line numbers may no longer match the tree.
+>
+> **Changed since:** the shell suites under `test/functional/`, `test/output/` and
+> `test/experimental/` were replaced by the Python harness in `test/` (see
+> [test/README.md](../test/README.md)); the wPoA switches are chain parameters
+> ([node-startup.md](node-startup.md)); every consensus read of the weights is
+> height-scoped (`GetAllNodesWeightsAsOf(height - 1)`); the mining-diversity bypass is a
+> hook in `IsBarredByDiversity` rather than a `CanCustom` call; the weight engine, the
+> malus registry and the score-based fork choice were added on top. The miner now counts
+> down from `parent.nTime + delay`, not from `now + delay`; the fork choice is always on
+> under sortition, with no flag; and a node whose own round is still running holds back a
+> worse-scored block for it instead of standing down
+> ([score-aware-activation.md](score-aware-activation.md)).
+>
+> **For the system as it is now:** [implementation-status.md](implementation-status.md) (status), [wpoa-weight-engine-architecture.md](wpoa-weight-engine-architecture.md) (design overview), and the module reference linked from `README.md`.
 
 This document explains **how the Phase 4 code works, why every choice was made, and
 how to change it**. It is the Phase 4 sibling of
@@ -29,7 +34,7 @@ next proposer a full block in advance. Phase 4 moves the election *score* inside
 validator's secret key, so the proposer is unknowable to the network until it acts.
 
 Companion documents:
-- [../README.md](../README.md) — feature entry point: introduction, architecture
+- [../src/wpoa/README.md](../src/wpoa/README.md) — feature entry point: introduction, architecture
   diagram, status.
 - [implementation-guide.md](implementation-guide.md) — master phase index.
 - [private-sortition.md](private-sortition.md) — line-by-line walkthrough of the pure
@@ -168,7 +173,7 @@ New files (the module):
 | [`private_sortition.cpp`](../src/wpoa/private_sortition.cpp) | Definitions of the node glue: the runtime flag/scale, the height activation predicate, the shared context builder (seed + weight map + Σf(w)), the miner-side local score/delay, the reveal VRF-input builder, the validator-side eligibility/time-bar verdict, and the miner-loop anti-respin guard. |
 | [`test/private_sortition_tests.cpp`](../src/wpoa/test/private_sortition_tests.cpp) | Boost.Test unit suite: VRF-input encoding, score reuse (single source of truth), delay map, key-dependence (privacy), and end-to-end probability preservation with **real** VRF keys. |
 | [`test/run_unit_tests.sh sortition`](../src/wpoa/test/run_unit_tests.sh) | Build + run the unit tests (links SHA256 + HMAC + the VRF wrapper + secp256k1; no node build). |
-| [`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh) | Multi-node end-to-end test: liveness, no persistent fork, private-path-engaged (no public-argmin acceptances), weight-proportional distribution. |
+| `test/functional/wpoa/functional_test_wpoa_system.sh` | Multi-node end-to-end test: liveness, no persistent fork, private-path-engaged (no public-argmin acceptances), weight-proportional distribution. |
 
 Files **modified** in the host tree (integration points):
 
@@ -463,7 +468,7 @@ Representative run (equal weights, 20 000 trials; skewed 1:2:3:4, 20 000 trials)
 
 ### 12.2 Multi-node functional test
 
-[test/functional/wpoa/functional_test_wpoa_system.sh](../../../test/functional/wpoa/functional_test_wpoa_system.sh). Bootstraps
+`test/functional/wpoa/functional_test_wpoa_system.sh`. Bootstraps
 N permissioned nodes with `-enablewpoa -enablewpoavrf -enablewpoarandao -enablewpoasortition`,
 waits for weight convergence, drives the chain past setup, and asserts:
 
@@ -476,7 +481,7 @@ waits for weight convergence, drives the chain past setup, and asserts:
    public-argmin acceptances (`miner==proposer==`) over the sample — nobody elected the
    proposer from public data.
 4. **Weight-proportional distribution** — the observed proposer distribution matches the
-   weight ratios (chi-square via [analyze_distribution.py](../../../test/functional/wpoa/analyze_distribution.py)).
+   weight ratios (chi-square via `analyze_distribution.py`).
 
 ---
 

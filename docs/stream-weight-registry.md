@@ -1,21 +1,20 @@
 # `stream_weight_registry.h` + `stream_weight_registry.cpp`
 
-> **Register: technical-direct.** A developer reference: APIs, function signatures,
-> data structures and control flow, with code terminology left verbatim. For the
-> theoretical consensus model see
-> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
-> [protocol-parameters.md](protocol-parameters.md); for implementation status see
-> [implementation-status.md](implementation-status.md).
-
-> Detailed technical walkthrough of the **core of wPoA (Weighted Proof-of-Authority)
-> weight management — Phase 1**.
+> **Type:** reference · **Register:** technical-direct · **Verified against the code:**
+> 2026-09-25, commit `af06a6ef`
+>
+> Walkthrough of the **Phase 1 weight registry**: the `StreamWeightRegistry` facade over the
+> `wpoa-weights` stream, its write path, its confirmed and height-scoped read paths, the
+> self-publication rule, the activation latch and the static registration thread. The pure
+> helpers it relies on are in [weight-record.md](weight-record.md); how it fits the whole
+> system, in [wpoa-weight-engine-architecture.md §4.1](wpoa-weight-engine-architecture.md#41-phase-1-the-weight-registry).
 
 These two files form a single logical compilation unit (interface + implementation)
 and are documented together because they are tightly coupled:
 
 | File | Role |
 |------|------|
-| `stream_weight_registry.h` | **Public interface** (declarations): the `StreamWeightRegistry` class, the constants, the global variable `g_node_weight` and the thread entry point `ThreadRegisterNodeWeight`. This is what the other files (`init.cpp`, `rpc/rpcwpoa.cpp`) include in order to "see" the weight registry. |
+| `stream_weight_registry.h` | **Public interface** (declarations): the `StreamWeightRegistry` class, the constants, the globals `g_node_weight` and `g_wpoa_weights_enabled`, and the thread entry point `ThreadRegisterNodeWeight`. This is what the other files (`init.cpp`, `rpc/rpcwpoa.cpp`, the selector, the sortition and the weight engine) include in order to "see" the weight registry. |
 | `stream_weight_registry.cpp` | **Implementation** (definitions): all the real logic for stream creation, subscription, publishing, reading and decoding of weight records. |
 
 ### Why the `.h` / `.cpp` split?
@@ -50,7 +49,7 @@ entire wallet subsystem.
 - [1. The header stream_weight_registry.h](#1-the-header-stream_weight_registryh)
   - [1.1 Includes and where they come from](#11-includes-and-where-they-come-from)
   - [1.2 The two constants (#define)](#12-the-two-constants-define)
-  - [1.3 The StreamWeightRegistry class — the "facade"](#13-the-streamweightregistry-class-—-the-facade)
+  - [1.3 The StreamWeightRegistry class — the "facade"](#13-the-streamweightregistry-class--the-facade)
   - [1.4 Global elements declared in the header](#14-global-elements-declared-in-the-header)
 - [2. The implementation stream_weight_registry.cpp](#2-the-implementation-stream_weight_registrycpp)
   - [2.1 Includes and what they bring](#21-includes-and-what-they-bring)
@@ -59,7 +58,7 @@ entire wallet subsystem.
   - [2.4 Stream management](#24-stream-management)
   - [2.5 Writing a record: PublishWeightRecord()](#25-writing-a-record-publishweightrecord)
   - [2.6 Orchestrating the write: RegisterLocalWeight()](#26-orchestrating-the-write-registerlocalweight)
-  - [2.7 Reading records — the most delicate path](#27-reading-records-—-the-most-delicate-path)
+  - [2.7 Reading records — the most delicate path](#27-reading-records--the-most-delicate-path)
   - [2.8 The public read methods (thin wrappers over ReadAllRecords)](#28-the-public-read-methods-thin-wrappers-over-readallrecords)
   - [2.9 The deferred registration thread](#29-the-deferred-registration-thread)
   - [2.10 The three RPC functions (defined in rpc/rpcwpoa.cpp)](#210-the-three-rpc-functions-defined-in-rpcrpcwpoacpp)
@@ -71,20 +70,24 @@ entire wallet subsystem.
 
 ```mermaid
 flowchart TD
-    CTOR[Constructor: ResolveLocalAddress] --> STATE[Private state:<br/>m_pWalletTxs borrowed, m_StreamName,<br/>m_LocalAddress, m_CreateAttempted, m_SubscribeAttempted]
+    CTOR[Constructor: ResolveLocalAddress] --> STATE[Private state:<br/>m_pWalletTxs borrowed, m_StreamName,<br/>m_LocalAddress, m_Create, m_Subscribe]
 
     subgraph write [Write path]
-        RLW[RegisterLocalWeight] --> ESE[EnsureStreamExists → createcmd]
-        RLW --> ESUB[EnsureSubscribed → subscribe]
+        RLW[RegisterLocalWeight] --> ESR[EnsureStreamReady]
+        ESR --> ESE[EnsureStreamExists → createcmd]
+        ESR --> ESUB[EnsureSubscribed → subscribe]
         RLW --> IDEM{GetNodeWeight == weight?}
-        IDEM -->|no| PWR[PublishWeightRecord → publish]
+        IDEM -->|no| PWR[PublishWeightRecord → publishfrom]
     end
 
     subgraph read [Read path — one shared core]
-        RAR[ReadAllRecords] --> DEC[DecodeWeightRecord]
+        RAR[ReadAllRecords<br/>optional height bound] --> DEC[DecodeWeightRecord<br/>+ self-publication rule]
+        RAR --> LATCH[(g_wpoa_ever_electable<br/>WPoAEverElectable)]
         GLW[GetLocalWeight] --> RAR
         GNW[GetNodeWeight] --> RAR
         GAN[GetAllNodesWeights] --> RAR
+        GAS[GetAllNodesWeightsAsOf h] --> RAR
+        GWE[GetAllNodesWeightsWithEpoch] --> RAR
         ILR[IsLocalWeightRegistered] --> RAR
         DPW[DebugPrintWeights] --> RAR
         WFL[WaitForLocalWeight] --> RAR
@@ -92,7 +95,11 @@ flowchart TD
 
     THREAD[ThreadRegisterNodeWeight<br/>background retry loop] --> RLW
     THREAD --> WFL
+    WE[ThreadWeightEngine] --> ESR
+    WE --> RLW
+    WE --> GWE
     RPC[getlocalweight / getnodeweight / getallweights] --> GLW & GNW & GAN
+    CONS[selector, sortition miner + validator,<br/>round audit RPCs] --> GAS
 ```
 
 ---
@@ -105,7 +112,7 @@ flowchart TD
 #include <map>
 #include <string>
 #include <stdint.h>
-#include "json/json_spirit_value.h"
+#include "wpoa/stream_setup_state.h"  // mc_StreamSetupState
 ```
 
 - `<map>` — `std::map`, the ordered key→value container from the **STL** (C++ Standard
@@ -115,9 +122,9 @@ flowchart TD
   `uint32_t` (32-bit unsigned integer, 0…4,294,967,295) and `int64_t` (64-bit signed
   integer). The weight is a `uint32_t`: it cannot be negative and 32 bits are more
   than enough.
-- `"json/json_spirit_value.h"` — **json_spirit**, the JSON library used throughout
-  MultiChain/Bitcoin Core. It provides `json_spirit::Value`, `Object`, `Array`, `Pair`.
-  It is needed here because the RPC prototypes return `json_spirit::Value`.
+- `"wpoa/stream_setup_state.h"` — the pure create/subscribe state machine shared by the
+  three components that create streams on demand (this registry, the malus registry and
+  the weight-engine reader). See [§2.4](#24-stream-management).
 
 ### 1.2 The two constants (`#define`)
 
@@ -149,8 +156,11 @@ the stream directly: it uses only these public methods.
 |--------|------------------------|
 | `StreamWeightRegistry(mc_WalletTxs* pwalletIn)` | Constructor: resolves the local address and stores the stream name. |
 | `bool RegisterLocalWeight(uint32_t weight, uint32_t epoch = 0)` | Registers this node's weight on the stream (creates stream + subscribes + publishes if needed). `epoch` is the epoch the value was computed **for**; the weight engine passes it, the static `-weight` path leaves it 0 — see [§2.5](#25-writing-a-record-publishweightrecord). |
+| `bool EnsureStreamReady()` | Create the stream (closed) if missing, then subscribe. Public because the weight engine must call it **before** it has anything to publish ([§2.4](#24-stream-management)). |
 | `uint32_t GetLocalWeight()` | Latest **confirmed** weight of this node, 0 if not registered. |
-| `std::map<std::string,uint32_t> GetAllNodesWeights()` | address→weight map for every validator. Forged records are already gone: see [§2.7](#27-reading-records--the-most-delicate-path). |
+| `std::map<std::string,uint32_t> GetAllNodesWeights()` | address→weight map for every validator, over the whole confirmed prefix — the node's view *now*. Right for the read RPCs; **wrong** for anything that must reproduce a decision taken at a height. Forged records are already gone: see [§2.7](#27-reading-records--the-most-delicate-path). |
+| `std::map<std::string,uint32_t> GetAllNodesWeightsAsOf(int max_block)` | The same map restricted to records confirmed at or before `max_block`. **The read every consensus path uses**, with `max_block = height - 1`, so the map is a function of the chain prefix. Negative means unbounded — the two share one implementation. |
+| `int FirstPositiveWeightBlock()` | Height of the first block that confirmed a positive weight, or −1. Chain-derived; currently not called by any consensus path ([§2.7](#27-reading-records--the-most-delicate-path)). |
 | `void GetAllNodesWeightsWithEpoch(std::map<std::string,uint32_t>& weights, std::map<std::string,uint32_t>& epochs)` | The same map, plus the epoch each value was published for. Consumed by the verifier, which can only compare a value against the epoch it claims. |
 | `uint32_t GetNodeWeight(const std::string&)` | Confirmed weight of a specific address. |
 | `bool IsLocalWeightRegistered()` | true if at least one confirmed record exists for this node. |
@@ -168,8 +178,8 @@ the object's state. It is a simple getter, so there is no reason to put it in th
 mc_WalletTxs* m_pWalletTxs;   //!< "borrowed" pointer, not owned
 std::string   m_StreamName;   //!< "wpoa-weights"
 std::string   m_LocalAddress; //!< node address, computed once
-bool m_CreateAttempted;       //!< avoids emitting more than one create tx
-bool m_SubscribeAttempted;    //!< avoids redundant subscribes
+mc_StreamSetupState m_Create;      //!< see wpoa/stream_setup_state.h
+mc_StreamSetupState m_Subscribe;
 ```
 
 - The `m_` prefix denotes "member" (MultiChain convention).
@@ -178,9 +188,9 @@ bool m_SubscribeAttempted;    //!< avoids redundant subscribes
   (`pwalletTxsMain`) created and destroyed elsewhere (in `init.cpp`). The destructor
   `~StreamWeightRegistry` does **not** free it — see the comment in the `.cpp`. This
   avoids a double-free.
-- The two flags `m_CreateAttempted`/`m_SubscribeAttempted` implement idempotency: they
-  guarantee that the retry thread does not spam `create`/`subscribe` transactions on
-  every pass.
+- `m_Create` / `m_Subscribe` implement idempotency **and** bounded retry: each says,
+  per tick, whether to issue the call, wait for one already in flight, or give up after
+  `MC_WPOA_STREAM_SETUP_MAX_FAILURES` (20) failures ([§2.4](#24-stream-management)).
 
 #### Private methods (hidden implementation details)
 
@@ -189,8 +199,11 @@ void ResolveLocalAddress();
 bool GetStreamEntity(mc_EntityDetails* entity);
 bool EnsureStreamExists();
 bool EnsureSubscribed();
-bool PublishWeightRecord(uint32_t weight);
-bool ReadAllRecords(std::map<std::string, uint32_t>& out_latest);
+bool PublishWeightRecord(uint32_t weight, uint32_t epoch);
+bool ReadAllRecords(std::map<std::string, uint32_t>& out_latest,
+                    std::map<std::string, uint32_t>* out_epochs = NULL,
+                    int* out_first_positive_block = NULL,
+                    int max_block = -1);
 ```
 
 They are private because they are the "building blocks" used by the public methods: no
@@ -201,20 +214,23 @@ other file should be able to call them.
 ```cpp
 void ThreadRegisterNodeWeight(uint32_t weight);
 extern uint32_t g_node_weight;
-
-json_spirit::Value getlocalweight(const json_spirit::Array& params, bool fHelp);
-json_spirit::Value getallweights(const json_spirit::Array& params, bool fHelp);
-json_spirit::Value getnodeweight(const json_spirit::Array& params, bool fHelp);
+extern bool g_wpoa_weights_enabled;
 ```
 
 - `ThreadRegisterNodeWeight` — a free function (not a method) executed as a
-  **background thread**, launched by `AppInit2` in `init.cpp`.
+  **background thread**, launched by `AppInit2` in `init.cpp` when the weights stream is
+  on and the weight engine is off.
 - `extern uint32_t g_node_weight` — `extern` means "this variable is **defined
-  elsewhere**" (in the `.cpp`, line 23). The header only declares it, so several files
-  can refer to the same global variable without duplicating it. The `g_` prefix = global.
-- The three RPC prototypes have the **standard Bitcoin/MultiChain RPC handler
-  signature**: `Value f(const Array& params, bool fHelp)`. They are declared here and
-  registered in `rpclist.cpp` (see [rpc-registration.md](rpc-registration.md)).
+  elsewhere**" (in the `.cpp`). The header only declares it, so several files can refer
+  to the same global variable without duplicating it. The `g_` prefix = global.
+- `extern bool g_wpoa_weights_enabled` — the Phase 1 gate, resolved once in `AppInit2`
+  and forced on by any higher phase ([node-startup.md](node-startup.md)).
+- The three RPC handlers (`getlocalweight`, `getallweights`, `getnodeweight`) are no longer
+  declared here: like every handler they live in
+  [`rpc/rpcwpoa.cpp`](../src/rpc/rpcwpoa.cpp) with prototypes in `rpc/rpcserver.h`
+  ([§2.10](#210-the-three-rpc-functions-defined-in-rpcrpcwpoacpp)).
+- `WPoAEverElectable()`, the activation latch this file maintains, is declared in
+  `wpoa_selector.h` — its consumers are the selector's diversity hook and the miner.
 
 ---
 
@@ -232,6 +248,7 @@ json_spirit::Value getnodeweight(const json_spirit::Array& params, bool fHelp);
 #include "utils/util.h"         // GetArg, LogPrintf, RenameThread, GetBoolArg
 #include "utils/utiltime.h"     // MilliSleep, GetTime
 #include "wpoa/weight_record.h" // mc_ParseWeightRecordJson, mc_AccumulateLatestWeight
+#include "wpoa/wpoa_selector.h" // WPoAWeightRecordInScope
 #include <boost/foreach.hpp>
 ```
 
@@ -252,8 +269,11 @@ Each include is the source of symbols used in the file:
 - `util.h` → MultiChain utilities: `GetArg`/`GetBoolArg` (read CLI/config parameters),
   `LogPrintf` (log to `debug.log`), `RenameThread` (gives the thread an OS name).
 - `utiltime.h` → `MilliSleep` (sleep in ms) and `GetTime` (UNIX timestamp in seconds).
-- `weight_record.h` → the two pure parsing/aggregation helpers. See
-  [weight-record.md](weight-record.md).
+- `weight_record.h` → the pure parsing/aggregation helpers and the self-publication
+  predicate. See [weight-record.md](weight-record.md).
+- `wpoa_selector.h` → `WPoAWeightRecordInScope`, the pure height-scope predicate of
+  [§2.7](#27-reading-records--the-most-delicate-path), and the declaration of
+  `WPoAEverElectable`.
 - `<boost/foreach.hpp>` → the `BOOST_FOREACH` macro from the **Boost** library
   (included here because it is used indirectly; the main loop uses classic `for` loops).
 
@@ -268,11 +288,13 @@ These bring STL symbols (`string`, `map`…) and json_spirit symbols (`Value`, `
 ### 2.2 The global variable and module-level constants
 
 ```cpp
-uint32_t g_node_weight = MC_WPOA_DEFAULT_WEIGHT;   // line 23 — THIS is the DEFINITION
+uint32_t g_node_weight = MC_WPOA_DEFAULT_WEIGHT;   // THIS is the DEFINITION
+bool g_wpoa_weights_enabled = false;
 ```
 
-This is the **definition** of the variable declared `extern` in the header. Initialised
-to 100; overwritten by `init.cpp` with the value of `-weight`.
+These are the **definitions** of the variables declared `extern` in the header.
+`g_node_weight` is initialised to 100 and overwritten by `init.cpp` with the value of
+`-weight`; `g_wpoa_weights_enabled` is resolved there from `params.dat` and the flags.
 
 ```cpp
 static const int MC_WPOA_RETRY_INTERVAL_MS = 3000;   // how often the thread retries
@@ -282,7 +304,8 @@ static const int MC_WPOA_CONFIRM_ATTEMPTS  = 20;     // 20*3s = ~60s waiting for
 
 `static` at file scope = **visibility limited to this compilation unit** (internal
 linkage): these do not collide with same-named symbols elsewhere. They are the timing
-parameters of the registration thread.
+parameters of the registration thread. The bound on failed create/subscribe attempts is
+not here: it is `MC_WPOA_STREAM_SETUP_MAX_FAILURES`, with the state machine it belongs to.
 
 ### 2.3 Constructor, destructor and address resolution
 
@@ -292,14 +315,13 @@ StreamWeightRegistry::StreamWeightRegistry(mc_WalletTxs* pwalletIn)
     m_pWalletTxs         = pwalletIn;
     m_StreamName         = MC_WPOA_WEIGHTS_STREAM_NAME;
     m_LocalAddress       = "";
-    m_CreateAttempted    = false;
-    m_SubscribeAttempted = false;
     ResolveLocalAddress();
 }
 ```
 
-The constructor stores the wallet-txs pointer, sets the stream name, clears the flags
-and then immediately computes the local address.
+The constructor stores the wallet-txs pointer, sets the stream name and immediately
+computes the local address; `m_Create` and `m_Subscribe` start in their default
+"act" state.
 
 ```cpp
 StreamWeightRegistry::~StreamWeightRegistry()
@@ -387,21 +409,21 @@ bool StreamWeightRegistry::GetStreamEntity(mc_EntityDetails* entity)
 
 ```cpp
 mc_EntityDetails entity;
-if (GetStreamEntity(&entity)) return true;      // already exists
-if (m_CreateAttempted) return false;            // create already sent, awaiting confirmation
+if (GetStreamEntity(&entity)) return true;      // already exists (also ends a multi-admin race)
+if (m_Create.Next() != MC_SSA_ACT) return false; // in flight, or given up
 
 Array params;
 params.push_back(string("stream"));
 params.push_back(m_StreamName);
 params.push_back(false);
 
-m_CreateAttempted = true;
 try {
     Value result = createcmd(params, false);
+    m_Create.RecordBroadcast();                  // latch ONLY on a real broadcast
     LogPrintf("... create tx broadcast: %s\n", ..., result.get_str().c_str());
 }
-catch (const Object& objError) { /* missing create permission? */ }
-catch (const std::exception& e) { /* other error */ }
+catch (const Object& objError)  { m_Create.RecordFailure(); /* no create permission / no funds yet */ }
+catch (const std::exception& e) { m_Create.RecordFailure(); }
 return false; // not usable until confirmed
 ```
 
@@ -423,8 +445,12 @@ Key points:
 - **Double `catch`**: MultiChain RPC handlers throw a `json_spirit::Object` (the JSON-RPC
   error object) on a domain error, or a `std::exception` on a generic error. Both are
   caught.
-- `m_CreateAttempted = true` **before** the try: even if it fails, we will not retry
-  creation on every pass (avoids transaction spam).
+- **Latch after the call, never before.** An earlier version set an "attempted" flag
+  *before* `createcmd`, so a single transient throw — no `create` permission yet, no
+  spendable output yet — was remembered as success and the stream never appeared. The
+  state machine records a broadcast only when the call returned, counts failures, and
+  gives up after `MC_WPOA_STREAM_SETUP_MAX_FAILURES` so a node that will never have
+  `create` (every non-admin) stops trying. Unit-tested in the `activation` suite.
 - It returns `false` even when the broadcast succeeds: the stream becomes usable **only
   once the `create` transaction is confirmed in a block**.
 
@@ -440,16 +466,16 @@ memcpy(&entStat, entity.GetTxID() + MC_AST_SHORT_TXID_OFFSET, MC_AST_SHORT_TXID_
 entStat.m_Entity.m_EntityType = MC_TET_STREAM | MC_TET_CHAINPOS;
 if (m_pWalletTxs != NULL && m_pWalletTxs->WRPFindEntity(&entStat)) return true;  // already subscribed
 
-if (m_SubscribeAttempted) return false;
+if (m_Subscribe.Next() != MC_SSA_ACT) return false;   // import still catching up
 
 Array params;
 params.push_back(m_StreamName);
-m_SubscribeAttempted = true;
 try {
     subscribe(params, false);
+    m_Subscribe.RecordBroadcast();
     return m_pWalletTxs != NULL && m_pWalletTxs->WRPFindEntity(&entStat);
 }
-catch (...) { ... }
+catch (...) { m_Subscribe.RecordFailure(); ... }
 return false;
 ```
 
@@ -466,7 +492,24 @@ return false;
   already subscribed.
 - If not subscribed, it calls the RPC handler `subscribe(["wpoa-weights"])`. After the
   subscribe it re-checks, because for a short stream the import can complete
-  immediately.
+  immediately. A redundant subscribe would restart the stream rescan, hence the same
+  state machine.
+
+#### `EnsureStreamReady()` — create, then subscribe
+
+```cpp
+if (m_pWalletTxs == NULL || pwalletMain == NULL) return false;
+if (!EnsureStreamExists()) return false;
+return EnsureSubscribed();
+```
+
+Public, because **order** matters. `RegisterLocalWeight` calls it, but the weight engine
+also calls it on every tick *before* its epoch gate. When the create was reachable only
+from `RegisterLocalWeight`, it was sequenced after an event that needed the stream: a
+clean network deadlocked, because nobody could publish a weight without the stream and
+the stream was only created by a node that had a weight. Creating it early uses only the
+`create` permission the genesis admin holds from block 1
+([weight-engine.md §4](weight-engine.md#4-the-engine-thread)).
 
 ### 2.5 Writing a record: `PublishWeightRecord()`
 
@@ -549,13 +592,12 @@ and reading the history shows each address's weight evolution.
 if (weight == 0) { /* ERROR: weight must be > 0 */ return false; }
 if (m_pWalletTxs == NULL || pwalletMain == NULL) { /* ERROR wallet */ return false; }
 
-if (!EnsureStreamExists()) return false;   // created now or awaiting confirmation
-if (!EnsureSubscribed())   return false;   // subscribe/import in progress
+if (!EnsureStreamReady()) return false;    // created/subscribed now, or awaiting confirmation
 
 uint32_t current = GetNodeWeight(m_LocalAddress);
 if (current == weight) { /* already registered */ return true; }   // IDEMPOTENCY
 
-return PublishWeightRecord(weight);
+return PublishWeightRecord(weight, epoch);
 ```
 
 Sequence: validate input → ensure stream → ensure subscription → **check idempotency**
@@ -604,7 +646,7 @@ static bool DecodeWeightRecord(const CWalletTx& wtx, const unsigned char* stream
 
         string format_text;
         Value v = OpReturnFormatEntry(data, data_size, wtx.GetHash(), j, format, &format_text);
-        if (mc_ParseWeightRecordJson(v, out_addr, out_weight))
+        if (mc_ParseWeightRecordJson(v, out_addr, out_weight, &out_epoch))
         {
             ExtractItemPublishers(wtx, j, out_publishers);
 
@@ -685,12 +727,18 @@ stream-item transaction. Steps:
   level. **This discrepancy was the cause of the bug** where decoding silently failed
   for every item (cf. the "stream read bug fix" commit). See
   [multichain-internals.md](multichain-internals.md) §5.
-- Finally `mc_ParseWeightRecordJson(v, out_addr, out_weight)` (from `weight_record.h`)
-  extracts the address and weight. If it succeeds, it returns.
+- Finally `mc_ParseWeightRecordJson(v, out_addr, out_weight, &out_epoch)` (from `weight_record.h`)
+  extracts the address, weight and optional epoch. If it succeeds, the self-publication
+  rule below decides whether the record is kept.
 
 #### `ReadAllRecords()` — the read core
 
 ```cpp
+bool ReadAllRecords(std::map<std::string, uint32_t>& out_latest,
+                    std::map<std::string, uint32_t>* out_epochs = NULL,
+                    int* out_first_positive_block = NULL,
+                    int max_block = -1);
+
 static const bool dbg = GetBoolArg("-wpoadebug", false);
 out_latest.clear();
 if (m_pWalletTxs == NULL) { ...; return false; }
@@ -769,6 +817,7 @@ for (int i = 0; i < rows.GetCount(); i++)
     mc_TxEntityRow* er = (mc_TxEntityRow*)rows.GetRow(i);
 
     if (er->m_Flags & MC_TFL_IS_EXTENSION) continue;   // skip extension (chunked) rows
+    if (!WPoAWeightRecordInScope(er->m_Block, max_block)) continue;   // height scope
 
     uint256 hash;
     memcpy(hash.begin(), er->m_TxId, MC_TDB_TXID_SIZE);
@@ -794,6 +843,13 @@ for (int i = 0; i < rows.GetCount(); i++)
     {
         mc_AccumulateLatestWeight(out_latest, addr, w);   // newest wins
         if (out_epochs != NULL) (*out_epochs)[addr] = rec_epoch;
+        if (w > 0 && !g_wpoa_ever_electable)
+        {
+            g_wpoa_ever_electable = true;                 // the activation latch
+            LogPrintf("[wPoA] ACTIVATED: the registry now carries a positive weight ...");
+        }
+        if (out_first_positive_block != NULL && w > 0 && er->m_Block >= 0)
+            /* keep the lowest such block */;
     }
 }
 return true;
@@ -814,6 +870,25 @@ return true;
   unconditional because it is the evidence an accusation is built on.
 - `out_epochs` is optional (`NULL` when the caller only wants the weights). Filling it is
   what lets the verifier compare a value against the epoch it actually claims.
+- **The height scope** is applied before decoding, so a row outside it cannot influence
+  the newest-wins fold. `WPoAWeightRecordInScope(record_block, max_block)` is pure:
+  unbounded (`max_block < 0`) admits everything; under a bound, a row with no block of its
+  own (`m_Block < 0`) is excluded, because a record with no height cannot be shown to
+  precede one, and guessing would reintroduce the per-node divergence the bound removes.
+  Bounding by the parent height is self-enforcing: to evaluate a block at `h+1` a node must
+  hold its parent, and holding the parent means holding every transaction confirmed at or
+  before `h`.
+- **The activation latch.** `g_wpoa_ever_electable` flips the first time any read meets a
+  positive weight, and never flips back; `WPoAEverElectable()` exposes it. It is a plain
+  `bool` on purpose: its consumers (the miner's native fallback and the mining-diversity
+  hook) run on paths that already hold locks, and an earlier version that asked the chain
+  directly hung the node there. Semantics:
+  [weight-engine.md §4bis](weight-engine.md#4bis-deferred-activation--when-wpoa-actually-takes-over).
+  Because it is set by *any* read — scoped or not — and reset on restart, it is node-local
+  state rather than a function of the prefix;
+  [wpoa-weight-engine-architecture.md §10](wpoa-weight-engine-architecture.md#10-known-limits-and-open-points)
+  records this as an open point, together with the chain-derived alternative that
+  `out_first_positive_block` / `FirstPositiveWeightBlock()` already compute.
 - **`mc_AccumulateLatestWeight(out_latest, addr, w)`** — because we iterate in ascending
   order (old→new), overwriting the per-address map makes the **last record win**. This
   helper lives in `weight_record.h`.
@@ -823,12 +898,20 @@ return true;
 They all call `ReadAllRecords` and then filter/aggregate:
 
 ```cpp
-uint32_t GetNodeWeight(addr)  → look up addr in the map, return weight or 0
-uint32_t GetLocalWeight()     → same but for m_LocalAddress, with a WARNING if 0
-std::map GetAllNodesWeights() → return the whole map (and log sum/count)
-bool IsLocalWeightRegistered()→ true if m_LocalAddress is in the map
-void DebugPrintWeights()      → formatted print of the whole registry
+uint32_t GetNodeWeight(addr)          → look up addr in the map, return weight or 0
+uint32_t GetLocalWeight()             → same but for m_LocalAddress, with a WARNING if 0
+std::map GetAllNodesWeights()         → the whole map (and log sum/count) — unscoped
+std::map GetAllNodesWeightsAsOf(h)    → the whole map, records confirmed at or before h
+void GetAllNodesWeightsWithEpoch(w,e) → the map plus each record's epoch
+int FirstPositiveWeightBlock()        → first block with a positive weight, or -1
+bool IsLocalWeightRegistered()        → true if m_LocalAddress is in the map
+void DebugPrintWeights()              → formatted print of the whole registry
 ```
+
+`GetAllNodesWeights()` is `GetAllNodesWeightsAsOf(-1)` in all but name: one implementation,
+so the scoped and unscoped reads cannot drift apart. Every consensus caller — the Phase 2
+selector, the sortition miner via `WPoABuildRoundContext`, the sortition validator, and the
+round audit RPCs — uses the scoped form with `height - 1`.
 
 `WaitForLocalWeight(weight, max_attempts, interval_ms)`:
 
@@ -896,8 +979,8 @@ void ThreadRegisterNodeWeight(uint32_t weight)
 ```
 
 - `RenameThread("mc-wpoa-weight")` — gives the thread a name (useful in `top`/debug).
-- It creates **only one** `StreamWeightRegistry` instance (so the flags
-  `m_CreateAttempted`/`m_SubscribeAttempted` persist across attempts).
+- It creates **only one** `StreamWeightRegistry` instance, so the `m_Create` /
+  `m_Subscribe` state persists across attempts.
 - A retry loop with `MilliSleep` between passes; it exits on the first success or after
   `MC_WPOA_MAX_ATTEMPTS` (200) attempts (~10 minutes). The readiness gate does not consume
   attempts.
@@ -957,12 +1040,15 @@ flowchart TD
         INIT[validate -weight<br/>g_node_weight = value<br/>create_thread ThreadRegisterNodeWeight]
     end
 
-    INIT -->|launches| THREAD[ThreadRegisterNodeWeight<br/>this file, uses StreamWeightRegistry]
+    INIT -->|launches, engine off| THREAD[ThreadRegisterNodeWeight<br/>this file, uses StreamWeightRegistry]
+    INIT -->|launches, engine on| WET[ThreadWeightEngine<br/>weight_engine.cpp]
 
-    THREAD -->|writes| WR[createcmd / subscribe / publish<br/>rpcwallet.h — RPC handlers]
-    THREAD -->|reads and parsing| WREC[weight_record.h<br/>mc_ParseWeightRecordJson<br/>mc_AccumulateLatestWeight]
+    THREAD -->|writes| WR[createcmd / subscribe / publishfrom<br/>rpcwallet.h — RPC handlers]
+    WET -->|EnsureStreamReady, RegisterLocalWeight w,e| WR
+    THREAD -->|reads and parsing| WREC[weight_record.h<br/>mc_ParseWeightRecordJson<br/>mc_AccumulateLatestWeight<br/>mc_StreamItemIsSelfAttested]
 
     RPCLIST[rpc/rpcwpoa.cpp handlers, registered by rpc/rpclist.cpp] -.->|getlocalweight / getallweights / getnodeweight| THREAD
+    SEL[wpoa_selector.cpp, private_sortition.cpp] -.->|GetAllNodesWeightsAsOf h-1| THREAD
 ```
 
 - **`core/init.h`** declares `pwalletMain`, `pwalletTxsMain`, `ShutdownRequested()` that
@@ -973,14 +1059,18 @@ flowchart TD
 - **`rpc/rpcwpoa.cpp`** defines the three RPC handlers over this class, and
   **`rpc/rpclist.cpp`** registers them in the server dispatcher. →
   see [rpc-registration.md](rpc-registration.md).
-- **`rpcwallet.h`** provides the `createcmd`/`subscribe`/`publish` handlers reused for
+- **`rpcwallet.h`** provides the `createcmd`/`subscribe`/`publishfrom` handlers reused for
   writes. → see [multichain-internals.md](multichain-internals.md) §6.
+- **`wpoa_selector.cpp`** and **`private_sortition.cpp`** read the scoped map for every
+  election; **`weight_engine.cpp`** publishes through this class and reads the map with
+  epochs to verify it. → see [wpoa-selector.md](wpoa-selector.md),
+  [private-sortition.md](private-sortition.md), [weight-engine.md](weight-engine.md).
 
 ---
 
 ## Related documents
 
-- [../README.md](../README.md) — feature entry point and architecture diagram.
-- [phase1-implementation-guide.md](phase1-implementation-guide.md) — the design rationale (the "why").
+- [../src/wpoa/README.md](../src/wpoa/README.md) — feature entry point and architecture diagram.
+- [phase1-implementation-guide.md](phase1-implementation-guide.md) — the original design rationale (historical).
 - [multichain-internals.md](multichain-internals.md) — the host APIs this class calls.
 - [weight-record.md](weight-record.md) — the pure helpers used on the read path.

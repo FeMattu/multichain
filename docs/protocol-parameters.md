@@ -1,19 +1,17 @@
 # wPoA — Protocol parameter catalogue
 
-> **Register: technical-direct.** A reference for APIs and configuration. Short
-> sentences, code terminology left verbatim, flag and parameter names exactly as they
-> appear in the source. For the theoretical consensus model and its security properties
-> see [thesis-project-overview.md](thesis-project-overview.md), which is written in the
-> formal-academic register.
+> **Type:** reference · **Register:** technical-direct · **Verified against the code:**
+> 2026-09-26, commit `3d2fc551`
+>
+> **Single source** for protocol parameters: no other document restates their defaults,
+> ranges or semantics — the others link here. When a parameter changes in the code, it is
+> updated here and nowhere else. Flag and parameter names are exactly as they appear in the
+> source. For the formal model see [thesis-project-overview.md](thesis-project-overview.md).
 
-> **Single source.** This file is the **only** authoritative place for protocol
-> parameters. No other document restates their defaults, ranges or semantics — the
-> others link here. When a parameter changes in the code, it is updated here and
-> nowhere else.
-
-Every `file:line` reference points at the code as of this document's last revision. The
-**Defined** column says where the parameter is *declared* as a chain parameter; the
-**Validation** section says where its value is *checked* at node startup.
+Every `file:line` reference was re-read at the commit above; if one drifts, trust the
+symbol. The **Defined** column says where the parameter is *declared* as a chain
+parameter; [§6](#6-value-validation-at-startup) says where its value is *checked* at node
+startup.
 
 ---
 
@@ -23,6 +21,8 @@ Every `file:line` reference points at the code as of this document's last revisi
   - [1.1 The parameters are hash-enforced](#11-the-parameters-are-hash-enforced)
   - [1.2 Master switch and precedence](#12-master-switch-and-precedence)
   - [1.3 Dependency constraints (hard failure)](#13-dependency-constraints-hard-failure)
+- [1bis. The master switch, and how it expands](#1bis-the-master-switch-and-how-it-expands)
+- [1ter. `setup-first-blocks` is derived, not merely validated](#1ter-setup-first-blocks-is-derived-not-merely-validated)
 - [2. Catalogue — wPoA phases](#2-catalogue--wpoa-phases)
   - [2.1 The Phase 4 mining delay](#21-the-phase-4-mining-delay)
 - [3. Catalogue — behavioural malus registry](#3-catalogue--behavioural-malus-registry)
@@ -30,6 +30,7 @@ Every `file:line` reference points at the code as of this document's last revisi
   - [4.1 No parameter governs who may write the input streams](#41-no-parameter-governs-who-may-write-the-input-streams)
   - [4.2 The Certification Authority role is not a chain parameter either](#42-the-certification-authority-role-is-not-a-chain-parameter-either)
 - [5. Per-node parameter — `-weight`](#5-per-node-parameter---weight)
+- [5bis. Runtime-only flags](#5bis-runtime-only-flags)
 - [6. Value validation at startup](#6-value-validation-at-startup)
 - [7. Configuration recipes](#7-configuration-recipes)
 - [8. References](#8-references)
@@ -74,8 +75,11 @@ cryptographically bound). That description is **obsolete**.
 
 ### 1.2 Master switch and precedence
 
-`-enablewpoa` (alias `-wpoaenable`) turns **every** phase on. A more specific
-`-enablewpoa*` flag then overrides its own phase.
+`-enablewpoa` (alias `-wpoaenable`) turns **every** wPoA phase on — weights, selection,
+vrf, randao, sortition and malus. A more specific `-enablewpoa*` flag then overrides its
+own phase. The master does **not** turn on the weight engine (`-enableweightengine`). The
+score-based fork choice has no flag at all: it is on whenever private sortition is
+(§5bis).
 
 ```bash
 # Full stack except sortition:
@@ -109,10 +113,10 @@ inert.
 | `enablewpoarandao` requires `enablewpoavrf` | `src/core/init.cpp:3445` |
 | `enablewpoasortition` requires `enablewpoarandao` | `src/core/init.cpp:3447` |
 | `enablewpoasortition` requires `wpoarandaolookback >= 1` | `src/core/init.cpp:3449` |
-| `enablewpoamalus` requires `enablewpoasortition` | `src/core/init.cpp:3566` |
-| `wpoamalusequivpoints` must be `>` `wpoamalusdelaypoints` | `src/core/init.cpp:3547` |
-| `wpoamalusbadweightpoints` must be `>` `wpoamalusselfwritepoints` | `src/core/init.cpp:3556` |
-| `enableweightengine` requires `enablewpoaweights` | `src/core/init.cpp:3740` |
+| `enablewpoamalus` requires `enablewpoasortition` | `src/core/init.cpp:3577` |
+| `wpoamalusequivpoints` must be `>` `wpoamalusdelaypoints` | `src/core/init.cpp:3558` |
+| `wpoamalusbadweightpoints` must be `>` `wpoamalusselfwritepoints` | `src/core/init.cpp:3567` |
+| `enableweightengine` requires `enablewpoaweights` | `src/core/init.cpp:3751` |
 
 The `k >= 1` constraint is not arbitrary: the reveal that sortition produces feeds
 `R_tot[n]`, while its own seed reads `R_tot[n-k]`. At `k = 0` the dependency would be
@@ -124,7 +128,7 @@ circular.
 
 `enable-wpoa` is not a switch the consensus code reads. Nothing branches on it: every
 decision is taken on the six per-phase keys (`enable-wpoa-weights`, `-selection`, `-vrf`,
-`-randao`, `-sortition`, `-malus`). The master is a **convenience that expands into
+`-randao`, `-sortition`, `-malus`), and the master expands into all six. The master is a **convenience that expands into
 them**, and where that expansion happens used to matter a great deal.
 
 It expands in two places, and they now agree:
@@ -132,7 +136,7 @@ It expands in two places, and they now agree:
 | Where the master arrives | Expands | Result |
 |---|---|---|
 | `multichain-util create -enablewpoa=1 ...` | `mc_MultichainParams::Read` writes all six per-phase keys into the generated `params.dat` | The file is explicit; every joining node inherits the six values |
-| Written by hand into `params.dat` as `enable-wpoa = true` | `AppInit2` expands it at startup, to every phase still at its default | The file stays as written; the runtime configuration is the expanded one |
+| Written by hand into `params.dat` as `enable-wpoa = true` | `AppInit2` expands it at startup, to every phase still at its default (malus included) | The file stays as written; the runtime configuration is the expanded one |
 
 **Before this was fixed, the second row did nothing.** `AppInit2` read only the per-phase
 keys and never `enablewpoa`, so a `params.dat` carrying `enable-wpoa = true` was parsed,
@@ -175,6 +179,9 @@ but it means the file is not the place to check. The startup log is:
        selection, vrf, randao and sortition
 ```
 
+(The malus is expanded too, a few lines later in `AppInit2`, although this line does not
+name it.)
+
 ---
 
 ## 1ter. `setup-first-blocks` is derived, not merely validated
@@ -183,7 +190,7 @@ Two distinct mechanisms decide when wPoA starts governing, and both are easy to 
 
 ### The floor applied at chain creation
 
-`mc_MultichainParams::AdjustSetupFirstBlocks` (`src/chainparams/params.cpp:1324-1331`)
+`mc_MultichainParams::AdjustSetupFirstBlocks` (`src/chainparams/params.cpp:1275`, called from `init.cpp:1810` on the genesis path)
 **raises** `setup-first-blocks` when the weight engine and wPoA selection are both on, and
 writes the corrected value into `params.dat` *before the parameter hash is taken*:
 
@@ -211,10 +218,10 @@ effective value back from `getblockchainparams` rather than trusting what you wr
 ### The deferred activation at runtime
 
 Even a correct floor is a height, and a height cannot know whether the engine has managed
-to publish anything. Since the deferred-activation fix, wPoA additionally waits for the
-registry to carry a weight it can actually draw — see
-[weight-engine.md](weight-engine.md), *Deferred activation*. Until then the chain runs
-under the native rules instead of stopping.
+to publish anything. wPoA additionally waits for the registry to carry a weight it can
+actually draw — see
+[weight-engine.md §4bis](weight-engine.md#4bis-deferred-activation--when-wpoa-actually-takes-over).
+Until then the chain runs under the native rules instead of stopping.
 
 ---
 
@@ -258,13 +265,17 @@ hundreds. With it, the **winner's** normalised score is exactly `U(0,1)`, so its
 uniform across the band and the mean block time lands on target.
 
 A validator accepts a block if and only if
-`block.nTime >= parent.nTime + MiningDelay(score_i, ...)`. This time bar **replaces** the
+`block.nTime >= parent.nTime + MiningDelay(score_i, ...)`. The miner counts down from the
+same instant: it starts at `parent.nTime + D_i`, moved to its local clock through the
+network time offset, not at the moment it finished processing the parent
+([sortition-miner.md §1](sortition-miner.md#1-score-timed-self-election-getminerandexpectedminingstarttime)). This time bar **replaces** the
 equality test on the public argmin, and its auto-relaxing nature is the liveness
 mechanism: there is no hard threshold, so the online validator with the minimum score
 always eventually proposes.
 
-Full detail: [phase4-implementation-guide.md](phase4-implementation-guide.md) and
-[private-sortition.md](private-sortition.md).
+Full detail: [private-sortition.md](private-sortition.md) and
+[sortition-validator.md](sortition-validator.md); design history in
+[phase4-implementation-guide.md](phase4-implementation-guide.md).
 
 ---
 
@@ -313,9 +324,9 @@ weights stream. Module detail: [weight-engine.md](weight-engine.md).
 
 | CLI flag | `params.dat` | Type | Default | Valid range | Defined | Effect on consensus |
 |---|---|---|---|---|---|---|
-| `-enableweightengine` | `enable-weight-engine` | `BOOLEAN` | `0` | `0` / `1` | `paramlist.h:233` | Derives each cluster's weight from the on-chain inputs (membership / ESG / activity / reconciliation) once per epoch, **instead of** the static `-weight`. |
+| `-enableweightengine` | `enable-weight-engine` | `BOOLEAN` | `0` | `0` / `1` | `paramlist.h:233` | Derives each cluster's weight once per buried epoch from the published inputs (ESG, membership) and the block-derived ones (activity `tau`, restitution `R_k`, credits and debits), **instead of** the static `-weight`. Not turned on by the `-enablewpoa` master. |
 | `-weightepochlength` | `weight-epoch-length` | `UINT32` | `100` | `[1, 1000000]` | `paramlist.h:237` | Epoch length in blocks. The epoch is **1-based**: `epoch(height) = height / n + 1`. Determines the epoch boundaries the miner and every validator must agree on. |
-| `-weightkappa` | `weight-kappa` | `STRING(32)` | `100` | `> 0` | `paramlist.h:241` | Normalisation constant `kappa` in the company contribution `c_i = ESG_i * tau_i / kappa`. |
+| `-weightkappa` | `weight-kappa` | `STRING(32)` | `100` | `> 0` (and `< 1e18`) | `paramlist.h:241` | Normalisation constant `kappa` in the company contribution `c_i = ESG_i * tau_i / kappa`. Also the scale `ToIntegerWeight` multiplies by before rounding the published weight. |
 | `-weightalpha` | `weight-alpha` | `STRING(32)` | `0.2` | `[0, 1]` | `paramlist.h:245` | **DEPRECATED — parsed, validated, never read.** It scaled the allocation `A_k = alpha * Theta * W_k / W_tot` in the superseded compliance-rate formulation; the restitution-rate pipeline has no allocation. Retained because `weightalpha` is a hash-enforced params.dat field: removing it would change the file's hash and make every existing chain unjoinable. |
 | `-weightlambda` | `weight-lambda` | `STRING(32)` | `0.5` | `[0, 1)` — `1` excluded | `paramlist.h:249` | Behavioural-feedback damping in `w_k = W_k * [rho_{k,e-1} * lambda + (1 - lambda)]`. **`lambda < 1` is a correctness requirement**, not a preference: it guarantees weight positivity. |
 | `-weighttreasuryaddress` | `weight-treasury-address` | `STRING(64)` | *(empty)* | a valid address, or empty | `paramlist.h:253` | The recipient that defines a reconciliation transfer: `R_k^(e)` is the native-currency value paid to **this** address by transactions the miner signed, in the epoch's confirmed blocks. **Empty is legal** and means `R_k = 0` for every cluster — a uniform scaling that leaves the election unchanged. A non-empty value must parse as an address, or startup fails. |
@@ -377,7 +388,7 @@ is a plain runtime flag: every validator sets its own.
 
 | CLI flag | Type | Default | Valid range | Defined | Validation |
 |---|---|---|---|---|---|
-| `-weight=<n>` | integer | `100` | `> 0` (positive integers) | `MC_WPOA_DEFAULT_WEIGHT`, [`stream_weight_registry.h`](../src/wpoa/stream_weight_registry.h) | `init.cpp:3234` — `-weight <= 0` prevents startup |
+| `-weight=<n>` | integer | `100` | `> 0` (positive integers) | `MC_WPOA_DEFAULT_WEIGHT`, [`stream_weight_registry.h`](../src/wpoa/stream_weight_registry.h) | `init.cpp:3311` — `-weight <= 0` prevents startup |
 
 ### 5.1 `-weight` is the fallback, not the primary path
 
@@ -430,6 +441,34 @@ The three-layer authorization model (permission, application, verification):
 
 ---
 
+## 5bis. Runtime-only flags
+
+One wPoA flag is deliberately **not** a chain parameter: it changes nothing any other node
+has to agree on, so it lives only on the `multichaind` command line and never enters
+`params.dat` or its hash.
+
+| CLI flag | Type | Default | Read in | Effect |
+|---|---|---|---|---|
+| `-wpoadebug` | `BOOLEAN` | `0` | read once per process by the stream readers (`stream_weight_registry.cpp`, `weight_reader.cpp`) | Verbose trace of the stream read paths. Diagnostic only. See [testing.md](testing.md#deep-debugging--wpoadebug). |
+
+The score-based fork choice used to be the second such flag (`-enablewpoaforkscore`). It
+was removed: under private sortition the node always breaks same-height ties on the true
+score, because the score-aware activation
+([score-aware-activation.md](score-aware-activation.md)) makes the argmin propose after a
+worse-scored block for its round, and only the score tie-break lets that block win.
+
+Two compile-time constants govern that activation and are not configurable:
+
+| Constant | Value | Where | Effect |
+|---|---|---|---|
+| `MC_WPOA_DEFER_GRACE_S` | `2.0` s | [`private_sortition.h`](../src/wpoa/private_sortition.h) | How long past its own slot a node keeps holding back a worse-scored block for its round, waiting for its own block, before releasing it. |
+
+The fork-choice instrumentation (every contested round, with both the live and the legacy
+winner, and the holds `[wpoa-fork] defer` / `defer-release`) is logged under
+`-debug=wpoafork`.
+
+---
+
 ## 6. Value validation at startup
 
 Real-valued parameters travel as `MC_PRM_STRING` and are converted in `AppInit2` with
@@ -437,21 +476,21 @@ NaN/Inf-safe checks: a non-finite value is rejected, not propagated.
 
 | Parameter | Check | Line |
 |---|---|---|
-| `-weight` | integer `> 0` | `init.cpp:3234` |
-| `-wpoarandaolookback` | non-negative integer | `init.cpp:3285` |
-| `-wpoasortitiondelta` | number in `(0, 1)` | `init.cpp:3297` |
-| `-wpoasortitionlambda` | number in `[0, 1]` | `init.cpp:3308` |
-| `-wpoamalusmu` | number in `[0, 1)` | `init.cpp:3394` |
-| `-wpoamalusmax` | number `> 0` | `init.cpp:3400` |
-| `-wpoamalusequivpoints` | number `> 0` | `init.cpp:3406` |
-| `-wpoamalusdelaypoints` | number `> 0` | `init.cpp:3412` |
-| `-wpoamalusselfwritepoints` | number `> 0` | `init.cpp:3424` |
-| `-wpoamalusbadweightpoints` | number `> 0`, and `>` selfwrite points | `init.cpp:3430` |
-| `-weightepochlength` | integer in `[1, 1000000]` | `init.cpp:3521` |
-| `-weightkappa` | number `> 0` (and `< 1e18`) | `init.cpp:3535` |
-| `-weightalpha` | number in `[0, 1]` | `init.cpp:3541` |
-| `-weightlambda` | number in `[0, 1)` | `init.cpp:3547` |
-| `-weighttreasuryaddress` | empty, or a valid address | `init.cpp:3569` |
+| `-weight` | integer `> 0` | `init.cpp:3311` |
+| `-wpoarandaolookback` | non-negative integer | `init.cpp:3392` |
+| `-wpoasortitiondelta` | number in `(0, 1)` | `init.cpp:3404` |
+| `-wpoasortitionlambda` | number in `[0, 1]` | `init.cpp:3415` |
+| `-wpoamalusmu` | number in `[0, 1)` | `init.cpp:3516` |
+| `-wpoamalusmax` | number `> 0` | `init.cpp:3522` |
+| `-wpoamalusequivpoints` | number `> 0`, and `>` delay points | `init.cpp:3528`, `3565` |
+| `-wpoamalusdelaypoints` | number `> 0` | `init.cpp:3534` |
+| `-wpoamalusselfwritepoints` | number `> 0` | `init.cpp:3545` |
+| `-wpoamalusbadweightpoints` | number `> 0`, and `>` selfwrite points | `init.cpp:3551`, `3574` |
+| `-weightepochlength` | integer in `[1, 1000000]` | `init.cpp:3649` |
+| `-weightkappa` | number `> 0` (and `< 1e18`) | `init.cpp:3660` |
+| `-weightalpha` | number in `[0, 1]` | `init.cpp:3666` |
+| `-weightlambda` | number in `[0, 1)` | `init.cpp:3672` |
+| `-weighttreasuryaddress` | empty, or a valid address | `init.cpp:3700` |
 
 Every violation produces an `InitError` with an explicit message: the node does not
 start.
@@ -474,10 +513,9 @@ start.
 ./src/multichain-util create mychain -enablewpoa=1 \
     -wpoasortitiondelta=0.3 -wpoasortitionlambda=0.5
 
-# Full stack with the malus registry. With the weight engine on, the published-data
-# integrity kinds (selfwrite, badweight) are decidable too:
-./src/multichain-util create mychain -enablewpoa=1 -enablewpoamalus=1 \
-    -enableweightengine=1
+# Full stack (the master includes the malus) plus the weight engine, which also makes
+# the published-data integrity kinds (selfwrite, badweight) decidable:
+./src/multichain-util create mychain -enablewpoa=1 -enableweightengine=1
 
 # Dynamic weights derived from the on-chain inputs, 200-block epochs, with the
 # treasury address that defines a reconciliation transfer:
@@ -506,11 +544,3 @@ multichain-cli mychain grant <everynode> wpoa-weights.write
   streams, computation pipeline, admin RPCs, authorization model.
 - [implementation-status.md](implementation-status.md) — per-phase implementation status.
 - [implementation-guide.md](implementation-guide.md) — general index and phase map.
-
----
-
-_Verified against the code on 2026-09-17 UTC (commit `7f3eb829`, branch
-`fix/wpoa-cpp-bugs-and-harness-simplification`): every `src/core/init.cpp` and
-`src/chainparams/paramlist.h` reference above was re-read from the source rather than
-carried over. Line numbers drift — if one does not match, trust the symbol name and
-correct the number._

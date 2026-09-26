@@ -1,14 +1,20 @@
 # A local Δ_gossip hint cannot fire at the current band — evidence
 
-**Date:** 2026-09-21 · **Status:** design rejected on measurement, no code written
-**Design it rejects:** the *local* Δ_gossip hint — a node waits, on its own decision,
-until its preferred candidate has been held for `Δ_gossip_hint` ms before starting its
-private-sortition countdown for the next height.
-**Not affected:** the consensus-rule Δ_gossip (pending pool, relay-at-admission, chain
-parameter), which remains parked and which this note does *not* evaluate.
-**Runs cited:** `run-wpoa-forkscore-1h-20260921T143502Z` (fork-score on) and
-`run-wpoa-forkscore-1h-ctl-20260921T161325Z` (control), both intercontinental CORE,
-20 nodes, 149 sortition-governed heights each.
+> **Type:** historical record (evidence) · **Date:** 2026-09-21 · **Status:** design rejected on measurement, no code written
+>
+> Kept as written: it records the work as it was done and is **not** updated when the
+> code changes, so paths, identifiers and line numbers may no longer match the tree.
+>
+> **Design it rejects:** the *local* Δ_gossip hint — a node waits, on its own decision,
+> until its preferred candidate has been held for `Δ_gossip_hint` ms before starting its
+> private-sortition countdown for the next height.
+> **Not affected:** the consensus-rule Δ_gossip (pending pool, relay-at-admission, chain
+> parameter), which remains parked and which this note does *not* evaluate.
+> **Runs cited:** `run-wpoa-forkscore-1h-20260921T143502Z` (fork-score on) and
+> `run-wpoa-forkscore-1h-ctl-20260921T161325Z` (control), both intercontinental CORE,
+> 20 nodes, 149 sortition-governed heights each.
+>
+> **For the system as it is now:** [../wpoa-weight-engine-architecture.md §3.6](../wpoa-weight-engine-architecture.md#36-fork-choice-the-true-score-in-the-chain-comparator) (fork choice).
 
 This exists so the measurement stays citable without keeping the scratch scripts. Every
 figure is a measurement, not a summary of one.

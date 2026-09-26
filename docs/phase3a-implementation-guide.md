@@ -1,18 +1,19 @@
 # wPoA VRF Randomness Beacon — Implementation Guide (Phase 3a)
 
-> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
-> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
-> rebuilt as a Python harness. The references are kept as written because they record the
-> work as it was done; for the current structure see
-> [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
-
-
-> **Register: technical-direct.** A developer reference: APIs, function signatures,
-> data structures and control flow, with code terminology left verbatim. For the
-> theoretical consensus model see
-> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
-> [protocol-parameters.md](protocol-parameters.md); for implementation status see
-> [implementation-status.md](implementation-status.md).
+> **Type:** historical record (phase guide) · **Date:** 2026-07-13 · **Status:** Phase 3a complete
+>
+> Kept as written: it records the work as it was done and is **not** updated when the
+> code changes, so paths, identifiers and line numbers may no longer match the tree.
+>
+> **Changed since:** the shell suites under `test/functional/`, `test/output/` and
+> `test/experimental/` were replaced by the Python harness in `test/` (see
+> [test/README.md](../test/README.md)); the wPoA switches are chain parameters
+> ([node-startup.md](node-startup.md)); every consensus read of the weights is
+> height-scoped (`GetAllNodesWeightsAsOf(height - 1)`); the mining-diversity bypass is a
+> hook in `IsBarredByDiversity` rather than a `CanCustom` call; the weight engine, the
+> malus registry and the optional score-based fork choice were added on top.
+>
+> **For the system as it is now:** [implementation-status.md](implementation-status.md) (status), [wpoa-weight-engine-architecture.md](wpoa-weight-engine-architecture.md) (design overview), and the module reference linked from `README.md`.
 
 This document explains **how the Phase 3a code works, why every choice was made, and
 how to change it**. It is the Phase 3a sibling of
@@ -21,7 +22,7 @@ how to change it**. It is the Phase 3a sibling of
 can maintain and extend the VRF beacon on your own.
 
 Companion documents:
-- [../README.md](../README.md) — feature entry point: introduction, architecture
+- [../src/wpoa/README.md](../src/wpoa/README.md) — feature entry point: introduction, architecture
   diagram, table of contents and implementation status.
 - [implementation-guide.md](implementation-guide.md) — master phase index.
 - [vrf-wrapper.md](vrf-wrapper.md) — line-by-line walkthrough of the pure VRF core
@@ -147,7 +148,7 @@ New files (the module):
 | [`vrf_wrapper.cpp`](../src/wpoa/vrf_wrapper.cpp) | The ECVRF implementation: hash-to-curve, deterministic nonce, DLEQ prove/verify, point/scalar helpers over the core secp256k1 API. |
 | [`test/vrf_wrapper_tests.cpp`](../src/wpoa/test/vrf_wrapper_tests.cpp) | Boost.Test unit suite for the pure VRF core (correctness, determinism, tamper/forgery rejection, pseudorandomness sanity). |
 | [`test/run_unit_tests.sh vrf`](../src/wpoa/test/run_unit_tests.sh) | Build + run the VRF unit tests (no node build needed; links the prebuilt `libsecp256k1.a`). |
-| [`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh) | Multi-node end-to-end test: reveals produced, verified network-wide, chain live and fork-free under mandatory verification. |
+| `test/functional/wpoa/functional_test_wpoa_system.sh` | Multi-node end-to-end test: reveals produced, verified network-wide, chain live and fork-free under mandatory verification. |
 
 Files **modified** in the host tree (integration points):
 
@@ -650,7 +651,7 @@ Run it:
 
 ### 13.2 Multi-node functional test
 
-[test/functional_test_wpoa_system.sh](../../../test/functional/wpoa/functional_test_wpoa_system.sh). Bootstraps N
+`test/functional_test_wpoa_system.sh`. Bootstraps N
 permissioned nodes with `-enablewpoa=1 -enablewpoavrf=1`, waits for weight convergence,
 drives the chain `VRF_BLOCKS` blocks past the setup height, and asserts:
 

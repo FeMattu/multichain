@@ -1,8 +1,14 @@
 # The node's JSON writer loses a whole unit — evidence
 
-**Date:** 2026-09-18 · **Status:** mechanism confirmed, mitigated harness-side
-**Design record:** [`../adr/core-emulation-2026.md`](../adr/core-emulation-2026.md) §9.3
-**Reproducer:** [`../../test/analysis/pipeline/tools/verify_json_double_rendering.py`](../../test/analysis/pipeline/tools/verify_json_double_rendering.py)
+> **Type:** historical record (evidence) · **Date:** 2026-09-18 · **Status:** mechanism confirmed, mitigated harness-side
+>
+> Kept as written: it records the work as it was done and is **not** updated when the
+> code changes, so paths, identifiers and line numbers may no longer match the tree.
+>
+> **Design record:** [`../adr/core-emulation-2026.md`](../adr/core-emulation-2026.md) §9.3.
+> **Reproducer:** [`test/analysis/pipeline/tools/verify_json_double_rendering.py`](../../test/analysis/pipeline/tools/verify_json_double_rendering.py).
+>
+> **For the system as it is now:** [`test/README.md`](../../test/README.md).
 
 This exists so the two diagnostics below stay citable without keeping their raw scratch
 files in the tree. Every figure here is a measurement, not a summary of one.

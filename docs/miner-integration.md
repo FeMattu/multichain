@@ -1,70 +1,84 @@
 # `miner/miner.cpp` (wPoA Phase 2 parts)
 
-> **Register: technical-direct.** A developer reference: APIs, function signatures,
-> data structures and control flow, with code terminology left verbatim. For the
-> theoretical consensus model see
-> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
-> [protocol-parameters.md](protocol-parameters.md); for implementation status see
-> [implementation-status.md](implementation-status.md).
+> **Type:** reference · **Register:** technical-direct · **Verified against the code:**
+> 2026-09-26, commit `3d2fc551`
+>
+> The **miner side of the public weighted election** (Phases 2 and 3b): the branch of
+> `GetMinerAndExpectedMiningStartTime` that decides whether this node proposes the next
+> height, and the native fallback it shares with the sortition branch. The Phase 4 branch
+> that precedes it is in [sortition-miner.md](sortition-miner.md), the RANDAO seed swap in
+> [randao-miner.md](randao-miner.md), the VRF reveal at signing in
+> [vrf-prover.md](vrf-prover.md). The receiving side is [block-validation.md](block-validation.md).
 
-> Documentation of the **miner-side integration** of wPoA weighted selection.
-> `miner.cpp` is a large file that drives MultiChain block production; here we document
-> **only** the wPoA branch added to `GetMinerAndExpectedMiningStartTime`. The rest is the
-> native mining engine and is left untouched.
+This is a **modified host file**, not a new module file. Every change is delimited by
+`/* MCHN START - wPoA … */ … /* MCHN END */`. The wPoA headers are included at the top:
 
-This is a **modified host file**, not a new module file. The change is one self-contained
-branch delimited by `/* MCHN START - wPoA Phase 2 */ … /* MCHN END */`.
+```cpp
+#include "wpoa/wpoa_selector.h"      // WPoAActiveAtHeight, WPoASelectProposer, WPoAShouldFallBackToNative
+#include "wpoa/vrf_wrapper.h"        // WPoAVRF (Phase 3a, see vrf-prover.md)
+#include "wpoa/randao_accumulator.h" // WPoARANDAOActiveAtHeight, WPoARandaoSelectionSeed
+#include "wpoa/private_sortition.h"  // the Phase 4 branch (see sortition-miner.md)
+```
 
 ## Table of contents
+
 - [1. Where the change lives and why there](#1-where-the-change-lives-and-why-there)
-- [2. The added branch, line by line](#2-the-added-branch-line-by-line)
-  - [if(WPoAActiveAtHeight(pindexTip->nHeight + 1))](#ifwpoaactiveatheightpindextip-nheight--1)
+- [2. The order of the wPoA branches](#2-the-order-of-the-wpoa-branches)
+- [3. The Phase 2 branch, step by step](#3-the-phase-2-branch-step-by-step)
   - [Resolving the local mining key](#resolving-the-local-mining-key)
-  - [No local mining key → wait](#no-local-mining-key--wait)
-  - [Compute the seed and elect](#compute-the-seed-and-elect)
-  - [Elected → mine now; else → wait](#elected--mine-now-else--wait)
-- [3. Effect on the native path](#3-effect-on-the-native-path)
-- [4. Connections to the other files](#4-connections-to-the-other-files)
+  - [The seed: previous block hash, or the RANDAO seed](#the-seed-previous-block-hash-or-the-randao-seed)
+  - [The four outcomes](#the-four-outcomes)
+- [4. The native fallback](#4-the-native-fallback)
+- [5. Connections to the other files](#5-connections-to-the-other-files)
 
 ---
-## 1. Where the change lives and why there
 
-The function:
+## 1. Where the change lives and why there
 
 ```cpp
 double GetMinerAndExpectedMiningStartTime(
     CWallet *pwallet, CPubKey *lpkMiner, set<CTxDestination> *lpsMinerPool,
     double *lpdMiningStartTime, double *lpdActiveMiners, uint256 *lphLastBlockHash,
-    int *lpnMemPoolSize, double wAvBlockTime)     // src/miner/miner.cpp:998
+    int *lpnMemPoolSize, double wAvBlockTime)
 ```
 
-This function answers the miner loop's core question: **"when should this node try to
-mine the next block, and with which key?"** It returns a mining *start time* (a
-`double`, seconds since epoch as `mc_TimeNowAsDouble()` produces) through
-`*lpdMiningStartTime` and also returns it directly; the mining loop
-(`miner.cpp:1543`) sleeps until that time before attempting a block:
+This function answers the miner loop's core question: **"when should this node try to mine
+the next block, and with which key?"** It returns a mining *start time* (seconds, as
+`mc_TimeNowAsDouble()` produces) through `*lpdMiningStartTime` and directly; the mining loop
+in `BitcoinMiner` sleeps until then:
 
 ```cpp
 if(mc_TimeNowAsDouble() < GetMinerAndExpectedMiningStartTime(pwallet, &kMiner, ...))
     ... // not yet time to mine
 ```
 
-So to control **whether and when** this node mines the next block, the wPoA branch sets
-`*lpdMiningStartTime` to *now* (mine immediately) or to *now + 3600 s* (effectively
-"don't mine; wait for the tip to change"). This is exactly the lever the native
-round-robin *mining-diversity* gate uses — the wPoA branch **replaces** that gate for
-wPoA-governed heights without changing the function's contract.
+So to control **whether and when** this node mines, a wPoA branch sets the start time to
+*now* (mine immediately), *parent.nTime + D* (the sortition delay, counted from the
+parent's timestamp: [sortition-miner.md §1](sortition-miner.md#1-score-timed-self-election-getminerandexpectedminingstarttime)),
+or *now + 3600 s* ("don't mine; wait for the tip to change"). This is exactly the lever the native round-robin schedule
+uses; the wPoA branches **replace** it on governed heights without changing the function's
+contract.
 
-The include added at the top of the file:
+The function caches its decision per tip: while `*lphLastBlockHash` equals the current tip
+hash (and the mempool condition holds), it returns the previous start time without
+recomputing. That is why the `+3600` sentinel is cheap — the node stays idle until the tip
+advances, at which point the decision is recomputed.
 
-```cpp
-#include "wpoa/wpoa_selector.h"   // miner.cpp:25 — WPoAActiveAtHeight, WPoASelectProposer
-```
+## 2. The order of the wPoA branches
 
-## 2. The added branch, line by line
+In source order, after `pindexTip = chainActive.Tip()`:
 
-Placed after the POW / genesis fast-paths and before the native diversity-timing code
-(`miner.cpp:1065-1108`):
+1. **Already-proposed guard** (Phase 4, before the cache) — see
+   [sortition-miner.md](sortition-miner.md).
+2. The **per-tip cache** return.
+3. The native POW / genesis fast path (`Interval() > 0` or the first block).
+4. **Phase 4 sortition branch**, if `WPoASortitionActiveAtHeight(tip+1)` —
+   [sortition-miner.md](sortition-miner.md). It comes first because sortition heights are a
+   strict subset of wPoA heights.
+5. **Phase 2/3b public-election branch**, if `WPoAActiveAtHeight(tip+1)` — this document.
+6. The label **`wpoa_native_fallback:`**, followed by the unchanged native timing code.
+
+## 3. The Phase 2 branch, step by step
 
 ```cpp
 /* MCHN START - wPoA Phase 2: weighted proposer election */
@@ -76,146 +90,125 @@ if(WPoAActiveAtHeight(pindexTip->nHeight + 1))
     int nWPoAHeight=pindexTip->nHeight+1;
     if(!kThisMiner.IsValid())
     {
-        *lpdMiningStartTime=mc_TimeNowAsDouble()+3600;
-        LogPrint("wpoa","mchn-miner: wPoA height=%d no local mining key, waiting\n",nWPoAHeight);
+        *lpdMiningStartTime=mc_TimeNowAsDouble()+3600;               // no mining key: idle
         return *lpdMiningStartTime;
     }
 
     std::string sLocalAddr=CBitcoinAddress(kThisMiner.GetID()).ToString();
-    uint256 hWPoASeed=pindexTip->GetBlockHash();
+
+    uint256 hWPoASeed=pindexTip->GetBlockHash();                     // Phase 2 seed
+    unsigned char randao_seed[32];
+    if(WPoARANDAOActiveAtHeight(nWPoAHeight) && WPoARandaoSelectionSeed(pindexTip,randao_seed))
+    {
+        memcpy(hWPoASeed.begin(),randao_seed,sizeof(randao_seed));   // Phase 3b seed
+    }
     std::string sProposer=WPoASelectProposer(hWPoASeed.begin(),hWPoASeed.size(),nWPoAHeight);
 
-    if(!sProposer.empty() && sProposer==sLocalAddr)
+    if(WPoAShouldFallBackToNative(!sProposer.empty(),WPoAEverElectable()))
     {
-        *lpdMiningStartTime=mc_TimeNowAsDouble();
-        LogPrint("wpoa","mchn-miner: wPoA height=%d elected LOCAL proposer %s, mining now\n",
-                         nWPoAHeight,sLocalAddr.c_str());
+        goto wpoa_native_fallback;                                   // bootstrap window
+    }
+    else if(!sProposer.empty() && sProposer==sLocalAddr)
+    {
+        *lpdMiningStartTime=mc_TimeNowAsDouble();                    // elected: mine now
+        return *lpdMiningStartTime;
     }
     else
     {
-        *lpdMiningStartTime=mc_TimeNowAsDouble()+3600;
-        LogPrint("wpoa","mchn-miner: wPoA height=%d proposer=%s (local=%s), waiting\n",
-                         nWPoAHeight,sProposer.empty()?"(none)":sProposer.c_str(),sLocalAddr.c_str());
+        if(sProposer.empty())
+            LogPrintf("[wPoA] height %d: wPoA is active but NO validator is eligible ...");
+        *lpdMiningStartTime=mc_TimeNowAsDouble()+3600;               // not our slot
+        return *lpdMiningStartTime;
     }
-    return *lpdMiningStartTime;
 }
 /* MCHN END */
 ```
 
-### `if(WPoAActiveAtHeight(pindexTip->nHeight + 1))`
-- `pindexTip` is the current chain tip (a `CBlockIndex*` already in scope in this
-  function); `pindexTip->nHeight` is its height. The next block to mine is therefore at
-  height `nHeight + 1`.
-- `WPoAActiveAtHeight(...)` (from `wpoa_selector.cpp`) returns true only if `-enablewpoa`
-  is set, the chain is a permissioned MultiChain chain, and the height is at/after the
-  setup period. If it returns false, the branch is skipped entirely and the native
-  diversity code below runs — **zero behavioral change when wPoA is off**.
-- Asking about `tip+1` (the height being mined) is what keeps the miner and validator in
-  agreement: the validator asks `WPoAActiveAtHeight(receivedHeight)` for the same block.
+`WPoAActiveAtHeight(tip+1)` is a pure function of the flags, the chain parameters and the
+height ([wpoa-selector.md §3.3](wpoa-selector.md#33-wpoaactiveatheight--the-activation-predicate)),
+so the miner asking about `tip+1` and the validator asking about the received block's
+height always agree on whether wPoA governs it. When it is false the branch is skipped and
+the native code runs unchanged.
 
 ### Resolving the local mining key
+
+- `GetKeyFromAddressBook(kThisMiner, MC_PTP_MINE)` fills `kThisMiner` with a wallet key
+  that holds **mine** — this node's validator identity. On a governed height it finds the
+  key even if the native round-robin spacing would bar it, because the diversity hook
+  neutralises the spacing at its source
+  ([wpoa-selector.md §3.3bis](wpoa-selector.md#33bis-the-mining-diversity-hook)).
+- `*lpkMiner = kThisMiner` publishes the key back to the caller on every return path.
+- With no mine-permissioned key the node cannot be elected: start time `now + 3600`.
+
+### The seed: previous block hash, or the RANDAO seed
+
+- `sLocalAddr` renders this node's address exactly as the registry stores it
+  (`CBitcoinAddress(pubkey.GetID()).ToString()`); it must match the registry key format, or
+  `sProposer == sLocalAddr` could never be true.
+- The Phase 2 seed is the hash of the current tip (block `h−1` for the block `h` being
+  mined). When the RANDAO beacon governs the height, it is replaced by
+  `seed[n+1] = H(R_tot[n−k] ‖ h[n] ‖ n+1)` — the only change Phase 3b makes on this side
+  ([randao-miner.md](randao-miner.md)).
+- `WPoASelectProposer(seed, 32, height)` reads the registry **as of `height − 1`**, applies
+  the malus (`w_eff = w · Ψ`) and the configured damping, and returns the argmin
+  ([wpoa-selector.md §3.4](wpoa-selector.md#34-wpoaselectproposer--registry-backed-election)).
+  The validator replays the same call on the same prefix.
+
+### The four outcomes
+
+| Condition | Start time | Why |
+|---|---|---|
+| no proposer **and** the registry has never carried a positive weight | native schedule (`goto wpoa_native_fallback`) | The bootstrap window: the engine cannot publish before an epoch buries, and the epoch needs the blocks this decision would refuse to produce. |
+| this node is the proposer | now | Phase 2 is deterministic — one proposer per height — so there is no contention to stagger. |
+| no proposer, but wPoA was active before | now + 3600, plus an unconditional log line | Every effective weight is 0: a legitimate outcome of a weighted election, not a stall to route around. |
+| another node is the proposer | now + 3600 | Not our slot; the cache keeps the node idle until the tip advances. |
+
+The first two rows are decided by `WPoAShouldFallBackToNative(proposer_found, ever_electable)`,
+a pure predicate unit-tested in the `activation` suite.
+
+## 4. The native fallback
+
 ```cpp
-pwallet->GetKeyFromAddressBook(kThisMiner,MC_PTP_MINE);
-*lpkMiner=kThisMiner;
+wpoa_native_fallback:
+
+    nMiningStatus &= MC_MST_PROC_MASK;
+    dMinerDrift=Params().MiningTurnover();
+    ...
 ```
-- `GetKeyFromAddressBook(kThisMiner, MC_PTP_MINE)` fills `kThisMiner` (a `CPubKey`, in
-  scope) with a wallet key that holds **mine** permission — this node's validator
-  identity. `MC_PTP_MINE` is the mining-permission bit.
-- `*lpkMiner = kThisMiner` publishes the chosen key back to the caller (the mining loop
-  signs the block with it). This must be set on **every** return path so the caller has a
-  key regardless of the election outcome.
 
-### No local mining key → wait
-```cpp
-if(!kThisMiner.IsValid())
-{
-    *lpdMiningStartTime=mc_TimeNowAsDouble()+3600;
-    LogPrint("wpoa", "... no local mining key, waiting\n", nWPoAHeight);
-    return *lpdMiningStartTime;
-}
-```
-- If the wallet has no mine-permissioned key, `kThisMiner` is invalid — this node is not
-  a validator and cannot be elected. Set the start time **one hour in the future** so the
-  mining loop idles. The caching path earlier in the function returns this same value on
-  subsequent polls of the *same* tip, so the node stays idle cheaply until the tip
-  advances (at which point this decision is recomputed).
-- `mc_TimeNowAsDouble()` is MultiChain's high-resolution wall-clock (seconds as a
-  `double`). `+3600` is the idle sentinel used throughout this branch.
-- `LogPrint("wpoa", …)` only emits under `-debug=wpoa`.
+Both wPoA branches jump here while the protocol has not activated yet, so a clean chain
+keeps producing blocks under the native rules until the first weight confirms. A label was
+chosen instead of restructuring the function: the two branches sit in separate scopes and
+everything after the label is exactly the native path they need. During that window the
+diversity hook also stays off, so the native round-robin spacing applies in full.
 
-### Compute the seed and elect
-```cpp
-std::string sLocalAddr=CBitcoinAddress(kThisMiner.GetID()).ToString();
-uint256 hWPoASeed=pindexTip->GetBlockHash();
-std::string sProposer=WPoASelectProposer(hWPoASeed.begin(),hWPoASeed.size(),nWPoAHeight);
-```
-- `sLocalAddr` — this node's validator address, rendered exactly as the weight registry
-  stores it: `CBitcoinAddress(pubkey.GetID()).ToString()`. `GetID()` is the hash160 of
-  the pubkey; `CBitcoinAddress(...).ToString()` is the Base58Check string. **It must
-  match the registry key format**, or `sProposer==sLocalAddr` could never be true — this
-  is why the same construction is used here, in `ResolveLocalAddress` (Phase 1), and in
-  the validator.
-- `hWPoASeed=pindexTip->GetBlockHash()` — the seed is the **previous** block hash, i.e.
-  the hash of the current tip (block `h−1` relative to the block `h = tip+1` being
-  mined). `uint256` is the 256-bit hash type.
-- `WPoASelectProposer(hWPoASeed.begin(), hWPoASeed.size(), nWPoAHeight)` — `begin()`
-  yields a pointer to the 32 raw hash bytes and `size()` their count (32). The function
-  reads the confirmed weight map and returns the elected proposer's address. `nWPoAHeight`
-  is passed for logging/forward-compat only (Phase 2 seeds from the hash alone). The
-  election also honors the node's configured **weight-dumping function** (`-dumpfunction`),
-  applied inside `WPoASelectProposer` — transparent to this branch, but it must match the
-  value every validator runs or they will reject this node's blocks (see
-  [wpoa-selector.md §2.2](wpoa-selector.md) and [block-validation.md](block-validation.md)).
+The resulting regimes:
 
-### Elected → mine now; else → wait
-```cpp
-if(!sProposer.empty() && sProposer==sLocalAddr)
-    *lpdMiningStartTime=mc_TimeNowAsDouble();          // mine now
-else
-    *lpdMiningStartTime=mc_TimeNowAsDouble()+3600;     // wait
-return *lpdMiningStartTime;
-```
-- **Elected** (`sProposer` non-empty and equal to this node's address): set start time to
-  *now* → the mining loop attempts the block immediately. The comment explains why no
-  time-staggering is applied: Phase 2 is deterministic (exactly one proposer per height,
-  serialized by the prev-hash chain dependency), so there is no proposer contention to
-  spread out — unlike the native diversity gate, which staggers several eligible miners.
-- **Not elected** (another address won, or `""` because weights aren't available yet):
-  start time *now + 3600 s* → idle until the tip advances and the election is recomputed.
-- The single `return` hands the start time back to the mining loop.
+- wPoA selection **off** → native behaviour, exactly.
+- selection **on**, height `< setup-first-blocks` → native (setup phase).
+- selection **on**, height `≥ setup-first-blocks`, no positive weight ever confirmed →
+  native (deferred activation).
+- otherwise → the wPoA branches govern, and exactly one node mines each height (Phase 2/3b)
+  or the lowest score mines first (Phase 4).
 
-## 3. Effect on the native path
-
-When `WPoAActiveAtHeight(tip+1)` is **false**, none of the above runs and execution falls
-through to the unchanged native timing code (`miner.cpp:1110+`): mining turnover, drift,
-target spacing, the `dExpectedTime*` computation, etc. So:
-
-- `-enablewpoa` **off** → the native round-robin mining-diversity behavior is preserved
-  exactly.
-- `-enablewpoa` **on**, height `< setupfirstblocks` → still native (bootstrap).
-- `-enablewpoa` **on**, height `>= setupfirstblocks` → the wPoA branch governs, and
-  exactly one node mines each height.
-
-## 4. Connections to the other files
+## 5. Connections to the other files
 
 ```mermaid
 flowchart LR
-    ML["mining loop<br/>miner.cpp:1543"] -->|polls| GM["GetMinerAndExpectedMiningStartTime<br/>miner.cpp:998"]
+    ML["mining loop<br/>BitcoinMiner"] -->|polls| GM["GetMinerAndExpectedMiningStartTime"]
     GM -->|"WPoAActiveAtHeight(tip+1)"| SEL["wpoa_selector.cpp"]
-    GM -->|"seed = hash(tip)<br/>WPoASelectProposer"| SEL
-    SEL -->|GetAllNodesWeights| REG["StreamWeightRegistry (Phase 1)"]
-    GM -->|"start time = now / now+3600"| ML
-    ML -->|if elected| SIGN["sign & broadcast block with kThisMiner"]
-    SIGN --> VAL["validator: multichainblock.cpp<br/>(see block-validation.md)"]
+    GM -->|"WPoARandaoSelectionSeed(tip)"| RND["randao_accumulator.cpp"]
+    GM -->|"seed → WPoASelectProposer"| SEL
+    SEL -->|"GetAllNodesWeightsAsOf(h-1)"| REG["StreamWeightRegistry"]
+    SEL -->|"WPoAApplyMalus"| MAL["malus_registry.cpp"]
+    GM -->|"start time = now / now+3600 / native"| ML
+    ML -->|if elected| SIGN["CreateNewBlock + sign<br/>(+ VRF reveal, vrf-prover.md)"]
+    SIGN --> VAL["validator: multichainblock.cpp<br/>(block-validation.md)"]
 ```
 
-- **`wpoa/wpoa_selector.h`** — provides `WPoAActiveAtHeight` and `WPoASelectProposer`
-  (the only Phase 2 symbols this file uses). See [wpoa-selector.md](wpoa-selector.md).
-- **Phase 1 registry** — reached indirectly through `WPoASelectProposer`, which reads the
-  confirmed weight map.
-- **`structs/base58.h`** (already included at `miner.cpp:15`) — supplies `CBitcoinAddress`
-  used to render the local address.
-- **The validator** (`protocol/multichainblock.cpp`) runs the *same* election on the
-  receiving side and rejects any block whose signer is not the elected proposer — the
-  enforcement counterpart of this file's *production* decision. See
+- **`wpoa/wpoa_selector.h`** — `WPoAActiveAtHeight`, `WPoASelectProposer`,
+  `WPoAShouldFallBackToNative`, `WPoAEverElectable`. See [wpoa-selector.md](wpoa-selector.md).
+- **`wpoa/randao_accumulator.h`** — the Phase 3b seed. See [randao-miner.md](randao-miner.md).
+- **The validator** (`protocol/multichainblock.cpp`) runs the same election on the
+  receiving side and rejects any block whose signer is not the elected proposer. See
   [block-validation.md](block-validation.md).

@@ -1,8 +1,12 @@
 # wPoA / WeightEngine RPCs — what each one actually returns
 
-> **Register: technical-direct.** A reference for anyone writing a consumer of the audit
+> **Type:** reference · **Register:** technical-direct · **Verified against the code:**
+> 2026-09-25, commit `af06a6ef`
+>
+> What each wPoA / weight-engine RPC returns, for anyone writing a consumer of the audit
 > RPCs. It exists because the shapes are **not uniform**, and the only other way to learn
-> that is to write a parser, run it, and find out which calls it silently mishandled.
+> that is to write a parser, run it, and find out which calls it silently mishandled. How
+> the commands are registered: [rpc-registration.md](rpc-registration.md).
 
 The read-only audit families were added together and look interchangeable. They are not:
 three different container shapes are in use, and two of them appear within the same
@@ -129,13 +133,14 @@ precision would alter output far beyond this subsystem and could break existing 
 
 **What to do instead:** derive such quantities from fields that survive. `score_norm` is
 `1 - exp(-total_effective_weight · score)`, and both `score` and `total_effective_weight`
-render faithfully. The functional harness recomputes it for exactly this reason
-(`test/analysis/pipeline/phase2_aggregate.py`).
+render faithfully. The harness recomputes it for exactly this reason
+(`test/analysis/pipeline/phase2_aggregate.py`). Measured and explained in
+[evidence/json-double-rendering-2026-09-18.md](evidence/json-double-rendering-2026-09-18.md).
 
 ## There is no `getround` or `getepoch`
 
-The commit that "exposed the round and the epoch to read-only audit" added 27 RPCs as
-*families*, not two scalar getters:
+The round and the epoch are exposed as *families* of audit RPCs, not as two scalar
+getters:
 
 - the **round** is the `height` argument, and the `height` / `seed` / `seed_source` fields
   of every wPoA audit answer;
@@ -151,7 +156,6 @@ buried epoch).
 
 - [protocol-parameters.md](protocol-parameters.md) — the parameters these RPCs report on.
 - [weight-engine.md](weight-engine.md) — the pipeline whose stages these families expose.
+- [rpc-registration.md](rpc-registration.md) — where each command is registered, and with
+  which flags.
 - [`../test/docs/RPCLIST.md`](../test/docs/RPCLIST.md) — the node's full command reference.
-
-_Verified against `src/rpc/rpcwpoa.cpp` and `src/rpc/rpcweightengine.cpp` on 2026-09-17
-UTC (commit `7f3eb829`, branch `fix/wpoa-cpp-bugs-and-harness-simplification`)._

@@ -1,16 +1,14 @@
 # `randao_accumulator.{h,cpp}` — Line-by-Line Walkthrough (Phase 3b)
 
-> **Register: technical-direct.** A developer reference: APIs, function signatures,
-> data structures and control flow, with code terminology left verbatim. For the
-> theoretical consensus model see
-> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
-> [protocol-parameters.md](protocol-parameters.md); for implementation status see
-> [implementation-status.md](implementation-status.md).
-
-> Exhaustive walkthrough of the **RANDAO beacon module**: every instruction, variable and
-> library call in the two files that make up Phase 3b, why it is written the way it is, and
-> how the file connects to the rest of the tree. This is the Phase 3b analogue of
-> [vrf-wrapper.md](vrf-wrapper.md) (the Phase 3a deep dive).
+> **Type:** reference · **Register:** technical-direct · **Verified against the code:**
+> 2026-09-25, commit `af06a6ef`
+>
+> Walkthrough of the **RANDAO beacon module** (Phase 3b): the pure fold and seed, the
+> memoised block-index walk, the thread-safe reveal extractor, the activation predicate and
+> the seed helper. Call sites: [randao-miner.md](randao-miner.md),
+> [randao-validator.md](randao-validator.md), and — on sortition heights —
+> `WPoABuildRoundContext` in [private-sortition.md](private-sortition.md). The decision to
+> fold with a bare XOR is recorded in [adr/randao-fold-bare-xor.md](adr/randao-fold-bare-xor.md).
 
 The Phase 3b RANDAO beacon lives in two files, split the same way as the Phase 2 selector
 ([wpoa-selector.md](wpoa-selector.md)) and the Phase 3a VRF ([vrf-wrapper.md](vrf-wrapper.md)):
@@ -18,9 +16,9 @@ The Phase 3b RANDAO beacon lives in two files, split the same way as the Phase 2
 - [`randao_accumulator.h`](../src/wpoa/randao_accumulator.h) — the **pure core** class
   `RandaoAccumulator` (`Genesis`, `Fold`, `DeriveSeed`), which is header-only, node-free and
   unit-tested, **plus** the *declarations* of the node glue.
-- [`randao_accumulator.cpp`](../src/wpoa/randao_accumulator.cpp) — the **node glue**: the runtime
-  flag/lookback globals, the activation predicate, the memoized block-index walk, reveal
-  extraction and the seed helper.
+- [`randao_accumulator.cpp`](../src/wpoa/randao_accumulator.cpp) — the **node glue**: the
+  switch/lookback globals, the activation predicate, the memoized block-index walk, reveal
+  extraction (`WPoAExtractBlockReveal`, also used by the audit RPCs) and the seed helper.
 
 **Why this split.** The three functions in the header are the consensus-critical math: if
 the miner and any validator compute them even one bit differently, they elect different
@@ -40,7 +38,7 @@ For the design rationale and the end-to-end picture see
 ## Table of contents
 1. [The pure core (`randao_accumulator.h`)](#1-the-pure-core-randao_accumulatorh)
 2. [The node glue (`randao_accumulator.cpp`)](#2-the-node-glue-randao_accumulatorcpp)
-3. [How the two call sites use it](#3-how-the-two-call-sites-use-it)
+3. [How the call sites use it](#3-how-the-call-sites-use-it)
 4. [Connections to the other files](#4-connections-to-the-other-files)
 
 ---
@@ -248,6 +246,7 @@ extern int  g_wpoa_randao_lookback;
 
 bool WPoARANDAOActiveAtHeight(int height);
 bool WPoARandaoSelectionSeed(const CBlockIndex* pindexTip, unsigned char* seed_out);
+bool WPoAExtractBlockReveal(const CBlock& block, unsigned char* reveal_out, int* reveal_len);
 ```
 
 - **`class CBlockIndex;`** — a forward declaration, not an include. The glue's signatures
@@ -259,12 +258,13 @@ bool WPoARandaoSelectionSeed(const CBlockIndex* pindexTip, unsigned char* seed_o
   one translation unit owns the storage.
 - **`#define MC_WPOA_DEFAULT_RANDAO_LOOKBACK 1`** — the default lookback `k`. Used in two
   places: the initializer of `g_wpoa_randao_lookback` (§2.1) and the `GetArg` default in
-  `AppInit2` ([node-startup.md §2.7](node-startup.md)). A macro (not a `const int`) so it can
+  `AppInit2` ([node-startup.md §2.3](node-startup.md#23-numeric-and-string-parameters)). A macro (not a `const int`) so it can
   appear in the `strprintf` help string as well.
-- **The two function declarations** — `WPoARANDAOActiveAtHeight` (the activation gate) and
-  `WPoARandaoSelectionSeed` (the seed helper), both defined in the `.cpp`. These are the
-  *only* two symbols the rest of the tree calls; everything else in the glue is `static`
-  (file-local).
+- **The three function declarations** — `WPoARANDAOActiveAtHeight` (the activation gate),
+  `WPoARandaoSelectionSeed` (the seed helper) and `WPoAExtractBlockReveal` (the thread-safe
+  reveal reader, §2.3), all defined in the `.cpp`. These are the *only* symbols the rest of
+  the tree calls; everything else in the glue (`GenesisAccumulator`, `GetAccumulator`, the
+  cache and its lock) is `static`.
 
 None of these declarations is compiled into the unit test — it includes the header but only
 references the `RandaoAccumulator` class, never the `extern`s or the glue functions, so it
@@ -325,7 +325,7 @@ static std::map<uint256, uint256> g_randao_cache;
 
 - **`g_wpoa_randao_enabled = false`** — the definition of the flag declared `extern` in the
   header, defaulting **off** so a plain / Phase-3a node is byte-for-byte unchanged. Set once
-  from `-enablewpoarandao` in `AppInit2`.
+  from `enable-wpoa-randao` in `AppInit2`.
 - **`g_wpoa_randao_lookback = MC_WPOA_DEFAULT_RANDAO_LOOKBACK`** — the lookback `k`, default
   1, set once from `-wpoarandaolookback`.
 - **`cs_randao_cache`** — a **dedicated leaf lock** (used nowhere else in the codebase) that
@@ -334,7 +334,9 @@ static std::map<uint256, uint256> g_randao_cache;
 - **`g_randao_cache`** — the memoization table: `block hash → R_tot at that block`. Keying by
   **block hash** (not height, not a `CBlockIndex*`) is what makes it **reorg-safe**: a hash
   uniquely determines its entire ancestor chain, so a fork's `R_tot` computed under the
-  fork's block hashes can never alias the main chain's entry for the same height.
+  fork's block hashes can never alias the main chain's entry for the same height. The
+  cache is never emptied: one 64-byte entry per governed block, rebuilt from scratch after a
+  restart.
 
 ### 2.2 `GenesisAccumulator()` — core → `uint256` bridge
 
@@ -354,11 +356,11 @@ type. `RandaoAccumulator::Genesis` fills a 32-byte stack buffer; `memcpy(out.beg
 copies it into a `uint256` (`uint256::begin()` yields a pointer to its 32 bytes of storage).
 Cheap enough to recompute on every call, which avoids a shared mutable static.
 
-### 2.3 `ExtractBlockReveal(...)` — pull a block's reveal off the chain
+### 2.3 `WPoAExtractBlockReveal(...)` — pull a block's reveal off the chain
 
 ```cpp
-static bool ExtractBlockReveal(const CBlock& block,
-                               unsigned char* reveal_out, int* reveal_len)
+bool WPoAExtractBlockReveal(const CBlock& block,
+                            unsigned char* reveal_out, int* reveal_len)
 {
     mc_Script scriptTmp; // local instance -> thread-safe (no shared temp buffers)
 
@@ -399,12 +401,16 @@ static bool ExtractBlockReveal(const CBlock& block,
 
 This is the reveal reader. It is a near-copy of `FindBlockVRF` in
 [multichainblock.cpp](../src/protocol/multichainblock.cpp) (see
-[vrf-verifier.md §1](vrf-verifier.md)), with **one deliberate difference**:
+[vrf-verifier.md §1](vrf-verifier.md#1-findblockvrf--extract-the-reveal-from-the-coinbase)),
+with **one deliberate difference**, and it is **declared in the header** (not `static`)
+because the read-only sortition audit RPCs (`wpoagetblocksortition`,
+`wpoalistblocksortition`) need the same thread-safe extraction from an RPC thread:
 
 - **`mc_Script scriptTmp;` — a stack-local decoder, NOT `mc_gState->m_TmpScript1`.**
   `m_TmpScript1` is the single-threaded validation-path scratch object. The accumulator runs
-  on the **miner thread** as well as the validation thread (it computes the *next* selection
-  seed during block production), so touching the shared scratch here would race. A local
+  on the **miner thread** and on **RPC threads** as well as the validation thread (it
+  computes the *next* selection seed during block production), so touching the shared
+  scratch here would race. A local
   instance is self-contained — exactly the choice Phase 1 makes in `DecodeWeightRecord` and
   the reason [phase3b §5.5](phase3b-implementation-guide.md#5-design-decisions) duplicates the
   small loop instead of calling `FindBlockVRF`.
@@ -481,7 +487,7 @@ static uint256 GetAccumulator(const CBlockIndex* pindex)
 
 - **`LOCK(cs_randao_cache)`** — takes the leaf lock for the whole walk and the map
   read/write. This RAII guard (from `utils/sync.h`) releases on scope exit. It serializes the
-  two threads that call in (miner + validator), so the cache is always consistent.
+  threads that call in (miner, validator, RPC), so the cache is always consistent.
 - **The back-walk.** Starting at `pindex`, follow `->pprev` toward genesis, collecting each
   **uncached, governed** ancestor into `pending`. Stop as soon as:
   - a block's hash is **already cached** — its stored `R_tot` becomes the fold's base
@@ -502,7 +508,7 @@ static uint256 GetAccumulator(const CBlockIndex* pindex)
         CBlock blk;
 
         if (((b->nStatus & BLOCK_HAVE_DATA) != 0) && ReadBlockFromDisk(blk, b) &&
-            ExtractBlockReveal(blk, reveal, &reveal_len))
+            WPoAExtractBlockReveal(blk, reveal, &reveal_len))
         {
             RandaoAccumulator::Fold(rtot.begin(), reveal, (size_t)reveal_len, out);
         }
@@ -533,7 +539,7 @@ static uint256 GetAccumulator(const CBlockIndex* pindex)
   1. `(b->nStatus & BLOCK_HAVE_DATA) != 0` — the block's body is actually on disk (not just a
      header). Cheap bit test first, so a headers-only block skips the disk read.
   2. `ReadBlockFromDisk(blk, b)` — load the full block; false on I/O failure.
-  3. `ExtractBlockReveal(blk, reveal, &reveal_len)` — pull the reveal (§2.3).
+  3. `WPoAExtractBlockReveal(blk, reveal, &reveal_len)` — pull the reveal (§2.3).
 
   All three true → `Fold(rtot.begin(), reveal, reveal_len, out)` folds the reveal into the
   running value. `rtot.begin()` is the current accumulator's bytes; `out` receives the next.
@@ -543,8 +549,9 @@ static uint256 GetAccumulator(const CBlockIndex* pindex)
   governed block passed `VerifyBlockMinerWPoA`, which rejects a missing/invalid reveal — but
   if it ever fires (e.g. pruning removed the body), folding a *deterministic* value keeps
   every node's `R_tot` in agreement rather than letting a node that *can* read the block
-  diverge from one that cannot. The functional test asserts this path is taken **zero** times
-  ([phase3b §12.2](phase3b-implementation-guide.md#12-tests)).
+  diverge from one that cannot. Its `[wPoA-RANDAO] WARNING: reveal unavailable …` log line
+  should never appear on a healthy node; the former shell functional suite asserted exactly
+  that ([phase3b-implementation-guide.md §12](phase3b-implementation-guide.md#12-tests)).
 - **Cache and advance.** `memcpy(next.begin(), out, 32)` copies the fold result into a
   `uint256`; `g_randao_cache[b->GetBlockHash()] = next` memoizes it under the block's hash;
   `rtot = next` carries it into the next iteration.
@@ -565,9 +572,9 @@ The RANDAO seed engages iff (a) the operator turned it on (`g_wpoa_randao_enable
 
 The **AND with the VRF gate** is the load-bearing part: the accumulator *consumes* the
 per-block VRF reveals, so it can only run where those reveals are mandated — a lone
-`-enablewpoarandao` (VRF off) is a **hard startup failure** — `AppInit2` returns
+`enable-wpoa-randao` (VRF off) is a **hard startup failure** — `AppInit2` returns
 `InitError` and the node refuses to start
-([node-startup.md §2.7](node-startup.md)). Being a **pure function of shared data** (two
+([node-startup.md §2.4](node-startup.md#24-dependency-constraints)). Being a **pure function of shared data** (two
 process-wide flags + chain params + the height argument), the miner and every validator
 compute the same answer from the height alone, so they never disagree about which blocks are
 beacon-seeded.
@@ -641,20 +648,26 @@ bool WPoARandaoSelectionSeed(const CBlockIndex* pindexTip, unsigned char* seed_o
 
 - **The trace.** Guarded by `fDebug` (so it costs nothing in production) and emitted with
   `LogPrint("wpoa", ...)` (only when `-debug=wpoa`). It prints the derived seed together with
-  every input — `R_tot[target]`, `h[n]`, the height — which is the `[wPoA-RANDAO] seed`
-  evidence the functional test greps to prove the beacon actually engaged
-  ([phase3b §12.2](phase3b-implementation-guide.md#12-tests)).
+  every input — `R_tot[target]`, `h[n]`, the height — the `[wPoA-RANDAO] seed` line to look
+  for to confirm the beacon actually engaged.
 - **`return true`** — a seed was produced; the caller overwrites its prev-hash default with
   it.
 
 ---
 
-## 3. How the two call sites use it
+## 3. How the call sites use it
 
-Both call sites do the **same three things**: default the selection seed to the previous
+`WPoARandaoSelectionSeed` has two kinds of consumer. On **public-election** heights
+(Phase 3b without sortition) the seed feeds the Efraimidis–Spirakis argmin; on
+**sortition** heights it becomes the public part of each validator's private VRF input,
+`seed ‖ "PROPOSER" ‖ height`, through `WPoABuildRoundContext` (miner, round audit RPCs),
+`WPoASortitionVRFInputForBlock` (miner, at signing) and `WPoASortitionVerifyProposer`
+(validator) — see [private-sortition.md](private-sortition.md). In every case the seed is
+derived over the parent of the block being produced or checked.
+
+The two public-election call sites do the **same three things**: default the selection seed to the previous
 block hash, then overwrite it with `WPoARandaoSelectionSeed(...)` when
-`WPoARANDAOActiveAtHeight(...)` is true, then feed the result to the *unchanged*
-`WPoASelectProposer`. The miner passes its current tip; the validator passes
+`WPoARANDAOActiveAtHeight(...)` is true, then feed the result to `WPoASelectProposer`. The miner passes its current tip; the validator passes
 `pindexNew->pprev` — **the same tip the honest miner saw** — so both derive an identical seed
 and agree on the elected proposer.
 
@@ -690,7 +703,7 @@ flowchart TD
     subgraph glue ["randao_accumulator.cpp (node glue)"]
         GATE["WPoARANDAOActiveAtHeight()"]
         WALK["GetAccumulator() — memoized walk<br/>(cs_randao_cache, g_randao_cache)"]
-        EXTRACT["ExtractBlockReveal()"]
+        EXTRACT["WPoAExtractBlockReveal()"]
         HELPER["WPoARandaoSelectionSeed()"]
     end
 
@@ -710,7 +723,9 @@ flowchart TD
 
     MINER["miner.cpp (randao-miner.md)"] --> HELPER
     VALID["multichainblock.cpp (randao-validator.md)"] --> HELPER
-    HELPER --> SELECT["WPoASelectProposer (unchanged)"]
+    SORT["private_sortition.cpp<br/>round context, VRF input, verify"] --> HELPER
+    RPC["rpcwpoa.cpp<br/>round and block-sortition audit"] --> EXTRACT
+    HELPER --> SELECT["WPoASelectProposer (public heights)"]
 ```
 
 - **`crypto/sha256.h`** (`CSHA256`) — the hash `H` behind `Genesis`/`Fold`/`DeriveSeed`. The
@@ -718,15 +733,19 @@ flowchart TD
 - **`wpoa/wpoa_selector.h`** — `WPoAVRFActiveAtHeight` (the beacon gate `WPoARANDAOActiveAtHeight`
   composes with) and `WPoASelectProposer` (the unchanged election the seed feeds). See
   [wpoa-selector.md](wpoa-selector.md).
-- **`protocol/multichainscript.h`** — `GetBlockVRF`, used by `ExtractBlockReveal` to decode
+- **`protocol/multichainscript.h`** — `GetBlockVRF`, used by `WPoAExtractBlockReveal` to decode
   the Phase-3a reveal. See [block-vrf-encoding.md](block-vrf-encoding.md).
 - **`core/main.h`** — `CBlockIndex`, `CBlock`, `ReadBlockFromDisk`, `BLOCK_HAVE_DATA` for the
   index walk and per-block reveal reads.
 - **`core/init.cpp`** — binds `g_wpoa_randao_enabled` / `g_wpoa_randao_lookback` from the
-  flags. See [node-startup.md §2.7](node-startup.md).
-- **`miner/miner.cpp`** and **`protocol/multichainblock.cpp`** — the two consumers of
-  `WPoARandaoSelectionSeed`. See [randao-miner.md](randao-miner.md) and
+  flags. See [node-startup.md](node-startup.md).
+- **`miner/miner.cpp`** and **`protocol/multichainblock.cpp`** — the public-election
+  consumers of `WPoARandaoSelectionSeed`. See [randao-miner.md](randao-miner.md) and
   [randao-validator.md](randao-validator.md).
+- **`wpoa/private_sortition.cpp`** — the sortition consumers. See
+  [private-sortition.md](private-sortition.md).
+- **`rpc/rpcwpoa.cpp`** — reads block reveals through `WPoAExtractBlockReveal` for the
+  per-block sortition audit.
 
 ---
 

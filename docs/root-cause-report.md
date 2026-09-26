@@ -1,190 +1,186 @@
-# wPoA — Report di analisi root-cause (Fase 1)
+# wPoA — Root-cause analysis report (Phase 1)
 
-> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
-> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
-> rebuilt as a Python harness. The references are kept as written because they record the
-> work as it was done; for the current structure see
-> [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
+> **Type:** historical record (report) · **Date:** 2026-09-03, follow-up §8 later ·
+> **Status:** both fixes implemented and merged
 >
-> **Note on paths (2026-09-18).** The same applies to every reference here to a `shadow/`
-> tree and to the emulation harness that replaced it: both are gone. Network emulation is
-> now a regime of the `test/` harness, built on CORE — see
-> [`../test/docs/core-fabric.md`](../test/docs/core-fabric.md). The references below are
-> kept as written, because a forensic report that is edited to match a later tree stops
-> being a record of what was found.
+> Kept as written: it records the work as it was done and is **not** updated when the
+> code changes, so paths, identifiers and line numbers may no longer match the tree. The
+> line numbers are those **at the time of the diagnosis**, deliberately: rewriting them
+> would make the text cite lines that no longer mean what the prose says. Translated into
+> English on 2026-09-25 with the content unchanged.
+>
+> **Changed since:** the shell suites cited here (`src/wpoa/test/functional_lib.sh`,
+> `functional_test_wpoa_system.sh`, later moved under `test/functional/`) and the `shadow/`
+> harness were replaced by the Python harness in [`test/`](../test/README.md), whose
+> network emulation now runs on CORE ([`test/docs/core-fabric.md`](../test/docs/core-fabric.md)).
+> The gap noted in §8.5 — the in-file `enable-wpoa` master being ignored by `AppInit2` —
+> was fixed afterwards ([protocol-parameters.md §1bis](protocol-parameters.md#1bis-the-master-switch-and-how-it-expands)).
+> The deferred activation that followed these fixes (the `WPoAEverElectable` latch) is
+> described in [weight-engine.md §4bis](weight-engine.md#4bis-deferred-activation--when-wpoa-actually-takes-over).
+>
+> **For the system as it is now:** [wpoa-weight-engine-architecture.md §3.2 and §7](wpoa-weight-engine-architecture.md#32-the-mining-diversity-gate-one-function-pointer-instead-of-n-patches).
 
+Repository: `/home/mattu/multichain` — a fork of MultiChain 2.3
+Starting branch of the analysis: `tests/shadow-simulator` (HEAD `7e7d9a6`)
+Date: 2026-09-03
 
-Repo: `/home/mattu/multichain` — fork di MultiChain 2.3
-Branch di partenza dell'analisi: `tests/shadow-simulator` (HEAD `7e7d9a6`)
-Data: 2026-09-03
-
-> **Nota storica (2026-09-15).** I path e i numeri di riga citati qui sono quelli **al
-> momento della diagnosi** (2026-09-03) e sono lasciati intatti di proposito: riscriverli
-> farebbe citare al testo un file i cui numeri di riga non significano più quello che la
-> prosa afferma. Le suite funzionali sono state da allora spostate — `functional_lib.sh`
-> è oggi [`test/functional/lib/functional_lib.sh`](../../../test/functional/lib/functional_lib.sh),
-> il test di sistema [`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh)
-> e i due functional del weight engine stanno sotto
-> [`test/functional/weight_engine/`](../../../test/functional/weight_engine/). Motivazione:
-> [`docs/adr/test-restructure-2026.md`](adr/test-restructure-2026.md).
-
-Tutti i path in questo documento sono stati **verificati per ricerca nel codice**, non ipotizzati.
-La struttura reale del fork differisce dall'upstream nominale: i moduli custom vivono in
-`src/wpoa/` e `src/weight_engine/`, e l'harness di orchestrazione in `shadow/tools/` oltre che
-in `src/wpoa/test/`.
-
----
-
-## 0. Sintesi esecutiva
-
-Due bug, entrambi confermati, ma **lo stato di partenza non è quello atteso dal mandato**:
-
-* **Bug 1 (spacing di mining-diversity)** è già stato patchato *parzialmente* dal commit
-  `c81e513` ("wPoA: drop the mining-diversity spacing on wPoA-governed heights"), che è
-  antenato di HEAD. La patch copre 2 call-site su ~9. Restano scoperti call-site che
-  riproducono lo stesso bug in contesti diversi, e **il call-site più dannoso non è quello
-  già patchato**: è `CWallet::GetKeyFromAddressBook(..., MC_PTP_MINE)`, che il miner wPoA
-  invoca su di sé a ogni round. Inoltre la patch esistente introduce una **divergenza di
-  consenso** non intenzionale (valutazione delle permission in mempool).
-* **Bug 2 (bootstrap stream `wpoa-weights`)** è confermato ed è un problema di **ordinamento**,
-  non una dipendenza circolare irrisolvibile. L'harness `shadow/tools/role_admin.sh` lo aggira
-  già lato script; il codice C++ resta però deadlockato su qualunque rete pulita avviata senza
-  quell'harness, e l'harness `src/wpoa/test/functional_lib.sh` non lo aggira (si limita ad
-  attendere, e rinuncia con un WARNING).
-
-Conseguenza sulla strategia: **non moltiplico le patch sui singoli call-site**. Il Bug 1 va
-corretto nel suo *unico punto di verità* (`IsBarredByDiversity`), che neutralizza tutti i
-call-site in un colpo solo, e le due patch puntuali esistenti vanno ricondotte a `CanMine()`
-per eliminare la divergenza mempool. Argomentazione completa in §2.4 e §4.
+Every path in this document was **verified by searching the code**, not assumed. The real
+structure of the fork differs from the nominal upstream: the custom modules live in
+`src/wpoa/` and `src/weight_engine/`, and the orchestration harness in `shadow/tools/` as
+well as in `src/wpoa/test/`.
 
 ---
 
-## 1. Mappa dei file coinvolti (path reali confermati)
+## 0. Executive summary
 
-| Ruolo | Path reale | Simbolo / riga |
+Two bugs, both confirmed, but **the starting state is not the one the mandate expected**:
+
+* **Bug 1 (mining-diversity spacing)** has already been *partially* patched by commit
+  `c81e513` ("wPoA: drop the mining-diversity spacing on wPoA-governed heights"), which is
+  an ancestor of HEAD. The patch covers 2 call sites out of ~9. Call sites that reproduce the
+  same bug in different contexts remain uncovered, and **the most damaging call site is not
+  the one already patched**: it is `CWallet::GetKeyFromAddressBook(..., MC_PTP_MINE)`, which
+  the wPoA miner calls on itself every round. Moreover the existing patch introduces an
+  unintended **consensus divergence** (permissions evaluated in the mempool).
+* **Bug 2 (`wpoa-weights` stream bootstrap)** is confirmed and is an **ordering** problem,
+  not an unsolvable circular dependency. The `shadow/tools/role_admin.sh` harness already
+  works around it on the script side; the C++ code, however, stays deadlocked on any clean
+  network started without that harness, and the `src/wpoa/test/functional_lib.sh` harness
+  does not work around it (it only waits, and gives up with a WARNING).
+
+Consequence for the strategy: **I do not multiply patches on individual call sites**. Bug 1
+must be fixed at its *single point of truth* (`IsBarredByDiversity`), which neutralises every
+call site at once, and the two existing point patches must be brought back to `CanMine()` to
+remove the mempool divergence. Full argument in §2.4 and §4.
+
+---
+
+## 1. Map of the files involved (real paths, confirmed)
+
+| Role | Real path | Symbol / line |
 |---|---|---|
-| Vincolo `mining-diversity` nativo | `src/permissions/permission.cpp` | `mc_Permissions::CanMine` :1692 |
-| Aritmetica dello spacing | `src/permissions/permission.cpp` | `mc_Permissions::IsBarredByDiversity` :1979 |
-| Dichiarazioni | `src/permissions/permission.h` | `CanMine` :365, `IsBarredByDiversity` :395 |
-| Verifica permesso miner lato consenso | `src/protocol/multichainblock.cpp` | `CheckBlockPermissions` :1150 (check a :1200-1210) |
-| Percorso di validazione wPoA | `src/protocol/multichainblock.cpp` | `VerifyBlockMinerWPoA` :769, dispatch da `VerifyBlockMiner` :923 (early return :942) |
-| Replay diversity nativo (ramo non-wPoA) | `src/protocol/multichainblock.cpp` | `CanMineBlockOnFork` :1090, :1100 |
-| Costruzione nuovo blocco | `src/miner/miner.cpp` | `CreateNewBlock` — probe `canMine` :723-738 |
-| Timing / elezione miner | `src/miner/miner.cpp` | ramo wPoA Phase 2 :1203-1249; ramo Phase 4 sortition :~1141-1195; path nativo :1250+ |
-| Pool miner nativo | `src/miner/miner.cpp` | `LastActiveMiners` :969 (`CanMine` :1014) |
-| Predicato di attivazione wPoA | `src/wpoa/wpoa_selector.cpp` | `WPoAActiveAtHeight` :48; flag `g_wpoa_enabled` :23 |
-| Registro pesi | `src/wpoa/stream_weight_registry.{h,cpp}` | classe `StreamWeightRegistry`; `EnsureStreamExists` cpp:115, `EnsureSubscribed` cpp:160, `RegisterLocalWeight` cpp:272, `ThreadRegisterNodeWeight` cpp:774 |
-| Motore pesi (publisher reale) | `src/weight_engine/weight_engine.cpp` | `ThreadWeightEngine` :225 (publish a :358) |
-| Auto-create stream di input (precedente) | `src/weight_engine/weight_reader.cpp` | `EnsureOneStream` :~60, `EnsureInputStreams` :134 |
-| Resolve dei flag wPoA | `src/core/init.cpp` | blocco :3231-3365, commit dei global :3348-3358; lancio thread :3637-3650 |
-| Guard di dipendenza weight engine | `src/core/init.cpp` | :3586-3590 (`InitError` esistente, pattern per il nuovo guard di ordinamento) |
-| Margine di stabilità delle epoche | `src/weight_engine/weight_streams.h` | `MC_WEIGHT_DEFAULT_STABILITY_MARGIN` :147 (= 6) |
-| Parametri di chain wPoA | `src/chainparams/paramlist.h` | `enablewpoa*` :161-209 (protocollo 20014), `miningdiversity` :115 |
-| Harness shadow (rete geografica) | `shadow/tools/role_admin.sh` | `do_grant` :53, create `wpoa-weights` :88-93 |
-| Harness funzionale wPoA | `src/wpoa/test/functional_lib.sh` | `fl_start_network` :188, `fl_grant_weights_write` :233 |
-| Test funzionale di sistema | `src/wpoa/test/functional_test_wpoa_system.sh` | orchestrazione in coda al file |
-| Suite unit wPoA | `src/wpoa/test/run_unit_tests.sh` + `*_tests.cpp` | Boost.Test self-contained |
+| Native `mining-diversity` constraint | `src/permissions/permission.cpp` | `mc_Permissions::CanMine` :1692 |
+| Spacing arithmetic | `src/permissions/permission.cpp` | `mc_Permissions::IsBarredByDiversity` :1979 |
+| Declarations | `src/permissions/permission.h` | `CanMine` :365, `IsBarredByDiversity` :395 |
+| Consensus-side miner permission check | `src/protocol/multichainblock.cpp` | `CheckBlockPermissions` :1150 (check at :1200-1210) |
+| wPoA validation path | `src/protocol/multichainblock.cpp` | `VerifyBlockMinerWPoA` :769, dispatched from `VerifyBlockMiner` :923 (early return :942) |
+| Native diversity replay (non-wPoA branch) | `src/protocol/multichainblock.cpp` | `CanMineBlockOnFork` :1090, :1100 |
+| New block construction | `src/miner/miner.cpp` | `CreateNewBlock` — `canMine` probe :723-738 |
+| Miner timing / election | `src/miner/miner.cpp` | wPoA Phase 2 branch :1203-1249; Phase 4 sortition branch :~1141-1195; native path :1250+ |
+| Native miner pool | `src/miner/miner.cpp` | `LastActiveMiners` :969 (`CanMine` :1014) |
+| wPoA activation predicate | `src/wpoa/wpoa_selector.cpp` | `WPoAActiveAtHeight` :48; flag `g_wpoa_enabled` :23 |
+| Weight registry | `src/wpoa/stream_weight_registry.{h,cpp}` | class `StreamWeightRegistry`; `EnsureStreamExists` cpp:115, `EnsureSubscribed` cpp:160, `RegisterLocalWeight` cpp:272, `ThreadRegisterNodeWeight` cpp:774 |
+| Weight engine (the real publisher) | `src/weight_engine/weight_engine.cpp` | `ThreadWeightEngine` :225 (publish at :358) |
+| Input-stream auto-create (precedent) | `src/weight_engine/weight_reader.cpp` | `EnsureOneStream` :~60, `EnsureInputStreams` :134 |
+| wPoA flag resolution | `src/core/init.cpp` | block :3231-3365, globals committed at :3348-3358; thread launch :3637-3650 |
+| Weight-engine dependency guard | `src/core/init.cpp` | :3586-3590 (existing `InitError`, the pattern for the new ordering guard) |
+| Epoch stability margin | `src/weight_engine/weight_streams.h` | `MC_WEIGHT_DEFAULT_STABILITY_MARGIN` :147 (= 6) |
+| wPoA chain parameters | `src/chainparams/paramlist.h` | `enablewpoa*` :161-209 (protocol 20014), `miningdiversity` :115 |
+| Shadow harness (geographic network) | `shadow/tools/role_admin.sh` | `do_grant` :53, create `wpoa-weights` :88-93 |
+| wPoA functional harness | `src/wpoa/test/functional_lib.sh` | `fl_start_network` :188, `fl_grant_weights_write` :233 |
+| System functional test | `src/wpoa/test/functional_test_wpoa_system.sh` | orchestration at the end of the file |
+| wPoA unit suite | `src/wpoa/test/run_unit_tests.sh` + `*_tests.cpp` | self-contained Boost.Test |
 
-### Duplicazione logica tra percorso wPoA e percorso standard
+### Logical duplication between the wPoA path and the standard path
 
-`VerifyBlockMiner` (`multichainblock.cpp:923`) fa **early return** verso
-`VerifyBlockMinerWPoA` quando `WPoAActiveAtHeight(pindexNew->nHeight)` è vero
-(:942-945). Quindi il replay nativo del diversity (`CanMineBlockOnFork`, :1090/:1100)
-**non è raggiungibile** sulle altezze governate da wPoA: i due percorsi sono mutuamente
-esclusivi, non duplicati. `CheckBlockPermissions` invece è **comune ai due regimi** (è
-chiamata a monte, per ogni altezza) — ed è per questo che è lì che il bug si manifestava.
+`VerifyBlockMiner` (`multichainblock.cpp:923`) **returns early** into
+`VerifyBlockMinerWPoA` when `WPoAActiveAtHeight(pindexNew->nHeight)` is true
+(:942-945). So the native diversity replay (`CanMineBlockOnFork`, :1090/:1100) is **not
+reachable** on wPoA-governed heights: the two paths are mutually exclusive, not duplicated.
+`CheckBlockPermissions`, on the other hand, is **common to both regimes** (it is called
+upstream, for every height) — which is why that is where the bug showed up.
 
 ---
 
-## 2. Bug 1 — spacing di mining-diversity attivo sotto wPoA
+## 2. Bug 1 — mining-diversity spacing active under wPoA
 
-### 2.1 Meccanica del difetto
+### 2.1 Mechanics of the defect
 
 `IsBarredByDiversity(block, last, miner_count)` (`permission.cpp:1979`):
 
 ```
 diversity = (miner_count * miningdiversity - 1) / 1000000      // MC_PRM_DECIMAL_GRANULARITY
 diversity++                                                     // clamp in [1, miner_count]
-if ((block - last) <= diversity - 1) return 1;                  // barrato
+if ((block - last) <= diversity - 1) return 1;                  // barred
 ```
 
-`miningdiversity` ha default `300000` = 0.3 (`paramlist.h:116`). Quindi:
+`miningdiversity` defaults to `300000` = 0.3 (`paramlist.h:116`). Hence:
 
-| N miner | `diversity` | condizione di barra | effetto |
+| N miners | `diversity` | bar condition | effect |
 |---|---|---|---|
-| 3 | `(900000-1)/1e6 + 1` = **1** | `(block-last) <= 0` | mai vero (Δ≥1) → **inerte** |
-| 4 | `(1200000-1)/1e6 + 1` = **2** | `(block-last) <= 1` | **barra due blocchi consecutivi** |
-| 10 | `(3000000-1)/1e6 + 1` = **3** | `(block-last) <= 2` | barra due round di distanza |
+| 3 | `(900000-1)/1e6 + 1` = **1** | `(block-last) <= 0` | never true (Δ≥1) → **inert** |
+| 4 | `(1200000-1)/1e6 + 1` = **2** | `(block-last) <= 1` | **bars two consecutive blocks** |
+| 10 | `(3000000-1)/1e6 + 1` = **3** | `(block-last) <= 2` | bars two rounds apart |
 
-Questo **conferma quantitativamente** il mascheramento: `NODES` di default è `3`
-(`functional_lib.sh:37`), quindi tutta la suite funzionale girava in un regime in cui lo
-spacing è aritmeticamente inerte. Da 4 miner in su morde.
+This **confirms the masking quantitatively**: the default `NODES` is `3`
+(`functional_lib.sh:37`), so the whole functional suite ran in a regime where the spacing is
+arithmetically inert. From 4 miners upwards it bites.
 
-Sotto wPoA ogni indirizzo con permesso `mine` partecipa a **ogni** round e la selezione è
-pesata: un validatore pesante vince legittimamente due round consecutivi. Lo spacing
-round-robin nativo lo rifiuta.
+Under wPoA every address with the `mine` permission takes part in **every** round and the
+selection is weighted: a heavy validator legitimately wins two consecutive rounds. The
+native round-robin spacing rejects that.
 
-### 2.2 Grafo delle chiamate — ogni call-site di `CanMine()` e classificazione
+### 2.2 Call graph — every call site of `CanMine()` and its classification
 
-Ricerca esaustiva (`grep -rn "CanMine\s*(" src/`), più i consumatori indiretti via
-`GetAllPermissions` e `IsBarredByDiversity`.
+Exhaustive search (`grep -rn "CanMine\s*(" src/`), plus the indirect consumers via
+`GetAllPermissions` and `IsBarredByDiversity`.
 
-| # | Call-site | Contesto | Raggiungibile sotto wPoA? | Verdetto |
+| # | Call site | Context | Reachable under wPoA? | Verdict |
 |---|---|---|---|---|
-| 1 | `permission.cpp:1692` | definizione di `CanMine` | — | invariata (il gate va sotto, in `IsBarredByDiversity`) |
-| 2 | `permission.cpp:1209` (`GetAllPermissions`) | `if(type & MC_PTP_MINE) result \|= CanMine(...)` | **sì** | **BUG — da correggere** (vedi §2.3, è il vettore più dannoso) |
-| 3 | `permission.cpp:1727` (`CanMine`) | applicazione interna dello spacing | sì | corretta dal gate |
-| 4 | `permission.cpp:1853` (`CanMineBlock`) | funzione non usata (commento upstream: *"function not used"*) | no (dead) | corretta dal gate, nessun rischio |
-| 5 | `permission.cpp:1967` (`CanMineBlockOnFork`) | replay diversity su fork | **no** — early return :942 | corretta dal gate (difesa in profondità) |
-| 6 | `multichainblock.cpp:1206` (`CheckBlockPermissions`) | **ammissione del blocco** | sì | **già patchato** da `c81e513`, ma con difetto mempool → da ricondurre a `CanMine()` |
-| 7 | `miner.cpp:736` (`CreateNewBlock`) | probe `canMine` per il self-test di validità | sì | **già patchato** da `c81e513`, stesso difetto mempool → da ricondurre |
-| 8 | `miner.cpp:1014` (`LastActiveMiners`) | pool miner del timing **nativo** | **no** — il ramo wPoA a :1203 fa sempre `return` prima di :1360 | **invariata** |
-| 9 | `multichainblock.cpp:1090`, `:1100` (`CanMineBlockOnFork`) | replay nativo | **no** — early return :942 | **invariata** |
-| 10 | `multichaintx.cpp:1811` | esenzione `receive` per il coinbase del miner | **sì** | **BUG latente — da correggere** (vedi §2.3) |
-| 11 | `main.cpp:3710` (`UpdateChainMiningStatus`) | calcolo di `pindexNew->nCanMine` | **sì** | **BUG — da correggere** (vedi §2.3) |
-| 12 | `main.cpp:4496` | copia commentata di `UpdateChainMiningStatus` | dead code | invariata |
-| 13 | `rpcpermissions.cpp:711` | RPC di introspezione permessi | sì | **invariata per scelta**: deve riportare il permesso *effettivo*; sotto wPoA il gate lo rende automaticamente coerente |
-| 14 | `rpcpermissions.cpp:1434` (`IsBarredByDiversity`) | stima `listminers` del prossimo blocco ammesso | sì | corretta dal gate: il `while` esce subito, `m_WaitBlocks=0`, `m_NextAllowed=next_block` — che sotto wPoA **è la risposta giusta** |
+| 1 | `permission.cpp:1692` | definition of `CanMine` | — | unchanged (the gate goes underneath, in `IsBarredByDiversity`) |
+| 2 | `permission.cpp:1209` (`GetAllPermissions`) | `if(type & MC_PTP_MINE) result \|= CanMine(...)` | **yes** | **BUG — to fix** (see §2.3, it is the most damaging vector) |
+| 3 | `permission.cpp:1727` (`CanMine`) | internal application of the spacing | yes | fixed by the gate |
+| 4 | `permission.cpp:1853` (`CanMineBlock`) | unused function (upstream comment: *"function not used"*) | no (dead) | fixed by the gate, no risk |
+| 5 | `permission.cpp:1967` (`CanMineBlockOnFork`) | diversity replay on a fork | **no** — early return :942 | fixed by the gate (defence in depth) |
+| 6 | `multichainblock.cpp:1206` (`CheckBlockPermissions`) | **block admission** | yes | **already patched** by `c81e513`, but with the mempool defect → to be brought back to `CanMine()` |
+| 7 | `miner.cpp:736` (`CreateNewBlock`) | `canMine` probe for the validity self-test | yes | **already patched** by `c81e513`, same mempool defect → to be brought back |
+| 8 | `miner.cpp:1014` (`LastActiveMiners`) | miner pool of the **native** timing | **no** — the wPoA branch at :1203 always `return`s before :1360 | **unchanged** |
+| 9 | `multichainblock.cpp:1090`, `:1100` (`CanMineBlockOnFork`) | native replay | **no** — early return :942 | **unchanged** |
+| 10 | `multichaintx.cpp:1811` | `receive` exemption for the miner's coinbase | **yes** | **latent BUG — to fix** (see §2.3) |
+| 11 | `main.cpp:3710` (`UpdateChainMiningStatus`) | computation of `pindexNew->nCanMine` | **yes** | **BUG — to fix** (see §2.3) |
+| 12 | `main.cpp:4496` | commented-out copy of `UpdateChainMiningStatus` | dead code | unchanged |
+| 13 | `rpcpermissions.cpp:711` | permission introspection RPC | yes | **unchanged by choice**: it must report the *effective* permission; under wPoA the gate makes it consistent automatically |
+| 14 | `rpcpermissions.cpp:1434` (`IsBarredByDiversity`) | `listminers` estimate of the next admitted block | yes | fixed by the gate: the `while` exits at once, `m_WaitBlocks=0`, `m_NextAllowed=next_block` — which under wPoA **is the right answer** |
 
-#### Consumatori indiretti via `GetAllPermissions` (#2) — il vettore principale
+#### Indirect consumers via `GetAllPermissions` (#2) — the main vector
 
-`CWallet::GetKeyFromAddressBook(result, type)` (`wallet/wallet.cpp:3611`) usa
-`GetAllPermissions(NULL, keyID, type)` e accetta la chiave solo se `perm == type`
-(`wallet.cpp:3626` e `:3642`). Con `type == MC_PTP_MINE`, se `CanMine()` ritorna 0 per
-spacing, **la chiave di mining locale viene dichiarata inesistente**. Call-site raggiungibili
-sotto wPoA:
+`CWallet::GetKeyFromAddressBook(result, type)` (`wallet/wallet.cpp:3611`) uses
+`GetAllPermissions(NULL, keyID, type)` and accepts the key only if `perm == type`
+(`wallet.cpp:3626` and `:3642`). With `type == MC_PTP_MINE`, if `CanMine()` returns 0 because
+of the spacing, **the local mining key is declared non-existent**. Call sites reachable under
+wPoA:
 
-| Path | Riga | Effetto quando il nodo ha minato il blocco precedente |
+| Path | Line | Effect when the node mined the previous block |
 |---|---|---|
-| `src/miner/miner.cpp` | **1205** — ramo wPoA Phase 2 | `kThisMiner` invalido → log *"no local mining key, waiting"* → `MiningStartTime = now + 3600` → **il proposer eletto non mina il proprio blocco: stallo di un'ora** |
-| `src/miner/miner.cpp` | **1154** — ramo wPoA Phase 4 (sortition privata) | idem, sul path di produzione |
-| `src/miner/miner.cpp` | 906 (`CreateNewBlock`), 1092, 1136, 1365, 1430 | selezione chiave coinbase / path nativo |
-| `src/core/main.cpp` | 3942, 3994, 6923, 7000 | `nCanMine` → ordinamento di fork-choice |
-| `src/wpoa/stream_weight_registry.cpp` | **75-77** (`ResolveLocalAddress`) | `GetKeyFromAddressBook(MC_PTP_MINE)` fallisce → **fallback su `MC_PTP_CONNECT`, cioè un indirizzo DIVERSO** → `m_LocalAddress` cambia identità a seconda che il nodo abbia minato o no |
-| `src/weight_engine/weight_publisher.cpp` | **72-74** | identico |
+| `src/miner/miner.cpp` | **1205** — wPoA Phase 2 branch | `kThisMiner` invalid → log *"no local mining key, waiting"* → `MiningStartTime = now + 3600` → **the elected proposer does not mine its own block: a one-hour stall** |
+| `src/miner/miner.cpp` | **1154** — wPoA Phase 4 branch (private sortition) | the same, on the production path |
+| `src/miner/miner.cpp` | 906 (`CreateNewBlock`), 1092, 1136, 1365, 1430 | coinbase key selection / native path |
+| `src/core/main.cpp` | 3942, 3994, 6923, 7000 | `nCanMine` → fork-choice ordering |
+| `src/wpoa/stream_weight_registry.cpp` | **75-77** (`ResolveLocalAddress`) | `GetKeyFromAddressBook(MC_PTP_MINE)` fails → **fallback to `MC_PTP_CONNECT`, i.e. a DIFFERENT address** → `m_LocalAddress` changes identity depending on whether the node mined or not |
+| `src/weight_engine/weight_publisher.cpp` | **72-74** | identical |
 
-L'ultimo punto è quello che **collega i due bug**: `StreamWeightRegistry` viene costruito
-ex-novo a ogni chiamata di `WPoASelectProposer` (`wpoa_selector.cpp:~93`), quindi
-`m_LocalAddress` può oscillare fra due indirizzi diversi *dello stesso nodo* in funzione di
-chi ha minato il blocco precedente. Conseguenze: il confronto `sProposer == sLocalAddr` nel
-miner (`miner.cpp:1230`) può essere fatto contro l'identità sbagliata, e un record di peso
-può essere pubblicato sotto un indirizzo che non è quello registrato come validatore
-(record self-published → scartato da ogni peer, cfr. `PublishWeightRecord`).
+The last point is what **links the two bugs**: `StreamWeightRegistry` is built afresh on
+every call of `WPoASelectProposer` (`wpoa_selector.cpp:~93`), so `m_LocalAddress` can
+oscillate between two different addresses *of the same node* depending on who mined the
+previous block. Consequences: the `sProposer == sLocalAddr` comparison in the miner
+(`miner.cpp:1230`) can be made against the wrong identity, and a weight record can be
+published under an address that is not the one registered as a validator (a self-published
+record → discarded by every peer, cf. `PublishWeightRecord`).
 
-#### `main.cpp:3710` → fork-choice (#11)
+#### `main.cpp:3710` → fork choice (#11)
 
-`nCanMine` è consumato dal comparatore `CBlockIndexWorkComparator` (`main.cpp:172-174`):
+`nCanMine` is consumed by the comparator `CBlockIndexWorkComparator` (`main.cpp:172-174`):
 
 ```cpp
 if((pa->nCanMine > 0) && (pb->nCanMine == 0)) return false;
 if((pa->nCanMine == 0) && (pb->nCanMine > 0)) return true;
 ```
 
-Un blocco il cui miner risulta barrato prende `nCanMine = 0` e il suo ramo viene
-**declassato** in `setBlockIndexCandidates`. Sotto wPoA, la seconda vittoria consecutiva di
-un validatore declassa il tip legittimo: pressione di reorg spuria e mancato avanzamento.
-È lo stesso bug in un contesto completamente diverso (scelta della catena, non ammissione
-del blocco) — esattamente il tipo di call-site che il mandato chiedeva di cercare.
+A block whose miner is barred gets `nCanMine = 0` and its branch is **demoted** in
+`setBlockIndexCandidates`. Under wPoA, a validator's second consecutive win demotes the
+legitimate tip: spurious reorg pressure and a failure to advance. It is the same bug in a
+completely different context (chain selection, not block admission) — exactly the kind of
+call site the mandate asked to look for.
 
 #### `multichaintx.cpp:1811` (#10)
 
@@ -192,429 +188,431 @@ del blocco) — esattamente il tipo di call-site che il mandato chiedeva di cerc
 if(tx.IsCoinBase()) fCanReceive |= mc_gState->m_Permissions->CanMine(NULL,ptr);
 ```
 
-Esenzione: il miner può pagarsi il coinbase senza permesso `receive`. Sotto wPoA, alla
-seconda vittoria consecutiva `CanMine` è 0 → l'esenzione svanisce → un validatore con
-`mine` **ma senza `receive`** vede rifiutata la propria coinbase, e quindi il blocco.
-Latente negli harness attuali (concedono sempre `connect,send,receive,mine`), reale in
-produzione con permessi minimi.
+An exemption: the miner may pay itself the coinbase without the `receive` permission. Under
+wPoA, on the second consecutive win `CanMine` is 0 → the exemption vanishes → a validator
+with `mine` **but without `receive`** has its own coinbase rejected, and with it the block.
+Latent in the current harnesses (they always grant `connect,send,receive,mine`), real in
+production with minimal permissions.
 
-### 2.3 Difetto introdotto dalla patch esistente `c81e513` — divergenza mempool
+### 2.3 Defect introduced by the existing patch `c81e513` — mempool divergence
 
-La patch sostituisce `CanMine()` con `CanCustom(NULL, addr, MC_PTP_MINE)`. Ma:
+The patch replaces `CanMine()` with `CanCustom(NULL, addr, MC_PTP_MINE)`. But:
 
 | | `GetPermission(..., checkmempool)` |
 |---|---|
 | `CanMine` (`permission.cpp:1719`) | `check_mempool = 0` |
 | `CanCustom` (`permission.cpp:1635`) → `GetPermission(e,a,t)` (`:1179`) | `checkmempool = **1**` |
 
-Quindi la patch non ha solo tolto lo spacing (voluto): ha anche **acceso la valutazione dei
-grant di permesso ancora in mempool** dentro `CheckBlockPermissions`, che è un controllo di
-**consenso**. Il mempool è per definizione locale e diverso su ogni nodo: un blocco firmato
-da un indirizzo il cui grant `mine` è ancora non confermato verrebbe **accettato dal nodo che
-ha la tx in mempool e rifiutato da chi non l'ha**. È una divergenza di consenso, cioè un
-fork. Non osservata negli harness perché i grant confermano molto prima dell'uso, ma è un
-difetto reale e va rimosso.
+So the patch did not only remove the spacing (intended): it also **switched on the
+evaluation of permission grants still in the mempool** inside `CheckBlockPermissions`, which
+is a **consensus** check. The mempool is local by definition and different on every node: a
+block signed by an address whose `mine` grant is still unconfirmed would be **accepted by the
+node that has the transaction in its mempool and rejected by those that do not**. That is a
+consensus divergence, i.e. a fork. Not observed in the harnesses because grants confirm long
+before use, but it is a real defect and must be removed.
 
-`CanCustom` è inoltre privo dei due short-circuit di `CanMine`
-(`IsProtocolMultichain()==0`, `MCP_ANYONE_CAN_MINE`): innocuo qui solo perché
-`WPoAActiveAtHeight` già ritorna `false` in entrambi i casi — una dipendenza implicita e
-fragile fra due funzioni distanti.
+`CanCustom` also lacks the two short-circuits of `CanMine` (`IsProtocolMultichain()==0`,
+`MCP_ANYONE_CAN_MINE`): harmless here only because `WPoAActiveAtHeight` already returns
+`false` in both cases — an implicit, fragile dependency between two distant functions.
 
-### 2.4 Scelta della correzione: punto singolo di verità
+### 2.4 Choice of fix: a single point of truth
 
-Due opzioni:
+Two options:
 
-**(A) Patchare ogni call-site** sostituendo `CanMine()` con il permesso grezzo sotto wPoA.
-*Contro*: ~7 punti da toccare in 5 file, in `permission.cpp` / `wallet.cpp` / `main.cpp` /
-`multichaintx.cpp`; ogni nuovo call-site futuro reintroduce il bug; duplica il predicato di
-attivazione in codice non-wPoA; è esattamente il pattern che ha già prodotto una patch
-incompleta e con effetti collaterali (§2.3).
+**(A) Patch every call site**, replacing `CanMine()` with the raw permission under wPoA.
+*Against*: ~7 places to touch in 5 files, in `permission.cpp` / `wallet.cpp` / `main.cpp` /
+`multichaintx.cpp`; every future call site reintroduces the bug; it duplicates the activation
+predicate in non-wPoA code; it is exactly the pattern that already produced an incomplete
+patch with side effects (§2.3).
 
-**(B) Neutralizzare lo spacing alla fonte**, in `IsBarredByDiversity`, quando l'altezza è
-governata da wPoA. *Pro*: una sola modifica semantica in un solo punto; corregge in un colpo
-tutti i call-site della tabella (#2, #3, #5, #10, #11, #14) e tutti i consumatori indiretti
-via `GetKeyFromAddressBook`; `IsBarredByDiversity` riceve già l'**altezza** come primo
-argomento, quindi il gate è una funzione pura di `(height, chain params)` — identica su miner
-e validatore, che è il requisito di design dichiarato in `wpoa_selector.cpp:66-70`; permette
-di **ripristinare `CanMine()`** nei due punti patchati, eliminando la divergenza mempool.
+**(B) Neutralise the spacing at its source**, in `IsBarredByDiversity`, when the height is
+wPoA-governed. *For*: a single semantic change in a single place; it fixes at once every call
+site in the table (#2, #3, #5, #10, #11, #14) and every indirect consumer via
+`GetKeyFromAddressBook`; `IsBarredByDiversity` already receives the **height** as its first
+argument, so the gate is a pure function of `(height, chain params)` — identical on miner and
+validator, which is the design requirement stated in `wpoa_selector.cpp:66-70`; it allows
+**restoring `CanMine()`** at the two patched points, removing the mempool divergence.
 
-**Scelta: (B)**, più il ripristino di `CanMine()` nei due punti di `c81e513`.
+**Choice: (B)**, plus restoring `CanMine()` at the two points of `c81e513`.
 
-#### Vincolo di linking (verificato) e sua soluzione
+#### Linking constraint (verified) and its solution
 
-`permissions/permission.cpp` è compilato in **tre** target (`src/Makefile.am`):
+`permissions/permission.cpp` is compiled into **three** targets (`src/Makefile.am`):
 
-* `multichain_libbitcoin_multichain_a` (:361) — **non** include `wpoa/*`
-* `libbitcoinconsensus_la` (:698) — libreria di consenso standalone
-* (via la prima) i tool `multichain-util` / `multichain-cli`
+* `multichain_libbitcoin_multichain_a` (:361) — does **not** include `wpoa/*`
+* `libbitcoinconsensus_la` (:698) — the standalone consensus library
+* (through the first) the `multichain-util` / `multichain-cli` tools
 
-`wpoa/wpoa_selector.cpp` sta **solo** in `libbitcoin_wallet_a` (:311). Chiamare
-`WPoAActiveAtHeight()` direttamente da `permission.cpp` produrrebbe un **simbolo
-irrisolto** in `libbitcoinconsensus` e nei tool → build rotta.
+`wpoa/wpoa_selector.cpp` is **only** in `libbitcoin_wallet_a` (:311). Calling
+`WPoAActiveAtHeight()` directly from `permission.cpp` would produce an **unresolved symbol**
+in `libbitcoinconsensus` and in the tools → a broken build.
 
-Soluzione adottata: **hook a puntatore a funzione**. `permission.{h,cpp}` dichiara/definisce
-`mc_WPoAGovernsMiningHook`, inizializzato a `NULL`; `wpoa/wpoa_selector.cpp` lo installa a
-**static-init time** (prima di `main()`) puntando a un thunk su `WPoAActiveAtHeight`. Così:
+Adopted solution: **a function-pointer hook**. `permission.{h,cpp}` declares/defines
+`mc_WPoAGovernsMiningHook`, initialised to `NULL`; `wpoa/wpoa_selector.cpp` installs it at
+**static-init time** (before `main()`), pointing to a thunk over `WPoAActiveAtHeight`. Thus:
 
-* zero nuove dipendenze di link: i target senza `wpoa/*` mantengono l'hook `NULL` e quindi il
-  comportamento nativo **byte-identico**;
-* **zero duplicazione** del predicato: `WPoAActiveAtHeight` resta l'unica definizione di
-  "wPoA governa l'altezza h";
-* nessun nuovo rischio di ordinamento di init: il valore del gate segue `g_wpoa_enabled`
-  esattamente come ogni altro consumatore wPoA.
+* no new link dependencies: the targets without `wpoa/*` keep the hook `NULL` and therefore
+  a **byte-identical** native behaviour;
+* **no duplication** of the predicate: `WPoAActiveAtHeight` remains the only definition of
+  "wPoA governs height h";
+* no new init-ordering risk: the gate's value follows `g_wpoa_enabled` exactly like every
+  other wPoA consumer.
 
 ---
 
-## 3. Bug 2 — bootstrap dello stream `wpoa-weights` (priorità)
+## 3. Bug 2 — bootstrap of the `wpoa-weights` stream (priority)
 
-### 3.1 Sequenza di bootstrap ricostruita
+### 3.1 The reconstructed bootstrap sequence
 
-Chi *dovrebbe* creare lo stream: il **nodo admin di genesi**, l'unico con permesso `create`
-su una chain permissioned. Il codice che lo fa esiste già:
-`StreamWeightRegistry::EnsureStreamExists()` (`stream_weight_registry.cpp:115`), che emette
-`create ["stream","wpoa-weights",false]` → **CLOSED**, come da Def. 5.16.
+Who *should* create the stream: the **genesis admin node**, the only one with the `create`
+permission on a permissioned chain. The code that does it already exists:
+`StreamWeightRegistry::EnsureStreamExists()` (`stream_weight_registry.cpp:115`), which issues
+`create ["stream","wpoa-weights",false]` → **CLOSED**, as per Def. 5.16.
 
-Il problema è **quando** viene chiamata. `EnsureStreamExists()` è `private` e ha **un solo
-chiamante**: `RegisterLocalWeight()` (`:283`). E `RegisterLocalWeight` viene invocata in due
-modi mutuamente esclusivi, decisi in `init.cpp:3641-3650`:
+The problem is **when** it is called. `EnsureStreamExists()` is `private` and has **a single
+caller**: `RegisterLocalWeight()` (`:283`). And `RegisterLocalWeight` is invoked in two
+mutually exclusive ways, decided in `init.cpp:3641-3650`:
 
 ```
 if (g_wpoa_weights_enabled && wallet) {
-    if (g_weight_engine_enabled)  ThreadWeightEngine();          // path reale
-    else                          ThreadRegisterNodeWeight(g_node_weight);  // fallback -weight
+    if (g_weight_engine_enabled)  ThreadWeightEngine();          // the real path
+    else                          ThreadRegisterNodeWeight(g_node_weight);  // -weight fallback
 }
 ```
 
-**Path `-weight` statico** (`ThreadRegisterNodeWeight`, `:774`): chiama
-`registry.RegisterLocalWeight(weight)` **subito**, con `weight = g_node_weight` (default 100).
-Un peso c'è sempre → `EnsureStreamExists()` gira al primo tick → l'admin crea lo stream.
-**Il ciclo non si presenta.**
+**Static `-weight` path** (`ThreadRegisterNodeWeight`, `:774`): calls
+`registry.RegisterLocalWeight(weight)` **straight away**, with `weight = g_node_weight`
+(default 100). A weight always exists → `EnsureStreamExists()` runs on the first tick → the
+admin creates the stream. **The cycle does not arise.**
 
-**Path weight engine** (`ThreadWeightEngine`, `weight_engine.cpp:225`) — quello reale in
-produzione: `RegisterLocalWeight` è raggiunta **solo in coda** a una catena di gate
+**Weight-engine path** (`ThreadWeightEngine`, `weight_engine.cpp:225`) — the real one in
+production: `RegisterLocalWeight` is reached **only at the end** of a chain of gates
 (`:279-355`):
 
 ```
-NodeReadyForWeight()                       → tip presente, IBD finito
-reader.EnsureInputStreams()                → membership + esg creati e sottoscritti
+NodeReadyForWeight()                       → tip present, IBD finished
+reader.EnsureInputStreams()                → membership + esg created and subscribed
 WeightEngineActiveAtHeight(height)
-epoch = (height - STABILITY_MARGIN + 1)/len  ≥ 1     → serve un'epoca SEPOLTA
-ComputeLocalWeightForEpoch(...)            → serve essere miner CERTIFICATO
+epoch = (height - STABILITY_MARGIN + 1)/len  ≥ 1     → needs a BURIED epoch
+ComputeLocalWeightForEpoch(...)            → needs to be a CERTIFIED miner
    └─► RegisterLocalWeight(w, epoch)  ─►  EnsureStreamExists()
 ```
 
-### 3.2 Perché il ciclo non si rompe da solo
+### 3.2 Why the cycle does not break by itself
 
 ```
-wpoa-weights non esiste
-   └─► GetAllNodesWeights() ritorna {} su ogni nodo
-        └─► WPoASelectProposer() non elegge nessuno  ("0 validators, total=0")
-             └─► nessun nodo mina oltre setup-first-blocks
-                  └─► l'altezza non avanza → nessuna epoca si seppellisce
-                       └─► ComputeLocalWeightForEpoch() non produce mai un peso
-                            └─► RegisterLocalWeight() non viene mai chiamata
-                                 └─► EnsureStreamExists() non viene mai chiamata
-                                      └─► wpoa-weights non esiste  ◄── chiusura del ciclo
+wpoa-weights does not exist
+   └─► GetAllNodesWeights() returns {} on every node
+        └─► WPoASelectProposer() elects nobody  ("0 validators, total=0")
+             └─► no node mines beyond setup-first-blocks
+                  └─► the height does not advance → no epoch gets buried
+                       └─► ComputeLocalWeightForEpoch() never produces a weight
+                            └─► RegisterLocalWeight() is never called
+                                 └─► EnsureStreamExists() is never called
+                                      └─► wpoa-weights does not exist  ◄── the cycle closes
 ```
 
-L'altezza di innesco è la stessa per i due lati: `WPoAActiveAtHeight` ingaggia a
-`height >= setupfirstblocks` (`wpoa_selector.cpp:71-73`). Fino a lì la chain avanza con le
-regole native; da lì in poi serve il registro pesi, che non esiste. Da cui lo stallo esatto
-osservato: `0 validators, total=0` e `cannot score (unsynced or unweighted)`.
+The trigger height is the same on both sides: `WPoAActiveAtHeight` engages at
+`height >= setupfirstblocks` (`wpoa_selector.cpp:71-73`). Up to there the chain advances under
+the native rules; from there on it needs the weight registry, which does not exist. Hence the
+exact stall observed: `0 validators, total=0` and `cannot score (unsynced or unweighted)`.
 
-**Non è una dipendenza circolare irrisolvibile: è un problema di ordinamento.** La creazione
-dello stream non dipende *logicamente* dall'avere un peso da pubblicare — dipende solo dal
-permesso `create`, disponibile sull'admin **dal blocco 1**. Il ciclo esiste solo perché la
-creazione è stata *implementata come effetto collaterale della pubblicazione*, cioè
-sequenziata dopo un evento che a sua volta la richiede. Spostare la creazione **prima** del
-gate d'epoca rompe questa metà del ciclo in modo deterministico: la precondizione (permesso
-`create`, wallet pronto, tip presente) è soddisfatta a ogni avvio di rete pulita,
-indipendentemente dallo stato dei pesi.
+**It is not an unsolvable circular dependency: it is an ordering problem.** Creating the
+stream does not *logically* depend on having a weight to publish — it depends only on the
+`create` permission, available on the admin **from block 1**. The cycle exists only because
+the creation was *implemented as a side effect of publication*, i.e. sequenced after an event
+that itself requires it. Moving the creation **before** the epoch gate breaks this half of
+the cycle deterministically: the precondition (`create` permission, wallet ready, tip
+present) holds at every start of a clean network, whatever the state of the weights.
 
-#### L'invariante di ordinamento (correzione all'analisi iniziale)
+#### The ordering invariant (a correction to the initial analysis)
 
-Anticipare la `create` **non è però sufficiente da sola**, e questo va detto con precisione
-perché cambia il progetto della patch. Lo stallo ha due metà indipendenti:
+Bringing the `create` forward is **not sufficient on its own**, however, and this must be
+stated precisely because it changes the design of the patch. The stall has two independent
+halves:
 
-1. **lo stream non esiste** → i grant `.write` vengono scartati in silenzio e nulla è
-   pubblicabile;
-2. **il registro è vuoto** → `WPoASelectProposer` non elegge nessuno e nessun nodo mina.
+1. **the stream does not exist** → the `.write` grants are silently discarded and nothing
+   can be published;
+2. **the registry is empty** → `WPoASelectProposer` elects nobody and no node mines.
 
-Anticipare la `create` risolve (1). Ma (2) dipende da *quando il primo peso diventa
-calcolabile*, che è funzione dei soli parametri di chain:
+Bringing the `create` forward solves (1). But (2) depends on *when the first weight becomes
+computable*, which is a function of the chain parameters alone:
 
 ```
-prima epoca sepolta a  h_w = weight-epoch-length + STABILITY_MARGIN - 1
-wPoA ingaggia a         h_p = setup-first-blocks
+first buried epoch at   h_w = weight-epoch-length + STABILITY_MARGIN - 1
+wPoA engages at          h_p = setup-first-blocks
 ```
 
-Il registro è popolato in tempo **se e solo se** vale l'invariante
+The registry is populated in time **if and only if** the invariant holds
 
 > **`setup-first-blocks  >  weight-epoch-length + STABILITY_MARGIN - 1`**
 
-con `MC_WEIGHT_DEFAULT_STABILITY_MARGIN = 6` (`weight_streams.h:147`).
+with `MC_WEIGHT_DEFAULT_STABILITY_MARGIN = 6` (`weight_streams.h:147`).
 
-Verifica sui valori reali:
+Check against the real values:
 
-| Configurazione | epoch-length | margine | h_w | setup-first-blocks | invariante |
+| Configuration | epoch-length | margin | h_w | setup-first-blocks | invariant |
 |---|---|---|---|---|---|
-| **default di prodotto** (`paramlist.h:112`, `:238`) | 100 | 6 | **105** | **60** | **VIOLATA** → stallo |
-| shadow (`shadow/config/params.overrides`) | 12 | 6 | 17 | 60 | soddisfatta |
+| **product default** (`paramlist.h:112`, `:238`) | 100 | 6 | **105** | **60** | **VIOLATED** → stall |
+| shadow (`shadow/config/params.overrides`) | 12 | 6 | 17 | 60 | holds |
 
-Il default di prodotto **viola l'invariante**: una rete pulita avviata con
-`-enablewpoa=1 -enableweightengine=1` e per il resto parametri di default si ferma a quota 60,
-che è esattamente il sintomo riportato. L'harness shadow non incappa nello stallo perché la
-sua configurazione la rispetta per costruzione — e lo dichiara nel commento accanto al
-parametro:
+The product default **violates the invariant**: a clean network started with
+`-enablewpoa=1 -enableweightengine=1` and otherwise default parameters stops at height 60,
+which is exactly the reported symptom. The shadow harness does not run into the stall because
+its configuration respects the invariant by construction — and says so in the comment next to
+the parameter:
 
 ```
 WEIGHT_EPOCH_LENGTH=12
-SETUP_FIRST_BLOCKS=60         # > epoca(12) + margine di stabilita'(6) = 18
+SETUP_FIRST_BLOCKS=60         # > epoch(12) + stability margin(6) = 18
 ```
 
-Quindi il `create` esplicito di `role_admin.sh` non è ciò che tiene in piedi la rete shadow:
-la tiene in piedi **l'invariante rispettata**. Il `create` esplicito rimuove soltanto la
-latenza e i grant persi della metà (1).
+So the explicit `create` in `role_admin.sh` is not what keeps the shadow network alive: what
+keeps it alive is **the respected invariant**. The explicit `create` only removes the latency
+and the lost grants of half (1).
 
-Conseguenza sul progetto della correzione: la patch deve coprire **entrambe** le metà —
-anticipare la creazione (deterministica, sempre) *e* rendere rilevabile la violazione
-dell'invariante, che altrimenti si manifesta come uno stallo muto a quota
-`setup-first-blocks` senza alcun messaggio che ne indichi la causa.
+Consequence for the design of the fix: the patch must cover **both** halves — bring the
+creation forward (deterministic, always) *and* make a violation of the invariant detectable,
+which would otherwise show up as a silent stall at `setup-first-blocks` with no message
+pointing at the cause.
 
-La prova che questo è il pattern corretto è **già nello stesso codebase**:
-`reader.EnsureInputStreams()` (`weight_reader.cpp:134`, `EnsureOneStream` :~60) crea
-`weight-engine-membership` e `weight-engine-esg` — anch'essi CLOSED — ed è chiamata
-**incondizionatamente a ogni tick, prima di qualunque gate d'epoca** (`weight_engine.cpp:262`).
-`wpoa-weights` è l'unico dei tre stream a non avere questo trattamento. Il bug è
-un'**asimmetria**, non una scelta di design.
+The proof that this is the right pattern is **already in the same codebase**:
+`reader.EnsureInputStreams()` (`weight_reader.cpp:134`, `EnsureOneStream` :~60) creates
+`weight-engine-membership` and `weight-engine-esg` — also CLOSED — and is called
+**unconditionally on every tick, before any epoch gate** (`weight_engine.cpp:262`).
+`wpoa-weights` is the only one of the three streams without this treatment. The bug is an
+**asymmetry**, not a design choice.
 
-### 3.3 Difetto secondario: latch permanente su fallimento transitorio
+### 3.3 Secondary defect: a permanent latch on a transient failure
 
-In `EnsureStreamExists` (`:123-127`, `:139`) e in `EnsureOneStream`:
+In `EnsureStreamExists` (`:123-127`, `:139`) and in `EnsureOneStream`:
 
 ```cpp
-m_CreateAttempted = true;      // ← impostato PRIMA del try
+m_CreateAttempted = true;      // ← set BEFORE the try
 try { createcmd(params,false); } catch (...) { /* log */ }
 ```
 
-Il flag latcha **anche quando la `create` fallisce**. E l'oggetto `registry` in
-`ThreadWeightEngine` / `ThreadRegisterNodeWeight` vive per tutta la durata del thread:
-un fallimento **transitorio** (wallet non ancora sbloccato, UTXO non disponibili, grant
-`create` non ancora confermato) **incastra il nodo per sempre** — il loop continua a girare
-ma non ritenterà mai la `create`. Va corretto insieme al bug principale: senza questo, la
-soluzione lato codice sarebbe affidabile solo al primo colpo.
+The flag latches **even when the `create` fails**. And the `registry` object in
+`ThreadWeightEngine` / `ThreadRegisterNodeWeight` lives for the whole lifetime of the thread:
+a **transient** failure (wallet not yet unlocked, UTXOs not available, `create` grant not yet
+confirmed) **wedges the node forever** — the loop keeps running but will never retry the
+`create`. It must be fixed together with the main bug: without this, the code-side solution
+would only be reliable on the first try.
 
-### 3.4 Stato attuale degli harness
+### 3.4 Current state of the harnesses
 
-| Harness | Crea `wpoa-weights`? | Nota |
+| Harness | Creates `wpoa-weights`? | Note |
 |---|---|---|
-| `shadow/tools/role_admin.sh` :88-93 | **sì**, idempotente (`rpc_ok ... \|\| "gia' presente"`), CLOSED, prima dei grant `.write` :97, con `wait_stream` | workaround già in essere; il commento :82-87 documenta esattamente questo stallo |
-| `src/wpoa/test/functional_lib.sh` :233 | **no** | `fl_grant_weights_write` si limita ad **attendere** che lo stream compaia (60 tentativi), poi *"WARNING: wpoa-weights does not exist yet; write grants skipped"* e prosegue. Con il weight engine attivo l'attesa non può mai essere soddisfatta |
-| `src/weight_engine/test/functional_test_weight_engine.sh` | no | single-node, usa il path `-weight` (dove il ciclo non si presenta) |
+| `shadow/tools/role_admin.sh` :88-93 | **yes**, idempotently (`rpc_ok ... \|\| "already present"`), CLOSED, before the `.write` grants :97, with `wait_stream` | a workaround already in place; the comment :82-87 documents exactly this stall |
+| `src/wpoa/test/functional_lib.sh` :233 | **no** | `fl_grant_weights_write` only **waits** for the stream to appear (60 attempts), then *"WARNING: wpoa-weights does not exist yet; write grants skipped"* and carries on. With the weight engine on, the wait can never be satisfied |
+| `src/weight_engine/test/functional_test_weight_engine.sh` | no | single node, uses the `-weight` path (where the cycle does not arise) |
 
-### 3.5 Scelta: harness-only vs auto-creazione lato codice
+### 3.5 Choice: harness-only vs code-side auto-creation
 
-**Opzione H — solo harness** (creare esplicitamente lo stream in `role_admin.sh` /
-`functional_lib.sh` prima dei grant).
-*Pro*: zero rischio sul codice di consenso; già dimostrata funzionante in `role_admin.sh`.
-*Contro*: **non è una correzione, è un workaround**. Vale solo per le reti avviate da quegli
-script. Qualunque rete pulita avviata da un operatore, o dal secondo harness, o in
-produzione, resta deadlockata. Rende la vitalità del protocollo dipendente da un passo
-manuale non documentato nel codice. E lascia il difetto §3.3 in piedi.
+**Option H — harness only** (explicitly create the stream in `role_admin.sh` /
+`functional_lib.sh` before the grants).
+*For*: zero risk on the consensus code; already shown to work in `role_admin.sh`.
+*Against*: **it is not a fix, it is a workaround**. It holds only for networks started by
+those scripts. Any clean network started by an operator, or by the second harness, or in
+production, stays deadlocked. It makes the protocol's liveness depend on a manual step not
+documented in the code. And it leaves defect §3.3 in place.
 
-**Opzione C — auto-creazione idempotente lato nodo.**
-*Pro*: rompe il ciclo **all'origine**, su ogni avvio, senza passi operativi; il permesso
-`create` è già il gate di sicurezza corretto (i non-admin non possono creare, e non devono);
-riallinea `wpoa-weights` al trattamento già riservato agli altri due stream (§3.2), quindi
-riduce il codice speciale invece di aggiungerne; consente di correggere §3.3 nello stesso
-punto; rende il test funzionale una verifica del *prodotto*, non dell'harness.
-*Contro*: tocca il path di startup del nodo; va reso robusto su rete multi-admin (§5).
+**Option C — idempotent node-side auto-creation.**
+*For*: it breaks the cycle **at its origin**, on every start, with no operational step; the
+`create` permission is already the right security gate (non-admins cannot create, and must
+not); it realigns `wpoa-weights` with the treatment already given to the other two streams
+(§3.2), so it removes special code instead of adding some; it allows fixing §3.3 in the same
+place; it makes the functional test a check of the *product*, not of the harness.
+*Against*: it touches the node's startup path; it must be made robust on a multi-admin
+network (§5).
 
-**Scelta: Opzione C**, implementata da sola. Le due opzioni sono **ridondanti**, non
-complementari: entrambe garantiscono "lo stream esiste prima che serva un peso", e la H è un
-sottoinsieme operativo della C. Con la C attiva, il `create` di `role_admin.sh` diventa un
-no-op benigno (resta idempotente e innocuo — **non lo rimuovo**, è la belt-and-braces per le
-reti shadow già in esecuzione), e il loop d'attesa di `functional_lib.sh:233` **inizia a
-essere soddisfatto**, quindi non richiede modifiche.
+**Choice: Option C**, implemented alone. The two options are **redundant**, not
+complementary: both guarantee "the stream exists before a weight is needed", and H is an
+operational subset of C. With C active, the `create` in `role_admin.sh` becomes a benign no-op
+(it remains idempotent and harmless — **I do not remove it**, it is the belt-and-braces for
+shadow networks already running), and the wait loop of `functional_lib.sh:233` **starts being
+satisfied**, so it needs no change.
 
-### 3.6 Copertura della seconda metà: rilevare la violazione dell'invariante
+### 3.6 Covering the second half: detecting a violation of the invariant
 
-Per l'invariante di §3.2 servono tre possibilità:
+For the invariant of §3.2 there are three possibilities:
 
-**(i) `InitError` bloccante** sulla combinazione di parametri che stallerà.
-*Contro, decisivo*: un nodo che si unisce a una chain **già oltre** `setup-first-blocks` —
-avanzata con pesi pubblicati per altra via (il path `-weight` statico su alcuni nodi, o una
-pubblicazione manuale) — sincronizza da quota 0 e vedrebbe la stessa combinazione di
-parametri, rifiutando di partire su una rete sana. Rischio di *bricking* su deployment
-esistenti: **scartata**.
+**(i) A blocking `InitError`** on the parameter combination that will stall.
+*Against, decisively*: a node joining a chain **already past** `setup-first-blocks` —
+advanced with weights published by other means (the static `-weight` path on some nodes, or
+a manual publication) — syncs from height 0 and would see the same parameter combination,
+refusing to start on a healthy network. Risk of *bricking* existing deployments:
+**discarded**.
 
-**(ii) Fallback del selettore alle regole native a registro vuoto.** Cambierebbe la semantica
-di consenso dell'elezione, ed è asimmetrico rispetto a `VerifyBlockMinerWPoA`, che a registro
-vuoto già *salta* il controllo (`multichainblock.cpp:902`): il validatore è permissivo, il
-miner si rifiuta di minare, e proprio da questa asimmetria nasce lo stallo. Toccare il
-consenso per un problema di configurazione è sproporzionato: **scartata**.
+**(ii) The selector falling back to the native rules on an empty registry.** It would change
+the consensus semantics of the election, and it is asymmetric with `VerifyBlockMinerWPoA`,
+which on an empty registry already *skips* the check (`multichainblock.cpp:902`): the
+validator is lenient, the miner refuses to mine, and the stall comes precisely from this
+asymmetry. Touching consensus for a configuration problem is disproportionate:
+**discarded**.
 
-**(iii) WARNING di avvio specifico**, che nomina i tre numeri e la quota esatta alla quale la
-rete si fermerà, emesso solo quando il weight engine **e** la selezione wPoA sono entrambi
-attivi. Non può rompere nulla, e trasforma uno stallo muto in un errore diagnosticabile al
-primo avvio. È anche il pattern **già in uso nello stesso blocco** di `init.cpp` per le
-divergenze consensus-critical (`init.cpp:3599-3606`, `:3620-3626`).
+**(iii) A specific startup WARNING**, naming the three numbers and the exact height at which
+the network will stop, emitted only when the weight engine **and** wPoA selection are both
+on. It cannot break anything, and it turns a silent stall into an error diagnosable on the
+first start. It is also the pattern **already used in the same block** of `init.cpp` for
+consensus-critical divergences (`init.cpp:3599-3606`, `:3620-3626`).
 
-**Scelta: (iii)**, insieme all'Opzione C. Le due sono complementari e non ridondanti:
-la C garantisce l'ordinamento nella metà che il codice controlla (esistenza dello stream),
-la (iii) rende immediatamente visibile la metà che dipende dalla configurazione di chain e
-che il codice non può correggere da sé senza toccare il consenso.
-
----
-
-## 4. Interazione fra i due fix e decisione sul merge
-
-I due fix sono **logicamente indipendenti** (uno tocca il gate del permesso di mining, l'altro
-l'ordinamento del bootstrap dello stream) ma hanno **un punto di contatto reale**, individuato
-in §2.2: `StreamWeightRegistry::ResolveLocalAddress()` (`stream_weight_registry.cpp:75-77`) e
-`weight_publisher.cpp:72-74` usano `GetKeyFromAddressBook(MC_PTP_MINE)`, che è affetto dal
-Bug 1. Finché il Bug 1 non è corretto, l'identità locale usata per pubblicare il peso può
-cambiare a seconda che il nodo abbia minato il blocco precedente.
-
-Conseguenza pratica: il **test funzionale del Fix 2** (rete pulita, N≥4, weight engine attivo,
-verifica che al passaggio a wPoA il registro non sia vuoto) su un branch che contenga *solo*
-il Fix 2 potrebbe risultare instabile per una causa che appartiene al Fix 1.
-
-Decisione: i due fix restano su **branch separati e non mergiati**, come richiesto — nessuno
-dei due dipende dall'altro per *compilare* o per essere revisionato. La dipendenza è solo di
-*stabilità osservata a runtime* e viene dichiarata qui e nella docstring del test, non
-risolta con un merge di comodo. In fase di integrazione i due branch vanno applicati insieme.
+**Choice: (iii)**, together with Option C. The two are complementary, not redundant: C
+guarantees the ordering in the half the code controls (the stream's existence), (iii) makes
+immediately visible the half that depends on the chain configuration and that the code cannot
+fix by itself without touching consensus.
 
 ---
 
-## 5. Rischi collaterali per modifica proposta
+## 4. Interaction between the two fixes, and the merge decision
+
+The two fixes are **logically independent** (one touches the mining-permission gate, the
+other the ordering of the stream bootstrap) but they have **one real point of contact**,
+identified in §2.2: `StreamWeightRegistry::ResolveLocalAddress()`
+(`stream_weight_registry.cpp:75-77`) and `weight_publisher.cpp:72-74` use
+`GetKeyFromAddressBook(MC_PTP_MINE)`, which is affected by Bug 1. Until Bug 1 is fixed, the
+local identity used to publish the weight can change depending on whether the node mined the
+previous block.
+
+Practical consequence: the **functional test of Fix 2** (clean network, N≥4, weight engine
+on, check that the registry is not empty at the switch to wPoA) on a branch containing *only*
+Fix 2 could be unstable for a cause that belongs to Fix 1.
+
+Decision: the two fixes stay on **separate, unmerged branches**, as requested — neither
+depends on the other to *compile* or to be reviewed. The dependency is only one of *runtime
+observed stability*, and it is declared here and in the test's docstring rather than resolved
+with a convenience merge. At integration time the two branches must be applied together.
+
+---
+
+## 5. Collateral risks per proposed change
 
 ### Fix 1 — gate in `IsBarredByDiversity`
 
-| Rischio | Valutazione |
+| Risk | Assessment |
 |---|---|
-| **Chain che non usano wPoA** | Hook `NULL` (tool, `libbitcoinconsensus`) o `g_wpoa_enabled == false` → `IsBarredByDiversity` invariata **byte per byte**. `WPoAActiveAtHeight` ritorna già `false` anche se `IsProtocolMultichain()==0` o `MCP_ANYONE_CAN_MINE`. |
-| **Altezze pre-setup sulla stessa chain wPoA** | `WPoAActiveAtHeight` è `height >= setupfirstblocks`; sotto quella soglia lo spacing resta pienamente attivo, come oggi. |
-| **Reti a 3 nodi (dove il bug era mascherato)** | A N=3 lo spacing calcolato è 1, cioè già inerte (§2.1): il gate non può cambiare nulla di osservabile. Da verificare comunque per regressione con la suite a `NODES=3`. |
-| **Caso d=0 / peso uniforme / wPoA disattivo** | `miningdiversity = 0` → `diversity = 0+1 = 1` → già inerte, indipendentemente dal gate. Peso uniforme con wPoA attivo: la selezione resta pesata (uniforme), il gate toglie solo lo spacing, che è il comportamento voluto. |
-| **Rimozione dello spacing = perdita di una garanzia di sicurezza?** | Sotto wPoA la rotazione dei proposer è garantita dalla selezione pesata + beacon VRF/RANDAO, non dallo spacing round-robin: sono due meccanismi alternativi per lo stesso scopo, e il design (§5.12.3) prescrive esplicitamente il primo. Sulle altezze non-wPoA nulla cambia. |
-| **Ripristino di `CanMine()` nei 2 punti di `c81e513`** | Ripristina la semantica `checkmempool=0` corretta per il consenso (§2.3). Nessuna perdita: lo spacing è già neutralizzato dal gate. |
-| **`listminers` (`rpcpermissions.cpp:1434`)** | `m_WaitBlocks` diventa 0 e `m_NextAllowed` = prossimo blocco per ogni miner attivo. È semanticamente corretto sotto wPoA, ma **cambia l'output di un'RPC**: da annotare per chi ne consuma il valore. |
-| **Ordinamento di init (pre-esistente)** | `g_wpoa_enabled` è assegnato a `init.cpp:3349`, **dopo** `LoadBlockIndex` (:2761) e `ActivateBestChain` (:3086). Durante il caricamento iniziale tutti i predicati wPoA valgono `false`, quindi `UpdateChainMiningStatus` calcola `nCanMine` con lo spacing. **Difetto pre-esistente**, che affligge in egual misura `VerifyBlockMiner` e ogni altro consumatore wPoA; non introdotto né peggiorato da questa patch. Impatto limitato al ranking di fork-choice di blocchi già accettati. Segnalato, fuori scope. |
+| **Chains not using wPoA** | Hook `NULL` (tools, `libbitcoinconsensus`) or `g_wpoa_enabled == false` → `IsBarredByDiversity` unchanged **byte for byte**. `WPoAActiveAtHeight` already returns `false` when `IsProtocolMultichain()==0` or `MCP_ANYONE_CAN_MINE`. |
+| **Pre-setup heights on the same wPoA chain** | `WPoAActiveAtHeight` is `height >= setupfirstblocks`; below that threshold the spacing stays fully active, as today. |
+| **3-node networks (where the bug was masked)** | At N=3 the computed spacing is 1, i.e. already inert (§2.1): the gate cannot change anything observable. To be checked for regression anyway with the suite at `NODES=3`. |
+| **d=0 / uniform weight / wPoA off** | `miningdiversity = 0` → `diversity = 0+1 = 1` → already inert, independently of the gate. Uniform weight with wPoA on: the selection stays weighted (uniform), the gate only removes the spacing, which is the intended behaviour. |
+| **Removing the spacing = losing a security guarantee?** | Under wPoA the rotation of proposers is guaranteed by the weighted selection + VRF/RANDAO beacon, not by the round-robin spacing: they are two alternative mechanisms for the same purpose, and the design (§5.12.3) explicitly prescribes the first. On non-wPoA heights nothing changes. |
+| **Restoring `CanMine()` at the 2 points of `c81e513`** | Restores the `checkmempool=0` semantics that are correct for consensus (§2.3). No loss: the spacing is already neutralised by the gate. |
+| **`listminers` (`rpcpermissions.cpp:1434`)** | `m_WaitBlocks` becomes 0 and `m_NextAllowed` = next block for every active miner. Semantically correct under wPoA, but it **changes an RPC's output**: to be noted for whoever consumes the value. |
+| **Init ordering (pre-existing)** | `g_wpoa_enabled` is assigned at `init.cpp:3349`, **after** `LoadBlockIndex` (:2761) and `ActivateBestChain` (:3086). During the initial load every wPoA predicate is `false`, so `UpdateChainMiningStatus` computes `nCanMine` with the spacing. A **pre-existing defect**, affecting `VerifyBlockMiner` and every other wPoA consumer equally; neither introduced nor worsened by this patch. Impact limited to the fork-choice ranking of already accepted blocks. Reported, out of scope. |
 
-### Fix 2 — auto-creazione idempotente
+### Fix 2 — idempotent auto-creation
 
-| Rischio | Valutazione |
+| Risk | Assessment |
 |---|---|
-| **Idempotenza su chiamate ripetute** | `EnsureStreamExists` interroga `FindEntityByName` a ogni invocazione e ritorna subito `true` se lo stream c'è: nessuna seconda `create`. |
-| **Race fra più admin che creano in parallelo** | I nomi di stream sono unici: se due `create` finiscono nello stesso blocco una viene rifiutata in accettazione tx. Il perdente al tick successivo trova lo stream del vincitore via `FindEntityByName` e converge. **Condizione necessaria**: il latch non deve impedire il re-check — garantita perché il controllo di esistenza precede il latch. |
-| **Retry illimitati su nodi non-admin** | La `create` su un nodo senza permesso `create` fallisce *sempre*. Correggendo §3.3 con un retry non limitato si otterrebbe spam di log ogni 3 s. Mitigazione: contatore di tentativi **limitato** (non un booleano), così i fallimenti transitori vengono superati e quelli permanenti smettono. |
-| **Nodi senza permesso `create`** | Comportamento corretto e invariato: non creano, attendono, sottoscrivono. La sicurezza resta affidata alle permission MultiChain, non a convenzioni. |
-| **Chain senza weight engine** | Il path `-weight` chiamava già `EnsureStreamExists` al primo tick: nessun cambio di comportamento osservabile. |
-| **Chain con `enablewpoaweights=0`** | `init.cpp:3641` non lancia alcun thread: lo stream non viene mai creato, come oggi. |
-| **Creazione anticipata dello stream** | Lo stream viene creato prima che esista un peso: `getallweights` riporterà `0 validators` su uno stream **esistente e vuoto** invece che su uno stream assente. Stato transitorio corretto e più diagnosticabile di oggi. |
-| **Ordine rispetto a `setup-first-blocks`** | La `create` parte appena il nodo è pronto (tip presente, IBD finito), cioè **molto prima** di `setupfirstblocks` (default 30 nell'harness): confermata con ampio margine prima che wPoA ingaggi. È il margine che rompe il ciclo in modo riproducibile. |
-| **Ordine rispetto ai grant `.write`** | Un grant `wpoa-weights.write` emesso prima che lo stream esista viene silenziosamente scartato — è esattamente il motivo per cui `functional_lib.sh:227-232` li ri-emette. Con la creazione anticipata, il grant iniziale di `_fl_bootstrap_node:173` ha molte più probabilità di attecchire, e il re-issue resta come rete di sicurezza. |
-| **Retry limitato invece del latch permanente** | Il latch resta sul **broadcast riuscito** (mai due tx di `create`, quindi nessun rischio di stream duplicato se MultiChain accettasse un nome già presente ma non confermato); il retry limitato agisce solo sui **fallimenti**. Costo peggiore su un nodo senza permesso `create`: N tentativi falliti e poi silenzio, invece di uno solo. |
-| **Create trasmessa ma mai confermata** | Se la tx di `create` finisce in mempool e la catena si ferma, il latch impedisce la ri-trasmissione. Difetto pre-esistente, non peggiorato: con la correzione la `create` parte mentre la catena avanza sotto regole native, quindi conferma con ampio margine. Annotato, non risolto. |
-| **WARNING sull'invariante — falsi positivi** | Il warning si attiva solo con weight engine **e** selezione wPoA entrambi attivi. Su un nodo che si unisce a una chain sana già oltre `setup-first-blocks` (avanzata con pesi pubblicati per altra via) il warning è un falso positivo: è il prezzo di non usare un `InitError`, che invece impedirebbe l'avvio (cfr. §3.6). Testo del messaggio esplicito sul fatto che riguarda l'avvio di una rete **pulita**. |
-| **WARNING sull'invariante — nessun effetto sul consenso** | È solo una `LogPrintf`: non cambia flag, parametri o percorsi di validazione. |
+| **Idempotence across repeated calls** | `EnsureStreamExists` queries `FindEntityByName` on every invocation and returns `true` at once if the stream exists: no second `create`. |
+| **Race between several admins creating in parallel** | Stream names are unique: if two `create`s land in the same block one is rejected at transaction acceptance. The loser finds the winner's stream through `FindEntityByName` on the next tick and converges. **Necessary condition**: the latch must not prevent the re-check — guaranteed because the existence check precedes the latch. |
+| **Unbounded retries on non-admin nodes** | A `create` on a node without the `create` permission *always* fails. Fixing §3.3 with an unbounded retry would spam the log every 3 s. Mitigation: a **bounded** attempt counter (not a boolean), so transient failures are overcome and permanent ones stop. |
+| **Nodes without the `create` permission** | Correct and unchanged behaviour: they do not create, they wait and subscribe. Security remains entrusted to MultiChain permissions, not to conventions. |
+| **Chain without the weight engine** | The `-weight` path already called `EnsureStreamExists` on the first tick: no observable change in behaviour. |
+| **Chain with `enablewpoaweights=0`** | `init.cpp:3641` launches no thread: the stream is never created, as today. |
+| **Early creation of the stream** | The stream is created before any weight exists: `getallweights` will report `0 validators` on an **existing, empty** stream instead of on a missing one. A correct transient state, more diagnosable than today's. |
+| **Order relative to `setup-first-blocks`** | The `create` starts as soon as the node is ready (tip present, IBD finished), i.e. **well before** `setupfirstblocks` (default 30 in the harness): confirmed with a wide margin before wPoA engages. It is the margin that breaks the cycle reproducibly. |
+| **Order relative to the `.write` grants** | A `wpoa-weights.write` grant issued before the stream exists is silently discarded — exactly why `functional_lib.sh:227-232` re-issues them. With early creation, the initial grant of `_fl_bootstrap_node:173` is much more likely to take, and the re-issue stays as a safety net. |
+| **Bounded retry instead of the permanent latch** | The latch stays on the **successful broadcast** (never two `create` transactions, hence no risk of a duplicate stream should MultiChain accept a name already present but unconfirmed); the bounded retry acts only on **failures**. Worst cost on a node without `create`: N failed attempts and then silence, instead of just one. |
+| **Create broadcast but never confirmed** | If the `create` transaction ends up in the mempool and the chain stops, the latch prevents re-broadcasting. A pre-existing defect, not worsened: with the fix the `create` starts while the chain advances under native rules, so it confirms with a wide margin. Noted, not solved. |
+| **Invariant WARNING — false positives** | The warning fires only with the weight engine **and** wPoA selection both on. On a node joining a healthy chain already past `setup-first-blocks` (advanced with weights published by other means) the warning is a false positive: it is the price of not using an `InitError`, which would instead prevent startup (cf. §3.6). The message text says explicitly that it concerns starting a **clean** network. |
+| **Invariant WARNING — no effect on consensus** | It is only a `LogPrintf`: it changes no flag, parameter or validation path. |
 
 ---
 
-## 6. Piano di intervento (esito della Fase 1)
+## 6. Intervention plan (outcome of Phase 1)
 
 **Branch `fix/wpoa-diversity-spacing-canmine`**
-1. `src/permissions/permission.h` — dichiarare l'hook `mc_WPoAGovernsMiningHook`.
-2. `src/permissions/permission.cpp` — definirlo `NULL`; gate in testa a `IsBarredByDiversity`.
-3. `src/wpoa/wpoa_selector.cpp` — thunk su `WPoAActiveAtHeight` + installazione a static-init.
-4. `src/protocol/multichainblock.cpp` — ripristinare `CanMine()` in `CheckBlockPermissions`.
-5. `src/miner/miner.cpp` — ripristinare `CanMine()` nel probe di `CreateNewBlock`.
-6. Test: caso di regressione mirato "doppia vittoria consecutiva a N≥4 accettata".
+1. `src/permissions/permission.h` — declare the hook `mc_WPoAGovernsMiningHook`.
+2. `src/permissions/permission.cpp` — define it `NULL`; gate at the top of
+   `IsBarredByDiversity`.
+3. `src/wpoa/wpoa_selector.cpp` — thunk over `WPoAActiveAtHeight` + static-init installation.
+4. `src/protocol/multichainblock.cpp` — restore `CanMine()` in `CheckBlockPermissions`.
+5. `src/miner/miner.cpp` — restore `CanMine()` in the `CreateNewBlock` probe.
+6. Test: a targeted regression case "a double consecutive win at N≥4 is accepted".
 
 **Branch `fix/wpoa-weights-stream-bootstrap`**
-1. `src/wpoa/stream_weight_registry.h/.cpp` — esporre `EnsureStreamReady()` pubblica;
-   sostituire il latch booleano di `create` con "latch sul broadcast riuscito + retry
-   limitato sui fallimenti", così un errore transitorio non incastra il nodo per sempre.
-2. `src/weight_engine/weight_engine.cpp` — chiamare `EnsureStreamReady()` accanto a
-   `EnsureInputStreams()`, **prima** del gate d'epoca.
-3. `src/core/init.cpp` — WARNING di avvio sulla violazione dell'invariante di §3.2, con i tre
-   numeri e la quota di stallo prevista.
-4. Test: rete pulita con weight engine su configurazione che rispetta l'invariante; verifica
-   che lo stream esista **prima** della transizione, che il registro non sia vuoto alla quota
-   di transizione e che almeno un validatore sia punteggiabile.
+1. `src/wpoa/stream_weight_registry.h/.cpp` — expose a public `EnsureStreamReady()`; replace
+   the boolean `create` latch with "latch on successful broadcast + bounded retry on
+   failures", so a transient error does not wedge the node forever.
+2. `src/weight_engine/weight_engine.cpp` — call `EnsureStreamReady()` next to
+   `EnsureInputStreams()`, **before** the epoch gate.
+3. `src/core/init.cpp` — a startup WARNING on a violation of the invariant of §3.2, with the
+   three numbers and the expected stall height.
+4. Test: a clean network with the weight engine on a configuration that respects the
+   invariant; check that the stream exists **before** the transition, that the registry is
+   not empty at the transition height, and that at least one validator can be scored.
 
-Nessun merge nel branch principale: i due fix sono indipendenti (§4).
+No merge into the main branch: the two fixes are independent (§4).
 
 ---
 
-## 7. Esito della verifica sperimentale
+## 7. Outcome of the experimental verification
 
-Tutte le esecuzioni sotto sono su rete reale multi-nodo (non simulata), con i binari
-compilati dai rispettivi branch. Build pulita su entrambi (`EXIT=0`), inclusi
-`multichain-util`, `multichain-cli` e `libbitcoinconsensus.la`: sono esattamente i target
-che avrebbero fallito con un simbolo irrisolto se il gate fosse stato scritto come chiamata
-diretta a `WPoAActiveAtHeight` da `permission.cpp` (§2.4).
+All the runs below are on a real multi-node network (not simulated), with the binaries built
+from the respective branches. Clean build on both (`EXIT=0`), including `multichain-util`,
+`multichain-cli` and `libbitcoinconsensus.la`: exactly the targets that would have failed with
+an unresolved symbol had the gate been written as a direct call to `WPoAActiveAtHeight` from
+`permission.cpp` (§2.4).
 
-Controllo dei simboli, a conferma del progetto dell'hook:
+Symbol check, confirming the hook design:
 
 | Target | `mc_WPoAGovernsMiningHook` | thunk + installer |
 |---|---|---|
-| `multichaind` | presente (BSS) | **presente** → gate attivo |
-| `multichain-util` | presente (BSS, = NULL) | assente → comportamento nativo invariato |
-| `libbitcoinconsensus` | presente (= NULL) | assente → comportamento nativo invariato |
+| `multichaind` | present (BSS) | **present** → gate active |
+| `multichain-util` | present (BSS, = NULL) | absent → native behaviour unchanged |
+| `libbitcoinconsensus` | present (= NULL) | absent → native behaviour unchanged |
 
 ### Fix 1 — `fix/wpoa-diversity-spacing-canmine`
 
-Aritmetica dello spacing verificata contro la formula C++ (`fl_native_diversity_spacing`):
-`d=0.3` → N=3 ⇒ 1 (inerte), N=4 ⇒ 2, N=10 ⇒ 3; `d=0` → 1 a ogni N (il caso "d=0 non
-alterato" è confermato per costruzione).
+Spacing arithmetic checked against the C++ formula (`fl_native_diversity_spacing`):
+`d=0.3` → N=3 ⇒ 1 (inert), N=4 ⇒ 2, N=10 ⇒ 3; `d=0` → 1 at every N (the "d=0 unchanged" case
+is confirmed by construction).
 
-| Esecuzione | Esito |
+| Run | Outcome |
 |---|---|
-| `NODES=4 WEIGHTS="100 200 400 800"` | **PASS** (9/9 check). Spacing nativo = 2 (regime in cui il bug morde). **19 coppie di blocchi consecutivi dello stesso miner** su una finestra di 30 blocchi, tutte accettate. 0 `Permission denied for miner`, 0 `cannot mine now`, 0 `no local mining key`. |
-| `NODES=3` (regime in cui il bug era mascherato) | **PASS** (10/10 check). Il check rileva correttamente spacing = 1 e dichiara il regime inerte; le tre asserzioni sui sintomi girano comunque e sono a zero. Lo scenario dedicato a 4 nodi parte in automatico e riproduce **19 coppie consecutive**, tutte accettate. |
+| `NODES=4 WEIGHTS="100 200 400 800"` | **PASS** (9/9 checks). Native spacing = 2 (the regime where the bug bites). **19 pairs of consecutive blocks by the same miner** in a 30-block window, all accepted. 0 `Permission denied for miner`, 0 `cannot mine now`, 0 `no local mining key`. |
+| `NODES=3` (the regime where the bug was masked) | **PASS** (10/10 checks). The check correctly detects spacing = 1 and declares the regime inert; the three symptom assertions run anyway and are at zero. The dedicated 4-node scenario starts automatically and reproduces **19 consecutive pairs**, all accepted. |
 
-Le 19 coppie consecutive sono la misura diretta della correzione: ognuna di esse, prima
-della patch, sarebbe stata rifiutata in `CheckBlockPermissions` oppure — più probabilmente —
-non sarebbe mai stata prodotta, perché il proposer eletto si sarebbe considerato privo di
-chiave di mining (`GetKeyFromAddressBook`, §2.2) e avrebbe dormito un'ora.
+The 19 consecutive pairs are the direct measure of the fix: each of them, before the patch,
+would have been rejected in `CheckBlockPermissions` or — more likely — never produced, because
+the elected proposer would have considered itself without a mining key
+(`GetKeyFromAddressBook`, §2.2) and slept for an hour.
 
-Per confronto, la misura citata nel commento di `shadow/config/params.overrides` sullo stesso
-fenomeno: *"0 blocchi consecutivi su 190 misurati, contro ~99 attesi"* con `MINING_DIVERSITY`
-attivo — ed è la ragione per cui quella configurazione ha dovuto azzerare `MINING_DIVERSITY`
-per poter misurare la sola selezione pesata. Con questa correzione l'azzeramento non è più
-necessario: lo spacing è inerte sulle altezze governate da wPoA e resta pienamente attivo
-altrove.
+For comparison, the measurement quoted in the comment of `shadow/config/params.overrides` on
+the same phenomenon: *"0 consecutive blocks out of 190 measured, against ~99 expected"* with
+`MINING_DIVERSITY` on — which is why that configuration had to zero `MINING_DIVERSITY` to
+measure the weighted selection alone. With this fix zeroing it is no longer necessary: the
+spacing is inert on wPoA-governed heights and stays fully active elsewhere.
 
 ### Fix 2 — `fix/wpoa-weights-stream-bootstrap`
 
-Rete pulita a 3 nodi, `-enablewpoa=1 -enableweightengine=1 -weightepochlength=10`,
-`setup-first-blocks=30` (invariante di §3.2 soddisfatta: `30 > 10+6-1 = 15`).
+A clean 3-node network, `-enablewpoa=1 -enableweightengine=1 -weightepochlength=10`,
+`setup-first-blocks=30` (the invariant of §3.2 holds: `30 > 10+6-1 = 15`).
 
-| Check | Esito | Evidenza |
+| Check | Outcome | Evidence |
 |---|---|---|
-| `stream_created_early` | **PASS** | `wpoa-weights` esiste **a quota 7**, cioè prima della transizione (30) e prima che un peso sia calcolabile (15). Prima della patch a quota 7 lo stream non poteva esistere. Creato CLOSED (`restrict.write = true`), come da Def. 5.16 |
-| `no_stall_at_transition` | **PASS** | catena a quota 60 > 30 |
-| `registry_populated` | **PASS** | tutti e 3 i nodi riportano `validators=3`; 3 validatori con peso non nullo (punteggiabili) |
-| `no_scoring_stall_logs` | **PASS** | **0** occorrenze di `cannot score (unsynced or unweighted)` su ogni nodo |
-| `weights_agree_across_nodes` | **PASS** | nessuna divergenza sull'aggregato |
+| `stream_created_early` | **PASS** | `wpoa-weights` exists **at height 7**, i.e. before the transition (30) and before a weight is computable (15). Before the patch the stream could not exist at height 7. Created CLOSED (`restrict.write = true`), as per Def. 5.16 |
+| `no_stall_at_transition` | **PASS** | chain at height 60 > 30 |
+| `registry_populated` | **PASS** | all 3 nodes report `validators=3`; 3 validators with a non-zero weight (scorable) |
+| `no_scoring_stall_logs` | **PASS** | **0** occurrences of `cannot score (unsynced or unweighted)` on every node |
+| `weights_agree_across_nodes` | **PASS** | no divergence on the aggregate |
 
-Pipeline dei pesi confermata end-to-end dal log del nodo, non solo dalle RPC:
+Weight pipeline confirmed end to end from the node log, not only from the RPCs:
 
 ```
 [WeightEngine] epoch 2 (height 25): w_k = 3750 for 19tAT23FWx8TYAHje...
 [StreamWeightRegistry] All nodes weights: 3 validators, total=6750
 ```
 
-cioè il peso è stato **derivato** dal motore (membership self-attestata + ESG firmata dalla
-CA + attività e riconciliazione dai blocchi) e pubblicato, con il registro popolato **prima**
-della quota 30. Nella stessa esecuzione si contano 10 elezioni `wPoA-sortition` fra le quote
-30 e 59: la catena è governata da wPoA e avanza.
+i.e. the weight was **derived** by the engine (self-attested membership + ESG signed by the
+CA + activity and reconciliation from the blocks) and published, with the registry populated
+**before** height 30. In the same run there are 10 `wPoA-sortition` elections between heights
+30 and 59: the chain is governed by wPoA and advances.
 
-**Controllo negativo del WARNING.** Sulla configurazione di test (invariante soddisfatta) il
-warning è correttamente **assente**. Su parametri di default, invece, si attiva con i numeri
-esatti:
+**Negative control of the WARNING.** On the test configuration (invariant satisfied) the
+warning is correctly **absent**. On default parameters, instead, it fires with the exact
+numbers:
 
 ```
 [WeightEngine] WARNING: bootstrap ordering. The first weight cannot exist before height 105
@@ -624,106 +622,103 @@ proposer can be elected, and the chain will stall at height 60. Set setup-first-
 greater than 105, or lower weight-epoch-length, in params.dat BEFORE starting the network.
 ```
 
-### Indipendenza dei due branch (verifica)
+### Independence of the two branches (verified)
 
-Intersezione dei file modificati dai due branch rispetto a `master`: **vuota**. Merge di
-prova (`git merge-tree`, senza effetti collaterali): **0 conflitti**. Nessun merge eseguito,
-come da §4.
+Intersection of the files modified by the two branches relative to `master`: **empty**. Trial
+merge (`git merge-tree`, no side effects): **0 conflicts**. No merge performed, as per §4.
 
 ---
 
-## 8. Seguito — floor di `setup-first-blocks` derivato alla genesi
+## 8. Follow-up — a `setup-first-blocks` floor derived at genesis
 
-Branch: `fix/wpoa-setup-first-blocks-floor` (da `master`, commit `8e1ca88`).
+Branch: `fix/wpoa-setup-first-blocks-floor` (from `master`, commit `8e1ca88`).
 
-### 8.1 Il FAIL segnalato su `diversity_spacing_4n` non era una regressione
+### 8.1 The FAIL reported on `diversity_spacing_4n` was not a regression
 
-Sintomi riportati: `0` coppie consecutive con spacing 2 e **137** occorrenze di
-`no local mining key, waiting`. È la firma esatta del bug **pre-fix** descritto in §2.2.
+Reported symptoms: `0` consecutive pairs with spacing 2 and **137** occurrences of
+`no local mining key, waiting`. It is the exact signature of the **pre-fix** bug described in
+§2.2.
 
-Causa: **binario stale**. `src/multichaind` era del 09-04 10:04 — la build del branch
-`fix/wpoa-weights-stream-bootstrap`, che parte da `master` e **non** contiene il Fix 1. I
-sorgenti erano del 09-05 (post-merge), ma non era stato rifatto `make`. Verifica diretta sul
-binario: `0` occorrenze di `WPoAGovernsMiningThunk` e nessun simbolo
-`mc_WPoAGovernsMiningHook`. Dopo `make`, entrambi presenti. Nessuna correzione di codice
-necessaria — è servito solo ricompilare.
+Cause: **a stale binary**. `src/multichaind` was from 09-04 10:04 — the build of branch
+`fix/wpoa-weights-stream-bootstrap`, which starts from `master` and does **not** contain Fix 1.
+The sources were from 09-05 (post-merge), but `make` had not been re-run. Direct check on the
+binary: `0` occurrences of `WPoAGovernsMiningThunk` and no `mc_WPoAGovernsMiningHook` symbol.
+After `make`, both present. No code fix needed — only a rebuild.
 
-### 8.2 L'invariante diventa un valore derivato
+### 8.2 The invariant becomes a derived value
 
-Fino a qui l'invariante di §3.2 era solo *segnalata* da un WARNING. Ora è **derivata**:
-quando il weight engine alimenta la selezione wPoA, `setup-first-blocks` viene alzato al
-suo floor; un valore maggiore resta intatto (una fase di setup più lunga è una scelta
-legittima dell'operatore).
+Up to here the invariant of §3.2 was only *reported* by a WARNING. Now it is **derived**:
+when the weight engine feeds wPoA selection, `setup-first-blocks` is raised to its floor; a
+larger value is left intact (a longer setup phase is a legitimate operator choice).
 
-**Correzione all'aritmetica richiesta.** Il floor non è `epoch + margin`. Quella è la quota
-in cui il primo peso diventa *calcolabile*; ma il selettore legge **solo item confermati**, e
-il valore deve ancora essere notato dal tick del motore, pubblicato e **minato** — in un
-blocco che le regole **native** possano ancora produrre, perché da `setup-first-blocks` in
-poi un blocco richiede proprio il registro che quel blocco popolerebbe. Con il floor a
-`epoch + margin` il blocco di conferma cade esattamente sulla prima quota wPoA: **deadlock
-largo un blocco**. Da cui `MC_WEIGHT_SETUP_PUBLISH_MARGIN` (3 blocchi: tick del motore,
-conferma, propagazione) e il `+1`:
+**A correction to the requested arithmetic.** The floor is not `epoch + margin`. That is the
+height at which the first weight becomes *computable*; but the selector reads **confirmed
+items only**, and the value still has to be noticed by the engine's tick, published and
+**mined** — in a block that the **native** rules can still produce, because from
+`setup-first-blocks` onwards a block requires precisely the registry that block would
+populate. With the floor at `epoch + margin` the confirming block falls exactly on the first
+wPoA height: **a deadlock one block wide**. Hence `MC_WEIGHT_SETUP_PUBLISH_MARGIN` (3 blocks:
+engine tick, confirmation, propagation) and the `+1`:
 
 ```
 first_computable = weight-epoch-length + STABILITY_MARGIN - 1
 floor            = first_computable + MC_WEIGHT_SETUP_PUBLISH_MARGIN + 1
 ```
 
-Per `epoch=40`: calcolabile a 45, confermabile entro 48, floor **49**.
+For `epoch=40`: computable at 45, confirmable by 48, floor **49**.
 
-### 8.3 Dove viene applicato, e perché solo lì
+### 8.3 Where it is applied, and why only there
 
-Solo sul percorso di **creazione** della catena:
+Only on the chain **creation** path:
 
-* `AppInit2`, sul ramo del nodo di genesi, **prima** di `Build()` — che calcola l'hash dei
-  parametri. Il valore corretto entra così nell'identità della catena e raggiunge ogni nodo
-  che si unisce tramite la normale eredità di `params.dat`.
-* `multichain-util create` / `clone`, così che il file che l'operatore apre sia già coerente.
+* `AppInit2`, on the genesis node's branch, **before** `Build()` — which computes the
+  parameter hash. The corrected value thus becomes part of the chain's identity and reaches
+  every joining node through the ordinary `params.dat` inheritance.
+* `multichain-util create` / `clone`, so that the file the operator opens is already
+  consistent.
 
-Riscriverlo su una catena **già avviata** non deve mai accadere: `setup-first-blocks` è
-hash-enforced e cambiarlo dopo forkerebbe la rete. Il WARNING di runtime di §3.6 resta come
-rete di sicurezza per le catene create prima di questa regola.
+Rewriting it on a chain **already running** must never happen: `setup-first-blocks` is
+hash-enforced and changing it later would fork the network. The runtime WARNING of §3.6 stays
+as a safety net for chains created before this rule.
 
-I due switch sono passati **dal chiamante**, non letti da `params.dat`: alla genesi possono
-arrivare da riga di comando su un file che dice ancora `false` — ed è esattamente la
-configurazione che si blocca. La risoluzione ricalca quella di `AppInit2` (master switch da
-CLI incluso), di proposito: derivare il floor da una wPoA che poi non gira allungherebbe
-inutilmente il setup.
+The two switches are passed **by the caller**, not read from `params.dat`: at genesis they may
+arrive from the command line on a file that still says `false` — and that is exactly the
+configuration that stalls. The resolution mirrors `AppInit2`'s (master switch from the CLI
+included), on purpose: deriving the floor from a wPoA that then does not run would lengthen
+the setup needlessly.
 
-`SetParam()` non è utilizzabile — serve solo parametri `CALCULATED`/`COMMENT` e rifiuta
-quelli già presenti — quindi il valore è scritto direttamente nello store dei parametri.
-Non è esposto come helper generico "sovrascrivi un parametro utente": riscrivere un
-parametro hash-enforced è legittimo **solo** qui.
+`SetParam()` cannot be used — it serves only `CALCULATED`/`COMMENT` parameters and refuses
+those already present — so the value is written directly into the parameter store. It is not
+exposed as a generic "overwrite a user parameter" helper: rewriting a hash-enforced parameter
+is legitimate **only** here.
 
-### 8.4 Verifica
+### 8.4 Verification
 
-| Caso | Configurazione | Esito |
+| Case | Configuration | Outcome |
 |---|---|---|
-| valore troppo basso, flag in params.dat | epoch 40, setup 20 | **20 → 46/49**, WARNING, scritto in `params.dat` |
-| valore troppo basso, flag da CLI | params.dat `false`, `-enablewpoa -enableweightengine` | **20 → 49** — il caso che una lettura da solo `params.dat` avrebbe mancato |
-| valore sufficiente | epoch 40, setup 90 | **90 invariato** |
-| weight engine spento | epoch 40, setup 20 | **20 invariato** |
-| `multichain-util create` | `-enableweightengine=1 -weightepochlength=40 -setupfirstblocks=20` | **20 → 46**, WARNING a video, in `params.dat` |
+| value too low, flags in params.dat | epoch 40, setup 20 | **20 → 46/49**, WARNING, written into `params.dat` |
+| value too low, flags from the CLI | params.dat `false`, `-enablewpoa -enableweightengine` | **20 → 49** — the case that reading `params.dat` alone would have missed |
+| sufficient value | epoch 40, setup 90 | **90 unchanged** |
+| weight engine off | epoch 40, setup 20 | **20 unchanged** |
+| `multichain-util create` | `-enableweightengine=1 -weightepochlength=40 -setupfirstblocks=20` | **20 → 46**, WARNING on screen, in `params.dat` |
 
-**End-to-end sulla configurazione che prima si bloccava** (3 nodi, epoch 40,
-`setup-first-blocks` 20 — che senza floor si ferma a quota 20 con 0 pubblicazioni di peso):
-6/6 check PASS. Floor 20→49; catena a **162**; `validators=3 total=2250` su tutti i nodi;
-**0** `cannot score (unsynced or unweighted)`; pesi concordi.
+**End to end on the configuration that used to stall** (3 nodes, epoch 40,
+`setup-first-blocks` 20 — which without the floor stops at height 20 with 0 weight
+publications): 6/6 checks PASS. Floor 20→49; chain at **162**; `validators=3 total=2250` on
+every node; **0** `cannot score (unsynced or unweighted)`; weights in agreement.
 
-Il check `setup_first_blocks_floor` legge il valore da `getblockchainparams`, non dal file
-del nodo seed: dimostra che il valore corretto è davvero quello **della catena**, quindi
-ereditato da tutti.
+The `setup_first_blocks_floor` check reads the value from `getblockchainparams`, not from the
+seed node's file: it shows that the corrected value really is the **chain's**, hence inherited
+by everybody.
 
-### 8.5 Constatazione collaterale (non corretta qui)
+### 8.5 A collateral finding (not fixed here)
 
-`AppInit2` risolve i flag wPoA leggendo da `params.dat` le sole chiavi **per-fase**
-(`enable-wpoa-weights`, `enable-wpoa-selection`, …); il master `enable-wpoa` è consultato
-**solo** da riga di comando (`init.cpp:3321-3324`). Quindi impostare unicamente
-`enable-wpoa = true` nel file lascia tutte le fasi spente — e, con
-`enable-weight-engine = true`, il nodo si rifiuta di partire con
-*"-enableweightengine requires the wPoA weights stream"*.
+`AppInit2` resolves the wPoA flags by reading from `params.dat` only the **per-phase** keys
+(`enable-wpoa-weights`, `enable-wpoa-selection`, …); the `enable-wpoa` master is consulted
+**only** from the command line (`init.cpp:3321-3324`). So setting only `enable-wpoa = true` in
+the file leaves every phase off — and, with `enable-weight-engine = true`, the node refuses to
+start with *"-enableweightengine requires the wPoA weights stream"*.
 
-Fuori dallo scope di questo branch, quindi **non corretta**. Il test di bootstrap la aggira
-mettendo in `params.dat` la sola `weight-epoch-length` (il valore da cui il floor deriva, e
-che deve essere di catena) e passando gli switch da CLI, con il commento che ne spiega il
-motivo.
+Out of scope for this branch, hence **not fixed**. The bootstrap test works around it by
+putting only `weight-epoch-length` in `params.dat` (the value the floor derives from, which
+must be a chain value) and passing the switches from the CLI, with a comment explaining why.

@@ -135,7 +135,7 @@ How the switches are read, resolved and wired into `AppInit2`:
 > high-level; the per-phase mechanics live in the phase guides linked from the
 > master [implementation-guide.md](../../docs/implementation-guide.md). **Keep this
 > diagram in sync whenever the architecture changes** (see the
-> [Documentation Maintenance](../../docs/implementation-guide.md#documentation-maintenance)
+> [documentation maintenance](../../docs/README.md#keeping-the-documentation-current)
 > process).
 
 ```mermaid
@@ -188,7 +188,7 @@ flowchart TD
 
     subgraph P4 [Phase 4 — Private sortition]
         PS["PrivateSortition<br/>u=VRF_sk(seed‖PROPOSER‖h); score=−ln(u)/f(w_eff)<br/>score_norm = 1−e^(−W·score)<br/>D = T + δ·T·(2·score_norm−1) + λ·Φ"]
-        PMINE["miner.cpp<br/>self-elect: mine at now + D"]
+        PMINE["miner.cpp<br/>self-elect: mine at parent.nTime + D"]
         PVAL["multichainblock.cpp<br/>verify VRF + score;<br/>accept iff nTime ≥ parent.nTime + D"]
         PS --> PMINE
         PS --> PVAL

@@ -1,25 +1,25 @@
 # Native MultiChain PoA — Block-Creation Delay: Formula, Convergence, Edge Cases
 
-> **Register: technical-direct** for the code transcription and analysis. Sections 3
-> and 4 (convergence, law of large numbers) shift to a more formal register, as stated
-> at their start.
+> **Type:** reference · **Register:** technical-direct for the code transcription and
+> analysis; §3 and §4 (convergence, law of large numbers) shift to a more formal register,
+> as stated at their start · **Verified against the code:** 2026-09-26, commit `3d2fc551`
 >
 > **How this document cites code.** References are by **symbol** (function, variable),
-> never by line number: line anchors rot on every edit, and in an earlier revision they
-> had drifted by 30–90 lines, pointing at closing braces and blank lines. The entry
-> point for everything below is **`GetMinerAndExpectedMiningStartTime()`** in
+> never by line number: line anchors rot on every edit. The entry point for everything
+> below is **`GetMinerAndExpectedMiningStartTime()`** in
 > [`miner/miner.cpp`](../src/miner/miner.cpp).
 
 This documents the **native** (pre-wPoA) MultiChain Proof-of-Authority block-creation
-delay — the round-robin / mining-diversity timing gate that wPoA Phase 2 *replaces* for
-a weighted election (see the `/* MCHN START - wPoA Phase 2 */` comment at
-[`miner/miner.cpp:1184-1185`](../src/miner/miner.cpp): *"Replace the
-round-robin mining-diversity timing gate with a weighted election..."*). It is the
-baseline the wPoA delay formula (`docs/phase4-implementation-guide.md` §4,
-the banded `D = T + δ·T·(2·score_norm − 1) + λ·Φ`, see
-[protocol-parameters.md §2.1](protocol-parameters.md#21-the-phase-4-mining-delay))
-was built to supersede, and is still the code path
-taken whenever wPoA is disabled (`-enablewpoa=0`, the default).
+delay — the round-robin / mining-diversity timing gate that the wPoA branches *replace* on
+governed heights (the `/* MCHN START - wPoA Phase 2 */` comment in
+`GetMinerAndExpectedMiningStartTime`: *"Replace the round-robin mining-diversity timing
+gate with a weighted election..."*). It is the baseline the Phase 4 band
+`D = T + δ·T·(2·score_norm − 1) + λ·Φ`
+([protocol-parameters.md §2.1](protocol-parameters.md#21-the-phase-4-mining-delay),
+[private-sortition.md](private-sortition.md)) was built to supersede, and it is still the
+code path taken whenever wPoA selection is off, during the setup phase, and during the
+bootstrap window before the first positive weight confirms (the `wpoa_native_fallback:`
+label, [miner-integration.md §4](miner-integration.md#4-the-native-fallback)).
 
 ---
 
@@ -41,13 +41,13 @@ taken whenever wPoA is disabled (`-enablewpoa=0`, the default).
 
 | Symbol | File : line | Role |
 |---|---|---|
-| `GetMinerAndExpectedMiningStartTime()` | [`miner/miner.cpp:1040`](../src/miner/miner.cpp) | The whole delay computation; called once per new tip from the miner thread, cached until the tip or mempool changes. |
-| Native (non-wPoA) branch | [`miner/miner.cpp:1240-1434`](../src/miner/miner.cpp) | The round-robin diversity + emergency-miner backoff math analyzed below. |
-| `LastActiveMiners()` | [`miner/miner.cpp:956-1019`](../src/miner/miner.cpp) | Scans back over the recent chain to find the set of distinct miners who have proposed recently (the "pool"). |
-| `Params().TargetSpacing()` | [`chainparams/chainparams.h:79`](../src/chainparams/chainparams.h) | `T`, the configured target block time, backed by the `targetblocktime` chain parameter ([`chainparams/paramlist.h:29-30`](../src/chainparams/paramlist.h), default 15s). |
-| `Params().MiningTurnover()` | [`chainparams/chainparams.h:67`](../src/chainparams/chainparams.h) | The `miningturnover` parameter — fraction of active miners rotated into the pool each round. |
-| `GetMaxActiveMinersCount()` | [`miner/miner.cpp:1021-1038`](../src/miner/miner.cpp) | `n`, the number of currently-permissioned active miners (`CPermissions::GetActiveMinerCount()`), or effectively unbounded if `-anyonecanmine`. |
-| `mc_gState->m_Permissions->GetMinerCount()` / `GetActiveMinerCount()` | [`permissions/permission.h:349-350`](../src/permissions/permission.h) | Total permissioned miners vs. those flagged *active* (recently seen mining). |
+| `GetMinerAndExpectedMiningStartTime()` | [`miner/miner.cpp`](../src/miner/miner.cpp) | The whole delay computation; called once per new tip from the miner thread, cached until the tip or mempool changes. |
+| Native (non-wPoA) branch | [`miner/miner.cpp`](../src/miner/miner.cpp), from the `wpoa_native_fallback:` label onwards | The round-robin diversity + emergency-miner backoff math analyzed below. |
+| `LastActiveMiners()` | [`miner/miner.cpp`](../src/miner/miner.cpp) | Scans back over the recent chain to find the set of distinct miners who have proposed recently (the "pool"). |
+| `Params().TargetSpacing()` | [`chainparams/chainparams.h`](../src/chainparams/chainparams.h) | `T`, the configured target block time, backed by the `targetblocktime` chain parameter ([`chainparams/paramlist.h`](../src/chainparams/paramlist.h), default 15s). |
+| `Params().MiningTurnover()` | [`chainparams/chainparams.h`](../src/chainparams/chainparams.h) | The `miningturnover` parameter — fraction of active miners rotated into the pool each round. |
+| `GetMaxActiveMinersCount()` | [`miner/miner.cpp`](../src/miner/miner.cpp) | `n`, the number of currently-permissioned active miners (`CPermissions::GetActiveMinerCount()`), or effectively unbounded if `-anyonecanmine`. |
+| `mc_gState->m_Permissions->GetMinerCount()` / `GetActiveMinerCount()` | [`permissions/permission.h`](../src/permissions/permission.h) | Total permissioned miners vs. those flagged *active* (recently seen mining). |
 
 ---
 
@@ -243,13 +243,15 @@ catch-up backoff `Θ(log₂ n)` is calibrated against a `n` larger than the trul
 so a real proposer shortfall inflates the *empirical* average gap above `T` — the
 ergodic-LLN limit in §4 still holds (the process is still stationary given a *fixed*
 active-miner set), but its mean shifts upward until governance updates the permission
-list to match who is actually online. This is the exact structural analogue of the wPoA
+list to match who is actually online. This is the structural analogue of the wPoA
 delay's own offline-validator sensitivity: in `PrivateSortition::MiningDelay`
-([`private_sortition.h`](../src/wpoa/private_sortition.h), `NormalizedScore` / `MiningDelay`), the delay uses
-`total_eff_weight = Σ_j f(w_j)` over the **full registry** (online + offline), while only
-the online subset can actually achieve the minimum score; the winning proposer's
-realized delay then has mean `scale·(W_total/W_online)` instead of `scale`, i.e. inflated
-by exactly the total/online effective-weight ratio.
+([`private_sortition.h`](../src/wpoa/private_sortition.h), `NormalizedScore` / `MiningDelay`),
+`W = Σ_j f(w_j)` is taken over the **full registry** (online + offline), while only the
+online subset can achieve the minimum score. With `ρ = W_online / W_total`, the winner's
+`W·min score` is then `Exp(ρ)` rather than `Exp(1)`, so its normalised score is no longer
+uniform: `E[score_norm] = 1/(1+ρ)`, and the mean delay shifts from `T` to
+`T + δ·T·(1−ρ)/(1+ρ)` — upward, but bounded by the band's upper edge `T(1+δ)`. With
+`λ > 0` the feedback term `Φ` pulls the realised cadence back towards `T`.
 
 **Priority shuffling.** The in-pool start-time offset `U·T` (§3) is an independent
 uniform draw *per validator per round* (`mc_RandomDouble()` — [`miner.cpp`](../src/miner/miner.cpp)),
@@ -261,8 +263,9 @@ this randomization only adds **variance** to each `G_k` (already accounted for i
 term is applied identically regardless of which specific miner draws which slot.
 Its downside is *within-round* risk: two shuffled candidates can draw start times close
 enough together that both propose (a transient fork, resolved by ordinary first-seen /
-longest-chain adoption, mirroring the wPoA "simultaneous qualifiers" case in
-[`phase4-implementation-guide.md §13`](phase4-implementation-guide.md#13-accepted-properties-risks--phase-5-hooks)) —
+longest-chain adoption, mirroring the wPoA "simultaneous qualifiers" case, which wPoA
+resolves by the true score instead
+([wpoa-weight-engine-architecture.md §3.6](wpoa-weight-engine-architecture.md#36-fork-choice-the-true-score-in-the-chain-comparator))) —
 this affects the *variance* of individual gaps, not the LLN limit.
 
 ---
@@ -272,7 +275,7 @@ this affects the *variance* of individual gaps, not the LLN limit.
 | Quantity | Native PoA (this doc) | wPoA Phase 4 (for contrast) |
 |---|---|---|
 | Delay formula | `dExpectedTime ± jitter(T, n, pool-size)` | `D = T + δ·T·(2·score_norm − 1) + λ·Φ`, a band around the target ([`private_sortition.h`](../src/wpoa/private_sortition.h), `MiningDelay`) |
-| Role of `n` | Logarithmic liveness-fallback term only | Enters only through `Σf(w)`; steady-state mean delay is `scale`, independent of `n` (proved in `phase4-implementation-guide.md` §5) |
-| Role of `T` | Direct anchor (`dExpectedTime = parent+T`, feedback-corrected) | Direct anchor too: the band is centred on `T` and `lambda*Phi` corrects the realized mean, reusing the native moving-average-plus-clip shape |
-| LLN limit | `\bar G_N \to T` | `\bar G_N \to \text{scale}` (mean of `Exp(1)` scaled by `scale`, since `\min_i \text{score}_i \sim \mathrm{Exp}(\Sigma f(w))` and `\Sigma f(w)\cdot\min_i\text{score}_i \sim \mathrm{Exp}(1)`) |
-| Offline-validator effect | Inflates mean gap by (permissioned / active) mismatch | Inflates mean delay by `W_total / W_online` |
+| Role of `n` | Logarithmic liveness-fallback term only | Enters only through `W = Σf(w)`; the winner's normalised score is `U(0,1)` whatever `n`, so the mean delay is `T` |
+| Role of `T` | Direct anchor (`dExpectedTime = parent+T`, feedback-corrected) | Direct anchor too: the band is centred on `T` and `lambda*Phi` corrects the realized mean, reusing the native moving-average-plus-clip shape over block timestamps |
+| LLN limit | `\bar G_N \to T` | `\bar G_N \to T` (since `W\cdot\min_i \text{score}_i \sim \mathrm{Exp}(1)`, `1-e^{-W\min}` is `U(0,1)` and the band is symmetric around `T`) |
+| Offline-validator effect | Inflates mean gap by (permissioned / active) mismatch | Mean delay `T + δT(1−ρ)/(1+ρ)`, `ρ = W_online/W_total`, bounded by `T(1+δ)` and re-centred by `λΦ` |

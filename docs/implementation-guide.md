@@ -1,135 +1,94 @@
-# wPoA Implementation Guide — Master Index
+# wPoA Implementation Guide — phase map
 
-> **Register: technical-direct.** A developer reference: APIs, function signatures,
-> data structures and control flow, with code terminology left verbatim. For the
-> theoretical consensus model see
-> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
-> [protocol-parameters.md](protocol-parameters.md); for implementation status see
-> [implementation-status.md](implementation-status.md).
-
-> **What this file is.** A lightweight, high-level map of the whole wPoA
-> implementation across all phases. It says, in a few sentences per phase, what
-> each phase adds and how the phases build on one another, and links to the
-> **dedicated technical guide** for each. It intentionally contains *no* deep
-> code detail — that lives in the per-phase guides linked below.
+> **Type:** reference · **Register:** technical-direct · **Verified against the code:**
+> 2026-09-26, commit `3d2fc551`
 >
-> **Where to go next:**
-> - *Why* the design looks the way it does → [thesis-project-overview.md](thesis-project-overview.md) (research companion).
-> - *What is planned / done and in what order* → [implementation-roadmap.md](implementation-roadmap.md) (engineering companion).
-> - *How a specific phase actually works, in code* → the phase guide linked in the table below.
+> A high-level map of the whole implementation: what each layer adds, how the layers build
+> on one another, and which document covers each component. It carries no code detail and
+> no status — status lives only in [implementation-status.md](implementation-status.md),
+> parameters only in [protocol-parameters.md](protocol-parameters.md). For the design
+> rationale in one place see
+> [wpoa-weight-engine-architecture.md](wpoa-weight-engine-architecture.md); for the list of
+> every document see [README.md](README.md).
 
 ---
 
-## How the phases fit together
+## How the layers fit together
 
-wPoA is built as a stack of layers, each phase adding one layer on top of the
-previous one. Every phase is independently built, tested, and merged, and each
-reuses the layer beneath it unchanged — in particular the **opaque weight-read
-API** from Phase 1 is consumed identically by every later phase.
+The system is two subsystems joined by one stream. The **Weight Engine**
+([`src/weight_engine/`](../src/weight_engine/)) produces each cluster's weight once per
+epoch and publishes it on `wpoa-weights`; the **wPoA core** ([`src/wpoa/`](../src/wpoa/))
+reads the confirmed weights and elects each height's proposer in proportion to them. The
+wPoA core is itself a stack of phases, each adding one layer and reusing the one beneath it
+unchanged — in particular the height-scoped weight read of Phase 1 is consumed identically
+by every later phase.
 
 ```mermaid
 flowchart TD
-    P1["<b>Phase 1 — Weight Registry</b><br/>on-chain wpoa-weights stream<br/>opaque address→weight read API"]
-    P2["<b>Phase 2 — Weighted Selection (public)</b><br/>Efraimidis–Spirakis argmin<br/>seed = prev-block hash"]
-    P3["<b>Phase 3 — RANDAO + VRF beacon</b><br/>3a VRF reveal: done<br/>3b RANDAO accumulator: done"]
-    P4["<b>Phase 4 — Private Sortition</b><br/>private VRF score, score-timed self-election<br/>the security fix (done)"]
-    P5["<b>Phase 5 — VDF</b><br/>removes residual last-revealer bias<br/>(future)"]
+    WE["<b>Weight Engine</b><br/>ESG · membership · block-derived τ, R, flows<br/>→ w_k per buried epoch"]
+    P1["<b>Phase 1 — Weight registry</b><br/>wpoa-weights stream (closed, self-published)<br/>GetAllNodesWeightsAsOf(h−1)"]
+    MAL["<b>Malus registry</b><br/>open wpoa-weights-malus stream<br/>w_eff = w · Ψ"]
+    P2["<b>Phase 2 — Weighted selection (public)</b><br/>Efraimidis–Spirakis argmin<br/>seed = previous block hash"]
+    P3A["<b>Phase 3a — VRF reveal</b><br/>R[n] = VRF_sk(h[n−1]), proof in the block"]
+    P3B["<b>Phase 3b — RANDAO seed</b><br/>R_tot[n] = R_tot[n−1] ⊕ R[n]<br/>seed = H(R_tot[n−k] ‖ h[n] ‖ n+1)"]
+    P4["<b>Phase 4 — Private sortition</b><br/>private VRF score, score-timed self-election,<br/>time-bar validation"]
+    FS["<b>Fork choice + score-aware activation</b><br/>hold back a worse block for our round;<br/>prefer the lower true score at equal work"]
+    P5["<b>Phase 5 — VDF</b><br/>removes the residual last-revealer bias<br/>(not implemented)"]
 
-    P1 -->|"GetAllNodesWeights()"| P2
-    P2 -->|"swap randomness source<br/>HMAC → VRF; same argmin"| P3
-    P3 -->|"privatize seed consumption"| P4
-    P4 -->|"harden beacon"| P5
+    WE -->|"publishes w_k"| P1
+    P1 --> MAL
+    MAL -->|"effective weights"| P2
+    P2 -->|"add a verifiable reveal;<br/>same election"| P3A
+    P3A -->|"accumulate reveals;<br/>swap the seed source"| P3B
+    P3B -->|"evaluate the score privately"| P4
+    P4 --> FS
+    P4 -.->|"harden the beacon"| P5
 
     classDef done fill:#d7f0d7,stroke:#2e7d32,color:#123;
-    classDef partial fill:#fff3cd,stroke:#b8860b,color:#123;
     classDef plan fill:#eee,stroke:#999,color:#333;
-    class P1,P2,P3,P4 done;
+    class WE,P1,MAL,P2,P3A,P3B,P4,FS done;
     class P5 plan;
 ```
 
-The through-line: Phase 2 establishes the **scoring + argmin** machinery over a
-*public* seed; Phases 3–4 keep that machinery and only change *how the seed is
-produced and consumed* (adding a VRF/RANDAO beacon and moving evaluation inside
-each validator's secret key); Phase 5 hardens the beacon. Because the election
-math and the weight-read path never change, later phases are drop-in on top of
-Phase 2.
+The through-line: Phase 2 establishes the **scoring + argmin** machinery over a *public*
+seed; Phases 3a–4 keep that machinery and only change *how the seed is produced and
+consumed* — a VRF/RANDAO beacon, then evaluation inside each validator's secret key. The
+malus changes the weights the election consumes, never the election itself. The Weight
+Engine changes where the weights come from, never how they are read.
+
+The switches must be enabled bottom-up —
+`weights → selection → vrf → randao → sortition → malus`, with the Weight Engine requiring
+`weights` and the fork-choice flag requiring `sortition` — and a violation stops the node at
+startup ([protocol-parameters.md §1.3](protocol-parameters.md#13-dependency-constraints-hard-failure)).
 
 ---
 
-## Phases at a glance
+## Layers at a glance
 
-> **Per-phase status is not repeated here.** It lives in a single place:
-> [implementation-status.md](implementation-status.md). The table below describes *what*
-> each phase adds, not whether it is done.
-
-| Phase | What it adds (summary) | Technical guide |
-|:-----:|------------------------|-----------------|
-| **1** | An append-only on-chain `wpoa-weights` stream where every validator registers a positive integer weight, plus an opaque `address→weight` read API (`GetLocalWeight` / `GetAllNodesWeights` / `GetNodeWeight`) and three RPCs. Registration is deferred to a background thread; reads observe confirmed state from any thread. This is the substrate every later phase reads from. | [phase1-implementation-guide.md](phase1-implementation-guide.md) |
-| **2** | Weighted proposer election wired into the miner and block validator. Each height's proposer is chosen in proportion to weight via the Efraimidis–Spirakis argmin (`score_i = -ln(u_i)/w_i`, `u_i` from `HMAC-SHA256(prev-block-hash, address)`), gated by `-enablewpoa`. Intentionally public/predictable — a substrate-validation baseline before privacy. | [phase2-implementation-guide.md](phase2-implementation-guide.md) |
-| **3a** | Adds the VRF half of the beacon (randomness *generation*): each wPoA-elected proposer publishes a verifiable pseudorandom reveal `R[n]=VRF_sk(h[n-1])` with proof `π[n]` in its block (an ECVRF/DLEQ over the bundled secp256k1), and every peer verifies it before accepting the block. Selection is unchanged (still the public Phase 2 election); the VRF is a grinding-resistant contribution, not yet the selection mechanism. Gated by `-enablewpoavrf`. | [phase3a-implementation-guide.md](phase3a-implementation-guide.md) |
-| **3b** | Accumulates the per-block reveals into a RANDAO beacon `R_tot[n]=R_tot[n-1]⊕R[n]` and feeds the lookback seed `H(R_tot[n-k]‖h[n]‖n+1)` back into selection (gated by `-enablewpoarandao`, lookback `-wpoarandaolookback=k`), replacing the plain prev-block-hash seed and bounding manipulation. Selection stays weight-proportional; only the seed source changes. | [phase3b-implementation-guide.md](phase3b-implementation-guide.md) |
-| **4** | The security fix: each validator evaluates its election score privately under its own VRF key (`u_i=VRF_sk_i(seed‖"PROPOSER"‖height)`, same `-ln(u)/f(w)` transform as Phase 2) and self-elects by a score-proportional mining delay, so the argmin proposes first and the proposer is unknowable to peers until it acts. The validator replaces the public argmin equality with a VRF-verify + score-recompute + time-bar eligibility check; the auto-relaxing time bar is the liveness fallback (no zero-proposer gap). Gated by `-enablewpoasortition` (+ `-wpoasortitiondelta`/`-wpoasortitionlambda`; requires `-enablewpoarandao`, `k>=1`). | [phase4-implementation-guide.md](phase4-implementation-guide.md) |
-| **5** | Future | A Verifiable Delay Function over the beacon output, removing the residual last-revealer bias that Phase 3's RANDAO only bounds (Cleve's theorem). | *(to be added: `phase5-implementation-guide.md`)* |
-
-Per-item status detail lives in
-[implementation-roadmap.md §3](implementation-roadmap.md#3-current-implementation-status).
+| Layer | What it adds | Reference | Design record |
+|---|---|---|---|
+| **Weight Engine** | Derives `w_k` per buried epoch from certified ESG, self-attested membership and block-derived activity, restitution and flows; each node publishes only its own cluster's weight and verifies everyone else's. | [weight-engine.md](weight-engine.md) | [adr/reconciliation-onchain.md](adr/reconciliation-onchain.md), [CHANGELOG-weight-engine-refactor.md](CHANGELOG-weight-engine-refactor.md) |
+| **1 — Weight registry** | The closed, append-only `wpoa-weights` stream; newest-confirmed-wins, self-publication rule, height-scoped reads; RPCs `getlocalweight` / `getnodeweight` / `getallweights`. | [stream-weight-registry.md](stream-weight-registry.md), [weight-record.md](weight-record.md) | [phase1-implementation-guide.md](phase1-implementation-guide.md) |
+| **2 — Weighted selection** | Weight-proportional proposer election (`score_i = -ln(u_i)/f(w_i)`, `u_i` from `HMAC-SHA256(seed, address)`) in the miner and the validator; the mining-diversity spacing neutralised on governed heights; damping `f` = `none`/`sqrt`/`log`. | [wpoa-selector.md](wpoa-selector.md), [miner-integration.md](miner-integration.md), [block-validation.md](block-validation.md) | [phase2-implementation-guide.md](phase2-implementation-guide.md) |
+| **3a — VRF reveal** | Every elected proposer publishes `(R, π)` in its block (ECVRF/DLEQ over secp256k1, the validators' own keys); peers reject a missing or invalid reveal. Selection unchanged. | [vrf-wrapper.md](vrf-wrapper.md), [vrf-prover.md](vrf-prover.md), [vrf-verifier.md](vrf-verifier.md), [block-vrf-encoding.md](block-vrf-encoding.md) | [phase3a-implementation-guide.md](phase3a-implementation-guide.md) |
+| **3b — RANDAO seed** | The reveals are folded into `R_tot` (bare XOR, Def. 5.3) and the election is seeded by `H(R_tot[n-k] ‖ h[n] ‖ n+1)`. Only the seed source changes. | [randao-accumulator.md](randao-accumulator.md), [randao-miner.md](randao-miner.md), [randao-validator.md](randao-validator.md) | [phase3b-implementation-guide.md](phase3b-implementation-guide.md), [adr/randao-fold-bare-xor.md](adr/randao-fold-bare-xor.md) |
+| **4 — Private sortition** | Each validator scores itself with a VRF under its own key and mines after a delay in a band around `target-block-time`; peers accept a block iff its reveal verifies and its `nTime` respects the time bar. The proposer is unknowable until it acts. | [private-sortition.md](private-sortition.md), [sortition-miner.md](sortition-miner.md), [sortition-validator.md](sortition-validator.md) | [phase4-implementation-guide.md](phase4-implementation-guide.md) |
+| **Malus registry** | The open `wpoa-weights-malus` stream: four provable offences (`equiv`, `delay`, `selfwrite`, `badweight`), a decaying severity `M`, and the correction `w_eff = w · Ψ` applied before every election. | [malus-registry.md](malus-registry.md) | — |
+| **Fork choice** | Under private sortition, at equal work, prefer the block with the lower true sortition score instead of the first seen. Always on, no flag; not a consensus rule. | [wpoa-weight-engine-architecture.md §3.6](wpoa-weight-engine-architecture.md#36-fork-choice-the-true-score-in-the-chain-comparator) | [evidence/local-gossip-hint-inert-2026-09-21.md](evidence/local-gossip-hint-inert-2026-09-21.md) |
+| **Score-aware activation** | A node whose own round is still running holds back a worse-scored block for that round instead of connecting it, so the argmin still proposes its full block and the fork choice picks it. The miner counts down from `parent.nTime + D`. | [score-aware-activation.md](score-aware-activation.md), [sortition-miner.md](sortition-miner.md) | — |
+| **Audit RPCs** | Read-only `wpoa*` (score, delay, effective and final weight, per-block sortition) and `weight*` (contribution, cluster weight, returns, earnings, balance) families, computed through the same functions the consensus uses. | [rpc-result-shapes.md](rpc-result-shapes.md), [rpc-registration.md](rpc-registration.md) | — |
+| **5 — VDF** | A Verifiable Delay Function over the beacon output, removing the last-revealer bias that RANDAO only bounds (Cleve). | [thesis-project-overview.md §7.3](thesis-project-overview.md#73-bias-analysis-cleves-impossibility-theorem-and-vdf-mitigation) | — |
 
 ---
 
-## Supporting references
-
-These are cross-cutting references shared by all phases (not phase guides):
+## Cross-cutting references
 
 | Document | What it covers |
-|----------|----------------|
-| [thesis-project-overview.md](thesis-project-overview.md) | Research companion: problem, threat model, formal model, probability-preservation proof (§7.4). |
-| [implementation-roadmap.md](implementation-roadmap.md) | Engineering companion: phased plan, rationale, per-item status, vulnerabilities, success criteria. |
-| [multichain-internals.md](multichain-internals.md) | Reference to the MultiChain host APIs the module builds on, with `file:line` pointers. |
-| [stream-weight-registry.md](stream-weight-registry.md) | Line-by-line walkthrough of the Phase 1 registry class. |
-| [weight-record.md](weight-record.md) | Walkthrough of the pure parsing/aggregation helpers (`weight_record.h`). |
-| [node-startup.md](node-startup.md) | How `-weight` / `-enablewpoa` are wired into `AppInit2`. |
-| [rpc-registration.md](rpc-registration.md) | How the RPC commands are added to the dispatch table. |
-| [testing.md](testing.md) | Build steps, unit tests, and the MultiChain mining model used by the functional tests. |
+|---|---|
+| [node-startup.md](node-startup.md) | How `AppInit2` resolves the switches from `params.dat` and the command line, validates them and starts the threads. |
+| [multichain-internals.md](multichain-internals.md) | The MultiChain host APIs the modules build on. |
+| [native-poa-block-delay.md](native-poa-block-delay.md) | The native mining-delay model, for comparison with the Phase 4 band. |
+| [testing.md](testing.md) | The unit suites, the network harness in `test/`, manual checks. |
+| [thesis-project-overview.md](thesis-project-overview.md) | Research companion: threat model, formal model, probability preservation (§7.4). |
 
----
-
-## Documentation Maintenance
-
-This section defines the **repeatable documentation process** to apply on every
-new feature/branch, so the docs stay consistent and never drift from the code.
-Follow it as part of the "docs complete" bar for merging any phase (see the
-branch-strategy rules in
-[implementation-roadmap.md §5](implementation-roadmap.md#5-branches--branch-strategy)).
-
-For every new feature/phase:
-
-1. **New technical guide per feature.** Add `phaseN-implementation-guide.md` (or
-   a feature-named equivalent) in `docs/`, following the structure of
-   [phase1-implementation-guide.md](phase1-implementation-guide.md) /
-   [phase2-implementation-guide.md](phase2-implementation-guide.md): what it
-   delivers, the algorithm/design, a **detailed Mermaid diagram of its own
-   flow**, an **integration-points table** (site → file → change), tests, and
-   known risks.
-2. **Update this master index.** Add a row to *Phases at a glance* (status +
-   2–4-sentence summary + link) and extend the *How the phases fit together*
-   Mermaid diagram with the new phase node and its dependency edge. Existing
-   rows/nodes are not rewritten — only appended.
-3. **Update the README.** Refresh the table of contents, the high-level
-   architecture diagram, and the *Implementation status* section to include the
-   new feature. The README points to this guide rather than duplicating it.
-4. **No-duplication rule.** Before adding any explanation, check whether it
-   already exists elsewhere in `docs/`. If it does, **link to it** instead of
-   repeating it; consolidate any duplicate into the single most appropriate
-   file.
-5. **Diagram-consistency rule.** Every file that carries implementation detail
-   must carry a diagram reflecting its **current** state. A diagram is never
-   allowed to go stale relative to the code — updating the diagram is part of the
-   same change that alters the behavior it depicts.
-
-Quick checklist to copy into a phase PR:
-
-- [ ] `phaseN-implementation-guide.md` added (detail + detailed Mermaid + integration table + tests + risks)
-- [ ] Master `implementation-guide.md`: new row + diagram node/edge
-- [ ] `README.md`: ToC + architecture diagram + status updated
-- [ ] No duplicated prose (linked instead); diagrams reflect current code
-- [ ] `implementation-roadmap.md §3` status rows updated
+The rules for keeping all of this current are in [README.md](README.md#keeping-the-documentation-current).

@@ -1,24 +1,18 @@
 # wPoA — Implementation status
 
-> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
-> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
-> rebuilt as a Python harness. The references are kept as written because they record the
-> work as it was done; for the current structure see
-> [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
-
-
-> **Register: technical-direct.** A status table with pointers to code and tests. No
-> design argumentation: for the *why* of each choice see the phase guides, for the
-> theoretical model see [thesis-project-overview.md](thesis-project-overview.md).
-
-> **Single source.** This file is the **only** authoritative place for implementation
-> status. No other document carries status tables — the others link here. Parameters and
-> defaults live in [protocol-parameters.md](protocol-parameters.md), likewise a single
-> source.
+> **Type:** reference · **Register:** technical-direct · **Verified against the code:**
+> 2026-09-26, commit `3d2fc551`
+>
+> **Single source** for implementation status: no other document carries a status table.
+> Pointers to code and tests, no design argumentation — for the *why* see
+> [wpoa-weight-engine-architecture.md](wpoa-weight-engine-architecture.md) and the module
+> references; for parameters and defaults see [protocol-parameters.md](protocol-parameters.md),
+> likewise a single source.
 
 **Summary.** Phases 1, 2, 3a, 3b and 4 are complete and validated end-to-end, as are the
-behavioural malus registry and the weight engine. Phase 5 (a VDF over the beacon output,
-to remove the residual last-revealer bias) is planned and not implemented.
+behavioural malus registry, the weight engine, the read-only audit RPCs and the optional
+score-based fork choice. Phase 5 (a VDF over the beacon output, to remove the residual
+last-revealer bias) is planned and not implemented.
 
 ---
 
@@ -34,6 +28,8 @@ to remove the residual last-revealer bias) is planned and not implemented.
 - [5. Phase 4 — Efraimidis private sortition](#5-phase-4--efraimidis-private-sortition)
 - [6. Malus registry](#6-malus-registry)
 - [7. Weight engine](#7-weight-engine)
+- [7bis. Activation semantics](#7bis-activation-semantics)
+- [7ter. Fork choice and audit surface](#7ter-fork-choice-and-audit-surface)
 - [8. End-to-end validation](#8-end-to-end-validation)
 - [9. Not implemented](#9-not-implemented)
 
@@ -48,16 +44,17 @@ a single on-chain stream.
 ```
                     +-----------------------------------------------+
    Weight layer     |  src/weight_engine/                           |
-   (governance)     |  WeightEngine: from ESG/membership/activity/  |
-                    |  reconciliation  ->  w_k per epoch            |
+   (governance)     |  WeightEngine: ESG + membership (streams),    |
+                    |  tau, R, flows (blocks)  ->  w_k per epoch    |
                     +----------------------+------------------------+
                                            |  publishes to
                                            v
                     +-----------------------------------------------+
    On-chain         |  "wpoa-weights" stream  (CLOSED)              |
-   contract         |  {address, integer weight > 0}                |
+   contract         |  {address, integer weight > 0, epoch}         |
                     +----------------------+------------------------+
-                                           |  reads (newest-confirmed-wins)
+                                           |  reads (newest-confirmed-wins,
+                                           |  scoped to height - 1)
                                            v
                     +-----------------------------------------------+
    Consensus        |  src/wpoa/                                    |
@@ -106,10 +103,10 @@ flowchart TD
     GATE_SELF -.->|"record DISCARDED<br/>never enters C_k"| DENY_M([no membership<br/>+ malus grounds]):::bad
     UNAUTH -.->|"forged record: node_address ≠ signer"| GATE_SELF
 
-    CHAIN[("chain: confirmed blocks")] -->|"ComputeActivityAndReconciliationForEpoch&#40;&#41;<br/>τ AND R — one pass, no stream, NO writer"| INS
+    CHAIN[("chain: confirmed blocks + undo")] -->|"ComputeEpochFacts&#40;&#41;<br/>τ, R and the flows — one pass, no stream, NO writer"| INS
 
-    INS[/"PIPELINE INPUTS for epoch e<br/>ESG_i · C_k published — τ · R_k derived"/]
-    INS --> ENG["WeightEngine — buried epochs only<br/>c_i → W_k → A_k → ρ_k → B_k → w_k"]
+    INS[/"PIPELINE INPUTS for epoch e<br/>ESG_i · C_k published — τ · R_k · flows derived"/]
+    INS --> ENG["WeightEngine — buried epochs only<br/>c_i → W_k → g_k → saldo_k → ρ_k → w_k"]
 
     CLI([Local flag -weight=N]):::weak
     CLI -.->|"ONLY if -enableweightengine=0<br/>local fallback value"| STAT["ThreadRegisterNodeWeight"]
@@ -125,12 +122,12 @@ flowchart TD
     WSTREAM -->|"newest-confirmed-wins read"| GATE_SELFW
     GATE_SELFW{{"GATE 3 — SELF-PUBLICATION<br/>tx signer == payload node_address"}}:::gate
     GATE_SELFW -.->|"record DISCARDED<br/>weight for another cluster"| DENY3([no weight<br/>+ malus grounds]):::bad
-    GATE_SELFW -->|passes| REG["StreamWeightRegistry<br/>GetAllNodesWeights&#40;&#41;"]
+    GATE_SELFW -->|passes| REG["StreamWeightRegistry<br/>GetAllNodesWeightsAsOf&#40;h−1&#41;"]
 
     ENG -.->|"recompute EVERY cluster from the<br/>public inputs, once per buried epoch"| VER
     WSTREAM -.-> VER
     VER{{"GATE 4 — UNIVERSAL VERIFICATION<br/>published == independently recomputed?"}}:::gate
-    VER -.->|"mismatch: provably wrong<br/>(consequence via the malus)"| DENY4([dropped from the map<br/>+ malus grounds]):::bad
+    VER -.->|"mismatch: provably wrong<br/>reported by weightverifyweights"| DENY4([badweight malus grounds<br/>— the only consensus route]):::bad
     VER -.->|"cannot recompute: FAILS OPEN<br/>record left untouched"| REG
 
     REG ==>|"OVERRIDE: the on-chain value governs,<br/>never the local flag"| CLI
@@ -175,8 +172,10 @@ Five properties the diagram makes explicit, all verified against the code:
 
 **(a) The authoritative channel is the stream, not the flag.** The weight that governs
 the election is always the one read from `wpoa-weights` through
-`StreamWeightRegistry::GetAllNodesWeights()`. No consensus path reads `g_node_weight` —
-that variable serves only the static publication thread.
+`StreamWeightRegistry::GetAllNodesWeightsAsOf(height - 1)` — the records confirmed in the
+prefix the block extends, so every node derives the same map for the same block. No
+consensus path reads `g_node_weight` — that variable serves only the static publication
+thread.
 
 **(b) The on-chain value overrides the local flag.** The `OVERRIDE` arrow runs from the
 stream branch **towards** the CLI branch, not the other way round. The mechanism is an
@@ -198,7 +197,7 @@ independent, and the verification rules catch what a permission alone cannot:
 | Direct `publishfrom` on the **attestation** stream (ESG — the only one left) **with** `.write` but without the CA role | **Succeeds**, and the reader accepts it. This is the known limit in [§9](#9-not-implemented) — the certifier-only guarantee depends on granting `.write` only to addresses that hold the role. |
 | Direct `publishfrom` on **membership** with a `node_address` other than the signer | The transaction confirms, but the record is **discarded by every reader** (Gate 1'). It never enters `C_k` — and the discard is itself grounds for a malus accusation. |
 | `publishfrom` on **`wpoa-weights`** naming another cluster's address | The transaction confirms, but the record is **discarded by every reader** (Gate 3): it never enters the weight map. |
-| Publishing a weight for one's **own** cluster that does not match the independent recomputation | Detected by every node that can recompute (Gate 4), logged unconditionally, reported by `weightverifyweights`, and grounds for a malus accusation. |
+| Publishing a weight for one's **own** cluster that does not match the independent recomputation | Detected by every node that can recompute (Gate 4), logged unconditionally and reported by `weightverifyweights`. The value still enters the election until a `badweight` malus is proved against it, which lowers `w_eff` from the following epoch. |
 
 **(d) Every node publishes its own weight, and every node checks the others.**
 `wpoa-weights.write` is now granted network-wide instead of to one publisher per cluster,
@@ -211,10 +210,12 @@ value is **provably** wrong. That one **fails open**, because it needs readable 
 a buried epoch, and their absence is normal — treating "cannot verify" as "invalid" would
 zero every weight on a syncing node and stall the chain.
 
-`GATE 4` runs **once per buried epoch**, not per round: `GetAllNodesWeights()` is called on
-every round while a recomputation is O(chain), so the verdicts are cached and the consensus
-path consults them in O(1). The effective-weight consequence of a mismatch is carried by the
-malus (`w_eff = w · Ψ`), the mechanism already in the consensus path for provable findings.
+`GATE 4` runs **once per buried epoch**, in the weight-engine thread, not per round: the
+weights are read on every round while a recomputation is O(chain). Its verdicts are cached
+for `weightverifyweights` only — **they never filter the election**, because a verdict cache
+depends on when the local node verified, and an election that depended on it would differ
+from node to node. The effective-weight consequence of a mismatch is carried instead by the
+`badweight` malus (`w_eff = w · Ψ`), an on-chain proof every node re-evaluates identically.
 Detail: [weight-engine.md §5.1](weight-engine.md#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others).
 
 **ESG is now the only remaining trusted datum.** Activity and membership are chain-derived,
@@ -259,35 +260,31 @@ only one of them.
 | Part of the `params.dat` hash | **Yes** | No |
 | Nature | **Binding consensus rule** | **Local operational hint** |
 | Default | `0.3` | `0.5` |
-| Where it acts | `mc_Permissions::CanMine()` and `GetActiveMinerCount()` in [`permission.cpp`](../src/permissions/permission.cpp) | `dMinerDrift = Params().MiningTurnover()` in [`miner.cpp`](../src/miner/miner.cpp) |
+| Where it acts | `mc_Permissions::IsBarredByDiversity()`, reached from `CanMine()` and every other spacing consumer in [`permission.cpp`](../src/permissions/permission.cpp) | the native miner's empty-block pacing in [`miner.cpp`](../src/miner/miner.cpp) |
 | Effect | A miner must wait `diversity × (active miners)` blocks before mining again. A block violating the spacing is **invalid**: peers reject it. | Affects only the local timing of one's own mining attempt. Makes no block invalid. |
 | Consequence of divergence between nodes | Fork | None: every node may hold its own value |
 
 **How wPoA interacts with each.** On wPoA-governed heights the **spacing** of
-`mining-diversity` is deliberately **bypassed**, but the `mine` permission still gates the
-signer. In [`multichainblock.cpp`](../src/protocol/multichainblock.cpp):
-
-```cpp
-int nMinerPerm;
-if(WPoAActiveAtHeight(prev_block->nHeight+1))
-{
-    nMinerPerm=mc_gState->m_Permissions->CanCustom(NULL,pubKeyHash.begin(),MC_PTP_MINE);
-}
-else
-{
-    // ... native CanMine(), with round-robin spacing
-}
-```
+`mining-diversity` is deliberately **neutralised**, while the `mine` permission still gates
+the signer. The switch sits at the source: `IsBarredByDiversity` consults
+`mc_WPoAGovernsMiningHook`, which `wpoa_selector.cpp` installs at static initialisation and
+which answers `WPoAActiveAtHeight(h) && WPoAEverElectable()`. `CanMine()`, the miner's key
+lookup, `nCanMine` and `listminers` all inherit the answer, and all of them keep reading
+**confirmed** permissions only.
 
 The reason is structural, not a shortcut: under weighted selection **every** address
 holding `mine` takes part in **every** round, and a heavier validator may legitimately win
-two consecutive heights — which `CanMine()`'s round-robin spacing would reject.
-`CanCustom(..., MC_PTP_MINE)` checks the raw permission without applying the spacing.
-Every other height keeps `CanMine()` unchanged.
+two consecutive heights — which the round-robin spacing would reject. Every other height,
+and every height of the bootstrap window before the first positive weight, keeps the
+native spacing. (An earlier version bypassed the spacing with `CanCustom(..., MC_PTP_MINE)`
+at the validator only; `CanCustom` also reads grants in the mempool, which in a consensus
+check is a fork. Detail:
+[wpoa-weight-engine-architecture.md §3.2](wpoa-weight-engine-architecture.md#32-the-mining-diversity-gate-one-function-pointer-instead-of-n-patches).)
 
-`mining-turnover` is not touched by wPoA: it remains the native timing hint, and Phase 4
-**reuses** it as the feedback term `Phi` that recentres the mean block time on target (see
-[§5](#5-phase-4--efraimidis-private-sortition)).
+`mining-turnover` is not touched by wPoA: it remains the native timing hint. The Phase 4
+feedback term `Phi` is **not** derived from it — it is the gap between `target-block-time`
+and the mean spacing of the last `MC_WPOA_SORTITION_FEEDBACK_WINDOW` (12) blocks, read from
+block timestamps (see [§5](#5-phase-4--efraimidis-private-sortition)).
 
 ---
 
@@ -299,8 +296,10 @@ Every other height keeps `CanMine()` unchanged.
 | Deferred registration (background thread) | Done | Waits for readiness, retries, bounded budget before giving up. Never blocks startup. |
 | Append-only on-chain registry (`wpoa-weights`) | Done | Create + subscribe + publish through reused RPC handlers; idempotent re-registration. |
 | **CLOSED** stream (restricted write) | Done | Created with `create ["stream","wpoa-weights",false]`: `wpoa-weights.write` required. An unauthorized node carries no weight. |
-| Opaque read API | Done | `GetLocalWeight`, `GetAllNodesWeights`, `GetNodeWeight`. Backward search per address; hides the stream mechanics from callers. |
-| RPC surface | Done | `getlocalweight`, `getnodeweight`, `getallweights`. Confirmed-only, thread-safe. |
+| Opaque read API | Done | `GetLocalWeight`, `GetAllNodesWeights`, `GetNodeWeight`, and the height-scoped `GetAllNodesWeightsAsOf(height)` that every consensus path uses. Hides the stream mechanics from callers. |
+| Self-publication rule | Done | A record counts only if its transaction was signed by the address it declares (`mc_StreamItemIsSelfAttested`, shared with the membership stream); anything else is discarded and logged unconditionally. |
+| Height-scoped reads | Done | Miner, validator and audit RPCs read the records confirmed at or below `height - 1`, so the same block yields the same weight map on every node regardless of its sync point. |
+| RPC surface | Done | `getlocalweight`, `getnodeweight`, `getallweights`. Confirmed-only, thread-safe, current (unscoped) view. |
 | Read-path correctness fixes | Done | The non-WRP read family (WRP snapshot bug) and the 6-argument `OpReturnFormatEntry` overload. |
 | Unit tests (pure parsing / aggregation) | Done | [`wpoa_weight_tests.cpp`](../src/wpoa/test/wpoa_weight_tests.cpp), node-free. |
 
@@ -314,12 +313,12 @@ Detail: [phase1-implementation-guide.md](phase1-implementation-guide.md) ·
 
 | Area | Status | Notes |
 |---|---|---|
-| Weighted selection (`WPoASelector` + miner hook) | Done | Efraimidis–Spirakis argmin; consumes `GetAllNodesWeights()`. |
+| Weighted selection (`WPoASelector` + miner hook) | Done | Efraimidis–Spirakis argmin over `WPoAApplyMalus(GetAllNodesWeightsAsOf(h-1))`. |
 | `-enablewpoaselection` switch | Done | Inherited chain parameter plus runtime flag. Gates both the miner and the validation hooks. |
 | Proposer validation (`VerifyBlockMiner` hook) | Done | Recomputes the election on receipt; rejects blocks not from the elected proposer. |
-| mining-diversity spacing bypass | Done | The native round-robin gate is removed on wPoA-governed heights. |
+| mining-diversity spacing bypass | Done | `mc_WPoAGovernsMiningHook` in `IsBarredByDiversity` neutralises the round-robin spacing on governed heights once the registry has carried a positive weight; confirmed permissions only ([§0.2](#02-mining-turnover-and-mining-diversity--operational-hint-vs-binding-rule)). |
 | Deterministic tie-break | Done | Lexicographically smallest address on exact score collision. |
-| Whale compression (`-dumpfunction`) | Done | `none` / `sqrt` / `log`, applied before the draw. |
+| Whale compression (`-dumpfunction`) | Done | `none` / `sqrt` / `log`, applied to the effective weight before the draw. |
 | Unit tests (pure selector math) | Done | [`wpoa_selector_tests.cpp`](../src/wpoa/test/wpoa_selector_tests.cpp); probability preservation over 200k seeds. |
 
 Detail: [phase2-implementation-guide.md](phase2-implementation-guide.md) ·
@@ -351,6 +350,7 @@ Detail: [phase3a-implementation-guide.md](phase3a-implementation-guide.md) ·
 | `-enablewpoarandao` + `-wpoarandaolookback=k` | Done | `k` is consensus-critical, validated at startup. |
 | Seed anchored to `h[n]` and `n+1` | Done | Conforms to Def. 5.4 of the thesis. |
 | Selection-seed swap (miner + validator) | Done | Both call sites replace the prev-hash seed with `WPoARandaoSelectionSeed(tip)`; the election stays weight-proportional. |
+| Memoised walk | Done | `R_tot` memoised per block hash (`g_randao_cache`, leaf lock `cs_randao_cache`), iterative walk back to the first cached ancestor; reveal extraction on a stack-local `mc_Script`. |
 | Unit tests (pure accumulator / seed math) | Done | [`randao_accumulator_tests.cpp`](../src/wpoa/test/randao_accumulator_tests.cpp); spec conformance against an independent reference, order and input sensitivity, chain consistency. |
 
 Detail: [phase3b-implementation-guide.md](phase3b-implementation-guide.md) ·
@@ -367,10 +367,11 @@ This is the security fix: it makes the proposer unpredictable until it acts.
 |---|---|---|
 | Sortition core (`PrivateSortition`) | Done | `VRFInput` / `ScoreFromVRFOutput` / `NormalizedScore` / `MiningDelay`, node-free; reuses the Phase-2 score transform, so the distribution is provably unchanged. |
 | `-enablewpoasortition` + `-wpoasortitiondelta` / `-wpoasortitionlambda` | Done | Requires the RANDAO beacon and `k >= 1` (seed↔reveal acyclicity, validated at startup). Both band parameters are consensus-critical and range-checked. |
-| Score-timed self-election (miner) | Done | Each validator scores itself privately (VRF under its own key) and mines at `now + delay(score)`, so the argmin proposes first. Includes an anti-respin guard and the reveal-input switch to `seed \|\| "PROPOSER" \|\| height`. |
+| Score-timed self-election (miner) | Done | Each validator scores itself privately (VRF under its own key) and mines at `parent.nTime + delay(score)`, the instant the validator's time bar is measured from, so the argmin proposes first and the parent's proposer has no head start. Includes the already-proposed guard, the retarget abort in `CreateNewBlock`, and the reveal-input switch to `seed \|\| "PROPOSER" \|\| height`. |
 | **Banded delay** on `target-block-time` | Done | `D = T + delta·T·(2·score_norm − 1) + lambda·Phi` with `score_norm = 1 − e^{−W·score}`. Replaces the earlier open-ended ramp. The `W` factor keeps candidates spread across the band instead of crushed against its early edge. |
-| Native feedback reused as `Phi` | Done | The global correction term recentres the mean block time on target; `lambda = 0` disables it. |
-| Eligibility / time-bar validation | Done | Replaces the public-argmin equality: verify the VRF over the sortition input, recompute the score, accept iff `block.nTime >= parent.nTime + delay`. The auto-relaxing bar **is** the liveness fallback: no zero-proposer gap. |
+| Feedback term `Phi` | Done | `WPoASortitionFeedback`: target spacing minus the mean spacing of the last 12 blocks, from block timestamps, clipped to `±min(0.5·T, T(1−δ)/λ)`; identical for every candidate of a round, so it moves the mean block time without reordering anybody. `lambda = 0` disables it. |
+| Eligibility / time-bar validation | Done | Replaces the public-argmin equality: verify the VRF over the sortition input, recompute the score over the height-scoped effective weights, accept iff `block.nTime >= parent.nTime + delay`. Three-valued verdict: REJECT for any block defect, SKIP only for node-global conditions. The auto-relaxing bar **is** the liveness fallback: no zero-proposer gap. |
+| Shared round context | Done | `WPoABuildRoundContext` derives weights, `W` and seed for a height for the miner and the audit RPCs; the validator repeats the same steps with the same helpers, so an inspection cannot report a number the consensus would not have computed. |
 | Unit tests (pure math + real VRF) | Done | [`private_sortition_tests.cpp`](../src/wpoa/test/private_sortition_tests.cpp); VRF-input encoding, score reuse, delay map, key-dependence (privacy), winner-delay uniformity, and probability preservation with real VRF keys. |
 
 Detail: [phase4-implementation-guide.md](phase4-implementation-guide.md) ·
@@ -392,7 +393,8 @@ supersedes: [native-poa-block-delay.md](native-poa-block-delay.md).
 | `w_eff = w * Psi` in the election | Done | Applied in one place (`WPoAApplyMalus`), consumed by the public selector and by both sides of the private sortition. Inert when disabled or when nobody carries a violation. **Generic over the kind**: adding the two data-integrity kinds touched only the per-kind score dispatch — `Psi`, `w_eff` and the consensus path operate on the accumulated severity `M`, not on what produced it. |
 | `-enablewpoamalus` + `mu` / `M_max` / four point weights | Done | Inheritable chain parameters; requires sortition, and both `p(Equiv) > p(Delay)` and `p(BadWeight) > p(SelfWrite)` are enforced at startup. Intended ordering `p(Equiv) > p(BadWeight) > p(SelfWrite) > p(Delay)`. |
 | Reversibility of an exclusion | Done | `M` is an exponential moving average with `mu < 1`, so an exclusion clears after a finite number of clean epochs: no permanent ban — for **either** family, since the decay is a property of `M` rather than of the offence. Clearing bound corrected at the threshold. |
-| Unit tests | Done | [`wpoa_malus_tests.cpp`](../src/wpoa/test/wpoa_malus_tests.cpp) (23 cases); parsing for both families, every data-integrity rejection (including a report accusing an *honest* record), the four-score dispatch and its ordering, EMA fold, `Psi`, `w_eff` end to end for a proved `badweight`, and reversibility. |
+| `badweight` recomputation memo | Done | Per-epoch memo keyed on the epoch's last block hash plus the membership and ESG maps as read now; stored only if the key is unchanged across the computation; lock order `cs_main → cs_recomputeMemo`. Keeps the malus fold off a multi-second recomputation on every round. |
+| Unit tests | Done | [`wpoa_malus_tests.cpp`](../src/wpoa/test/wpoa_malus_tests.cpp) (37 cases); parsing for both families, every data-integrity rejection (including a report accusing an *honest* record), the four-score dispatch and its ordering, EMA fold, `Psi`, `w_eff` end to end for a proved `badweight`, and reversibility. |
 
 Detail: [malus-registry.md](malus-registry.md).
 
@@ -402,17 +404,17 @@ Detail: [malus-registry.md](malus-registry.md).
 
 | Area | Status | Notes |
 |---|---|---|
-| Pure computation core (`WeightEngine`) | Done | The `c_i → W_k → A_k → rho_k → B_k → w_k` pipeline, verbatim from the thesis chapter. Standard library only. |
+| Pure computation core (`WeightEngine`) | Done | The `c_i → W_k → g_k → saldo_k → rho_k → w_k` restitution-rate pipeline, verbatim from the thesis chapter; `ToIntegerWeight` scales by `kappa` and clamps to `[1, UINT32_MAX]`. Standard library only. |
 | Record parsers (W1) | Done | `mc_Parse*RecordJson`; the self-attestation predicate; cluster `C_k` reconstruction by inverting the `node -> miner` relation. |
 | Input-stream reader (W3) | Done | `WeightStreamReader`: lifecycle of the **two** published streams (create CLOSED + subscribe), confirmed-only reads, publisher extraction from the tx inputs. |
-| Chain-derived `tau` **and** `R` | Done | `ComputeActivityAndReconciliationForEpoch` derives both from the epoch's confirmed blocks in **one pass**, under the same buried-epoch guard. `R_k` is the native-currency value paid to the hash-enforced `weight-treasury-address` by transactions the miner signed — no longer an administrator attestation. `weight-engine-reconciliation` and the vestigial `weight-engine-activity` are **removed**, as is `weightsetreconciliation`. Rationale and rejected option: [adr/reconciliation-onchain.md](adr/reconciliation-onchain.md). |
+| Chain-derived `tau`, `R` and flows | Done | `WeightStreamReader::ComputeEpochFacts` derives `tau`, `R_k` and the gross credits/debits behind `saldo_k` from the epoch's confirmed blocks and undo data in **one pass**, under the same buried-epoch guard, accumulating in integer base units. `R_k` is the native-currency value paid to the hash-enforced `weight-treasury-address` by transactions the miner signed — no longer an administrator attestation. `weight-engine-reconciliation` and the vestigial `weight-engine-activity` are **removed**, as is `weightsetreconciliation`. Rationale and rejected option: [adr/reconciliation-onchain.md](adr/reconciliation-onchain.md). |
 | Self-attested membership (W3) | Done | Item key = declaring node; latest confirmed declaration wins, so a node changes cluster autonomously. The reader **discards** any record whose tx signer differs from its declared `node_address`. `weight-engine-membership.write` is meant to be granted network-wide. |
 | Self-published weights + universal verification | Done | `wpoa-weights.write` is granted network-wide; each node publishes only its **own** cluster, with `publishfrom` so the signer *is* the declared address. The reader **discards** a record whose signer differs (fails closed); the weight engine independently **recomputes every cluster** once per buried epoch and reports mismatches (fails open when it cannot recompute). Exposed by `weightverifyweights`. The mismatch consequence on `w_eff` is carried by the malus registry. |
 | Publisher + RPCs (W3) | Done | `weightsetesg` (**Certification Authority** only) and `weightregistermembership` (public self-write) — no write path in this module requires global `admin` any more. The admin-proxy `weightsetmembership` was removed (under self-attestation its records would be discarded) and `weightsetreconciliation` with the stream it wrote. |
 | ESG Certification Authority role (W3) | Done | The role is carried by MultiChain's `high1` custom permission — a **high** slot deliberately, since only those require `admin` rather than `activate` to grant. `weightsetesg` checks `IsCertificationAuthority` **instead of** `CanAdmin`, so an administrator that has not granted itself the role is refused. Revocation bites independently of `.write`. Policy decision table: [`weight_authorization.h`](../src/weight_engine/weight_authorization.h). |
-| Computation and publication thread | Done | `ThreadWeightEngine`; publishes only for the latest **buried** epoch and only if the node is a cluster miner. Mutually exclusive with the static registrar. |
+| Computation and publication thread | Done | `ThreadWeightEngine`; creates `wpoa-weights` before the epoch gate, verifies every published weight of epoch `e-1`, publishes only for the latest **buried** epoch and only if the node is a cluster miner. Mutually exclusive with the static registrar. |
 | `-enableweightengine` + `epochlength` / `kappa` / `alpha` / `lambda` / `treasuryaddress` | Done | Hash-enforced chain parameters; requires Phase 1; validated at startup. `weight-treasury-address` may be empty, which makes `R_k = 0` uniformly — a uniform scaling that leaves the election unchanged. |
-| Unit tests | Done | Its own runner: `src/weight_engine/test/run_unit_tests.sh`, suites `records`, `authorization`, `engine` and `verifier`. |
+| Unit tests | Done | Its own runner: `src/weight_engine/test/run_unit_tests.sh`, suites `records`, `authorization`, `engine`, `verifier` and `epoch`. |
 
 Detail: [weight-engine.md](weight-engine.md) ·
 [CHANGELOG-weight-engine-refactor.md](CHANGELOG-weight-engine-refactor.md) (permission
@@ -421,7 +423,7 @@ model before/after, per stream) ·
 
 ---
 
-## 7bis. Activation semantics (post-fix)
+## 7bis. Activation semantics
 
 Two behaviours that the per-phase status tables above do not capture, because they are
 about *when* the machinery engages rather than whether it exists.
@@ -432,7 +434,7 @@ the native MultiChain scheduler and the mining-diversity gate stands down with t
 chain advances, epochs bury, the engine publishes, and wPoA takes over by itself. The
 latch never clears: once activated, "no validator eligible" is a legitimate sortition
 outcome and the chain halting is correct behaviour, logged rather than routed around.
-Full rule in [weight-engine.md](weight-engine.md) §4bis.
+Full rule in [weight-engine.md §4bis](weight-engine.md#4bis-deferred-activation--when-wpoa-actually-takes-over). Unit-tested in the `activation` suite.
 
 **Stream auto-creation retries.** The three registries share one bounded-retry state
 machine (`src/wpoa/stream_setup_state.h`) that latches only on a real broadcast. It used
@@ -440,42 +442,62 @@ to latch before the attempt, which turned any transient failure into a permanent
 
 **The `enable-wpoa` master switch expands from `params.dat`**, not only from the
 `multichain-util create` command line. See
-[protocol-parameters.md](protocol-parameters.md) §1bis.
+[protocol-parameters.md §1bis](protocol-parameters.md#1bis-the-master-switch-and-how-it-expands).
+
+**`setup-first-blocks` is raised at genesis** when the weight engine and selection are both
+on, so a weight can confirm before wPoA governs (`AdjustSetupFirstBlocks`,
+[protocol-parameters.md §1ter](protocol-parameters.md#1ter-setup-first-blocks-is-derived-not-merely-validated)).
+
+---
+
+## 7ter. Fork choice and audit surface
+
+| Area | Status | Notes |
+|---|---|---|
+| Score-based fork choice | Done | At equal work `CBlockIndexWorkComparator` prefers the lower true sortition score (`CBlockIndex::dSortitionScore`, written once at admission; NaN ranks last). Always on under private sortition; the former `-enablewpoaforkscore` flag was removed. Not a consensus rule. Detail: [wpoa-weight-engine-architecture.md §3.6](wpoa-weight-engine-architecture.md#36-fork-choice-the-true-score-in-the-chain-comparator). |
+| Score-aware activation | Done | A node whose own round is still running holds back a worse-scored block for that round (`FindMostWorkChain`), relays it, and releases it if its own slot plus 2 s passes without a block. Measured on `regional-race-check1h` (437 sortition rounds, private scores of all 5 miners): real inversions 0.2 % (1 round), against 2.3 % with the parent-anchored timer alone and 8.0 % before either; 25 heights held, none of the held blocks ended on chain, no release by timeout; blocks built after a hold carried 85 transactions on average against 56 overall. Detail: [score-aware-activation.md](score-aware-activation.md). |
+| Fork-choice instrumentation | Done | Under `-debug=wpoafork`, every contested round is logged with the candidates, their scores and arrival order, and the winners under both the live and the legacy (`CBlockIndexLegacyWorkComparator`) rule; the score-aware activation adds `[wpoa-fork] defer` / `defer-release`. |
+| Round audit RPCs (`wpoa*`) | Done | `wpoaget/list` × `score`, `delay`, `effectiveweight`, `finalweight`, `blocksortition`; optional height argument; computed through `WPoABuildRoundContext`. Unit-tested in the `audit` suite. |
+| Epoch audit RPCs (`weight*`) | Done | `weightget/list` × `contribution`, `clusterweight`, `returns`, `earnings`, `balance`; refuse epochs that are not yet buried (`LastBuriedEpoch`); computed through `WeightEngineComputeEpochDetail`. Unit-tested in the `epoch` suite. |
+
+Result shapes: [rpc-result-shapes.md](rpc-result-shapes.md).
 
 ---
 
 ## 8. End-to-end validation
 
-The functional tests are a **single** system run:
-[`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh) (wrapped by
-[`test/functional/run_functional_tests.sh`](../../../test/functional/run_functional_tests.sh)). It starts ONE full-stack
-network, warms it up once, then runs every check on the shared run.
+End-to-end validation runs on real `multichaind` processes through the Python harness in
+[`test/`](../test/README.md), in two regimes: `native` (one host, loopback, no network
+emulation — the correctness baseline) and `core` (one namespace per site of a map, with
+per-link delay, jitter and loss). Every chain the harness creates runs the complete stack
+— weights → selection → VRF → RANDAO → sortition → malus, with the weight engine on — and
+the fork-score flag on unless a profile opts out.
+
+A run goes bootstrap → traffic → shutdown → phase 1 (collect) → phase 2 (aggregate and
+recompute) → phase 3 (test) → plots. Phase 3 opens with **consistency checks** that must
+all pass before any statistic is trusted:
 
 | Check | What it demonstrates |
 |---|---|
-| `check_weight` | The weight is registered and readable. |
-| `check_stream_permissions` | The two registries' opposite write policies are effective: `wpoa-weights` closed, `wpoa-weights-malus` open. |
-| `check_multinode_consistency` | The weight map converges identically on every node. Bootstraps `connect`/`send`/`receive`/`mine`/`wpoa-weights.write` from node 0. |
-| `check_malus` | Reporting, `Valid(e)`, accumulation and the `Psi` correction, for **both** malus families — including that an honestly self-published weight is neither a `selfwrite` nor a `badweight`, swept over several heights. |
-| `check_vrf` | Reveals are produced and verified network-wide, 0 rejections, chain live and fork-free. |
-| `check_randao` | Accumulator and seed bit-identical network-wide (0 fallback folds), liveness under the beacon seed. |
-| `check_sortition` | Liveness, no persistent fork, and **zero public-argmin acceptances**: direct evidence that selection is private. This is the default full-stack run. |
-| `check_distribution` | The observed proposer distribution matches the configured weight ratios (chi-square, with the observed-vs-expected table printed as evidence). |
+| `registry_weights_finite_and_positive`, `no_phantom_validator_in_registry` | The weight map is well formed and names only real validators. |
+| `delay_recompute_mismatch_rounds_is_zero`, `phi_consistent` | The harness recomputes every sortition delay and `Phi` from the logged inputs and agrees with the node on every round. |
+| `every_esg_publication_reached_the_stream`, `certified_scores_reflected_in_the_engine` | CA publications land on chain and enter the pipeline. |
+| `traffic_counts_within_configured_range`, `only_miners_pay_the_treasury` | The traffic that feeds `tau` and `R_k` is what the profile asked for. |
+| `malus_finite_and_psi_in_unit_interval` and, when a `malicious` section runs, `malus_effective_weight_matches_recompute`, `malus_clean_validator_has_psi_one`, `malus_detector_no_false_positives`, `malus_confirmed_actions_were_detected` | The malus is inert on honest validators and catches every confirmed `selfwrite` / `badweight` action. |
+| `at_least_one_fully_measured_epoch` | The run was long enough to measure anything at all. |
 
-`INCLUDE_PUBLIC_SELECTOR=1` adds the sortition-off regime (public argmin), which is
-required to observe the public-selector logs and the standalone `VRF reveal OK` line.
-`QUICK=1` uses a smaller sample.
-
-**Why the validation logic is regime-exclusive.** A single full-stack run cannot show both
-public-argmin acceptances and their absence: private sortition *replaces* the public
-argmin. The two regimes must therefore be exercised in separate runs.
+The statistics that follow cover the weight↔election relation (Wilson intervals, goodness
+of fit, concentration, streaks, the timer race, longitudinal checks) and the weight-engine
+feedback. Only the data-integrity malus kinds can be exercised from outside the node;
+`equiv` and `delay` are produced inside the consensus core and are covered by the unit
+suites only.
 
 Unit tests, all node-free:
 
 ```bash
-./src/wpoa/test/run_unit_tests.sh                  # weight malus selector vrf randao sortition
-./src/weight_engine/test/run_unit_tests.sh         # records authorization engine verifier
-./src/wpoa/test/run_all_tests.sh                   # unit + functional
+./src/wpoa/test/run_unit_tests.sh            # weight malus selector vrf randao sortition audit activation
+./src/weight_engine/test/run_unit_tests.sh   # records authorization engine verifier epoch
+python3 -m unittest discover -s test/unit    # the harness's own Python tests
 ```
 
 Detail: [testing.md](testing.md) · [`test/README.md`](../test/README.md).
@@ -487,14 +509,12 @@ Detail: [testing.md](testing.md) · [`test/README.md`](../test/README.md).
 | Area | Status | Notes |
 |---|---|---|
 | **Phase 5 — VDF over the beacon output** | Planned | Would remove the residual last-revealer bias. No code. See Cleve's impossibility theorem in [thesis-project-overview.md](thesis-project-overview.md). |
+| Consensus-rule Δ_gossip (pending pool, relay at admission) | Parked | A *local* gossip hint was measured and rejected: [evidence/local-gossip-hint-inert-2026-09-21.md](evidence/local-gossip-hint-inert-2026-09-21.md). |
+| Height-scoped `delay` malus predicate | Open | The `delay` evidence check reads the unscoped registry and sums `Σf(w)` itself instead of going through `WPoABuildRoundContext`; see [wpoa-weight-engine-architecture.md §10](wpoa-weight-engine-architecture.md#10-known-limits-and-open-points). |
+| Prefix-derived activation latch | Open | `WPoAEverElectable` is node-local state that feeds the diversity gate; a prefix-proof form is described in [wpoa-weight-engine-architecture.md §10](wpoa-weight-engine-architecture.md#10-known-limits-and-open-points). |
 | Stability margin as a chain parameter | Not done | `MC_WEIGHT_DEFAULT_STABILITY_MARGIN` is a compile-time constant. The code recommends promoting it to a hash-enforced parameter before production. |
 | Reader enforcing the Certification Authority role on **ESG** | Not done, and **rejected on determinism grounds** | The reader accepts any schema-valid confirmed record on that stream, so an address holding `.write` without the role can still land a forged record via `publishfrom`. Enforcing the role in the reader would close that, but permissions are **mutable**: a later revocation would retroactively invalidate historical records and change already-computed epoch weights, so a node re-syncing would fold a different history than the network did. That hazard is worse than the limit. Granting `.write` narrowly remains the control. See [weight-engine.md §6.4](weight-engine.md#64-esg--the-certification-authority-role). **Does not apply to membership**, whose rule is a fact about a transaction (who signed it) and therefore immutable. |
-| `weight_engine` suites in the wPoA runner | By design | The four suites have their own runner (`src/weight_engine/test/run_unit_tests.sh`); they are not in the wPoA runner's `ALL_SUITES`. They must be invoked separately. |
+| `weight_engine` suites in the wPoA runner | By design | The five suites have their own runner (`src/weight_engine/test/run_unit_tests.sh`); they are not in the wPoA runner's `ALL_SUITES`. They must be invoked separately. |
 
-Full limitations register:
-[phase1-implementation-guide.md §12](phase1-implementation-guide.md#12-limitations--phase-2-hooks).
-
----
-
-_Verified against the code on 2026-09-17 UTC (commit `7f3eb829`, branch
-`fix/wpoa-cpp-bugs-and-harness-simplification`)._
+Design limits (trusted ESG, no pruned-node support, memory-only fork-choice score, inert
+feedback without a premine): [wpoa-weight-engine-architecture.md §10](wpoa-weight-engine-architecture.md#10-known-limits-and-open-points).

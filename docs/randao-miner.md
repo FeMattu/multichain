@@ -1,26 +1,21 @@
 # `miner/miner.cpp` (wPoA Phase 3b — the RANDAO seed on the miner side)
 
-> **Register: technical-direct.** A developer reference: APIs, function signatures,
-> data structures and control flow, with code terminology left verbatim. For the
-> theoretical consensus model see
-> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
-> [protocol-parameters.md](protocol-parameters.md); for implementation status see
-> [implementation-status.md](implementation-status.md).
-
-> Documentation of the **miner-side integration** of the RANDAO beacon seed: how the block
-> producer, when the beacon governs the next height, seeds proposer selection from the
-> accumulator instead of the raw previous block hash. `miner.cpp` is a large file; this doc
-> covers **only** the Phase 3b seed swap added to `GetMinerAndExpectedMiningStartTime`. The
-> Phase 2 election in the *same* function is documented in
-> [miner-integration.md](miner-integration.md); the Phase 3a VRF *reveal* production (a
-> different function, `CreateBlockSignature`, in the same file) is in
+> **Type:** reference · **Register:** technical-direct · **Verified against the code:**
+> 2026-09-25, commit `af06a6ef`
+>
+> The **miner side of the RANDAO seed** on public-election heights: how the producer seeds
+> the Efraimidis–Spirakis election from the accumulator instead of the raw previous block
+> hash, inside the Phase 2 branch of `GetMinerAndExpectedMiningStartTime`
+> ([miner-integration.md](miner-integration.md)). On sortition heights the same seed is
+> consumed privately, as the VRF input, through `WPoABuildRoundContext`
+> ([sortition-miner.md](sortition-miner.md)). The Phase 3a reveal production is in
 > [vrf-prover.md](vrf-prover.md).
 
 This is a **modified host file**, not a new module. The change is a small, self-contained
 block inside the existing wPoA election branch. The include added at the top of the file:
 
 ```cpp
-#include "wpoa/randao_accumulator.h"   // miner.cpp:27 — WPoARANDAOActiveAtHeight, WPoARandaoSelectionSeed
+#include "wpoa/randao_accumulator.h"   // WPoARANDAOActiveAtHeight, WPoARandaoSelectionSeed
 ```
 
 (`WPoAActiveAtHeight` / `WPoASelectProposer` come from `wpoa/wpoa_selector.h`, already
@@ -34,15 +29,15 @@ included for Phase 2; `WPoAVRF` from `wpoa/vrf_wrapper.h`, included for Phase 3a
   - [if(WPoARANDAOActiveAtHeight(nWPoAHeight) && WPoARandaoSelectionSeed(pindexTip,randao_seed))](#ifwpoarandaoactiveatheightnwpoaheight--wpoarandaoselectionseedpindextiprandao_seed)
   - [memcpy(hWPoASeed.begin(),randao_seed,sizeof(randao_seed));](#memcpyhwpoaseedbeginrandao_seedsizeofrandao_seed)
   - [std::string sProposer=WPoASelectProposer(hWPoASeed.begin(),hWPoASeed.size(),nWPoAHeight);](#stdstring-sproposerwpoaselectproposerhwpoaseedbeginhwpoaseedsizenwpoaheight)
-- [3. What happens after (unchanged)](#3-what-happens-after-unchanged)
-- [4. Effect on the native / Phase 2 / Phase 3a path](#4-effect-on-the-native--phase-2--phase-3a-path)
+- [3. What happens after](#3-what-happens-after)
+- [4. Effect on the other paths](#4-effect-on-the-other-paths)
 - [5. Miner ↔ validator symmetry (the seed)](#5-miner--validator-symmetry-the-seed)
 - [6. Connections to the other files](#6-connections-to-the-other-files)
 
 ---
 ## 1. Where the change lives and why there
 
-The function (`miner.cpp:1026`):
+The function:
 
 ```cpp
 double GetMinerAndExpectedMiningStartTime(CWallet *pwallet,CPubKey *lpkMiner,
@@ -52,8 +47,8 @@ double GetMinerAndExpectedMiningStartTime(CWallet *pwallet,CPubKey *lpkMiner,
 
 This is the miner's polling entry point: called once per new tip, it decides **whether this
 node is the elected proposer for the next height** and, if so, returns "mine now". The wPoA
-branch is gated by `WPoAActiveAtHeight(pindexTip->nHeight + 1)` (`miner.cpp:1099`) and, by the
-insertion point, has already:
+branch is gated by `WPoAActiveAtHeight(pindexTip->nHeight + 1)` and, by the insertion point,
+has already:
 
 ```cpp
 int nWPoAHeight=pindexTip->nHeight+1;                       // the height being elected
@@ -69,8 +64,6 @@ sits **immediately before `WPoASelectProposer`** — the last thing computed bef
 election is run — because that is the only value the swap changes.
 
 ## 2. The added block, line by line
-
-`miner.cpp:1116-1127`:
 
 ```cpp
 // wPoA Phase 3b: when the RANDAO beacon governs this height, seed the
@@ -101,13 +94,13 @@ A 32-byte stack buffer to receive the derived beacon seed. 32 = `RandaoAccumulat
 The overwrite is guarded by **two** conditions, short-circuited left to right:
 
 - **`WPoARANDAOActiveAtHeight(nWPoAHeight)`** — the cheap gate: the flag `AND`
-  `WPoAVRFActiveAtHeight(nWPoAHeight)` (see [randao-accumulator.md §2.5](randao-accumulator.md)).
+  `WPoAVRFActiveAtHeight(nWPoAHeight)` (see [randao-accumulator.md](randao-accumulator.md)).
   Note it is evaluated at **`nWPoAHeight` (= the height being elected, `n+1`)**, not the tip
   height — the seed governs the block about to be produced. When false the whole `&&`
   short-circuits and the block is skipped: no accumulator walk, no disk reads.
 - **`WPoARandaoSelectionSeed(pindexTip,randao_seed)`** — only evaluated if the gate passed.
   It runs the memoized accumulator walk over `pindexTip` and writes the derived seed into
-  `randao_seed` ([randao-accumulator.md §2.6](randao-accumulator.md)). It returns `false`
+  `randao_seed` ([randao-accumulator.md](randao-accumulator.md)). It returns `false`
   only for a NULL tip; guarding on the return value (not just the predicate) means a
   degenerate tip cleanly leaves the prev-hash default in place rather than using an
   unwritten buffer.
@@ -124,34 +117,30 @@ proposer's address. This is the single line that consumes the seed — everythin
 is upstream of it, which is why the scoring/argmin/tie-break and the weight read are provably
 untouched (the election is uniform in the seed, so swapping the seed source cannot change the
 *distribution*, only which validator wins a given round — see
-[phase3b §1](phase3b-implementation-guide.md#1-what-this-module-does)).
+[phase3b-implementation-guide.md §1](phase3b-implementation-guide.md#1-what-this-module-does)). The
+election itself reads the registry as of `nWPoAHeight − 1` and applies the malus, exactly as
+without the beacon.
 
-## 3. What happens after (unchanged)
+## 3. What happens after
 
-The existing logic follows verbatim:
+The Phase 2 decision consumes `sProposer` unchanged: native fallback if nobody is electable
+and wPoA has never activated, mine now if this node is the proposer, otherwise wait for the
+tip to advance ([miner-integration.md §3](miner-integration.md#the-four-outcomes)). The RANDAO
+change only alters *which* address `sProposer` holds.
 
-```cpp
-if(!sProposer.empty() && sProposer==sLocalAddr)
-    *lpdMiningStartTime=mc_TimeNowAsDouble();     // elected → mine now
-else
-    *lpdMiningStartTime=mc_TimeNowAsDouble()+3600; // not our slot → wait
-```
+## 4. Effect on the other paths
 
-If the elected proposer is this node, mine now; otherwise sleep until the tip advances. The
-RANDAO change only altered *which* address `sProposer` holds — the decision that consumes it
-is Phase 2 code.
-
-## 4. Effect on the native / Phase 2 / Phase 3a path
-
-- `-enablewpoarandao` **off** (or VRF off, so `WPoARANDAOActiveAtHeight` is false) → the `if`
-  body never runs; `hWPoASeed` stays the prev-block hash and the election is byte-for-byte the
-  Phase 3a behavior.
-- `-enablewpoarandao` **on** at a governed height → the election is seeded by
+- RANDAO **off** (or VRF off, so `WPoARANDAOActiveAtHeight` is false) → the `if` body never
+  runs; `hWPoASeed` stays the prev-block hash and the election is byte-for-byte the Phase 3a
+  behaviour.
+- RANDAO **on** at a governed, non-sortition height → the election is seeded by
   `H(R_tot[n-k] ‖ h[n] ‖ n+1)` instead.
+- Sortition **on** → this branch is not reached for sortition heights; the Phase 4 branch
+  runs first and uses the same seed as its VRF input.
 
 The block adds no locks of its own; the only shared state it touches is read through
 `WPoARandaoSelectionSeed`, whose cache is guarded internally by `cs_randao_cache`
-([randao-accumulator.md §2.4](randao-accumulator.md)).
+([randao-accumulator.md](randao-accumulator.md)).
 
 ## 5. Miner ↔ validator symmetry (the seed)
 
@@ -175,11 +164,11 @@ a wrong-proposer block is always rejected.
 
 ```mermaid
 flowchart LR
-    GMES["GetMinerAndExpectedMiningStartTime<br/>miner.cpp:1026"] --> BR{"WPoARANDAOActiveAtHeight(n+1)?"}
+    GMES["GetMinerAndExpectedMiningStartTime<br/>(Phase 2 branch)"] --> BR{"WPoARANDAOActiveAtHeight(n+1)?"}
     BR -->|no| DEF["seed = hash(tip)  (Phase 3a)"]
     BR -->|yes| SEED["WPoARandaoSelectionSeed(pindexTip)"]
     SEED -->|"H(R_tot[n-k] ‖ h[n] ‖ n+1)"| OVER["memcpy into hWPoASeed"]
-    DEF --> ELECT["WPoASelectProposer(seed, n+1)  (unchanged)"]
+    DEF --> ELECT["WPoASelectProposer(seed, n+1)<br/>registry as of n, malus applied"]
     OVER --> ELECT
     ELECT --> DECIDE{"proposer == local addr?"}
     DECIDE -->|yes| MINE["mine block n+1 now<br/>(embeds VRF reveal — vrf-prover.md)"]

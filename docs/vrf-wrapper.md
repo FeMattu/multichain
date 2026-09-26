@@ -1,15 +1,14 @@
 # `vrf_wrapper.h` + `vrf_wrapper.cpp`
 
-> **Register: technical-direct.** A developer reference: APIs, function signatures,
-> data structures and control flow, with code terminology left verbatim. For the
-> theoretical consensus model see
-> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
-> [protocol-parameters.md](protocol-parameters.md); for implementation status see
-> [implementation-status.md](implementation-status.md).
-
-> Detailed technical walkthrough of the **pure cryptographic core of wPoA Phase 3a**: the
-> `WPoAVRF` class — an ECVRF / Chaum–Pedersen DLEQ Verifiable Random Function over the
-> secp256k1 curve already bundled with MultiChain.
+> **Type:** reference · **Register:** technical-direct · **Verified against the code:**
+> 2026-09-25, commit `af06a6ef`
+>
+> Walkthrough of the **pure cryptographic core of the VRF beacon**: the `WPoAVRF` class — an
+> ECVRF / Chaum–Pedersen DLEQ Verifiable Random Function over the secp256k1 curve already
+> bundled with MultiChain. Used for the Phase 3a reveal over the previous block hash and for
+> the Phase 4 private score over the sortition input; the call sites are
+> [vrf-prover.md](vrf-prover.md), [vrf-verifier.md](vrf-verifier.md) and
+> [private-sortition.md](private-sortition.md).
 
 These two files are documented together (interface header + implementation). The split is
 the same pure-core / node-glue discipline used in Phase 2's
@@ -53,16 +52,16 @@ the intent directly:
   - [2.3 The Prove entry points](#23-the-prove-entry-points)
   - [2.4 The Verify entry points](#24-the-verify-entry-points)
   - [2.5 The std::vector convenience overloads](#25-the-stdvector-convenience-overloads)
-- [3. vrf_wrapper.cpp — the implementation](#3-vrf_wrappercpp-—-the-implementation)
+- [3. vrf_wrapper.cpp — the implementation](#3-vrf_wrappercpp--the-implementation)
   - [3.1 Includes and the static-constant definitions](#31-includes-and-the-static-constant-definitions)
   - [3.2 Which secp256k1 functions, and why they are safe here](#32-which-secp256k1-functions-and-why-they-are-safe-here)
   - [3.3 The anonymous-namespace constants and the context singleton](#33-the-anonymous-namespace-constants-and-the-context-singleton)
-  - [3.4 SerializePoint — compress a point to 33 bytes](#34-serializepoint-—-compress-a-point-to-33-bytes)
-  - [3.5 HashToCurve — deterministic map from bytes to a curve point](#35-hashtocurve-—-deterministic-map-from-bytes-to-a-curve-point)
-  - [3.6 HashToScalar — uniform scalar in [1, n-1]](#36-hashtoscalar-—-uniform-scalar-in-1-n-1)
+  - [3.4 SerializePoint — compress a point to 33 bytes](#34-serializepoint--compress-a-point-to-33-bytes)
+  - [3.5 HashToCurve — deterministic map from bytes to a curve point](#35-hashtocurve--deterministic-map-from-bytes-to-a-curve-point)
+  - [3.6 HashToScalar — uniform scalar in [1, n-1]](#36-hashtoscalar--uniform-scalar-in-1-n-1)
   - [3.7 ComputeOutput and ComputeChallenge](#37-computeoutput-and-computechallenge)
-  - [3.8 WPoAVRF::Prove — putting it together](#38-wpoavrfprove-—-putting-it-together)
-  - [3.9 WPoAVRF::Verify — recompute and compare](#39-wpoavrfverify-—-recompute-and-compare)
+  - [3.8 WPoAVRF::Prove — putting it together](#38-wpoavrfprove--putting-it-together)
+  - [3.9 WPoAVRF::Verify — recompute and compare](#39-wpoavrfverify--recompute-and-compare)
   - [3.10 The std::vector overloads](#310-the-stdvector-overloads)
 - [4. Connections to the other files](#4-connections-to-the-other-files)
 
@@ -602,7 +601,9 @@ flowchart TD
     HELP -->|CSHA256| SHA["crypto/sha256.h"]
     HELP -->|curve arithmetic| SECP["secp256k1/include/secp256k1.h"]
 
-    MINER["miner/miner.cpp<br/>CreateBlockSignature"] -->|"Prove(key, hashPrevBlock)"| PROVE
+    MINER["miner/miner.cpp<br/>CreateBlockSignature"] -->|"Prove(key, hashPrevBlock or sortition input)"| PROVE
+    SORT["private_sortition.cpp<br/>LocalScoreDelay · VerifyProposer"] -->|"Prove / Verify over seed ‖ PROPOSER ‖ h"| PROVE
+    SORT --> VERIFY
     MINER -->|"SetBlockVRF(reveal, proof)"| ENC["multichainscript.cpp"]
 
     VALID["multichainblock.cpp<br/>VerifyBlockMinerWPoA"] -->|"FindBlockVRF → GetBlockVRF"| ENC
@@ -616,7 +617,8 @@ flowchart TD
 
 - **`vrf_wrapper.{h,cpp}` (core) ← unit test:** the test compiles the `.cpp` and links only
   secp256k1 + SHA256 — the entire reason the crypto is node-free. See
-  [phase3a-implementation-guide.md §13.1](phase3a-implementation-guide.md#13-tests).
+  [phase3a-implementation-guide.md §13](phase3a-implementation-guide.md#13-tests); the
+  `sortition` suite also links it to test probability preservation with real VRF keys.
 - **`crypto/sha256.h`** supplies `CSHA256` for hash-to-curve, hash-to-scalar and the
   output.
 - **`secp256k1/include/secp256k1.h`** supplies the curve arithmetic — the same library the
@@ -624,8 +626,11 @@ flowchart TD
 - **`miner/miner.cpp`** calls `Prove` and then `SetBlockVRF`. See [vrf-prover.md](vrf-prover.md).
 - **`protocol/multichainblock.cpp`** calls `FindBlockVRF`/`GetBlockVRF` then `Verify`. See
   [vrf-verifier.md](vrf-verifier.md).
+- **`wpoa/private_sortition.cpp`** calls `Prove` (the miner scoring itself) and `Verify`
+  (the validator re-scoring a block) over the sortition input. See
+  [private-sortition.md](private-sortition.md).
 - **`protocol/multichainscript.cpp`** carries the reveal on-chain. See
   [block-vrf-encoding.md](block-vrf-encoding.md).
 - **`wpoa_selector.cpp`** provides the `g_wpoa_vrf_enabled` flag and
   `WPoAVRFActiveAtHeight` gate that decide *when* `Prove`/`Verify` are invoked. See
-  [wpoa-selector.md §5](wpoa-selector.md).
+  [wpoa-selector.md §5](wpoa-selector.md#5-wpoa-phase-3a--vrf-beacon-activation-glue).

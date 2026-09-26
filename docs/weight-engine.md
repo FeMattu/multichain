@@ -1,9 +1,14 @@
 # Weight engine — on-chain derivation of validator weights
 
-> **Register: technical-direct.** A reference for APIs, data structures, RPC flows and
-> stream lifecycle. For the theoretical justification of the weight model see the thesis
-> chapter *"Gestione del peso"*, summarised in
-> [thesis-project-overview.md](thesis-project-overview.md).
+> **Type:** reference · **Register:** technical-direct · **Verified against the code:**
+> 2026-09-25, commit `af06a6ef`
+>
+> The weight engine in [`src/weight_engine/`](../src/weight_engine/): input streams,
+> block-derived inputs, the computation pipeline, the engine thread, universal
+> verification and the security model. For the theoretical justification of the weight
+> model see the thesis chapter *"Gestione del peso"*, summarised in
+> [thesis-project-overview.md](thesis-project-overview.md); for how it fits the whole
+> system see [wpoa-weight-engine-architecture.md §6](wpoa-weight-engine-architecture.md#6-the-weight-engine).
 
 The weight engine (`src/weight_engine/`) sits **above** the wPoA consensus
 (`src/wpoa/`). Each epoch it reads a set of public on-chain input streams, computes the
@@ -25,8 +30,10 @@ Configuration parameters: [protocol-parameters.md §4](protocol-parameters.md#4-
 - [2. The input streams](#2-the-input-streams)
 - [3. The computation pipeline](#3-the-computation-pipeline)
 - [4. The engine thread](#4-the-engine-thread)
+- [4bis. Deferred activation — when wPoA actually takes over](#4bis-deferred-activation--when-wpoa-actually-takes-over)
 - [5. Precedence: which publisher writes](#5-precedence-which-publisher-writes)
   - [5.1 Every node publishes its own weight, and every node checks the others](#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others)
+- [5bis. Two operational orderings that fail silently](#5bis-two-operational-orderings-that-fail-silently)
 - [6. Security model — three independent layers](#6-security-model--three-independent-layers)
   - [6.1 Permission layer](#61-permission-layer--consensus-enforced)
   - [6.2 Application layer — per stream, not uniform](#62-application-layer--per-stream-not-uniform)
@@ -108,8 +115,11 @@ Definitions in [`weight_streams.h`](../src/weight_engine/weight_streams.h).
 ### 2.1 Activity and reconciliation are published by nobody
 
 `tau_i^{(e)}` and `R_k^{(e)}` are both derived **directly from the confirmed blocks** of
-the epoch, by `ComputeActivityAndReconciliationForEpoch()`
-([`weight_reader.h`](../src/weight_engine/weight_reader.h)). Both are deterministic
+the epoch, by `WeightStreamReader::ComputeEpochFacts()`
+([`weight_reader.h`](../src/weight_engine/weight_reader.h)), which in the same pass also
+yields the gross credits and debits behind `saldo_k` ([§3](#3-the-computation-pipeline)).
+`ComputeActivityAndReconciliationForEpoch()` and `ComputeActivityForEpoch()` survive as
+thin wrappers that discard the parts they do not need. Both are deterministic
 functions of those blocks, so every honest node recomputes the identical value: no
 publisher, no duplicate-write risk, nothing to trust and nothing to misstate.
 
@@ -268,9 +278,14 @@ self-referential. Operationally the reader hands over *gross* flows with the res
 still inside the debits, and `WeightEngine::Gain` adds it back: one subtraction, in one
 place.
 
-The final integer weight is `ToIntegerWeight(w_k)`, always `>= 1` — the weight-positivity
-requirement, and also the Efraimidis–Spirakis requirement
-([`wpoa_selector.h`](../src/wpoa/wpoa_selector.h)).
+The final integer weight is `ToIntegerWeight(w_k, kappa)`, always `>= 1` — the
+weight-positivity requirement, and also the Efraimidis–Spirakis requirement
+([`wpoa_selector.h`](../src/wpoa/wpoa_selector.h)). It multiplies by `kappa` before
+rounding, recovering the precision `kappa` divided away from `c_i`; the selector normalises,
+so a uniform scale changes only the granularity, never the election distribution.
+
+The feedback ratio is clamped, `rho_k^(e) = clamp(R_k^(e), [0, saldo_k^(e)]) / saldo_k^(e)`,
+and is `0` when `saldo_k^(e) <= 0`.
 
 > **Supersedes the allocation / compliance formulation.** Until this change the engine
 > implemented the earlier version of the same feedback slot: an allocation
@@ -308,7 +323,8 @@ Four explicit choices guarantee it:
    `lambda < 1` keeps it from reaching `w_k`. Note the direction is the safe one: `rho`
    only ever damps `w_k`, so an indeterminate ratio costs a cluster feedback rather than
    granting it any.
-4. **`ToIntegerWeight`** rounds half-away-from-zero and clamps to `[1, UINT32_MAX]`.
+4. **`ToIntegerWeight`** scales by `kappa`, rounds half-away-from-zero and clamps to
+   `[1, UINT32_MAX]`; `!(s >= 1.0)` also catches `NaN`.
 
 ### 3.2 Epochs and the stability margin
 
@@ -420,27 +436,32 @@ rather than what it was notionally due.
 `ThreadWeightEngine()` in
 [`weight_engine.cpp`](../src/weight_engine/weight_engine.cpp), launched from `AppInit2`.
 
-The loop, on each iteration:
+The loop sleeps `MC_WEIGHT_RETRY_INTERVAL_MS` (3 s), then:
 
 1. waits for the wallet, permissions and connectivity to be ready, and for the initial
-   block download to finish (the same gate as the wPoA thread);
+   block download to finish (`NodeReadyForWeight`, the same gate as the wPoA thread);
 2. calls `reader.EnsureInputStreams()` — creates the two missing published streams and
    subscribes. **Creation is retried.** It used to be one-shot: the "attempted" flag was
    latched *before* the `create` call, so a single throw — no `create` permission yet, no
    spendable output yet, both of which resolve themselves within a few blocks — was
-   remembered as success and the stream never appeared. A live node produced
-   `weight-engine-esg` and neither of the other two, after which the engine waited for
-   inputs that could no longer arrive, silently. All three registries now share one state
-   machine (`src/wpoa/stream_setup_state.h`) that latches only on a real broadcast, bounds
-   its retries at `MC_WPOA_STREAM_SETUP_MAX_FAILURES`, logs every failure with its attempt
-   count, and can re-arm if a broadcast never confirms;
-3. identifies the **latest buried epoch**;
-4. computes `w_k` **only for its own** miner address, and only if the local node is itself
-   a cluster miner (`ComputeLocalWeightForEpoch`: if
+   remembered as success and the stream never appeared. All three registries now share one
+   state machine (`src/wpoa/stream_setup_state.h`) that latches only on a real broadcast,
+   bounds its retries at `MC_WPOA_STREAM_SETUP_MAX_FAILURES`, logs every failure with its
+   attempt count, and can re-arm if a broadcast never confirms;
+3. calls `registry.EnsureStreamReady()` on the **output** stream `wpoa-weights`, *before*
+   the epoch gate. It used to be created lazily inside `RegisterLocalWeight`, i.e. only once
+   the node already had a weight — which on a clean network deadlocked
+   ([§4bis](#4bis-deferred-activation--when-wpoa-actually-takes-over));
+4. checks `WeightEngineActiveAtHeight(tip)` and identifies the **latest buried epoch**
+   `e = LastBuriedEpoch(tip, epoch_length, MC_WEIGHT_DEFAULT_STABILITY_MARGIN)`;
+5. **verifies every published weight of epoch `e-1`**, once per epoch
+   (`WeightEngineVerifyAndCacheEpoch`, [§5.1](#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others)),
+   whether or not this node publishes anything itself;
+6. unless it already published for `e`, computes `w_k` **only for its own** miner address,
+   and only if the local node is itself a cluster miner (`ComputeLocalWeightForEpoch`: if
    `clusters.find(local_miner) == clusters.end()`, there is nothing to publish);
-5. publishes through the shared registry path, which ensures `wpoa-weights` exists and
-   keeps the write idempotent;
-6. sleeps `MC_WEIGHT_RETRY_INTERVAL_MS` and repeats.
+7. publishes through `RegisterLocalWeight(w, e)`, which stamps the epoch, signs from the
+   node's own address and is idempotent on an unchanged value.
 
 A node not yet certified, with incomplete inputs, or whose epoch is not yet buried, simply
 does not publish: no error, no partial value.
@@ -506,7 +527,8 @@ counts as activation.
 `WPoAEverElectable()` is a plain boolean, set from `StreamWeightRegistry::ReadAllRecords`
 — the single path every consumer of the weights already goes through, so it is maintained
 whether the round is decided by Phase-2 selection, by private sortition, or merely
-inspected by an audit RPC. Activation is announced once:
+inspected by an audit RPC. It also gates the mining-diversity hook, so the native spacing
+stays in force for the whole bootstrap window. Activation is announced once:
 
 ```
 [wPoA] ACTIVATED: the registry now carries a positive weight (<addr> = <w>, confirmed in
@@ -519,10 +541,13 @@ that predicate is also the mining-diversity permission hook, the wallet read hap
 under locks the permission check already held. The node hung at precisely the height the
 change was meant to rescue.
 
-Node-local staleness is safe here. Before the latch is set this node has never seen a
-weight, so it could not recompute any election anyway, and the validator already **accepts**
-a block whose election it cannot recompute rather than stalling (see
-`VerifyBlockMinerWPoA`). The latch only ever changes what this node does while *mining*.
+Node-local staleness is safe for the election itself. Before the latch is set this node
+has never seen a weight, so it could not recompute any election anyway, and the validator
+already **accepts** a block whose election it cannot recompute rather than stalling (see
+`VerifyBlockMinerWPoA`). The latch is not, however, a function of the chain prefix — it is
+set by any registry read, never cleared by a reorg, and reset by a restart — and through the
+diversity hook it reaches a consensus rule. That open point is recorded in
+[wpoa-weight-engine-architecture.md §10](wpoa-weight-engine-architecture.md#10-known-limits-and-open-points).
 
 ---
 
@@ -666,12 +691,16 @@ cluster could be evaluated in isolation. That coupling is gone; the fold is not.
 previous code computed the whole map and used a single entry; verification adds a map
 comparison to work already performed.
 
-What *would* be prohibitive is verifying in the consensus hot path.
-`GetAllNodesWeights()` is called by the miner and every validator on **every round**,
-while recomputation folds forward from epoch 1 and scans each epoch's blocks — O(chain)
-work. So verification runs **once per buried epoch**, inside `ThreadWeightEngine` where
-the fold already happens, and caches its verdicts; the consensus path consults the cache
-in O(1).
+What *would* be prohibitive is verifying in the consensus hot path. The weights are read
+by the miner and every validator on **every round**, while recomputation folds forward from
+epoch 1 and scans each epoch's blocks — O(chain) work. So verification runs **once per
+buried epoch**, inside `ThreadWeightEngine` where the fold already happens, and caches its
+verdicts **for `weightverifyweights` only**.
+
+The cache never filters the election. `mc_FilterVerifiedWeights` exists and is unit-tested,
+but no consensus path calls it: a verdict cache depends on *when* the local node verified,
+and an election that consulted it would differ from node to node — the opposite of what the
+height-scoped reads guarantee.
 
 #### Where the consequence of a violation reaches consensus
 
@@ -683,7 +712,7 @@ any node.
 
 **Rule 2's consequence travels through the malus registry** — the mechanism already in the
 consensus path as `w_eff = w * Psi`
-([§3.3](#33-relation-to-the-selector--three-distinct-levels)), whose whole purpose is to
+([§3.4](#34-relation-to-the-selector--three-distinct-levels)), whose whole purpose is to
 carry *provable* findings into the election. A mismatch is not silently absorbed: it is
 detected, logged unconditionally, exposed by `weightverifyweights`, and reportable as a
 **`badweight`** malus that every node re-derives by re-running the same pipeline. A forged
@@ -694,7 +723,10 @@ Both malus kinds are verified as *proofs*, never judgements, exactly like an equ
 [malus-registry.md §3](malus-registry.md#3-what-can-be-reported-and-why-only-these). The
 routing is deliberate rather than incidental — a per-round recomputation in the consensus
 read path would be O(chain) per call, whereas the malus is already consulted there and
-already carries per-epoch findings.
+already carries per-epoch findings. The `badweight` check itself is a full recomputation,
+so the malus fold memoises it per epoch
+([malus-registry.md](malus-registry.md), and
+[wpoa-weight-engine-architecture.md §5.3](wpoa-weight-engine-architecture.md#53-badweight-and-the-cost-on-the-consensus-path)).
 
 ---
 
@@ -776,7 +808,7 @@ things, and **none of them subsumes another**.
 |---|---|---|---|
 | **Permission** ([§6.1](#61-permission-layer--consensus-enforced)) | may this address publish on this stream *at all*? | MultiChain consensus — every stream is CLOSED | the transaction does not confirm |
 | **Application** ([§6.2](#62-application-layer--per-stream-not-uniform)) | is this the right *kind* of caller for this claim? | the RPC, locally | `RPC_INSUFFICIENT_PERMISSIONS`; nothing is written |
-| **Verification** ([§5.1](#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others)) | is what the confirmed record *says* true? | every reader, independently | the record is discarded or dropped, and the act is malus grounds |
+| **Verification** ([§5.1](#51-every-node-publishes-its-own-weight-and-every-node-checks-the-others)) | is what the confirmed record *says* true? | every reader, independently | a forged record is discarded (fails closed); a wrong value is reported and becomes `badweight` malus grounds |
 
 The third layer is what this refactor added, and it is the only one that survives a
 dishonest writer: the first two decide *who may speak*, and can therefore be defeated by
@@ -1014,8 +1046,13 @@ only — never the `WRP*` / `getstreamkeysummary` family, which returns stale da
 owning thread (see the note in
 [stream-weight-registry.md](stream-weight-registry.md)).
 
-`ComputeActivityAndReconciliationForEpoch` reads the block/undo files off-thread, taking
-`cs_main` only for a minimal chain snapshot.
+`ComputeEpochFacts` reads the block/undo files off-thread, taking `cs_main` only to snapshot
+each index's status, file positions and parent hash; no `CBlockIndex` field is read outside
+the lock. It fails closed — a block without data (a pruned node) or a missing or
+inconsistent undo record makes the whole epoch unavailable, never a silent default.
+
+The read-only epoch audit RPCs (`weightget*` / `weightlist*`) run on RPC threads and go
+through `WeightEngineComputeEpochDetail`, the same fold the thread publishes from.
 
 ---
 
@@ -1027,10 +1064,11 @@ owning thread (see the note in
 | [`weight_records.h`](../src/weight_engine/weight_records.h) | W1: pure record parsers (`mc_Parse*RecordJson`), the self-attestation predicate and the cluster inversion. Testable in isolation. |
 | [`weight_authorization.h`](../src/weight_engine/weight_authorization.h) | W1: the pure per-stream write policy — the Certification Authority decision table and the CA role's wire name. No node dependency. |
 | [`weight_engine.h`](../src/weight_engine/weight_engine.h) | W2: the pure computation core. Standard library only. |
-| [`weight_engine.cpp`](../src/weight_engine/weight_engine.cpp) | W3: `HeightToEpoch`, `ThreadWeightEngine`, node glue, configuration globals. |
-| [`weight_reader.h`](../src/weight_engine/weight_reader.h) / [`.cpp`](../src/weight_engine/weight_reader.cpp) | W3: `WeightStreamReader` — lifecycle of the two published streams, confirmed reads with publisher extraction, and the single-pass `ComputeActivityAndReconciliationForEpoch`. |
+| [`weight_engine.cpp`](../src/weight_engine/weight_engine.cpp) | W3: `HeightToEpoch`, `ThreadWeightEngine`, `WeightEngineComputeEpochDetail`, node glue, configuration globals. |
+| [`weight_reader.h`](../src/weight_engine/weight_reader.h) / [`.cpp`](../src/weight_engine/weight_reader.cpp) | W3: `WeightStreamReader` — lifecycle of the two published streams, confirmed reads with publisher extraction, and the single-pass `ComputeEpochFacts`. |
 | [`weight_publisher.h`](../src/weight_engine/weight_publisher.h) / [`.cpp`](../src/weight_engine/weight_publisher.cpp) | W3: the single validated write path, the CA-gated ESG RPC and the public self-write membership RPC. No reconciliation write path exists — the quantity is derived. |
-| [`weight_verifier.h`](../src/weight_engine/weight_verifier.h) / [`.cpp`](../src/weight_engine/weight_verifier.cpp) | Universal verification of the published weights: the pure compare/filter and the per-epoch verdict cache. The `weightverifyweights` RPC that reports it lives in [`rpc/rpcweightengine.cpp`](../src/rpc/rpcweightengine.cpp). |
+| [`weight_verifier.h`](../src/weight_engine/weight_verifier.h) / [`.cpp`](../src/weight_engine/weight_verifier.cpp) | Universal verification of the published weights: the pure compare/filter, the per-epoch verdict cache, and the `badweight` recomputation memo used by the malus. |
+| [`rpc/rpcweightengine.cpp`](../src/rpc/rpcweightengine.cpp) | The write RPCs (`weightsetesg`, `weightregistermembership`), `weightverifyweights`, and the read-only epoch audit families (`contribution`, `clusterweight`, `returns`, `earnings`, `balance`). Result shapes: [rpc-result-shapes.md](rpc-result-shapes.md). |
 
 ### 9.1 Tests
 
@@ -1045,10 +1083,12 @@ The module has its **own** unit suites, with a runner separate from the wPoA one
 |---|---|---|
 | `records` | [`weight_records_tests.cpp`](../src/weight_engine/test/weight_records_tests.cpp) | The chain-derived **reconciliation rules** (only treasury-paying outputs count; third parties, change and non-monetary outputs excluded; the signer is credited so a transfer *to* a miner never counts as one *from* it; treasury self-payment excluded; multi-transaction aggregation; order independence across nodes). Record parsing; the **self-attestation rule** (own declaration accepted, foreign / admin-proxy declaration rejected, fail-closed on an unrecoverable signer); cluster inversion, including a node changing cluster twice so only the last declaration counts, and the no-self-membership rule. |
 | `authorization` | [`weight_authorization_tests.cpp`](../src/weight_engine/test/weight_authorization_tests.cpp) | The ESG write decision table: CA authorized; **global admin without the role refused**; generic address refused; revocation biting while `.write` remains; CA lacking `.write`; CA-first error ordering; fail-closed on a chain without custom permissions; and that the role sits in a `high*` slot. |
-| `verifier` | [`weight_verifier_tests.cpp`](../src/weight_engine/test/weight_verifier_tests.cpp) | Matching values accepted; an inflated **and** an understated value rejected and dropped from the map; off-by-one rejected (no tolerance band); a weight published for a non-cluster rejected with its own reason; **fail-open** when the recomputation was unavailable, including a partial map; two honest nodes reaching identical verdicts and identical filtered maps. |
+| `verifier` | [`weight_verifier_tests.cpp`](../src/weight_engine/test/weight_verifier_tests.cpp) | Matching values accepted; an inflated **and** an understated value rejected and dropped by the (consensus-unused) filter; off-by-one rejected (no tolerance band); a weight published for a non-cluster rejected with its own reason; **fail-open** when the recomputation was unavailable, including a partial map; two honest nodes reaching identical verdicts and identical filtered maps. |
 | `engine` | [`weight_engine_tests.cpp`](../src/weight_engine/test/weight_engine_tests.cpp) | Order independence, gain excluding the epoch's own restitution, cumulative `saldo` recursion, `rho` bounds and the non-positive-`saldo` guard, full-restitution scoring `rho = 1` (not `0`), per-cluster independence, weight positivity, `ToIntegerWeight` clamp. |
 
-All four suites are node-free: they do not require building the node. See [testing.md](testing.md).
+| `epoch` | [`weight_epoch_tests.cpp`](../src/weight_engine/test/weight_epoch_tests.cpp) | The pure core behind the epoch audit RPCs: the `LastBuriedEpoch` finality bound, and the edge cases they must report as values — an inactive cluster or company, epoch 1 versus 2, no treasury configured, a non-positive `saldo`. |
+
+All five suites are node-free: they do not require building the node. See [testing.md](testing.md).
 
 ---
 
@@ -1066,10 +1106,3 @@ All four suites are node-free: they do not require building the node. See [testi
 - [malus-registry.md](malus-registry.md) — the malus registry, which reuses
   `HeightToEpoch`.
 - [implementation-status.md](implementation-status.md) — implementation status.
-
----
-
-_Verified against the code on 2026-09-17 UTC (commit `7f3eb829`, branch
-`fix/wpoa-cpp-bugs-and-harness-simplification`). The deferred-activation and
-stream-retry sections describe the behaviour AFTER the fixes of that branch; a binary
-built before it stops at `setup-first-blocks` with an empty registry._

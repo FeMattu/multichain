@@ -1,19 +1,20 @@
-# MultiChain Internals Used by the wPoA Weight Registry
+# MultiChain internals used by wPoA and the weight engine
 
-> **Register: technical-direct.** A developer reference: APIs, function signatures,
-> data structures and control flow, with code terminology left verbatim. For the
-> theoretical consensus model see
-> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
-> [protocol-parameters.md](protocol-parameters.md); for implementation status see
-> [implementation-status.md](implementation-status.md).
+> **Type:** reference · **Register:** technical-direct · **Verified against the code:**
+> 2026-09-25, commit `af06a6ef`
+>
+> The MultiChain host-codebase symbols the stream registries depend on — streams as
+> entities, writing through in-process RPC handlers, reading the wallet-tx store, decoding
+> items, permissions — with `file:line` pointers re-checked at the commit above; if the tree
+> moves, `grep` the symbol name. The consensus-side integration points (miner, validator,
+> permission hook, fork choice, parameters) are tabulated in
+> [wpoa-weight-engine-architecture.md §3](wpoa-weight-engine-architecture.md#3-integration-points-in-multichain).
 
-> Reference to the MultiChain host-codebase symbols this module depends on, with exact
-> `file:line` pointers so you can navigate and modify with confidence. Line numbers
-> are accurate as of this branch; if the tree moves, `grep` the symbol name.
-
-Read [phase1-implementation-guide.md](phase1-implementation-guide.md) first for the design;
-this document is the "where does this come from in MultiChain?" companion. See the
-[entry point](../README.md) for the feature overview.
+The registry this was first written for is documented in
+[stream-weight-registry.md](stream-weight-registry.md); the malus registry and the weight
+engine's reader use the same APIs the same way. This document is the "where does this come
+from in MultiChain?" companion. See the
+[entry point](../src/wpoa/README.md) for the feature overview.
 
 ---
 
@@ -67,7 +68,7 @@ rest. Key globals:
 | `mc_State* mc_gState` | `chainparams/state.h` | Root of runtime state. `mc_gState->m_Assets` is the entity DB (streams/assets); `mc_gState->m_Permissions` the permission DB. |
 | `CWallet* pwalletMain` | `core/init.h:39` | The wallet (keys, address book, coins, signing). |
 | `mc_WalletTxs* pwalletTxsMain` | `core/init.h:40` | The wallet transaction / stream-item store and its indexes. **This is what we read streams from.** |
-| `CChain chainActive` | `core/main.h:589` | The active chain. `chainActive.Height()` (`chain/chain.h:431`), `chainActive.Tip()` (`chain/chain.h:400`). |
+| `CChain chainActive` | `core/main.h:589` | The active chain. `chainActive.Height()` (`chain/chain.h:458`), `chainActive.Tip()` (`chain/chain.h:427`). |
 
 `multichain/multichain.h` is the umbrella header that brings in `utils/define.h`,
 `utils/declare.h` (`mc_Buffer`), `protocol/multichainscript.h` (`mc_Script`),
@@ -292,12 +293,14 @@ live state, rather than the WRP snapshot methods `liststreamitems` relies on.
 
 ## 8. Mining (why reads lag writes)
 
-MultiChain uses round-robin PoA among addresses with `MC_PTP_MINE`. A published
-record is only visible to §4 reads after the block containing its tx is connected.
-Chain parameters live in `chainparams/paramlist.h` (`target-block-time` default 15s,
-`setup-first-blocks` 60, `mining-diversity` 0.3, `mining-requires-peers` true but
-ignored with a single miner, `mine-empty-rounds` 10). Full explanation and timeline:
-[testing.md](testing.md) §3 and §6.
+Native MultiChain uses round-robin PoA among addresses with `MC_PTP_MINE`; under wPoA the
+proposer of a governed height is elected by weight instead. Either way, a published record
+is only visible to §4 reads after the block containing its tx is connected. Chain
+parameters live in `chainparams/paramlist.h` (`target-block-time` default 15s,
+`setup-first-blocks` 60, `mining-diversity` 0.3, `mining-requires-peers` true but ignored
+with a single miner, `mine-empty-rounds` 10). Full explanation and timeline:
+[testing.md §4](testing.md#4-how-multichain-mining-works) and
+[§7](testing.md#7-when-exactly-do-records-appear).
 
 ---
 
@@ -321,14 +324,16 @@ ignored with a single miner, `mine-empty-rounds` 10). Full explanation and timel
 | Entity index flags | `MC_TET_STREAM`, `MC_TET_CHAINPOS` | `wallet/wallettxdb.h:28,65` |
 | Node key by permission | `CWallet::GetKeyFromAddressBook` | `wallet/wallet.h:537` |
 | Permission bits | `MC_PTP_MINE`, `MC_PTP_CONNECT` | `permissions/permission.h:18,11` |
-| Chain height/tip | `chainActive.Height()/Tip()` | `chain/chain.h:431/400` |
+| Chain height/tip | `chainActive.Height()/Tip()` | `chain/chain.h:458/427` |
 
 ---
 
 ## Related documents
 
-- [../README.md](../README.md) — feature entry point and architecture diagram.
-- [phase1-implementation-guide.md](phase1-implementation-guide.md) — the design these APIs implement.
+- [../src/wpoa/README.md](../src/wpoa/README.md) — feature entry point and architecture diagram.
+- [phase1-implementation-guide.md](phase1-implementation-guide.md) — the original design these APIs implement (historical).
 - [stream-weight-registry.md](stream-weight-registry.md) — how the core class calls
   these APIs, line by line.
 - [testing.md](testing.md) — the mining model behind "reads lag writes" (§8 above).
+- [weight-engine.md](weight-engine.md) — the reader that also walks blocks and undo data
+  (`ReadBlockFromDisk`, `CBlockUndo`) to derive `tau`, `R_k` and the flows.

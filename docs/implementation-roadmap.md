@@ -1,17 +1,21 @@
 # Implementation Roadmap — wPoA Selector with Efraimidis–Spirakis Sortition
 
-> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
-> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
-> rebuilt as a Python harness. The references are kept as written because they record the
-> work as it was done; for the current structure see
-> [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
-
-
-> **Register: mixed, declared per section.** The sections on design rationale and on
-> comparison between consensus mechanisms are in the **formal-academic** register; the
-> sections on components, the phased plan and risks are in the **technical-direct**
-> register. Status in [implementation-status.md](implementation-status.md), parameters
-> in [protocol-parameters.md](protocol-parameters.md).
+> **Type:** historical record (roadmap) · **Date:** 2026-07-09 · **Status:** Phases 1–4, the malus registry and the weight engine are done; Phase 5 (VDF) is not started
+>
+> Kept as written: it records the work as it was done and is **not** updated when the
+> code changes, so paths, identifiers and line numbers may no longer match the tree.
+>
+> **Changed since:** the shell suites under `test/functional/`, `test/output/` and
+> `test/experimental/` were replaced by the Python harness in `test/` (see
+> [test/README.md](../test/README.md)); the wPoA switches are chain parameters
+> ([node-startup.md](node-startup.md)); every consensus read of the weights is
+> height-scoped (`GetAllNodesWeightsAsOf(height - 1)`); the mining-diversity bypass is a
+> hook in `IsBarredByDiversity` rather than a `CanCustom` call; the weight engine, the
+> malus registry and the optional score-based fork choice were added on top.
+> **Register:** mixed — the design-rationale and comparison sections are formal-academic,
+> the components, plan and risks technical-direct.
+>
+> **For the system as it is now:** [implementation-status.md](implementation-status.md) — the only authoritative status table.
 
 > **Scope of this document.** This is the *engineering* companion to the wPoA
 > project: current status, phased plan, branch strategy, components, and
@@ -413,7 +417,7 @@ to change.
   weight — testable node-free, following the same Boost.Test pattern as
   [`wpoa_weight_tests.cpp`](../src/wpoa/test/wpoa_weight_tests.cpp).
 - **Multi-node functional tests**: the `check_sortition` check of
-  [`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh)
+  `test/functional/wpoa/functional_test_wpoa_system.sh`
   asserts that (a) only the winning node's score is ever broadcast under
   normal operation, and (b) the observed proposer distribution over many
   rounds matches weight ratios within statistical tolerance (chi-square).
@@ -521,7 +525,7 @@ code-level treatment of the registry.
 
 ## 8. Diagrams
 
-> **Registro: tecnico-diretto.**
+> **Register: technical-direct.**
 
 This section previously carried three diagrams — *Component Architecture (gossip-window
 sketch)*, *Weight Retrieval + Sortition Data Flow* and *Gossip Window Resolution
@@ -542,7 +546,7 @@ The as-built diagrams live in their single canonical locations:
 | Concept | Canonical diagram |
 |---|---|
 | Weight assignment — the authorization gates, the verification rules, the stream/flag precedence | [implementation-status.md §0.1](implementation-status.md#01-how-a-nodes-weight-is-assigned--the-authoritative-flow) |
-| Whole-stack architecture across phases | [`../README.md`](../README.md) |
+| Whole-stack architecture across phases | [`../src/wpoa/README.md`](../src/wpoa/README.md) |
 | Score-timed self-election, miner and validator sides | [phase4-implementation-guide.md](phase4-implementation-guide.md) |
 | Efraimidis transform pipeline | [thesis-project-overview.md §9.5](thesis-project-overview.md) |
 

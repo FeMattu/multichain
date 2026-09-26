@@ -1,24 +1,25 @@
 # wPoA Weight Registry — Implementation Guide (Phase 1)
 
-> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
-> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
-> rebuilt as a Python harness. The references are kept as written because they record the
-> work as it was done; for the current structure see
-> [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
-
-
-> **Register: technical-direct.** A developer reference: APIs, function signatures,
-> data structures and control flow, with code terminology left verbatim. For the
-> theoretical consensus model see
-> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
-> [protocol-parameters.md](protocol-parameters.md); for implementation status see
-> [implementation-status.md](implementation-status.md).
+> **Type:** historical record (phase guide) · **Date:** 2026-07-05 · **Status:** Phase 1 complete
+>
+> Kept as written: it records the work as it was done and is **not** updated when the
+> code changes, so paths, identifiers and line numbers may no longer match the tree.
+>
+> **Changed since:** the shell suites under `test/functional/`, `test/output/` and
+> `test/experimental/` were replaced by the Python harness in `test/` (see
+> [test/README.md](../test/README.md)); the wPoA switches are chain parameters
+> ([node-startup.md](node-startup.md)); every consensus read of the weights is
+> height-scoped (`GetAllNodesWeightsAsOf(height - 1)`); the mining-diversity bypass is a
+> hook in `IsBarredByDiversity` rather than a `CanCustom` call; the weight engine, the
+> malus registry and the optional score-based fork choice were added on top.
+>
+> **For the system as it is now:** [implementation-status.md](implementation-status.md) (status), [wpoa-weight-engine-architecture.md](wpoa-weight-engine-architecture.md) (design overview), and the module reference linked from `README.md`.
 
 This document explains **how the code works, why every choice was made, and how to
 change it**. It is written so you can maintain and extend the module on your own.
 
 Companion documents:
-- [../README.md](../README.md) — feature entry point: introduction, architecture
+- [../src/wpoa/README.md](../src/wpoa/README.md) — feature entry point: introduction, architecture
   diagram, table of contents and implementation status.
 - [multichain-internals.md](multichain-internals.md) — the MultiChain host APIs this
   module builds on, with exact `file:line` pointers into the codebase.
@@ -102,10 +103,10 @@ bias block production. That is Phase 2 (see §12).
 | [`weight_record.h`](../src/wpoa/weight_record.h) | Pure, dependency-light helpers (`mc_ParseWeightRecordJson`, `mc_AccumulateLatestWeight`). Depends only on json_spirit, so it is unit-testable in isolation. |
 | [`stream_weight_registry.h`](../src/wpoa/stream_weight_registry.h) | Public API: the `StreamWeightRegistry` class, the deferred-thread entry point, the RPC declarations, `g_node_weight`, and the two `#define`s. |
 | [`stream_weight_registry.cpp`](../src/wpoa/stream_weight_registry.cpp) | Implementation: class methods, the low-level decoder, the background thread, and the three RPC command handlers. |
-| Docs | [../README.md](../README.md) (entry point), this guide, [multichain-internals.md](multichain-internals.md), [stream-weight-registry.md](stream-weight-registry.md), [weight-record.md](weight-record.md), [node-startup.md](node-startup.md), [rpc-registration.md](rpc-registration.md), [testing.md](testing.md). |
+| Docs | [../src/wpoa/README.md](../src/wpoa/README.md) (entry point), this guide, [multichain-internals.md](multichain-internals.md), [stream-weight-registry.md](stream-weight-registry.md), [weight-record.md](weight-record.md), [node-startup.md](node-startup.md), [rpc-registration.md](rpc-registration.md), [testing.md](testing.md). |
 | [`test/wpoa_weight_tests.cpp`](../src/wpoa/test/wpoa_weight_tests.cpp) | Boost.Test unit tests for the pure logic. |
 | [`test/run_unit_tests.sh`](../src/wpoa/test/run_unit_tests.sh) | Build + run the unit tests (no node build needed). |
-| [`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh) | End-to-end smoke test driving a real single node. |
+| `test/functional/wpoa/functional_test_wpoa_system.sh` | End-to-end smoke test driving a real single node. |
 
 Files **modified** in the host tree (integration points):
 

@@ -1,17 +1,14 @@
 # `protocol/multichainscript.h` + `multichainscript.cpp` (wPoA Phase 3a parts)
 
-> **Register: technical-direct.** A developer reference: APIs, function signatures,
-> data structures and control flow, with code terminology left verbatim. For the
-> theoretical consensus model see
-> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
-> [protocol-parameters.md](protocol-parameters.md); for implementation status see
-> [implementation-status.md](implementation-status.md).
-
-> Documentation of the **on-chain carriage** of the wPoA VRF reveal.
-> `multichainscript.{h,cpp}` implement MultiChain's `mc_Script` — the builder/parser for
-> the tagged pushdata elements MultiChain stores in scripts. This doc covers **only** the
-> Phase 3a additions: the two new methods `SetBlockVRF` / `GetBlockVRF`, and the one-line
-> relaxation of `GetBlockSignature`. The rest of `mc_Script` is untouched.
+> **Type:** reference · **Register:** technical-direct · **Verified against the code:**
+> 2026-09-25, commit `af06a6ef`
+>
+> The **on-chain carriage** of the VRF reveal. `multichainscript.{h,cpp}` implement
+> MultiChain's `mc_Script` — the builder/parser for the tagged pushdata elements MultiChain
+> stores in scripts. This covers **only** the wPoA additions: `SetBlockVRF` /
+> `GetBlockVRF`, and the one-operator relaxation of `GetBlockSignature`. The format is the
+> same for Phase 3a reveals (over the previous block hash) and Phase 4 reveals (over the
+> sortition input).
 
 These are **modified host files**, not a new module. The additions are delimited by
 `/* MCHN START - wPoA Phase 3a … */ … /* MCHN END */`.
@@ -19,9 +16,9 @@ These are **modified host files**, not a new module. The additions are delimited
 ## Table of contents
 - [1. Background: how mc_Script stores an element](#1-background-how-mc_script-stores-an-element)
 - [2. Why a suffix of the signature element (not a new element/output)](#2-why-a-suffix-of-the-signature-element-not-a-new-elementoutput)
-- [3. multichainscript.h — the declarations](#3-multichainscripth-—-the-declarations)
-- [4. SetBlockVRF — append the reveal to the current element](#4-setblockvrf-—-append-the-reveal-to-the-current-element)
-- [5. GetBlockVRF — decode the suffix](#5-getblockvrf-—-decode-the-suffix)
+- [3. multichainscript.h — the declarations](#3-multichainscripth--the-declarations)
+- [4. SetBlockVRF — append the reveal to the current element](#4-setblockvrf--append-the-reveal-to-the-current-element)
+- [5. GetBlockVRF — decode the suffix](#5-getblockvrf--decode-the-suffix)
 - [6. The GetBlockSignature relaxation](#6-the-getblocksignature-relaxation)
 - [7. Connections to the other files](#7-connections-to-the-other-files)
 
@@ -224,7 +221,7 @@ The variable-length framing (a length byte before each blob) means the decoder d
 hard-code 32/97; it reports whatever lengths are present. The **fixed** Phase 3a sizes are
 re-imposed downstream by `WPoAVRF::Verify`'s vector overload, which rejects any
 reveal/proof that is not exactly `OUTPUT_SIZE`/`PROOF_SIZE` (see
-[vrf-wrapper.md §3.10](vrf-wrapper.md)). So a malformed/truncated suffix fails here, and a
+[vrf-wrapper.md](vrf-wrapper.md)). So a malformed/truncated suffix fails here, and a
 wrong-sized-but-well-framed suffix fails at verification — either way the block is rejected.
 
 ## 6. The `GetBlockSignature` relaxation
@@ -272,8 +269,13 @@ flowchart TD
 - **`miner/miner.cpp`** calls `SetBlockSignature` then `SetBlockVRF` (in that order) to
   build the element. See [vrf-prover.md](vrf-prover.md).
 - **`protocol/multichainblock.cpp`** (`FindBlockVRF`) selects each coinbase element and
-  calls `GetBlockVRF`, then feeds the decoded reveal/proof to `WPoAVRF::Verify`. See
-  [vrf-verifier.md](vrf-verifier.md).
+  calls `GetBlockVRF`, then feeds the decoded reveal/proof to `WPoAVRF::Verify` (Phase 3a)
+  or `WPoASortitionVerifyProposer` (Phase 4). See [vrf-verifier.md](vrf-verifier.md) and
+  [sortition-validator.md](sortition-validator.md).
+- **`wpoa/randao_accumulator.cpp`** (`WPoAExtractBlockReveal`) decodes the same suffix with
+  a stack-local `mc_Script`, because the accumulator and the audit RPCs run off the
+  validation thread and must not touch its shared scratch script. See
+  [randao-accumulator.md](randao-accumulator.md).
 - **`vrf_wrapper.{h,cpp}`** define the `OUTPUT_SIZE`/`PROOF_SIZE` the miner writes and the
   vector `Verify` re-imposes. See [vrf-wrapper.md](vrf-wrapper.md).
 - The design rationale for carrying the reveal here at all is in

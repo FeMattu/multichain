@@ -1,23 +1,18 @@
 # ADR — refactoring the functional/smoke suite around the thesis' economic model
 
-> **Status:** analysis complete; three divergences raised for decision (§7). Implementation
-> not started — the mandate's §2 gate ("no code before this report") is what this document
-> discharges.
-> **Note (2026-09-18).** `/experiments` no longer exists. What it did is now the `core`
-> regime of the `test/` harness ([`core-emulation-2026.md`](core-emulation-2026.md)), and
-> the paths this document cites under it were removed with it. The text is kept as
-> written: it is a record of a decision taken when that tree was still there.
+> **Type:** historical record (ADR) · **Date:** 2026-09-16 · **Status:** analysis complete; three divergences raised for decision (§7)
 >
-> **Scope:** `test/functional/` in its entirety. Explicitly **out of scope, and untouched:**
-> `/experiments` (the CORE/netns emulation framework) and
-> `src/weight_engine/test/experimental/` (the MyLedger economic simulation harness —
-> confirmed protected, §1.3).
-> **Register: technical-direct.** Decision record: what the code actually does, where the
-> thesis and the code diverge, what the existing suite does when you run it, and what
-> follows for the refactor.
-> Sibling ADRs: [../../src/wpoa/docs/adr/reconciliation-onchain.md](../adr/reconciliation-onchain.md),
-> [../../src/wpoa/docs/adr/randao-fold-bare-xor.md](../adr/randao-fold-bare-xor.md),
-> [test-restructure-2026.md](test-restructure-2026.md).
+> Kept as written: it records the work as it was done and is **not** updated when the
+> code changes, so paths, identifiers and line numbers may no longer match the tree.
+>
+> **Scope:** `test/functional/` in its entirety, which was later replaced by the Python
+> harness in [`test/`](../../test/README.md). `/experiments` and
+> `src/weight_engine/test/experimental/`, out of scope here, no longer exist either: network
+> emulation is now the `core` regime of the harness ([core-emulation-2026.md](core-emulation-2026.md)).
+> Sibling ADRs: [reconciliation-onchain.md](reconciliation-onchain.md),
+> [randao-fold-bare-xor.md](randao-fold-bare-xor.md), [test-restructure-2026.md](test-restructure-2026.md).
+>
+> **For the system as it is now:** [../testing.md](../testing.md) and [`test/README.md`](../../test/README.md).
 
 ---
 
@@ -77,7 +72,7 @@ itself, rather than inferred from call sites:
 | `weightverifyweights` | 156 | weight |
 
 `getvalidatorinfo` and `getweight` do **not** exist — confirming the finding already
-recorded in [experiments/docs/metrics.md](../../experiments/docs/metrics.md). Neither does
+recorded in `experiments/docs/metrics.md`. Neither does
 `weightsetreconciliation`, whose removal
 [reconciliation-onchain.md](../adr/reconciliation-onchain.md) decided and
 which `functional_test_weight_engine.sh:174` deliberately asserts is gone.
@@ -373,7 +368,7 @@ idiom. **No new instance of this class was introduced by the analysis, and none 
 ## 4. Metric portability from `experiments/` — table by table
 
 The criterion is the one
-[experiments/docs/metrics.md §"What one node can see, and what needs several"](../../experiments/docs/metrics.md)
+`experiments/docs/metrics.md §"What one node can see, and what needs several"`
 already states: *"deriving a multi-node quantity from a single node is inventing it, and
 the result looks exactly like a measurement."* Reused verbatim. A second axis is added
 here, since this harness has **no network emulation at all**: a metric whose value *is* the

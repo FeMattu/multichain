@@ -1,17 +1,15 @@
 # Private Proposer Sortition for Weighted Proof-of-Authority: A Thesis Overview
 
-> **Register: formal-academic.** A predominantly theoretical document: the consensus
-> model, security properties, design rationale, and comparison with other mechanisms
-> (PoW / PoS / PoA / PoSA). Implementation treatments in the technical-direct register
-> live in the per-component files; status in
-> [implementation-status.md](implementation-status.md), parameters in
-> [protocol-parameters.md](protocol-parameters.md).
-
-> **Scope of this document.** This is the *research* companion to the wPoA
-> project: problem, threat model, formal model, and
-> theoretical justification for the design. It contains **no implementation
-> detail** — for the engineering plan, phased status, and code-level pointers,
-> see [implementation-roadmap.md](implementation-roadmap.md).
+> **Type:** reference (research companion) · **Register:** formal-academic · **Reviewed
+> against the code:** 2026-09-26, commit `3d2fc551`
+>
+> The *research* companion to the wPoA project: problem, threat model, formal model,
+> security properties, design rationale and comparison with other mechanisms
+> (PoW / PoS / PoA / PoSA). It contains **no implementation detail**: for how the model is
+> built see [wpoa-weight-engine-architecture.md](wpoa-weight-engine-architecture.md), for
+> status [implementation-status.md](implementation-status.md), for parameters
+> [protocol-parameters.md](protocol-parameters.md). Where the implementation departs from a
+> definition stated here, the departure is noted in place.
 
 **Author's note.** This is a bachelor's thesis project (Università degli Studi
 di Pisa, supervisors: Prof. Damiano Di Francesco Maesa, Prof. Laura Ricci), implemented as a fork
@@ -297,7 +295,7 @@ fixed-width 32-byte VRF output (so there is nothing to normalize), the reveal
 is *unique* for a given key and input (so no last revealer can choose a value
 that cancels earlier contributions, which is the only thing XOR linearity would
 expose), and `R_tot` is never consumed raw — §5.5 hashes it anyway. See
-[phase3b-implementation-guide.md §5.1](phase3b-implementation-guide.md#51-the-fold-is-the-thesis-def-53-itself-a-bare-xor).
+[adr/randao-fold-bare-xor.md](adr/randao-fold-bare-xor.md).
 
 The XOR is commutative and self-inverse, so `R_tot[n]` depends on the multiset
 of reveals rather than on their order. On a chain neither matters: the order of
@@ -396,6 +394,13 @@ model is that such penalties indirectly or directly modify the node's future
 selection probability in the WRS, making misbehavior disadvantageous both in
 security and in expected-return terms [3][4].
 
+*In the implementation* this is realised by the behavioural malus registry
+([malus-registry.md](malus-registry.md)) along one dimension only — reduction of elective
+weight, `w_eff = w · Ψ`, down to temporary exclusion at `Ψ = 0` — for four offences that
+every node can prove from public chain data (equivocation, a scheduling-delay violation, a
+record published on another's behalf, a weight that fails recomputation). There is no
+economic action on collateral, and the exclusion always decays.
+
 ### 5.8 Functional Properties of the Baseline Model
 
 Public verifiability follows from the fact that the reveal included in the
@@ -461,13 +466,12 @@ compute them and when.
 Weights `w_i` are treated as an already-synchronized input to the above
 computation, exactly as in [§5.6](#56-baseline-weighted-random-selection) of
 the formal model. Concretely, in the current MultiChain-based implementation,
-weights are recorded on a native append-only stream (`wpoa-weights`); at
-startup, each node reconstructs the current weight map by scanning that
-stream backward and keeping the first (i.e. most recent) record per validator
-address. This is described here only at the level needed to reason about the
-protocol — implementation mechanics are out of scope for this document and
-live in
-[implementation-roadmap.md §7](implementation-roadmap.md#7-weight-retrieval-via-streams-conceptual).
+weights are recorded on a native append-only stream (`wpoa-weights`), and the weight map
+used for a block at height `h` is the most recent **confirmed** record per validator
+among those confirmed at or before `h − 1` — a function of the chain prefix the block
+extends, hence identical on every honest node. This is described here only at the level
+needed to reason about the protocol — implementation mechanics are out of scope for this
+document and live in [stream-weight-registry.md](stream-weight-registry.md).
 
 ### 6.4 Why This Solves the Predictability Problem
 
@@ -673,8 +677,12 @@ flowchart TD
     Norm --> Timer["Schedule own mining attempt at<br/>parent.nTime + D_i"]
 
     Timer --> Race{"A valid block for h[n+1]<br/>arrives before the timer fires?"}
-    Race -->|yes| Stand["Stand down: new tip observed.<br/>Restart at the next height"]
-    Race -->|no| Propose["Timer fires first — i is the argmin.<br/>Mine, embedding its reveal (y_i, π_i)"]
+    Race -->|yes| Better{"Its true score<br/>is lower than score_i?"}
+    Better -->|yes| Stand["Stand down: new tip observed.<br/>Restart at the next height"]
+    Better -->|no| Hold["Hold it back: keep h[n] as the tip<br/>(mempool and UTXO view unchanged)"]
+    Hold --> Propose
+    Race -->|no| Propose["Timer fires: mine the full block,<br/>embedding its reveal (y_i, π_i)"]
+    Propose --> FC["Fork choice at equal height:<br/>the lower true score wins"]
 
     Propose --> Peer["Every peer, on receipt"]
     Peer --> V1{"π_i verifies over<br/>seed ‖ 'PROPOSER' ‖ n+1 ?"}
@@ -692,6 +700,13 @@ lowest-score online validator always eventually acts. There is **no extra messag
 the privacy of the score is never traded away for coordination. And the validator's
 check is an **inequality on `nTime`**, not an equality on a publicly recomputed argmin,
 which is precisely what lets the proposer stay unknowable until it commits.
+
+Two refinements of the timer race close the gap between the designated and the observed
+winner. The countdown starts at `parent.nTime`, not when a node finishes processing the
+parent, so the parent's own proposer gets no head start. And a candidate whose round is
+still running does not let a worse-scored block for that round become its tip: it proposes
+its own anyway, and every node then prefers the lower score at equal height
+([score-aware-activation.md](score-aware-activation.md)).
 
 ### 9.5 Efraimidis Transformation Pipeline
 
@@ -726,4 +741,6 @@ flowchart LR
 
 ---
 
-**Related documents:** [Implementation Roadmap](implementation-roadmap.md)
+**Related documents:** [wpoa-weight-engine-architecture.md](wpoa-weight-engine-architecture.md) ·
+[implementation-status.md](implementation-status.md) ·
+[implementation-roadmap.md](implementation-roadmap.md) (historical)

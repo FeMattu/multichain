@@ -1,27 +1,27 @@
 # `weight_record.h`
 
-> **Register: technical-direct.** A developer reference: APIs, function signatures,
-> data structures and control flow, with code terminology left verbatim. For the
-> theoretical consensus model see
-> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
-> [protocol-parameters.md](protocol-parameters.md); for implementation status see
-> [implementation-status.md](implementation-status.md).
-
-> Detailed technical walkthrough of the **pure weight-record helpers** — wPoA Phase 1.
+> **Type:** reference · **Register:** technical-direct · **Verified against the code:**
+> 2026-09-25, commit `af06a6ef`
+>
+> Walkthrough of [`weight_record.h`](../src/wpoa/weight_record.h), the **pure Phase 1
+> helpers**: the self-attestation predicate shared by every self-describing stream, the
+> record parser, and the newest-wins fold. The registry that calls them is in
+> [stream-weight-registry.md](stream-weight-registry.md).
 
 ## Table of contents
 - [1. Role and philosophy of the file](#1-role-and-philosophy-of-the-file)
   - [Why a separate, "dependency-light" file?](#why-a-separate-dependency-light-file)
   - [Why inline and header-only?](#why-inline-and-header-only)
 - [2. Includes](#2-includes)
-- [3. mc_ParseWeightRecordJson — parsing and validation](#3-mc_parseweightrecordjson-—-parsing-and-validation)
+- [2bis. mc_StreamItemIsSelfAttested — the self-attestation rule](#2bis-mc_streamitemisselfattested--the-self-attestation-rule)
+- [3. mc_ParseWeightRecordJson — parsing and validation](#3-mc_parseweightrecordjson--parsing-and-validation)
   - [Contract (from the Doxygen comment)](#contract-from-the-doxygen-comment)
   - [3.1 Zeroing and type check](#31-zeroing-and-type-check)
   - [3.2 The two OpReturnFormatEntry shapes (robustness)](#32-the-two-opreturnformatentry-shapes-robustness)
   - [3.3 Extracting the "json" object](#33-extracting-the-json-object)
-  - [3.4 Reading the node_address and weight fields](#34-reading-the-node_address-and-weight-fields)
+  - [3.4 Reading the node_address, weight and epoch fields](#34-reading-the-node_address-weight-and-epoch-fields)
   - [3.5 Final validation and conversion](#35-final-validation-and-conversion)
-- [4. mc_AccumulateLatestWeight — "newest wins" aggregation](#4-mc_accumulatelatestweight-—-newest-wins-aggregation)
+- [4. mc_AccumulateLatestWeight — "newest wins" aggregation](#4-mc_accumulatelatestweight--newest-wins-aggregation)
 - [5. Links to the other files](#5-links-to-the-other-files)
 - [Related documents](#related-documents)
 
@@ -29,17 +29,21 @@
 ## 1. Role and philosophy of the file
 
 This is a **header-only** header (all functions are `inline`, there is no associated
-`.cpp`). It contains just two free functions:
+`.cpp`). It contains three free functions:
 
+- `mc_StreamItemIsSelfAttested(...)` — the consensus-critical rule that a record is valid
+  only if its transaction was signed by the address it declares.
 - `mc_ParseWeightRecordJson(...)` — turns the JSON payload of a stream item into
-  `(node_address, weight)`.
+  `(node_address, weight[, epoch])`.
 - `mc_AccumulateLatestWeight(...)` — folds one record into the "address → latest
   weight" map.
 
 ```mermaid
 flowchart LR
     RAW[Stream item JSON<br/>from OpReturnFormatEntry] --> PARSE[mc_ParseWeightRecordJson<br/>parse + validate]
-    PARSE -->|node_address, weight| ACC[mc_AccumulateLatestWeight<br/>latest address = weight]
+    PARSE -->|node_address, weight, epoch| SELF{mc_StreamItemIsSelfAttested<br/>signer == node_address?}
+    SELF -->|yes| ACC[mc_AccumulateLatestWeight<br/>latest address = weight]
+    SELF -.no.-> FORGED[discarded, logged<br/>selfwrite malus evidence]
     ACC --> MAP[(map address to weight<br/>newest wins)]
     PARSE -.reject.-> DROP[invalid record dropped]
 ```
@@ -64,13 +68,14 @@ linking the wallet, network or database.
 `inline` functions defined in a header can be included in several `.cpp` files without
 violating the **ODR** (One Definition Rule): the linker merges identical definitions.
 This avoids having to create a `weight_record.cpp` and add it to the Makefile just for
-two tiny functions. It is the typical pattern for pure, testable utilities.
+three small functions. It is the typical pattern for pure, testable utilities.
 
 ## 2. Includes
 
 ```cpp
 #include <map>
 #include <string>
+#include <vector>
 #include <stdint.h>
 #include "json/json_spirit_value.h"
 #include <boost/foreach.hpp>
@@ -78,6 +83,7 @@ two tiny functions. It is the typical pattern for pure, testable utilities.
 
 - `<map>` → `std::map` for the accumulation function.
 - `<string>` → `std::string`.
+- `<vector>` → the list of signing addresses the self-attestation rule takes.
 - `<stdint.h>` → `uint32_t`, `int64_t` (fixed-width integer types, standard C).
 - `json/json_spirit_value.h` → **json_spirit**: `Value`, `Object`, `Pair`, and the type
   enum (`obj_type`, `str_type`, `int_type`, `real_type`).
@@ -88,19 +94,66 @@ two tiny functions. It is the typical pattern for pure, testable utilities.
 Note: there is **no** `#include` of any wallet/network header here. That is exactly the
 point: minimal dependencies.
 
+## 2bis. `mc_StreamItemIsSelfAttested` — the self-attestation rule
+
+```cpp
+inline bool mc_StreamItemIsSelfAttested(const std::string& declared_address,
+                                        const std::vector<std::string>& publishers)
+{
+    if (declared_address.empty()) return false;
+    for (size_t i = 0; i < publishers.size(); i++)
+        if (publishers[i] == declared_address) return true;
+    return false;   // includes the empty-publisher case: fail closed
+}
+```
+
+A record is **self-attested** iff the address that signed the publishing transaction is
+the address the payload declares. A payload field can claim anything; an input signature
+cannot. Two streams rely on it, for the same reason and with the same consequence:
+
+- `wpoa-weights` — a node declaring its own cluster's weight
+  ([stream-weight-registry.md §2.7](stream-weight-registry.md#27-reading-records--the-most-delicate-path));
+- `weight-engine-membership` — a node declaring which cluster it joined
+  ([weight-engine.md §2.2](weight-engine.md#22-membership-is-self-attested-and-the-key-is-the-declaring-node)).
+
+A record that fails it is **discarded**, never merely flagged.
+
+- `publishers` are the addresses recovered from the transaction's input scripts. A
+  transaction funded from several addresses has several publishers, and the record is
+  accepted if the declared address is **any** of them — each did authorize it.
+- An empty publisher list (signer unrecoverable) is **never** accepted: failing closed
+  keeps the rule decidable.
+- **One copy, in the lower layer.** The weight engine sits above wPoA and may depend
+  downwards, so `weight_engine/weight_records.h` (`mc_MembershipRecordIsSelfAttested`)
+  delegates to this function, and the malus registry uses it too — a `selfwrite`
+  accusation is validated as its exact negation. Two copies of a consensus-critical
+  predicate could drift into a node discarding a record it does not accuse, or accusing
+  one it does not discard.
+
 ## 3. `mc_ParseWeightRecordJson` — parsing and validation
 
 ```cpp
 inline bool mc_ParseWeightRecordJson(const json_spirit::Value& data_value,
-                                     std::string& node_address, uint32_t& weight)
+                                     std::string& node_address, uint32_t& weight,
+                                     uint32_t* epoch = NULL)
 ```
 
 ### Contract (from the Doxygen comment)
 - **Input** `data_value`: the value produced by `OpReturnFormatEntry` for a JSON item,
   i.e. an object of the form `{ "json": { "node_address": "...", "weight": n, ... } }`.
-- **Output** (by reference): `node_address` and `weight`.
+- **Output** (by reference): `node_address` and `weight`; optionally, through the
+  pointer, `epoch` — the epoch the value was computed **for**, or `0` when the record does
+  not say.
 - **Return**: `true` only for a well-formed record with a non-empty address and a
   **strictly positive** integer weight; `false` otherwise.
+
+**Why the epoch, and why 0 is a legitimate answer.** A weight is a claim about a specific
+epoch, so checking a published value against a recomputation is meaningful only when both
+refer to the same epoch; without the field, a value legitimately published for epoch `e`
+would be compared with epoch `e+1` as soon as the epoch rolled over, and an honest node
+would be flagged. The weight engine stamps it; the static `-weight` path does not,
+because a hand-set weight is not derived from any epoch. A record with epoch 0 is simply
+not subject to value verification — and records predating the field read as 0 too.
 
 Passing by reference (`std::string&`, `uint32_t&`) is the idiomatic pre-C++17 way of
 "returning multiple values": the function returns a `bool` for success and writes the
@@ -111,6 +164,7 @@ results into the caller's variables.
 ```cpp
 node_address = "";
 weight = 0;
+if (epoch != NULL) *epoch = 0;
 if (data_value.type() != json_spirit::obj_type) return false;
 ```
 
@@ -175,11 +229,12 @@ if (!have_json || json_val.type() != json_spirit::obj_type) return false;
 It looks for the `"json"` key. If it is missing, or is not an object, the record is
 invalid → `false`.
 
-### 3.4 Reading the `node_address` and `weight` fields
+### 3.4 Reading the `node_address`, `weight` and `epoch` fields
 
 ```cpp
 std::string addr;
 int64_t w = -1;
+int64_t e = 0;
 BOOST_FOREACH(const json_spirit::Pair& p, json_val.get_obj())
 {
     if (p.name_ == "node_address" && p.value_.type() == json_spirit::str_type)
@@ -191,8 +246,12 @@ BOOST_FOREACH(const json_spirit::Pair& p, json_val.get_obj())
         else if (p.value_.type() == json_spirit::real_type)
             w = (int64_t)p.value_.get_real();
     }
+    else if (p.name_ == "epoch")
+    {   /* same int/real handling into e */ }
 }
 ```
+
+Other fields of the record (`timestamp`, `height`) are ignored by the parser.
 
 - `node_address` must be a string (`str_type`) → `.get_str()`.
 - `weight` is accepted both as an **integer** (`int_type` → `.get_int64()`) and as a
@@ -208,6 +267,8 @@ BOOST_FOREACH(const json_spirit::Pair& p, json_val.get_obj())
 if (addr.empty() || w <= 0) return false;
 node_address = addr;
 weight = (uint32_t)w;
+if (epoch != NULL)
+    *epoch = (e > 0 && e <= (int64_t)0xffffffff) ? (uint32_t)e : 0;
 return true;
 ```
 
@@ -215,6 +276,8 @@ return true;
   consistent with `RegisterLocalWeight`, which rejects `weight == 0`).
 - Only once validation passes does it write the outputs and return `true`. The cast
   `(uint32_t)w` is safe because `w > 0` is already guaranteed.
+- A negative or out-of-range epoch reads as "unstated" (0) rather than wrapping: a bad
+  epoch must not make a record look as if it belonged to a different one.
 
 ## 4. `mc_AccumulateLatestWeight` — "newest wins" aggregation
 
@@ -241,31 +304,40 @@ Extracting this line into its own function makes it:
 
 ## 5. Links to the other files
 
-- **`stream_weight_registry.cpp`** includes this header
-  (`#include "wpoa/weight_record.h"`) and uses:
-  - `mc_ParseWeightRecordJson` inside `DecodeWeightRecord` to extract `(addr, weight)`
-    from the `Value` produced by `OpReturnFormatEntry`;
+- **`stream_weight_registry.cpp`** includes this header and uses:
+  - `mc_ParseWeightRecordJson` inside `DecodeWeightRecord` to extract
+    `(addr, weight, epoch)` from the `Value` produced by `OpReturnFormatEntry`;
+  - `mc_StreamItemIsSelfAttested` right after, to discard a record published on another
+    address's behalf;
   - `mc_AccumulateLatestWeight` inside `ReadAllRecords` to build the address→weight map.
+- **`malus_registry.cpp`** parses `wpoa-weights` records with the same parser when it
+  validates a `badweight` or `selfwrite` report, and uses the same predicate.
+- **`weight_engine/weight_records.h`** delegates its membership rule to
+  `mc_StreamItemIsSelfAttested`.
 - **`src/wpoa/test/wpoa_weight_tests.cpp`** includes **only** this header to test the
   parsing in isolation — which is the entire reason the file exists.
 - It depends on no other wPoA file: it is the pure "leaf" of the subsystem.
 
 ```mermaid
 flowchart TD
-    SWR[stream_weight_registry.cpp<br/>uses it in DecodeWeightRecord / ReadAllRecords]
+    SWR[stream_weight_registry.cpp<br/>DecodeWeightRecord / ReadAllRecords]
+    MAL[malus_registry.cpp<br/>selfwrite / badweight evidence]
+    WER[weight_engine/weight_records.h<br/>membership rule]
     TEST[wpoa_weight_tests.cpp<br/>tests it in isolation]
     SWR --> WR
+    MAL --> WR
+    WER --> WR
     TEST --> WR
-    WR[weight_record.h<br/>json_spirit + STL only<br/>mc_ParseWeightRecordJson<br/>mc_AccumulateLatestWeight]
+    WR[weight_record.h<br/>json_spirit + STL only<br/>mc_StreamItemIsSelfAttested<br/>mc_ParseWeightRecordJson<br/>mc_AccumulateLatestWeight]
 ```
 
 ---
 
 ## Related documents
 
-- [../README.md](../README.md) — feature entry point and architecture diagram.
+- [../src/wpoa/README.md](../src/wpoa/README.md) — feature entry point and architecture diagram.
 - [stream-weight-registry.md](stream-weight-registry.md) — the class that uses these
   helpers on the read path.
 - [phase1-implementation-guide.md](phase1-implementation-guide.md) §5.6 — why the pure logic is
-  extracted for unit testing.
-- [testing.md](testing.md) §2 — the Boost.Test suite that exercises these functions.
+  extracted for unit testing (historical).
+- [testing.md §2](testing.md#2-unit-tests) — the `weight` suite that exercises these functions.

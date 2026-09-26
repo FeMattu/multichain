@@ -1,24 +1,15 @@
 # Behavioural malus registry (`malus_record.h` + `malus_registry.{h,cpp}`)
 
-> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
-> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
-> rebuilt as a Python harness. The references are kept as written because they record the
-> work as it was done; for the current structure see
-> [`../test/README.md`](../test/README.md) and [`../test/docs/fixes-changelog.md`](../test/docs/fixes-changelog.md).
-
-
-> **Register: technical-direct.** A developer reference: APIs, function signatures,
-> data structures and control flow, with code terminology left verbatim. For the
-> theoretical consensus model see
-> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
-> [protocol-parameters.md](protocol-parameters.md); for implementation status see
-> [implementation-status.md](implementation-status.md).
-
-> The second of the two registries wPoA maintains, and the deliberate mirror image of
-> the first. Where [`stream-weight-registry.md`](stream-weight-registry.md) documents the
+> **Type:** reference · **Register:** technical-direct · **Verified against the code:**
+> 2026-09-25, commit `af06a6ef`
+>
+> The second of the two registries wPoA maintains, and the deliberate mirror image of the
+> first. Where [stream-weight-registry.md](stream-weight-registry.md) documents the
 > **closed** stream that says how much a validator is worth, this one documents the
-> **open** stream that records how it has behaved — and how the two are combined into the
-> effective weight the proposer election actually consumes.
+> **open** stream `wpoa-weights-malus` that records how it has behaved — the four provable
+> offences, the local decidability predicate, the decaying accumulator, and how the
+> correction `Ψ` produces the effective weight the proposer election actually consumes.
+> Parameters: [protocol-parameters.md §3](protocol-parameters.md#3-catalogue--behavioural-malus-registry).
 
 ---
 
@@ -28,10 +19,11 @@
 - [3. What can be reported, and why only these](#3-what-can-be-reported-and-why-only-these)
   - [The consensus-behavioural family](#the-consensus-behavioural-family)
   - [The published-data-integrity family](#the-published-data-integrity-family)
-- [4. Valid(e) — the local decidability predicate](#4-valide-—-the-local-decidability-predicate)
+- [4. Valid(e) — the local decidability predicate](#4-valide--the-local-decidability-predicate)
 - [5. Accumulation, and why exclusion is always temporary](#5-accumulation-and-why-exclusion-is-always-temporary)
 - [6. Epoch alignment, and the acyclicity it buys](#6-epoch-alignment-and-the-acyclicity-it-buys)
 - [7. Where it enters consensus](#7-where-it-enters-consensus)
+  - [7.1 The cost of re-validating every report, and the recomputation memo](#71-the-cost-of-re-validating-every-report-and-the-recomputation-memo)
 - [8. Configuration](#8-configuration)
 - [9. RPC surface](#9-rpc-surface)
 - [10. Tests](#10-tests)
@@ -42,7 +34,7 @@
 
 The weight `w_i` on `wpoa-weights` is produced entirely outside the consensus: an ESG
 score and a participation measure, computed by the weight-management layer
-([`../../weight_engine/`](../../weight_engine/)) and published as a number the consensus
+([`src/weight_engine/`](../src/weight_engine/)) and published as a number the consensus
 consumes without knowing how it was derived. That layer has no view of how validator `i`
 behaves *on the wPoA protocol itself*. A validator
 that equivocates, or that tries to jump its scheduling delay, keeps exactly the same
@@ -175,7 +167,7 @@ else's.
 
 The proof is the exact **negation** of the rule the readers apply: a report is valid
 precisely when the readers discarded the record. Both use the same shared predicate
-(`mc_StreamItemIsSelfAttested`, [`../weight_record.h`](../src/wpoa/weight_record.h)), so a node can
+(`mc_StreamItemIsSelfAttested`, [`weight_record.h`](../src/wpoa/weight_record.h)), so a node can
 never accuse a record it would have accepted, or accept one it would accuse.
 
 Readers discard such a record already, so the attempt gains nothing — and that is exactly
@@ -234,7 +226,13 @@ primitives block validation already uses, and only public chain data:
      parent (same round ⇒ same seed, which is what makes VRF uniqueness bite);
    - `delay`: the score is recomputed from the revealed output and the accused's effective
      weight, and the block's `nTime` must be **strictly earlier** than
-     `parent.nTime + delay`.
+     `parent.nTime + delay`. *Known gap:* this reconstruction reads the registry without a
+     height scope (`GetAllNodesWeights()`), applies `Ψ^(e−1)` to the accused only and sums
+     `Σf(w)` in its own loop, where the validator uses `GetAllNodesWeightsAsOf(h − 1)`,
+     `WPoAApplyMalus` on the whole map and `TotalEffectiveWeight`. Every node still reaches
+     the same verdict, but it can be judged against a slightly different bar from the one
+     the validator enforced; see
+     [wpoa-weight-engine-architecture.md §10](wpoa-weight-engine-architecture.md#10-known-limits-and-open-points).
 
 **For the data-integrity kinds** (`MalusRegistry::ValidDataIntegrityReport`), the evidence
 is a transaction rather than a block, so the sequence differs while the discipline does
@@ -314,8 +312,13 @@ structurally ineligible without an explicit exclusion branch.
 ## 6. Epoch alignment, and the acyclicity it buys
 
 `M` and `Psi` are per-epoch quantities on the **same** height→epoch map the weight layer
-uses (`HeightToEpoch`, [`../../weight_engine/weight_engine.h`](../src/weight_engine/weight_engine.h)) —
+uses (`HeightToEpoch`, [`weight_engine.h`](../src/weight_engine/weight_engine.h)) —
 single-sourced deliberately, since two copies of a consensus-critical mapping could drift.
+
+`MalusRegistry::GetAccumulators(epoch, out)` is a single forward pass: reports are bucketed
+by the epoch of the height they accuse, and for `e = 1 … epoch` each epoch's reports are
+first validated against `Psi^(e-1)` — the correction actually in force at those heights —
+and only then folded into `M^(e)`.
 
 Heights in epoch `e` are governed by `Psi^(e-1)`: a malus proved in an epoch takes effect
 from the epoch **after**. That mirrors the weight layer's own inter-epoch feedback, where
@@ -331,19 +334,41 @@ against `Psi^(e)` would make the epoch's own reports depend on themselves.
 Exactly one place: `WPoAApplyMalus(weights, height)`.
 
 ```
-StreamWeightRegistry::GetAllNodesWeights()      raw w from the closed stream
+StreamWeightRegistry::GetAllNodesWeightsAsOf(h-1)   raw w, confirmed in the prefix
         │
         ▼
-WPoAApplyMalus(weights, height)                 w_eff = w * Psi^(e-1)
+WPoAApplyMalus(weights, h)                          w_eff = w * Psi^(e-1),  e = epoch(h)
         │
-        ├──► WPoASelectProposer            (public argmin path)
-        └──► BuildSortitionContext         (private sortition: miner AND validator)
+        ├──► WPoASelectProposer              (public argmin: miner and validator)
+        ├──► WPoABuildRoundContext           (private sortition: miner, audit RPCs)
+        └──► WPoASortitionVerifyProposer     (private sortition: validator)
 ```
 
-Both the miner and the validator call it on the map they read from `wpoa-weights`, so both
-sides score the same numbers — a divergence here would be a fork. It returns the map
-unchanged when the registry is disabled, the stream is unavailable, or nobody carries a
-proved violation, so enabling the mechanism on a clean chain is a no-op.
+Every caller applies it to the height-scoped map it read from `wpoa-weights`, so miner and
+validator score the same numbers — a divergence here would be a fork. It returns the map
+unchanged when the registry is disabled, the height is in epoch 1 (no previous epoch), the
+stream is unavailable, or nobody carries a proved violation, so enabling the mechanism on a
+clean chain is a no-op.
+
+### 7.1 The cost of re-validating every report, and the recomputation memo
+
+`GetAccumulators` re-validates **every** report on **every** call — once per round by each
+miner, once per received block by each node (under `cs_main`), and on every audit RPC —
+because a report is only as good as the evidence the local node can re-derive. For the
+behavioural kinds that is a few VRF checks. A `badweight` report, however, is validated by
+re-running the whole weight pipeline from epoch 1 (`WeightEngineRecomputeWeightForEpoch`):
+on a 100-epoch run one such walk near the end cost 2–3 s, and a few dozen accepted reports
+took each fold to tens of seconds against an 8 s block time.
+
+The recomputation is therefore memoised per epoch in
+[`weight_verifier.cpp`](../src/weight_engine/weight_verifier.cpp), under a key that holds
+*everything* the result depends on — the hash of the active block at the epoch's last
+height (which commits to the whole prefix) plus the membership and ESG maps as read now
+(those are read without a height scope, so a later record can change a past epoch's
+recomputation). The burial gate is re-applied before the memo is consulted; a result is
+stored only if the key is unchanged across the computation; the lock order is always
+`cs_main → cs_recomputeMemo`. Detail:
+[wpoa-weight-engine-architecture.md §5.3](wpoa-weight-engine-architecture.md#53-badweight-and-the-cost-on-the-consensus-path).
 
 ---
 
@@ -397,7 +422,7 @@ Implemented in [`rpc/rpcwpoa.cpp`](../src/rpc/rpcwpoa.cpp), registered in
 
 ## 10. Tests
 
-- **Unit** ([`../test/wpoa_malus_tests.cpp`](../src/wpoa/test/wpoa_malus_tests.cpp), node-free, run
+- **Unit** ([`wpoa_malus_tests.cpp`](../src/wpoa/test/wpoa_malus_tests.cpp), 37 cases, node-free, run
   with `run_unit_tests.sh malus`): record parsing including both `OpReturnFormatEntry`
   wrappings and rejection of every malformed shape; the fold and its decay; `Psi` over its
   whole range; `w_eff`; the map-level transform; and reversibility — that an excluded
@@ -408,15 +433,15 @@ Implemented in [`rpc/rpcwpoa.cpp`](../src/rpc/rpcwpoa.cpp), registered in
   severity ordering; that the two-score form stays backward-compatible by scoring the new
   kinds `0`; and end to end through the correction — one proved `badweight` halving
   `w_eff`, a second reaching the threshold, then decaying back.
-- **Functional** ([`test/functional/wpoa/functional_test_wpoa_system.sh`](../../../test/functional/wpoa/functional_test_wpoa_system.sh)):
-  `check_stream_permissions` asserts the closed/open asymmetry and that it bites (an
-  address without `wpoa-weights.write` cannot publish a weight, yet can publish a report);
-  `check_malus` asserts the mechanism is inert on honest behaviour and that every node
-  refuses false evidence, for **both families** — an honest block is not a delay violation,
-  one block named twice is not an equivocation, a block nobody has seen proves nothing;
-  and an honestly self-published weight is neither a `selfwrite` (the declared address did
-  sign it) nor a `badweight` (every node's recomputation agrees with it), swept over
-  several heights so the refusal cannot be an accident of naming the wrong one.
+- **End to end** (the harness in [`test/`](../test/README.md)): every run checks that the
+  malus is inert on honest validators (`malus_finite_and_psi_in_unit_interval`,
+  `malus_clean_validator_has_psi_one`). A profile with a `malicious` section turns chosen
+  miners into `selfwrite` / `badweight` attackers, runs an honest detector that reports
+  through `reportmalus`, and checks detection quality, latency, the effect on `w_eff` and
+  that no honest validator is accused
+  ([`test/docs/malicious-miners.md`](../test/docs/malicious-miners.md)). `equiv` and
+  `delay` are produced inside the consensus core and cannot be injected from outside the
+  node, so they are covered by the unit suite only.
 
 ---
 
@@ -424,7 +449,8 @@ Implemented in [`rpc/rpcwpoa.cpp`](../src/rpc/rpcwpoa.cpp), registered in
 
 | File | Role |
 |---|---|
-| [`../malus_record.h`](../src/wpoa/malus_record.h) | Pure core: the four kinds and their families, record parsing (including the data-integrity payloads), the `MalusScores` dispatch, `Fold`, `CorrectionFactor`, `EffectiveWeight`, `EpochsToClear`, `ApplyToWeights`. Node-free and unit-tested in isolation. |
-| [`../malus_registry.h`](../src/wpoa/malus_registry.h) | The `MalusRegistry` facade, the runtime parameters and `WPoAApplyMalus`. |
-| [`../malus_registry.cpp`](../src/wpoa/malus_registry.cpp) | Stream provisioning (open), confirmed-only reads, `ValidReport` and `ValidDataIntegrityReport`, the per-epoch fold, publication and the provisioning thread. |
+| [`malus_record.h`](../src/wpoa/malus_record.h) | Pure core: the four kinds and their families, record parsing (including the data-integrity payloads), the `MalusScores` dispatch, `Fold`, `CorrectionFactor`, `EffectiveWeight`, `EpochsToClear`, `ApplyToWeights`. Node-free and unit-tested in isolation. |
+| [`malus_registry.h`](../src/wpoa/malus_registry.h) | The `MalusRegistry` facade, the runtime parameters and `WPoAApplyMalus`. |
+| [`malus_registry.cpp`](../src/wpoa/malus_registry.cpp) | Stream provisioning (open, through the shared `mc_StreamSetupState`), confirmed-only reads, `ValidReport` and `ValidDataIntegrityReport` (with a stack-local reveal extractor, safe off the validation thread), the per-epoch fold `GetAccumulators`, publication, `WPoAApplyMalus` and `ThreadMalusRegistry`. |
+| [`weight_verifier.cpp`](../src/weight_engine/weight_verifier.cpp) | `WeightEngineRecomputeWeightForEpoch` and its per-epoch memo, used by the `badweight` check. |
 | [`rpc/rpcwpoa.cpp`](../src/rpc/rpcwpoa.cpp) | The RPC handlers listed in §9, alongside the weight-registry ones. |

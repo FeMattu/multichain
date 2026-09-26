@@ -1,8 +1,15 @@
 # Weight-engine refactor — permission model before and after
 
-> **Register: technical-direct.** A per-stream summary of what changed, for direct reuse in
-> the thesis' Implementation chapter. Rationale lives in the module docs; this file is the
-> table.
+> **Type:** historical record (changelog) · **Date:** 2026-08-24 · **Status:** implemented
+>
+> Kept as written: it records the work as it was done and is **not** updated when the
+> code changes, so paths, identifiers and line numbers may no longer match the tree.
+>
+> A per-stream summary of the permission model before and after the weight-engine
+> refactor, for reuse in the thesis' Implementation chapter. Rationale lives in the module
+> docs; this file is the table.
+>
+> **For the system as it is now:** [weight-engine.md](weight-engine.md) §6.
 
 The refactor answers one question per stream: **can a third party verify what this record
 claims?** Where the answer is yes, the write is opened and the *claim* is checked. Where it

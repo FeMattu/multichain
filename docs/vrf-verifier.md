@@ -1,29 +1,25 @@
 # `protocol/multichainblock.cpp` (wPoA Phase 3a — the VRF verifier)
 
-> **Register: technical-direct.** A developer reference: APIs, function signatures,
-> data structures and control flow, with code terminology left verbatim. For the
-> theoretical consensus model see
-> [thesis-project-overview.md](thesis-project-overview.md); for parameter values see
-> [protocol-parameters.md](protocol-parameters.md); for implementation status see
-> [implementation-status.md](implementation-status.md).
-
-> Documentation of the **verifier-side integration** of the wPoA VRF beacon: how every peer
-> extracts the proposer's reveal and rejects a block whose reveal is missing or invalid.
-> This doc covers **only** the Phase 3a additions — the new static `FindBlockVRF` and the
-> VRF-check block inserted into `VerifyBlockMinerWPoA`. The Phase 2 proposer check in the
-> *same* function is documented in [block-validation.md](block-validation.md).
+> **Type:** reference · **Register:** technical-direct · **Verified against the code:**
+> 2026-09-25, commit `af06a6ef`
+>
+> The **verifier side of the VRF beacon**: how every peer extracts the proposer's reveal
+> (`FindBlockVRF`) and rejects a block whose reveal is missing or invalid on a Phase 3a/3b
+> height. On sortition heights the reveal is checked by the Phase 4 branch instead
+> ([sortition-validator.md](sortition-validator.md)); the order of all the checks is in
+> [block-validation.md §3](block-validation.md#3-verifyblockminerwpoa--the-order-of-the-checks).
 
 This is a **modified host file**, not a new module. The additions are delimited by
 `/* MCHN START - wPoA Phase 3a … */ … /* MCHN END */`. The include added at the top:
 
 ```cpp
-#include "wpoa/vrf_wrapper.h"   // multichainblock.cpp:14 — WPoAVRF
+#include "wpoa/vrf_wrapper.h"   // WPoAVRF
 ```
 
 (`WPoAVRFActiveAtHeight` comes from `wpoa/wpoa_selector.h`, already included for Phase 2.)
 
 ## Table of contents
-- [1. FindBlockVRF — extract the reveal from the coinbase](#1-findblockvrf-—-extract-the-reveal-from-the-coinbase)
+- [1. FindBlockVRF — extract the reveal from the coinbase](#1-findblockvrf--extract-the-reveal-from-the-coinbase)
 - [2. The VRF check in VerifyBlockMinerWPoA](#2-the-vrf-check-in-verifyblockminerwpoa)
   - [if(WPoAVRFActiveAtHeight(pindexNew->nHeight))](#ifwpoavrfactiveatheightpindexnew-nheight)
   - [Missing reveal → reject](#missing-reveal--reject)
@@ -108,14 +104,20 @@ static bool FindBlockVRF(CBlock *block,std::vector<unsigned char>& reveal,
 
 `m_TmpScript1` is `mc_gState`'s single-threaded validation-path scratch script — the same
 object the surrounding block-check code reuses — so `FindBlockVRF` allocates nothing and
-introduces no shared mutable state beyond that per-validation scratch.
+introduces no shared mutable state beyond that per-validation scratch. That is also why it
+is **only** used on the validation path: the RANDAO accumulator and the audit RPCs, which
+run on the miner and RPC threads, extract reveals with `WPoAExtractBlockReveal` on a
+stack-local `mc_Script` instead ([randao-accumulator.md](randao-accumulator.md)).
+
+`FindBlockVRF` is called twice in `VerifyBlockMinerWPoA`: by the Phase 4 sortition branch
+([sortition-validator.md](sortition-validator.md)) and by the Phase 3a check below.
 
 ## 2. The VRF check in `VerifyBlockMinerWPoA`
 
-`VerifyBlockMinerWPoA` (the Phase 2 function documented in
-[block-validation.md](block-validation.md)) has, by the insertion point, already recovered
-the signer's public key into `vchPubKey` and its address into `sMinerAddr`. The Phase 3a
-block is inserted **before** the Phase 2 proposer computation:
+`VerifyBlockMinerWPoA` ([block-validation.md](block-validation.md)) has, by the insertion
+point, already recovered the signer's public key into `vchPubKey` and its address into
+`sMinerAddr`, and has returned early on sortition heights. The Phase 3a block sits
+**before** the public proposer computation:
 
 ```cpp
 /* MCHN START - wPoA Phase 3a: verify the proposer's VRF reveal */
@@ -141,14 +143,14 @@ if(WPoAVRFActiveAtHeight(pindexNew->nHeight))
 }
 /* MCHN END */
 
-uint256 hSeed=pindexNew->pprev->GetBlockHash();                 // ← Phase 2 proposer check follows
-std::string sProposer=WPoASelectProposer(hSeed.begin(),hSeed.size(),pindexNew->nHeight);
+uint256 hSeed=pindexNew->pprev->GetBlockHash();                 // ← public proposer check follows
+// ... RANDAO seed swap (randao-validator.md), then WPoASelectProposer
 ```
 
 ### `if(WPoAVRFActiveAtHeight(pindexNew->nHeight))`
-- The gate = `-enablewpoavrf` AND `WPoAActiveAtHeight(height)` (see
-  [wpoa-selector.md §5](wpoa-selector.md)). When false the block is skipped and validation
-  proceeds exactly as in Phase 2. Because the gate is a pure function of the flag + chain
+- The gate = `enable-wpoa-vrf` AND `WPoAActiveAtHeight(height)` (see
+  [wpoa-selector.md §5](wpoa-selector.md#5-wpoa-phase-3a--vrf-beacon-activation-glue)). When
+  false the block is skipped and validation proceeds exactly as in Phase 2. Because the gate is a pure function of the flag + chain
   params + height, the miner (which embedded a reveal because *its* flag was on) and the
   validator agree on which heights **require** one.
 
@@ -169,13 +171,13 @@ if(!WPoAVRF::Verify(vchPubKey,vVRFInput,vrf_reveal,vrf_proof)) { … return fals
 - **`hVRFInput = pindexNew->pprev->GetBlockHash()`** — the previous block hash, i.e. the
   **same bytes** the prover used (there `block->hashPrevBlock`). Safe to dereference `pprev`
   because `VerifyBlockMiner` already ruled out `pprev == NULL` before delegating (see
-  [block-validation.md §2](block-validation.md)).
+  [block-validation.md §2](block-validation.md#2-the-delegation-in-verifyblockminer)).
 - **`vVRFInput`** — the 32 hash bytes as a `std::vector`, to match the `WPoAVRF::Verify`
   vector overload.
 - **`WPoAVRF::Verify(vchPubKey, vVRFInput, vrf_reveal, vrf_proof)`** — verifies the DLEQ
   proof against the **signer's own public key** (`vchPubKey`, already recovered for the
   Phase 2 check — no second key handling) and the prev-hash input, and checks that the
-  reveal is the one the proof commits to ([vrf-wrapper.md §3.9](vrf-wrapper.md)). The vector
+  reveal is the one the proof commits to ([vrf-wrapper.md](vrf-wrapper.md)). The vector
   overload also enforces the exact `32`/`97` byte lengths, so a well-framed but wrong-sized
   suffix is rejected here. A `false` → **reject**, naming the signer for diagnosis.
 
@@ -183,17 +185,17 @@ if(!WPoAVRF::Verify(vchPubKey,vVRFInput,vrf_reveal,vrf_proof)) { … return fals
 ```cpp
 LogPrint("wpoa","VerifyBlockMinerWPoA: VRF reveal OK …");
 ```
-Category-gated (`-debug=wpoa`) success line — this is the `VRF reveal OK` evidence the
-functional test greps for. No side effect; execution falls through to the Phase 2
-`signer == proposer` check.
+Category-gated (`-debug=wpoa`) success line. No side effect; execution falls through to
+the public `signer == proposer` check.
 
 ### Why *before* the proposer check
 The VRF block runs **before** `WPoASelectProposer` and is independent of the weight
 registry. Two consequences:
 
 1. It is enforced **even on the empty-registry leniency path** — a node that cannot compute
-   the Phase 2 election (unsynced weights → the lenient accept in
-   [block-validation.md §3.4](block-validation.md)) still requires and verifies the reveal.
+   the public election (unsynced weights → the lenient accept in
+   [block-validation.md §3.6](block-validation.md#36-empty-registry-leniency)) still requires
+   and verifies the reveal.
    The reveal check depends only on the block's own signer key and its parent hash, both of
    which every node has, so there is no reason to be lenient about it.
 2. A forged/absent reveal is rejected without even reading the weight map — cheaper, and it
@@ -205,7 +207,7 @@ registry. Two consequences:
 |---|---|---|
 | Gate | `g_wpoa_vrf_enabled` (flag only) | `WPoAVRFActiveAtHeight(pindexNew->nHeight)` (flag AND height) |
 | Key | signer private key `key.begin()` | signer public key `vchPubKey` (from `vSigner`) |
-| Input | `block->hashPrevBlock` | `hash(pindexNew->pprev)` |
+| Input | `block->hashPrevBlock` (sortition input on sortition heights) | `hash(pindexNew->pprev)` (sortition input in the Phase 4 branch) |
 | Op | `WPoAVRF::Prove` → `SetBlockVRF` | `FindBlockVRF` → `WPoAVRF::Verify` |
 | Action | embed reveal (or log + skip) | reveal valid → continue; missing/invalid → reject |
 
@@ -221,12 +223,13 @@ flowchart TD
     VBM -->|"WPoAActiveAtHeight(h)?"| G{gate}
     G -->|no| NATIVE["native round-robin (unchanged)"]
     G -->|yes| VW["VerifyBlockMinerWPoA"]
+    VW -->|sortition height| SORT["Phase 4 branch<br/>(sortition-validator.md)"]
     VW --> VRFG{"WPoAVRFActiveAtHeight(h)?"}
     VRFG -->|yes| FIND["FindBlockVRF(block)"]
     FIND -->|"reveal, proof"| VER["WPoAVRF::Verify(vchPubKey, hash(h-1), R, π)"]
     VER -->|invalid / missing| REJ1["reject: return false"]
     VER -->|valid| PROP
-    VRFG -->|no| PROP["Phase 2: signer == WPoASelectProposer?"]
+    VRFG -->|no| PROP["public check: signer == WPoASelectProposer?"]
     PROP -->|yes| ACC["accept"]
     PROP -->|no| REJ2["reject: not elected proposer"]
     FIND -->|"per element: GetBlockVRF"| ENC["multichainscript.cpp"]
@@ -239,5 +242,5 @@ flowchart TD
   on-chain suffix. See [block-vrf-encoding.md](block-vrf-encoding.md).
 - **`miner/miner.cpp`** — the prover this file enforces; same key, same input, mirror
   operation. See [vrf-prover.md](vrf-prover.md).
-- **Phase 2 proposer check** (same function) runs immediately after the VRF check. See
+- **The public proposer check** (same function) runs immediately after the VRF check. See
   [block-validation.md](block-validation.md).

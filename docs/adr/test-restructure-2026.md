@@ -1,31 +1,19 @@
 # ADR — restructuring the test tree, and realigning the suites with the code
 
-> **Note on paths (2026-09-17).** This document refers to `test/functional/`,
-> `test/output/` or `test/experimental/`, trees that were replaced when `test/` was
-> rebuilt as a Python harness. The references are kept as written because they record the
-> work as it was done; for the current structure see
-> [`../../test/README.md`](../../test/README.md) and [`../../test/docs/fixes-changelog.md`](../../test/docs/fixes-changelog.md).
-
-
-> **Status:** accepted, implemented. The four open points of §7 were resolved on
-> 2026-09-15; §7 records the answers.
-> **Scope:** `src/weight_engine/test/`, `src/wpoa/test/`, a new project-level
-> `test/functional/`. Explicitly **out of scope:** `/experiments` (the Python network
-> topology emulation framework) and `src/weight_engine/test/experimental/` (the MyLedger
-> economic simulation harness — see §2.3).
-> **Register: technical-direct.** Decision record: the inventory, the discrepancies
-> verified one by one, the decisions and their consequences. Module references:
-> [../../src/wpoa/docs/testing.md](../testing.md),
-> [../../src/wpoa/docs/weight-engine.md](../weight-engine.md).
-> Sibling ADRs: [../../src/wpoa/docs/adr/reconciliation-onchain.md](../adr/reconciliation-onchain.md),
-> [../../src/wpoa/docs/adr/randao-fold-bare-xor.md](../adr/randao-fold-bare-xor.md).
+> **Type:** historical record (ADR) · **Date:** 2026-09-15 · **Status:** accepted, implemented; the four open points of §7 were resolved on 2026-09-15
 >
-> **On the paths cited in §1–§4.** Those sections were written *before* the move and cite
-> files at the locations they occupied then, with line numbers referring to their content
-> at that moment. Such citations are marked *as audited* and are deliberately plain text
-> rather than links: after the move and the alignment edits, a link would resolve to a file
-> whose line numbers no longer match what the surrounding text claims — worse than no
-> link. §5 onward cites the current tree and links normally.
+> Kept as written: it records the work as it was done and is **not** updated when the
+> code changes, so paths, identifiers and line numbers may no longer match the tree.
+>
+> **Scope:** `src/weight_engine/test/`, `src/wpoa/test/`, and the project-level
+> `test/functional/` it created. That shell tree was itself replaced on 2026-09-17 by the
+> Python harness in [`test/`](../../test/README.md), and `/experiments` was folded into its
+> `core` regime on 2026-09-18 ([core-emulation-2026.md](core-emulation-2026.md)).
+> §1–§4 cite files *as audited*, before the move, deliberately as plain text; §5 onward
+> cited the tree of the time. Sibling ADRs: [reconciliation-onchain.md](reconciliation-onchain.md),
+> [randao-fold-bare-xor.md](randao-fold-bare-xor.md).
+>
+> **For the system as it is now:** [../testing.md](../testing.md) and [`test/README.md`](../../test/README.md).
 
 ---
 
@@ -94,7 +82,7 @@ Agreed with the mandate, and for a stronger reason than "it is neither unit nor
 functional". `experimental/` is not a test at all: it has **no pass/fail contract**. Its
 own README states it plainly — *"it is **not** a pass/fail functional test […] its product
 is a set of CSVs, an `.xlsx` report and a log for plotting and statistics"*
-([experimental/README.md:7](../../src/weight_engine/test/experimental/README.md#L7)).
+(`experimental/README.md:7`).
 
 Three further reasons not to touch it:
 
@@ -562,7 +550,7 @@ grant itself, or an assertion about the automatic creation.
 `initial-block-reward` defaults to **0**
 ([paramlist.h:267](../../src/chainparams/paramlist.h#L267)). The repository states the
 consequence in three places, most explicitly in
-[experimental/docs/experiment.md §6.5](../../src/weight_engine/test/experimental/docs/experiment.md):
+`experimental/docs/experiment.md §6.5`:
 
 > *"A default MultiChain has `initial-block-reward = 0`, so there is no spendable native
 > currency. GAS is therefore a purpose-issued **divisible asset** […] Nothing in the model
@@ -629,7 +617,7 @@ for (signers) { if (*it == treasury) continue; r_raw[*it] += value_to_treasury; 
   returns 0 ⇒ nothing accumulates. **Not a reconciliation.** Correct.
 
 **The trap.** If the treasury address *is* the admin's address — which is what
-`experimental/` does ([chain_setup.py:405-408](../../src/weight_engine/test/experimental/helpers/chain_setup.py#L405))
+`experimental/` does (`chain_setup.py:405-408`)
 — then a refuel transaction's **change output returns to the admin, i.e. to the treasury**,
 and `value_to_treasury > 0`. It survives only because of the `*it == treasury` guard:
 signer == treasury, so the credit is skipped. Safe, but it depends on a single `continue`.
@@ -852,8 +840,8 @@ finding, and one thing that was deliberately **not** deleted.
 
 ### 11.1 Dangling links the first pass missed — 7, all fixed
 
-The reference-repointing pass in commit 3 used a regex over ``[`path`](path)`` and bare
-repo-relative paths. It missed `[text](path)` where the link **text differs from the
+The reference-repointing pass in commit 3 used a regex over ```path``` and bare
+repo-relative paths. It missed `text` where the link **text differs from the
 target**, which is the shape four of the guides used:
 
 | File | Broken link |
@@ -1137,7 +1125,7 @@ blocks; a counter-based implementation gets all three rows wrong and fails it.
 Fixing one line does not address why it cost hours to find. The gap was structural: **the
 harness had no tests of its own**, so functions that run only deep inside an expensive suite
 were first exercised by that suite. The response is a new `lib-lint` suite,
-[`test/functional/lib/lint_lib.sh`](../../test/functional/lib/lint_lib.sh) — **no node, about
+`test/functional/lib/lint_lib.sh` — **no node, about
 one second, first in the default set**:
 
 | Group | What it checks |

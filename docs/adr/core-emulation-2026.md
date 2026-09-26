@@ -1,8 +1,13 @@
 # CORE network emulation for the wPoA harness — analysis and plan
 
-**Status:** implemented. The plan of §8 was approved on 2026-09-18 and carried out; §9 records what actually happened, including where the plan turned out to be wrong.
-**Date:** 2026-09-18
-**Branch:** `feat/core-emulation-harness`
+> **Type:** historical record (ADR) · **Date:** 2026-09-18 · **Status:** implemented. The plan of §8 was approved on 2026-09-18 and carried out; §9 records what actually happened, including where the plan turned out to be wrong
+>
+> Kept as written: it records the work as it was done and is **not** updated when the
+> code changes, so paths, identifiers and line numbers may no longer match the tree.
+>
+> **Branch:** `feat/core-emulation-harness`.
+>
+> **For the system as it is now:** [`test/docs/core-fabric.md`](../../test/docs/core-fabric.md) and [`test/README.md`](../../test/README.md).
 
 This document is phase 0 and phase 1 of the mandate: replace `experiments/` with a CORE
 Network Emulator backend behind the `test/` harness, so that the same bootstrap, the same
