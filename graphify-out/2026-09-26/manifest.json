@@ -3534,9 +3534,9 @@
     "semantic_hash": ""
   },
   "docs/implementation-status.md": {
-    "mtime": 1790422192.2585623,
-    "seen": 1790422204.1962082,
-    "ast_hash": "bf6e376bc02d7b796ee6022b721830ea",
+    "mtime": 1790417650.5567698,
+    "seen": 1790417654.196682,
+    "ast_hash": "c48e6cbd9361ce471129cb9671d990cc",
     "semantic_hash": ""
   },
   "docs/malus-registry.md": {
@@ -3666,9 +3666,9 @@
     "semantic_hash": ""
   },
   "docs/thesis-project-overview.md": {
-    "mtime": 1790417655.4558244,
-    "seen": 1790422204.1962316,
-    "ast_hash": "0f726bb9b43938cfcec3f80ebfe29a8c",
+    "mtime": 1790416813.6915152,
+    "seen": 1790417625.6670392,
+    "ast_hash": "bf65e9286c87c20d7ae062c3e1edffb8",
     "semantic_hash": ""
   },
   "docs/vrf-prover.md": {
@@ -4356,9 +4356,9 @@
     "semantic_hash": ""
   },
   "docs/README.md": {
-    "mtime": 1790417655.457958,
-    "seen": 1790422204.1961913,
-    "ast_hash": "575d02ccebb9f7e02e61551658911d5b",
+    "mtime": 1790416792.474561,
+    "seen": 1790417625.6670034,
+    "ast_hash": "6e6e15c1f3860994e812634b60ef7459",
     "semantic_hash": ""
   },
   "docs/wpoa-weight-engine-architecture.md": {
