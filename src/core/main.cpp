@@ -248,7 +248,7 @@ namespace {
         }
     };
 
-    /** The live rule: the score test is on iff -enablewpoaforkscore is. */
+    /** The live rule: the score test is on whenever private sortition is. */
     struct CBlockIndexWorkComparator
     {
         bool operator()(CBlockIndex *pa, CBlockIndex *pb) const {
@@ -3666,6 +3666,19 @@ static CBlockIndex* FindMostWorkChain() {
             {
 //                bool fLocked=false;                
                 CBlockIndex *pindexCandidate=*fit;
+/* MCHN START - wPoA score-aware activation */
+                // A worse-scored block for the round this node is still counting down
+                // for is held back, not connected: the tip stays on the parent, so the
+                // mempool and the UTXO view stay the parent's and our own block is built
+                // in full when our slot comes. The comparator then picks between the two
+                // on score. Only direct children of that parent are ever held back; a
+                // block already built on top of one has more work and is not affected.
+                // See WPoASortitionShouldDeferActivation.
+                if(WPoASortitionShouldDeferActivation(pindexCandidate))
+                {
+                    continue;
+                }
+/* MCHN END */
                 if(pindexLockedBlock)
                 {
                     CBlockIndex *pindexCommonAncestor;
@@ -5485,6 +5498,27 @@ bool ProcessNewBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDis
             pEF->LIC_VerifyLicenses(chainActive.Height());
             pEF->NET_CheckConnections();
         }
+/* MCHN START - wPoA score-aware activation: relay what was held back */
+        // Relay is tied to tip advance (ActivateBestChain pushes the new tip only), and
+        // a block held back by the score-aware activation does not advance the tip.
+        // Without this a node holding a block back would also stop propagating it.
+        // Outside cs_main, like the relay in ActivateBestChain.
+        {
+            uint256 hashDeferred;
+            while(WPoASortitionTakeDeferredRelay(&hashDeferred))
+            {
+                if(IsInitialBlockDownload())
+                {
+                    continue;
+                }
+                LOCK(cs_vNodes);
+                BOOST_FOREACH(CNode* pnode, vNodes)
+                {
+                    pnode->PushInventory(CInv(MSG_BLOCK, hashDeferred));
+                }
+            }
+        }
+/* MCHN END */
     }
 
     nTotalMempoolsSize=TotalMempoolsSize();        

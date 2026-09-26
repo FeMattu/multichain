@@ -318,6 +318,7 @@ public:
 
 class CBlock;        // forward-declared: the glue reads a block's coinbase reveal
 class CBlockIndex;   // forward-declared: the glue walks the block index for the seed
+class uint256;       // forward-declared: the pending round is keyed by its parent hash
 
 /**
  * Set once from -enablewpoasortition in AppInit2. Default false = Phase 3b
@@ -346,17 +347,18 @@ extern double g_wpoa_sortition_lambda;
 
 /**
  * Fork choice: break a same-height tie on the TRUE sortition score instead of on
- * first-seen arrival order (nSequenceId). Set once from -enablewpoaforkscore in
- * AppInit2, before any block is processed, and read unlocked by the chain
- * comparator (CBlockIndexWorkComparator, main.cpp) on a hot path under cs_main.
+ * first-seen arrival order (nSequenceId). Always on under private sortition: set in
+ * AppInit2 to g_wpoa_sortition_enabled, before any block is processed, and read
+ * unlocked by the chain comparator (CBlockIndexWorkComparator, main.cpp) on a hot
+ * path under cs_main. There is no switch: the score-aware activation
+ * (WPoASortitionShouldDeferActivation) makes the argmin propose even after a
+ * worse-scored block for its round has arrived, and only this comparator turns that
+ * second block into the tip. One without the other would add forks and resolve none.
+ * Without sortition there is no score to compare, so the flag stays false.
  *
- * NOT CONSENSUS-CRITICAL, unlike every other flag in this header. Fork choice picks
- * between blocks that are already equally VALID, so it is local policy: a node that
- * runs this while its peers do not still accepts exactly the same blocks, it just
- * converges on a contested height differently. A mixed validator set is therefore
- * safe -- it converges more slowly on contested rounds, it does not fork. That is
- * also why this flag stays out of the params.dat inheritance/uniformity machinery
- * the consensus switches above go through.
+ * Fork choice picks between blocks that are already equally VALID, so it does not
+ * change which blocks are valid. It is kept out of the params.dat
+ * inheritance/uniformity machinery for that reason: it is not a consensus switch.
  *
  * MUST NOT be flipped after startup: it changes the ordering of a live std::set
  * (setBlockIndexCandidates), which would corrupt that container's invariant.
@@ -550,5 +552,48 @@ WPoASortitionVerdict WPoASortitionVerifyProposer(const CBlockIndex* pindexParent
  */
 void WPoASortitionMarkProposed(int height);
 bool WPoASortitionAlreadyProposed(int height);
+
+/**
+ * Score-aware activation: a candidate whose own round is still running does not let a
+ * worse-scored block for that round become its tip.
+ *
+ * Without it, the argmin i* that receives a worse-scored block B for the height it is
+ * counting down for connects B at once: B's transactions leave the mempool, pcoinsTip
+ * moves past the parent, and the miner's retarget guard drops i*'s round. i* never
+ * proposes, so the score tie-break has nothing to choose between, and the inversion is
+ * final. On the regional 23h run that was 13% of all rounds.
+ *
+ * With it, i* stores and validates B but keeps the parent as its tip until its own
+ * slot comes. Mempool and UTXO view stay those of the parent, so i* builds the full
+ * block it would have built anyway, and the fork choice (always on, see
+ * g_wpoa_fork_score_enabled) prefers it over B on every node that sees both.
+ *
+ * WPoASortitionSetPendingRound records the round the miner is counting down for: the
+ * parent it builds on, the height, its own true score and the local time its slot
+ * opens. Called by the miner every time it computes a countdown.
+ *
+ * WPoASortitionShouldDeferActivation is asked by FindMostWorkChain (under cs_main) for
+ * each candidate. It answers true only for a direct child of that parent, at that
+ * height, with a known score strictly worse than ours, not mined by us, while our
+ * round is still open: not yet proposed and not past the slot plus
+ * MC_WPOA_DEFER_GRACE_S. Anything deeper (a block already built on top of B) is never
+ * deferred: more work wins, as it always did.
+ *
+ * WPoASortitionTakeDeferredRelay hands out, once each, the hashes of the blocks just
+ * deferred. Relay is tied to tip advance in this codebase, and a deferred block does
+ * not advance the tip, so ProcessNewBlock relays these explicitly. Otherwise a
+ * deferring node would stop propagating B.
+ *
+ * WPoASortitionDeferralExpired is polled by the miner loop. It returns true once, when
+ * a block was deferred and the grace ran out without this node proposing (block
+ * creation failed, mining paused). The caller then reruns ActivateBestChain so the
+ * deferred block becomes the tip after all.
+ */
+#define MC_WPOA_DEFER_GRACE_S 2.0
+
+void WPoASortitionSetPendingRound(const uint256& parent, int height, double score, double slot_time);
+bool WPoASortitionShouldDeferActivation(const CBlockIndex* pindex);
+bool WPoASortitionTakeDeferredRelay(uint256* hash_out);
+bool WPoASortitionDeferralExpired();
 
 #endif // WPOA_PRIVATE_SORTITION_H

@@ -1252,6 +1252,9 @@ double GetMinerAndExpectedMiningStartTime(CWallet *pwallet,CPubKey *lpkMiner,set
         double dNow=mc_TimeNowAsDouble();
         double dAnchor=(double)pindexTip->GetBlockTime()-(double)GetTimeOffset();
         *lpdMiningStartTime=std::max(dNow,dAnchor+dDelay);
+        // The round this countdown is for, so a worse-scored block for it that arrives
+        // first is held back instead of becoming the tip (score-aware activation).
+        WPoASortitionSetPendingRound(pindexTip->GetBlockHash(),nHeight,dScore,*lpdMiningStartTime);
         LogPrint("wpoa","mchn-miner: wPoA-sortition height=%d tip=%s score=%.9g delay=%.3fs -> start in %.3fs (anchor=parent, lag=%.3fs, local=%s)\n",
                          nHeight,pindexTip->GetBlockHash().ToString().c_str(),
                          dScore,dDelay,*lpdMiningStartTime-dNow,dNow-dAnchor,sLocalAddr.c_str());
@@ -1780,6 +1783,18 @@ void static BitcoinMiner(CWallet *pwallet)
             }
             wAvTimePerBlock/=wSize;
             
+/* MCHN START - wPoA score-aware activation: release a hold that outlived our slot */
+            // A worse-scored block held back for our round waits for our own block. If
+            // the slot and its grace passed without one (creation failed, mining paused,
+            // nothing to mine), nothing else would ever reconsider the held block, so the
+            // chain is re-evaluated here and it becomes the tip after all. No lock is held
+            // at this point of the loop.
+            if(WPoASortitionDeferralExpired())
+            {
+                CValidationState stateRelease;
+                ActivateBestChain(stateRelease);
+            }
+/* MCHN END */
             canMine=MC_PTP_MINE;
             if(mc_TimeNowAsDouble() < GetMinerAndExpectedMiningStartTime(pwallet, &kMiner,&sMinerPool, &dMiningStartTime,&dActiveMiners,&hLastBlockHash,&nMemPoolSize,wAvTimePerBlock))
             {

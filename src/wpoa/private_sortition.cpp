@@ -21,8 +21,10 @@
 #include "core/main.h"                    // CBlockIndex, CBlock, mapBlockIndex, BlockMap
 #include "utils/util.h"                   // LogPrint, LogPrintf, strprintf, fDebug
 #include "utils/sync.h"                   // CCriticalSection, LOCK
+#include "multichain/multichain.h"        // mc_TimeNowAsDouble
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -446,4 +448,123 @@ bool WPoASortitionAlreadyProposed(int height)
 {
     LOCK(cs_sortition_proposed);
     return height <= g_sortition_proposed_height;
+}
+
+// ---------------------------------------------------------------------------
+// Score-aware activation: the round this node is counting down for, and the
+// blocks for that round it is holding back. Leaf lock: taken under cs_main by
+// FindMostWorkChain and alone by the miner loop and ProcessNewBlock; nothing is
+// ever acquired while it is held. WPoASortitionAlreadyProposed takes its own leaf
+// lock, so it is read before this one, never under it.
+// ---------------------------------------------------------------------------
+static CCriticalSection cs_sortition_pending;
+static uint256 g_pending_parent;
+static int g_pending_height = -1;
+static double g_pending_score = std::numeric_limits<double>::quiet_NaN();
+static double g_pending_slot = 0.0;
+static bool g_pending_deferred = false;          // at least one block held back this round
+static bool g_pending_released = false;          // the grace ran out and was reported
+static std::set<uint256> g_pending_seen;         // deferred this round (logged and relayed once)
+static std::vector<uint256> g_pending_relay;     // deferred, not yet handed to ProcessNewBlock
+
+void WPoASortitionSetPendingRound(const uint256& parent, int height, double score, double slot_time)
+{
+    LOCK(cs_sortition_pending);
+    if (parent != g_pending_parent || height != g_pending_height)
+    {
+        g_pending_deferred = false;
+        g_pending_released = false;
+        g_pending_seen.clear();
+        g_pending_relay.clear();
+    }
+    g_pending_parent = parent;
+    g_pending_height = height;
+    g_pending_score  = score;
+    g_pending_slot   = slot_time;
+}
+
+bool WPoASortitionShouldDeferActivation(const CBlockIndex* pindex)
+{
+    if (!g_wpoa_sortition_enabled || pindex == NULL || pindex->pprev == NULL)
+    {
+        return false;
+    }
+    // A worse-scored block is only worth holding back while our own block can still
+    // replace it. Checked before taking the pending lock (both are leaf locks).
+    const bool proposed = WPoASortitionAlreadyProposed(pindex->nHeight);
+
+    LOCK(cs_sortition_pending);
+    if (g_pending_height != pindex->nHeight ||
+        pindex->pprev->GetBlockHash() != g_pending_parent)
+    {
+        return false;                            // not the round we are counting down for
+    }
+    if (proposed || g_pending_released || std::isnan(g_pending_score))
+    {
+        return false;
+    }
+    if (pindex->nHeightMinedByMe == pindex->nHeight)
+    {
+        return false;                            // our own block
+    }
+    // Unknown score: no ground to prefer ours, and the comparator ranks it worst anyway.
+    if (std::isnan(pindex->dSortitionScore) || !(pindex->dSortitionScore > g_pending_score))
+    {
+        return false;
+    }
+    if (mc_TimeNowAsDouble() >= g_pending_slot + MC_WPOA_DEFER_GRACE_S)
+    {
+        return false;                            // our slot passed without a block of ours
+    }
+
+    g_pending_deferred = true;
+    const uint256 hash = pindex->GetBlockHash();
+    if (g_pending_seen.insert(hash).second)
+    {
+        g_pending_relay.push_back(hash);
+        LogPrint("wpoafork", "[wpoa-fork] defer height=%d hash=%s score=%.9g own=%.9g slot_in=%.3fs\n",
+                 pindex->nHeight, hash.ToString().c_str(), pindex->dSortitionScore,
+                 g_pending_score, g_pending_slot - mc_TimeNowAsDouble());
+    }
+    return true;
+}
+
+bool WPoASortitionTakeDeferredRelay(uint256* hash_out)
+{
+    LOCK(cs_sortition_pending);
+    if (g_pending_relay.empty())
+    {
+        return false;
+    }
+    *hash_out = g_pending_relay.back();
+    g_pending_relay.pop_back();
+    return true;
+}
+
+bool WPoASortitionDeferralExpired()
+{
+    int height;
+    {
+        LOCK(cs_sortition_pending);
+        if (!g_pending_deferred || g_pending_released ||
+            mc_TimeNowAsDouble() < g_pending_slot + MC_WPOA_DEFER_GRACE_S)
+        {
+            return false;
+        }
+        height = g_pending_height;
+    }
+    const bool proposed = WPoASortitionAlreadyProposed(height);
+
+    LOCK(cs_sortition_pending);
+    if (g_pending_released || height != g_pending_height)
+    {
+        return false;
+    }
+    g_pending_released = true;
+    if (proposed)
+    {
+        return false;                            // our block went out; nothing to release
+    }
+    LogPrint("wpoafork", "[wpoa-fork] defer-release height=%d reason=grace-expired\n", height);
+    return true;
 }
