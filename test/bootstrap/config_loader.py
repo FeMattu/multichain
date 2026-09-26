@@ -223,27 +223,13 @@ _RUNTIME_DEFAULTS: Dict[str, Any] = {
     "startup_timeout_s": 120,
     "shutdown_grace_s": 30,
     "wpoa_debug": False,
-    # wPoA fork choice on the true sortition score (-enablewpoaforkscore), plus the
-    # per-candidate log the before/after comparison is recovered from. Local policy on
-    # the node, so it is a runtime knob here rather than a chain parameter: turning it
-    # on does not change which blocks are valid, only which of two equally valid
-    # same-height blocks a node prefers while neither has been extended.
-    #
-    # ON by default HERE, and only here. The node keeps -enablewpoaforkscore off unless
-    # asked (src/wpoa), which is the right default for MultiChain: it is an opt-in change
-    # of local policy. But this harness exists to run the mechanism, so a profile that
-    # says nothing should get the complete stack rather than the legacy tie-break --
-    # the same reasoning that hardcodes the wPoA and weight-engine activation keys on.
-    # An arm that wants the baseline states `fork_score: false`, which is what makes it
-    # a control: a measured configuration should be written down, not inherited.
-    "fork_score": True,
-    # The candidate log WITHOUT the mechanism (-debug=wpoafork alone). This is what
-    # makes a control arm possible: the log, the cached scores and the reconstructed
-    # legacy winner are all independent of -enablewpoaforkscore -- only the comparator's
-    # score test reads it -- so a run with fork_score off and this on observes exactly
-    # the same candidate sets and reports what first-seen alone does with them.
-    # Implied by fork_score, so a measured arm never has to set both.
-    "fork_score_log": False,
+    # The per-candidate fork-choice log (-debug=wpoafork): every contested round with
+    # each candidate's true score and arrival order, the reconstructed first-seen winner,
+    # and the score-aware activation's holds (`[wpoa-fork] defer`). The fork choice
+    # itself is no longer a knob: the node always breaks same-height ties on the true
+    # score under private sortition, because the score-aware activation depends on it.
+    # On by default: the analysis reads these lines, and they cost a few per round.
+    "fork_score_log": True,
     # The sortition miner's own narration (-debug=wpoa): the score/delay it computed for
     # each round, and the "already proposed, waiting for tip to advance" stand-down. Kept
     # separate from fork_score_log because it is the miner's side of the story, not the
@@ -1342,6 +1328,12 @@ def load_profile(path: str | os.PathLike) -> Profile:
 
     # -- runtime -----------------------------------------------------------------------
     runtime_raw = _require_mapping(raw.get("runtime"), "runtime")
+    if "fork_score" in runtime_raw:
+        raise ConfigError(
+            "runtime.fork_score is gone: the node always breaks same-height ties on the "
+            "true sortition score, so there is no control arm to select. Remove the key; "
+            "runtime.fork_score_log still controls the per-candidate log"
+        )
     unknown = sorted(set(runtime_raw) - set(_RUNTIME_DEFAULTS))
     if unknown:
         raise ConfigError("unknown runtime key(s): %s" % ", ".join(unknown))
@@ -1353,8 +1345,6 @@ def load_profile(path: str | os.PathLike) -> Profile:
             raise ConfigError("runtime.%s must be an integer >= 1" % key)
     if not isinstance(runtime["wpoa_debug"], bool):
         raise ConfigError("runtime.wpoa_debug must be true or false")
-    if not isinstance(runtime["fork_score"], bool):
-        raise ConfigError("runtime.fork_score must be true or false")
     if not isinstance(runtime["fork_score_log"], bool):
         raise ConfigError("runtime.fork_score_log must be true or false")
     if not isinstance(runtime["sortition_miner_log"], bool):

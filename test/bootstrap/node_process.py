@@ -227,14 +227,12 @@ class NodeRunner:
             args.append("-weighttreasuryaddress=%s" % self.treasury_address)
         if self.profile.runtime.get("wpoa_debug"):
             args.append("-wpoadebug")
-        if self.profile.runtime.get("fork_score"):
-            args.append("-enablewpoaforkscore=1")
-        if self.profile.runtime.get("fork_score") or self.profile.runtime.get("fork_score_log"):
+        if self.profile.runtime.get("fork_score_log"):
             # ``-debug=wpoafork`` is not optional decoration: LogPrint emits nothing
             # unless its category is listed there (src/utils/util.cpp,
             # LogAcceptCategory), so without it the per-candidate lines the analysis
-            # reads simply would not exist. Passed for the control arm too, where the
-            # mechanism is off and the log is the whole point.
+            # reads simply would not exist. The fork choice itself has no flag: the
+            # node always breaks same-height ties on the true sortition score.
             args.append("-debug=wpoafork")
         if self.profile.runtime.get("sortition_miner_log"):
             # Its own argument, never appended to the one above: categories are matched
