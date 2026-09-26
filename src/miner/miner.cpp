@@ -1238,10 +1238,23 @@ double GetMinerAndExpectedMiningStartTime(CWallet *pwallet,CPubKey *lpkMiner,set
         // so the argmin proposes first. The receiving side enforces the SAME bar via
         // the block's nTime (WPoASortitionVerifyProposer), so mining earlier than
         // this would produce a block peers reject as "too early for its score".
-        *lpdMiningStartTime=mc_TimeNowAsDouble()+dDelay;
-        LogPrint("wpoa","mchn-miner: wPoA-sortition height=%d tip=%s score=%.9g delay=%.3fs -> start in %.3fs (local=%s)\n",
+        //
+        // The countdown is anchored at the PARENT's timestamp, the same instant the
+        // validator's bar is measured from (parent nTime + delay), and not at the
+        // moment this node finished processing the parent. Anchoring at "now" gave the
+        // parent's own proposer a head start equal to everyone else's receive-and-
+        // validate time (~1.5 s measured on the regional run, growing with height):
+        // 87% of real inversions went to the outgoing miner, and the same lag added
+        // itself to every block interval. parent nTime is network-adjusted seconds,
+        // so it is moved to the local clock through the time offset. A node that
+        // only finishes processing the parent after its own slot has passed starts at
+        // once: the bar is already satisfied then.
+        double dNow=mc_TimeNowAsDouble();
+        double dAnchor=(double)pindexTip->GetBlockTime()-(double)GetTimeOffset();
+        *lpdMiningStartTime=std::max(dNow,dAnchor+dDelay);
+        LogPrint("wpoa","mchn-miner: wPoA-sortition height=%d tip=%s score=%.9g delay=%.3fs -> start in %.3fs (anchor=parent, lag=%.3fs, local=%s)\n",
                          nHeight,pindexTip->GetBlockHash().ToString().c_str(),
-                         dScore,dDelay,dDelay,sLocalAddr.c_str());
+                         dScore,dDelay,*lpdMiningStartTime-dNow,dNow-dAnchor,sLocalAddr.c_str());
         return *lpdMiningStartTime;
     }
 /* MCHN END */

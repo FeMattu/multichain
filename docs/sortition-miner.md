@@ -43,14 +43,25 @@ if(WPoASortitionActiveAtHeight(pindexTip->nHeight + 1))
     if(!WPoASortitionLocalScoreDelay(pindexTip,sLocalAddr,kMinerSecret.begin(),&dScore,&dDelay))
     { wait 3600s; return; }                                     // unsynced or unweighted
 
-    *lpdMiningStartTime = mc_TimeNowAsDouble() + dDelay;        // score-timed
+    double dAnchor = (double)pindexTip->GetBlockTime() - (double)GetTimeOffset();
+    *lpdMiningStartTime = std::max(mc_TimeNowAsDouble(), dAnchor + dDelay);   // score-timed, parent-anchored
     return *lpdMiningStartTime;
 }
 ```
 
 The node computes **only its own** score (it has only its own secret key) and sets its
-mining start to `now + delay(score)`. Lower score ⇒ earlier start ⇒ the argmin proposes
-first. Every other case (no key, secret key unavailable, weights unsynced, this node
+mining start to `parent.nTime + delay(score)`, moved to the local clock through the network
+time offset. Lower score ⇒ earlier start ⇒ the argmin proposes first.
+
+The countdown is anchored at the parent's timestamp, not at "now": the validator measures
+its bar from the same instant (`parent.nTime + ⌊delay⌋`). Anchoring at the moment the node
+had finished processing the parent gave the parent's own proposer a head start equal to
+everyone else's receive-and-validate time. On the regional 23h run that was ≈ 1.5 s and
+growing: 87 % of real inversions went to the outgoing miner, and the same lag was added to
+every block interval. A node that finishes processing the parent after its own slot has
+passed starts at once (`max(now, …)`), since the bar is already satisfied then.
+
+Every other case (no key, secret key unavailable, weights unsynced, this node
 unweighted) falls back to a long wait; the caching return higher up keeps the node idle
 until the tip advances.
 
