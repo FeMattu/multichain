@@ -1,0 +1,4 @@
+source,sigma_s,n,note
+S1_topology,0.027815,21,"spread of the end-to-end propagation between validator pairs, over the shortest paths of the emulated map. This is how far apart two validators are in seeing the same block, which is what the bound is about -- not the spread of individual cables, which would count a link between two sites hosting no validator."
+S2_scheduler_residual_sd,3.782421,148,PRIMARY source here: how far block spacing departs from its delay.
+S2b_inversion_gap,2.430774,119,Spread of the margin on the rounds that actually inverted.
