@@ -1,0 +1,4 @@
+kind,true_positive,false_positive,false_negative,n_reports,n_confirmed_positives,precision,recall,f1
+all,0,0,0,0,0,,,
+selfwrite,0,0,0,0,0,,,
+badweight,0,0,0,0,0,,,

@@ -1,0 +1,11 @@
+validator_i,validator_j,site_i,site_j,path_delay_ms
+miner-0,miner-1,firenze,genova,1.8828
+miner-0,miner-2,firenze,bologna,1.0666
+miner-0,miner-3,firenze,livorno,1.0594
+miner-0,miner-4,firenze,lucca,0.924
+miner-1,miner-2,genova,bologna,1.8333
+miner-1,miner-3,genova,livorno,1.5144
+miner-1,miner-4,genova,lucca,1.4762
+miner-2,miner-3,bologna,livorno,1.4361
+miner-2,miner-4,bologna,lucca,1.1889
+miner-3,miner-4,livorno,lucca,0.7547
