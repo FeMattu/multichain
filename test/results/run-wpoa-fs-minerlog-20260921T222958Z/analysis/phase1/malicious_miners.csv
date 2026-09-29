@@ -1,0 +1,8 @@
+node_id,address,is_malicious,quota_share,target_rate,quota_share_source
+miner-0,1D6m6XANPew4ZvPzexcJoqegTgFUGn1UdejHVg,False,,,uniform
+miner-1,1DEgPiSmRTvHTSNCr6HvU8hQA3aL8SojRxtYMu,False,,,uniform
+miner-2,1QzD9EtfXcbs1rve2wzESVJpG3iCYRzq6t2Mzy,False,,,uniform
+miner-3,1HhYACu8MLvD8gP39gxmGA1Q5TfuMxacFAV4PW,False,,,uniform
+miner-4,14zXbtYFEypAWQEd4HdNx96DEWH7dpiYHYDaet,False,,,uniform
+miner-5,162PqeW6xHCseYkQEWJtfxpH5b2oGVAC2y9uTx,False,,,uniform
+miner-6,1NYZc5JBmxEUeFi9mEJjxT4hKCoqSvKn2JvaC5,False,,,uniform
