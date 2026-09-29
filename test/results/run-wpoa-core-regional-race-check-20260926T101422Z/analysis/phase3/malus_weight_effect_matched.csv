@@ -1,0 +1,2 @@
+weight_band,n_malicious,n_honest,median_rel_change_malicious,median_rel_change_honest,difference_malicious_minus_honest
+low,0,5,,11254.0,
