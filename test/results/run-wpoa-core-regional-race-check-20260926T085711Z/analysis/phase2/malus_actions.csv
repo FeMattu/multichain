@@ -1,0 +1,1 @@
+epoch,miner,address,is_malicious,action,action_id,attempted,sent,txid,confirmed,confirm_height,confirm_epoch,reported,report_height,detection_latency_blocks,governing_epoch,activation_epoch,activation_latency_epochs,target_epoch
