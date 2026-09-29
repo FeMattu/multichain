@@ -1,0 +1,9 @@
+cluster_head_address,n_pairs,spearman_rho,spearman_p,note
+18VGDtNzFSoywEhnvrw7kVKDji7z2YXTZtVVUB,5,-0.2,0.74706,
+1A9tPhymKcFCxSoyzXk1296Cfo3wxks181dqVm,5,-0.205196,0.740582,
+1KmKgDW1VbydajEhvbxGHpTZS54tkgyg6rwSZq,5,0.205196,0.740582,
+1L51GRy46DAxeRk1MLjfUzdiWsNMcHjPUarjzk,5,0.307794,0.614384,
+1QrpSHGbytWzAnP7dAezR6GgwmJgvow2HfsBFa,5,0.33541,0.581091,
+1UmL87cqSz7ooiqfgCHCSWJE1H5vG4dfHQbynb,5,0.5,0.391002,
+1aS6ZBnfY8iTu9TerdNbRrSQEHPBeLNukYthiu,5,0.0,1.0,
+(pooled),35,0.334973,0.049183,

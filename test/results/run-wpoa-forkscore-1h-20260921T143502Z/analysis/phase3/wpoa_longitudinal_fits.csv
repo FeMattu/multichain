@@ -1,0 +1,10 @@
+fit,validator_address,n_pairs_total,n_pairs_informative,n_concordant,concordance_rate,sign_test_p_greater,note,beta0,beta1,beta1_se,beta1_ci_low,beta1_ci_high,beta1_consistent_with_1,deviance,n_points,converged,h0,n_pairs,slope,intercept,pearson_r,pearson_p,spearman_rho,spearman_p
+monotonicity,18VGDtNzFSoywEhnvrw7kVKDji7z2YXTZtVVUB,4,3,2,0.666667,0.5,only 3 informative pair(s): the exact test is correct but has very little power at this size,,,,,,,,,,,,,,,,,
+monotonicity,1A9tPhymKcFCxSoyzXk1296Cfo3wxks181dqVm,4,4,1,0.25,0.9375,only 4 informative pair(s): the exact test is correct but has very little power at this size,,,,,,,,,,,,,,,,,
+monotonicity,1KmKgDW1VbydajEhvbxGHpTZS54tkgyg6rwSZq,4,4,2,0.5,0.6875,only 4 informative pair(s): the exact test is correct but has very little power at this size,,,,,,,,,,,,,,,,,
+monotonicity,1L51GRy46DAxeRk1MLjfUzdiWsNMcHjPUarjzk,4,4,1,0.25,0.9375,only 4 informative pair(s): the exact test is correct but has very little power at this size,,,,,,,,,,,,,,,,,
+monotonicity,1QrpSHGbytWzAnP7dAezR6GgwmJgvow2HfsBFa,4,3,1,0.333333,0.875,only 3 informative pair(s): the exact test is correct but has very little power at this size,,,,,,,,,,,,,,,,,
+monotonicity,1UmL87cqSz7ooiqfgCHCSWJE1H5vG4dfHQbynb,4,4,3,0.75,0.3125,only 4 informative pair(s): the exact test is correct but has very little power at this size,,,,,,,,,,,,,,,,,
+monotonicity,1aS6ZBnfY8iTu9TerdNbRrSQEHPBeLNukYthiu,4,4,2,0.5,0.6875,only 4 informative pair(s): the exact test is correct but has very little power at this size,,,,,,,,,,,,,,,,,
+binomial_logit_glm_log_weight,(pooled),,,,,,,-6.498952,0.813525,0.211256,0.39947,1.22758,True,60.449272,35,True,beta1 = 1 (weighted sortition: odds proportional to weight),,,,,,,
+log_ratio_regression,(pairs),,,,,,H0 of proportionality: slope = 1 and intercept = 0,,,,,,,,,,,99,0.467094,0.330736,0.308102,0.001919,0.296601,0.002873
