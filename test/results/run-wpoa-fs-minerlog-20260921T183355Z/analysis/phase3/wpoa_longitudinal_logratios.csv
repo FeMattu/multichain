@@ -1,0 +1,106 @@
+epoch,validator_i,validator_j,O_i,O_j,log_ratio_observed,log_ratio_theoretical,note
+2,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1,6,-1.791759,-1.215676,
+2,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1,15,-2.70805,-1.242726,
+2,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1,0,,-1.328597,not computable: a validator won no block in this epoch
+2,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,1,8,-2.079442,-1.381962,
+2,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,1,2,-0.693147,-1.024676,
+2,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,1,0,,-0.881467,not computable: a validator won no block in this epoch
+2,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,6,15,-0.916291,-0.02705,
+2,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,6,0,,-0.112922,not computable: a validator won no block in this epoch
+2,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,6,8,-0.287682,-0.166287,
+2,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,6,2,1.098612,0.191,
+2,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,6,0,,0.334209,not computable: a validator won no block in this epoch
+2,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,15,0,,-0.085871,not computable: a validator won no block in this epoch
+2,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,15,8,0.628609,-0.139237,
+2,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,15,2,2.014903,0.21805,
+2,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,15,0,,0.361259,not computable: a validator won no block in this epoch
+2,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,0,8,,-0.053365,not computable: a validator won no block in this epoch
+2,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,0,2,,0.303921,not computable: a validator won no block in this epoch
+2,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,0,0,,0.447131,not computable: a validator won no block in this epoch
+2,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,8,2,1.386294,0.357287,
+2,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,8,0,,0.500496,not computable: a validator won no block in this epoch
+2,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,2,0,,0.143209,not computable: a validator won no block in this epoch
+3,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,2,5,-0.916291,-1.287375,
+3,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,2,3,-0.405465,-1.276873,
+3,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,2,10,-1.609438,-1.583141,
+3,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,2,7,-1.252763,-1.710245,
+3,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,2,11,-1.704748,-1.25056,
+3,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,2,2,0.0,-1.229248,
+3,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,5,3,0.510826,0.010502,
+3,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,5,10,-0.693147,-0.295766,
+3,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,5,7,-0.336472,-0.42287,
+3,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,5,11,-0.788457,0.036815,
+3,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,5,2,0.916291,0.058127,
+3,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,3,10,-1.203973,-0.306268,
+3,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,3,7,-0.847298,-0.433371,
+3,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,3,11,-1.299283,0.026313,
+3,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,3,2,0.405465,0.047625,
+3,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,10,7,0.356675,-0.127104,
+3,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,10,11,-0.09531,0.332581,
+3,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,10,2,1.609438,0.353893,
+3,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,7,11,-0.451985,0.459685,
+3,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,7,2,1.252763,0.480997,
+3,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,11,2,1.704748,0.021312,
+4,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,0,9,,-1.501717,not computable: a validator won no block in this epoch
+4,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,0,7,,-1.356057,not computable: a validator won no block in this epoch
+4,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,0,9,,-1.48208,not computable: a validator won no block in this epoch
+4,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,0,5,,-1.657399,not computable: a validator won no block in this epoch
+4,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,0,8,,-1.415389,not computable: a validator won no block in this epoch
+4,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,0,2,,-1.234077,not computable: a validator won no block in this epoch
+4,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,9,7,0.251314,0.14566,
+4,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,9,9,0.0,0.019637,
+4,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,9,5,0.587787,-0.155682,
+4,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,9,8,0.117783,0.086328,
+4,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,9,2,1.504077,0.26764,
+4,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,7,9,-0.251314,-0.126023,
+4,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,7,5,0.336472,-0.301342,
+4,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,7,8,-0.133531,-0.059332,
+4,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,7,2,1.252763,0.12198,
+4,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,9,5,0.587787,-0.175319,
+4,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,9,8,0.117783,0.066691,
+4,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,9,2,1.504077,0.248003,
+4,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,5,8,-0.470004,0.24201,
+4,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,5,2,0.916291,0.423322,
+4,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,8,2,1.386294,0.181312,
+5,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1,7,-1.94591,-1.445381,
+5,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1,8,-2.079442,-1.370081,
+5,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1,4,-1.386294,-1.57569,
+5,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,1,10,-2.302585,-1.771709,
+5,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,1,6,-1.791759,-1.47629,
+5,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,1,4,-1.386294,-1.318343,
+5,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,7,8,-0.133531,0.0753,
+5,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,7,4,0.559616,-0.130309,
+5,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,7,10,-0.356675,-0.326328,
+5,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,7,6,0.154151,-0.030909,
+5,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,7,4,0.559616,0.127038,
+5,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,8,4,0.693147,-0.205609,
+5,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,8,10,-0.223144,-0.401628,
+5,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,8,6,0.287682,-0.106209,
+5,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,8,4,0.693147,0.051738,
+5,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,4,10,-0.916291,-0.196019,
+5,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,4,6,-0.405465,0.0994,
+5,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,4,4,0.0,0.257347,
+5,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,10,6,0.510826,0.295419,
+5,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,10,4,0.916291,0.453366,
+5,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,6,4,0.405465,0.157947,
+6,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,2,0,,-1.279353,not computable: a validator won no block in this epoch
+6,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,2,3,-0.405465,-1.311058,
+6,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,2,3,-0.405465,-1.397774,
+6,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,2,5,-0.916291,-1.655468,
+6,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,2,3,-0.405465,-1.323557,
+6,14rryUruNVyjoJ19RMpjccRvLTCKKimpmLuUmz,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,2,5,-0.916291,-1.14618,
+6,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,0,3,,-0.031704,not computable: a validator won no block in this epoch
+6,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,0,3,,-0.118421,not computable: a validator won no block in this epoch
+6,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,0,5,,-0.376115,not computable: a validator won no block in this epoch
+6,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,0,3,,-0.044203,not computable: a validator won no block in this epoch
+6,171aKpPRK2RXYm44a83nv3XBUsRjmuwfLi6c8w,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,0,5,,0.133173,not computable: a validator won no block in this epoch
+6,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,3,3,0.0,-0.086717,
+6,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,3,5,-0.510826,-0.344411,
+6,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,3,3,0.0,-0.012499,
+6,1DM3uGZzhMMcqVkkhDxXumBnNWgT8t3DMBLZug,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,3,5,-0.510826,0.164877,
+6,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,3,5,-0.510826,-0.257694,
+6,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,3,3,0.0,0.074218,
+6,1MxYgqhasdDnprXs1x1f3zbp6bhNULKSoGgd7Y,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,3,5,-0.510826,0.251594,
+6,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,5,3,0.510826,0.331912,
+6,1PH1kNWq4hXs3oL1HAJ99kbhxU29E97id8o863,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,5,5,0.0,0.509288,
+6,1PdDpXXDJFpVBqAcytoqMaWrJt9egMEpBevvjm,1a6jrgAX1oUvjRRmaHHCTRVtsHBV8s9gaz58QQ,3,5,-0.510826,0.177376,

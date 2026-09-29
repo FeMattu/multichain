@@ -1,0 +1,51 @@
+{
+  "phase": 2,
+  "run_dir": "/workspace/multichain/test/results/run-wpoa-fs-minerlog-20260921T183355Z",
+  "profile_path": "test/config/profiles/core/forkscore-1h-minerlog.yaml",
+  "epoch_length": 40,
+  "setup_first_blocks": 112,
+  "row_counts": {
+    "candidate_long": 1491,
+    "round_level": 213,
+    "epoch_level": 42,
+    "epoch_engine": 42,
+    "epoch_traffic": 102,
+    "epoch_concentration": 6,
+    "malus_state": 42,
+    "malus_actions": 0,
+    "malus_funnel": 3,
+    "malus_rate_by_miner": 0,
+    "malus_detection_events": 0
+  },
+  "summary": {
+    "n_rounds": 213,
+    "n_rounds_measured": 149,
+    "n_candidate_rows": 1491,
+    "n_inversions_public": 127,
+    "inversion_rate_public": 0.8523489932885906,
+    "n_rounds_with_true_score": 139,
+    "n_rounds_weight_epoch_stale": 8,
+    "n_rounds_true_winner_mismatch": 9,
+    "delay_recompute_mismatch_rounds": 0,
+    "delay_recompute_mismatch_heights": [],
+    "delay_recompute_tolerance_s": 0.0015,
+    "max_abs_delay_mismatch_s": 8.171241461241152e-14,
+    "epochs_seen": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "measured_epochs": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "n_epochs_measured": 5,
+    "warnings": []
+  }
+}

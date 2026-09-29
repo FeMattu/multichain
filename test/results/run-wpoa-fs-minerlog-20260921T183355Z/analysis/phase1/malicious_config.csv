@@ -1,0 +1,13 @@
+parameter,value,source
+schema_version,malicious/1,malicious_plan
+enabled,False,malicious_plan
+seed,0,malicious_plan
+target_action_rate,0.0,malicious_plan
+miner_count,0,malicious_plan
+start_epoch,1,malicious_plan
+stop_epoch,,malicious_plan
+selfwrite_stream,weight-engine-membership,malicious_plan
+opportunities_per_epoch,1,malicious_plan
+quota_share_source,uniform,malicious_plan
+action_weight.selfwrite,0.5,malicious_plan
+action_weight.badweight,0.5,malicious_plan
