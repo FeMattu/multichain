@@ -1,0 +1,178 @@
+{
+ "sched_lines": 15419,
+ "sched_on_final_parent": 14510,
+ "anchors": {
+  "parent": 15419
+ },
+ "rounds_full": 2900,
+ "rounds_measured": 2900,
+ "E_n": 14500,
+ "E_mean": 1.0022947934471282,
+ "E_band": 0.016276914051333035,
+ "E_sqrtnD": 1.0924374280547229,
+ "SN_n": 2900,
+ "SN_mean": 0.5018319841403944,
+ "SN_sqrtnD": 0.5732363953115623,
+ "designated_share": {
+  "miner-0": 0.0959,
+  "miner-1": 0.1366,
+  "miner-2": 0.2893,
+  "miner-3": 0.2266,
+  "miner-4": 0.2517
+ },
+ "theoretical_share": {
+  "miner-0": 0.0968,
+  "miner-1": 0.1413,
+  "miner-2": 0.2922,
+  "miner-3": 0.2184,
+  "miner-4": 0.2513
+ },
+ "designated_chi2_df4": 1.4662033087133357,
+ "designated_eq_incumbent": 0.2489655172413793,
+ "designated_eq_incumbent_expected": 0.24289948009879528,
+ "inv_n": 0,
+ "inv_rate": 0.0,
+ "inv_by_third": [
+  [
+   0,
+   966
+  ],
+  [
+   0,
+   966
+  ],
+  [
+   0,
+   968
+  ]
+ ],
+ "inv_to_incumbent": 0,
+ "inv_eligible": 0,
+ "inv_eligible_to_incumbent": 0,
+ "inv_incumbent_binom_p_vs_025": null,
+ "inv_margin_mean": null,
+ "inv_margin_max": null,
+ "inv_winner": {},
+ "inv_designated": {},
+ "G_private_mean": 3.3972593103448276,
+ "G_private_median": 2.5085000000000006,
+ "P_G_lt": {
+  "0.1": 0.03896551724137931,
+  "0.25": 0.08344827586206896,
+  "0.5": 0.15379310344827588,
+  "1.0": 0.25517241379310346
+ },
+ "lag_incumbent": 0.5969679310344828,
+ "lag_others": 1.5785062068965516,
+ "lag_by_third": [
+  [
+   0.5999989648033126,
+   1.5717704451345755
+  ],
+  [
+   0.5946915113871636,
+   1.575493530020704
+  ],
+  [
+   0.5962148760330579,
+   1.5882345041322314
+  ]
+ ],
+ "fork_rounds": 435,
+ "fork_rate": 0.15,
+ "max_blocks_per_height": 5,
+ "orphans": 676,
+ "fork_final_is_min": 435,
+ "fork_by_third": [
+  0.15010351966873706,
+  0.15424430641821946,
+  0.14566115702479338
+ ],
+ "first_arrival_n": 435,
+ "first_arrival_ne_final": 221,
+ "first_arrival_ne_designated": 221,
+ "first_arrival_inv_rate": 0.5080459770114942,
+ "first_arrival_to_incumbent": 0.2171945701357466,
+ "first_arrival_to_incumbent_elig": [
+  48,
+  179
+ ],
+ "first_arrival_by_third": [
+  0.08385093167701864,
+  0.07556935817805382,
+  0.06921487603305786
+ ],
+ "eval_contested": 2194,
+ "eval_selected_final": 1.0,
+ "eval_legacy_final": 0.6125797629899726,
+ "eval_diverge": 850,
+ "eval_diverge_heights": 363,
+ "eval_diverge_sel_final": 1.0,
+ "eval_diverge_leg_final": 0.0,
+ "displace": 1300,
+ "displace_heights": 435,
+ "displace_to_better": 1.0,
+ "defer": 219,
+ "defer_release": 0,
+ "retarget_abort": 77,
+ "stale_n": 1300,
+ "stale_max": 1.4579999999987194,
+ "stale_median": -0.14499999999679858,
+ "stale_p95": 0.5470499999988533,
+ "reorg_depth_hist": {
+  "miner-0": {
+   "2": 286
+  },
+  "miner-1": {
+   "2": 272
+  },
+  "miner-2": {
+   "2": 251
+  },
+  "miner-3": {
+   "2": 259
+  },
+  "miner-4": {
+   "2": 232
+  }
+ },
+ "mc_sym": {
+  "0.2": [
+   0.04522413793103448,
+   0.23251332445662037,
+   0.28922911563729226
+  ],
+  "0.3": [
+   0.06381034482758621,
+   0.22519331229270012,
+   0.28713994107850715
+  ],
+  "0.35": [
+   0.07291379310344828,
+   0.22415835092414738,
+   0.2829011073184445
+  ],
+  "0.4": [
+   0.08267241379310344,
+   0.23022491248343893,
+   0.2940084923649424
+  ],
+  "0.5": [
+   0.10099999999999998,
+   0.22413919376639485,
+   0.28542164147634363
+  ]
+ },
+ "mc_adv": {
+  "0.1": [
+   0.07491379310344828,
+   0.29940199842170145,
+   0.3580052635049068
+  ],
+  "0.3": [
+   0.08060344827586206,
+   0.45833416266127147,
+   0.505613815420855
+  ]
+ }
+}
