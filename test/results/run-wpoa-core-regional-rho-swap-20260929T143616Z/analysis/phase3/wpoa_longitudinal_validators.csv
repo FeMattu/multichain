@@ -1,0 +1,6 @@
+validator_address,O_first,n_blocks_first,p_theoretical_first,p_hat_first,wilson_low_first,wilson_high_first,present_first,O_last,n_blocks_last,p_theoretical_last,p_hat_last,wilson_low_last,wilson_high_last,present_last,gain_observed,gain_theoretical,intervals_overlap
+18UgQcEGcW2Tm3bbwi1DFt5hFqPVx3qeRpRtY9,21,100,0.225417,0.21,0.141657,0.2998,True,4,21,0.265082,0.190476,0.076676,0.400006,True,-0.019524,0.039664,True
+1AGTXj8mawcmJkophTUTLAnsXweLEnW4yLeMSd,12,100,0.101264,0.12,0.069994,0.198121,True,1,21,0.087192,0.047619,0.008456,0.226694,True,-0.072381,-0.014073,True
+1EXHKJyuBUQgmXQdbx7G9mwLMhRu87x5TvXr3t,21,100,0.227075,0.21,0.141657,0.2998,True,10,21,0.358502,0.47619,0.28344,0.676305,True,0.26619,0.131427,True
+1TM3NZRQ46ctAv3G2cb4cU21TCStd5QoLALMcX,24,100,0.263768,0.24,0.166913,0.332323,True,4,21,0.214262,0.190476,0.076676,0.400006,True,-0.049524,-0.049506,True
+1aqjwAwmciqr6C5NhCDBB1BTG75inaBAYgje2T,18,100,0.182475,0.18,0.117002,0.266674,True,2,21,0.074963,0.095238,0.026519,0.289141,True,-0.084762,-0.107512,True

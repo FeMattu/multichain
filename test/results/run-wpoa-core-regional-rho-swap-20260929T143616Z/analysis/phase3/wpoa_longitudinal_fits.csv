@@ -1,0 +1,8 @@
+fit,validator_address,n_pairs_total,n_pairs_informative,n_concordant,concordance_rate,sign_test_p_greater,note,beta0,beta1,beta1_se,beta1_ci_low,beta1_ci_high,beta1_consistent_with_1,deviance,n_points,converged,h0,n_pairs,slope,intercept,pearson_r,pearson_p,spearman_rho,spearman_p
+monotonicity,18UgQcEGcW2Tm3bbwi1DFt5hFqPVx3qeRpRtY9,29,28,16,0.571429,0.285794,,,,,,,,,,,,,,,,,,
+monotonicity,1AGTXj8mawcmJkophTUTLAnsXweLEnW4yLeMSd,29,26,16,0.615385,0.16347,,,,,,,,,,,,,,,,,,
+monotonicity,1EXHKJyuBUQgmXQdbx7G9mwLMhRu87x5TvXr3t,29,27,19,0.703704,0.026119,,,,,,,,,,,,,,,,,,
+monotonicity,1TM3NZRQ46ctAv3G2cb4cU21TCStd5QoLALMcX,29,28,22,0.785714,0.00186,,,,,,,,,,,,,,,,,,
+monotonicity,1aqjwAwmciqr6C5NhCDBB1BTG75inaBAYgje2T,29,28,21,0.75,0.00627,,,,,,,,,,,,,,,,,,
+binomial_logit_glm_log_weight,(pooled),,,,,,,-11.85707,1.090664,0.038297,1.015603,1.165724,False,224.258193,150,True,beta1 = 1 (weighted sortition: odds proportional to weight),,,,,,,
+log_ratio_regression,(pairs),,,,,,H0 of proportionality: slope = 1 and intercept = 0,,,,,,,,,,,296,1.003994,-0.020555,0.917982,0.0,0.933722,0.0

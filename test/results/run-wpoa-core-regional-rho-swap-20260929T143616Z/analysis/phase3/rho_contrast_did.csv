@@ -1,0 +1,5 @@
+node_id,phase_from,phase_to,delta_observed,delta_with_feedback,delta_without_feedback,z_vs_with_feedback,z_vs_without_feedback
+miner-1,0,1,0.059784,0.088552,-0.016164,-0.662474,1.768215
+miner-1,1,2,-0.203628,-0.199875,-0.030355,-0.27382,-12.799903
+miner-3,0,1,-0.118272,-0.116596,-0.016011,-0.036471,-2.200061
+miner-3,1,2,0.254172,0.265051,0.028801,-0.70938,14.327249

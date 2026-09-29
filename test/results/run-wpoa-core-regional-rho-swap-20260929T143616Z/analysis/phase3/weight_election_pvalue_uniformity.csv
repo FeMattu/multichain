@@ -1,0 +1,2 @@
+n_epochs,n_rejections,alpha,expected_rejections,ks_statistic_vs_uniform,ks_p_value,binomial_p_value_rejection_count
+30,1,0.05,1.5,0.151496,0.463803,0.785361

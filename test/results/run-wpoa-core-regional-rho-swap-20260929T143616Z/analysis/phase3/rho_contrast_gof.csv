@@ -1,0 +1,9 @@
+scope,null,n_rounds,chi2,df,p_value,reject_alpha05
+all rounds,with rho feedback,2900,1.609114,4,0.79926,False
+all rounds,without rho feedback,2900,25.129976,4,0.0002,True
+"period 1 (miner-1 phase 0, miner-3 phase 0)",with rho feedback,86,1.563509,4,0.820909,False
+"period 1 (miner-1 phase 0, miner-3 phase 0)",without rho feedback,86,1.563509,4,0.820909,False
+"period 2 (miner-1 phase 1, miner-3 phase 1)",with rho feedback,1400,1.775716,4,0.775411,False
+"period 2 (miner-1 phase 1, miner-3 phase 1)",without rho feedback,1400,171.548461,4,5e-05,True
+"period 3 (miner-1 phase 2, miner-3 phase 2)",with rho feedback,1414,1.485519,4,0.828259,False
+"period 3 (miner-1 phase 2, miner-3 phase 2)",without rho feedback,1414,152.213128,4,5e-05,True

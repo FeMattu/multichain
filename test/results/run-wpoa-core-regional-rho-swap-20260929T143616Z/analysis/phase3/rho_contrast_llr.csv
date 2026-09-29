@@ -1,0 +1,2 @@
+n_rounds,llr_observed,llr_mean_without_feedback,llr_sd_without_feedback,p_value_without_feedback,z_vs_without_feedback,llr_mean_with_feedback,llr_sd_with_feedback,quantile_under_feedback,draws
+2900,207.828421,-222.688402,21.555215,5e-05,19.972746,211.261429,19.732867,0.4318,20000
