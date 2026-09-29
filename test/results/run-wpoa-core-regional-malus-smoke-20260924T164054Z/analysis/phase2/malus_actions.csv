@@ -1,0 +1,14 @@
+epoch,miner,address,is_malicious,action,action_id,attempted,sent,txid,confirmed,confirm_height,confirm_epoch,reported,report_height,detection_latency_blocks,governing_epoch,activation_epoch,activation_latency_epochs,target_epoch
+7,miner-2,14pQFm7J9sRJY4B69WXpjDrGdY2pcuLwL299RP,True,badweight,33a9c3ed0c0e8243fe04acc8,True,True,07b423eaab58360875578362b126977f757bce050de04481b0607117e4f73faf,True,182,7,True,182,0,7,8,1,7
+9,miner-2,14pQFm7J9sRJY4B69WXpjDrGdY2pcuLwL299RP,True,badweight,525fb360dff520e709a5e745,True,True,41960935fde446974caeb7ac58b925eac3efc00a3fd06f47c2b02131f6522723,True,232,9,True,232,0,9,10,1,9
+10,miner-2,14pQFm7J9sRJY4B69WXpjDrGdY2pcuLwL299RP,True,badweight,64518cd860b5b8ad777cb8ac,True,True,5699d452fc32be993b77694480fffcda0fcd73535b1e7ae1e51f2d730a839141,True,257,10,True,257,0,10,11,1,10
+11,miner-2,14pQFm7J9sRJY4B69WXpjDrGdY2pcuLwL299RP,True,badweight,17b8bd70a0b23d79923095a4,True,True,89b206500095cb552c3b20613bdb49f222a3765c76017fffc95db324f274f3e8,True,282,11,True,282,0,11,12,1,11
+12,miner-2,14pQFm7J9sRJY4B69WXpjDrGdY2pcuLwL299RP,True,badweight,e48782c353c1980d329895c5,True,True,cfcfbaa1122dbf8b7f2578cb3a5d86f168916d74fe00bbe4277ca59b0fb7d6a9,True,307,12,True,307,0,12,13,1,12
+13,miner-2,14pQFm7J9sRJY4B69WXpjDrGdY2pcuLwL299RP,True,badweight,63da5ef18f8a18563fca544c,True,True,3d688fcedf31828d8cd36aca167353b871504c481bf63dfe2d0ce6fefd1fe8d4,True,332,13,True,332,0,13,14,1,13
+14,miner-2,14pQFm7J9sRJY4B69WXpjDrGdY2pcuLwL299RP,True,badweight,d3136cb5497739881ef337cc,True,True,3c461c047fdd6aa3f0f78b0dd443f25b625778a421893191c39c9a59818b376c,True,357,14,True,357,0,14,15,1,14
+7,miner-3,1A3RbHsec73yKBrNu6TpsBPq56rc4pcdcBbXwU,True,badweight,2788f5a072de1e49ee4a4529,True,True,182084018a39310b3c51cd53c6628e9fab6282a79163fbd88eeaa824d145ac7b,True,182,7,True,182,0,7,8,1,7
+8,miner-3,1A3RbHsec73yKBrNu6TpsBPq56rc4pcdcBbXwU,True,badweight,820f90b85510af5bd02bf802,True,True,1e036e70debf44131a116febc69c4168bd3926c965a3a9334cde9ddc2023ef7a,True,207,8,True,207,0,8,9,1,8
+9,miner-3,1A3RbHsec73yKBrNu6TpsBPq56rc4pcdcBbXwU,True,badweight,946658494797bac184909bab,True,True,6a50f23117fb161a480c66443e0ea2c12055d9f8a214b09e693ef940606f7506,True,232,9,True,232,0,9,10,1,9
+11,miner-3,1A3RbHsec73yKBrNu6TpsBPq56rc4pcdcBbXwU,True,selfwrite,3e666f93348d84008165b684,True,False,,False,,,False,,,,,,
+12,miner-3,1A3RbHsec73yKBrNu6TpsBPq56rc4pcdcBbXwU,True,selfwrite,edac1f91ba7350a02456d070,True,False,,False,,,False,,,,,,
+14,miner-3,1A3RbHsec73yKBrNu6TpsBPq56rc4pcdcBbXwU,True,badweight,34da7aa04b298d3be4760ce8,True,True,86f8de6eb23d715c5196f7394c7dd0184e931587925f66a4e3c4d6b64779fc19,True,357,14,True,357,0,14,15,1,14

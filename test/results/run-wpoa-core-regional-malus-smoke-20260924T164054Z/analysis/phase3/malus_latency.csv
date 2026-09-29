@@ -1,0 +1,5 @@
+measure,n,mean,median,p25,p75,min,max
+detection_latency_blocks,11,0.0,0.0,0.0,0.0,0.0,0.0
+activation_latency_epochs,11,1.0,1.0,1.0,1.0,1.0,1.0
+detection_latency_blocks_selfwrite,0,,,,,,
+detection_latency_blocks_badweight,11,0.0,0.0,0.0,0.0,0.0,0.0

@@ -1,0 +1,16 @@
+check,critical,passed,detail
+registry_weights_finite_and_positive,True,True,"ok: 22455 weight samples, all finite and >= 0"
+no_phantom_validator_in_registry,True,True,ok: every weighted address is a known miner
+malus_finite_and_psi_in_unit_interval,True,True,"ok: 22455 malus samples, every Psi in [0,1]"
+delay_recompute_mismatch_rounds_is_zero,True,True,ok: the recomputed delay matches the logged one in every round (tolerance 0.0015 s)
+phi_consistent,False,False,"35 distinct Phi values seen; logged, not fatal"
+every_esg_publication_reached_the_stream,True,True,"ok: 35 ESG publication(s), all present on weight-engine-esg"
+certified_scores_reflected_in_the_engine,False,False,"2 certified address(es) show no ESG within an epoch: 1LsmVLtuqM1Auxgd5iTNtrcYiH3TLbsjaLGUTD, 1WVD5ht5v4Mfh5Zo8orZEZJUrTGZf3B6Nuo9o9"
+traffic_counts_within_configured_range,False,True,"ok: 626 complete (epoch, node) pairs, every on-chain count inside its configured range (partial first and last epochs excluded)"
+only_miners_pay_the_treasury,True,True,"ok: all 238 treasury payments came from a miner, which is the only actor whose R_k the engine reads"
+malus_psi_in_unit_interval,True,True,"ok: every sampled Psi lies in [0,1]"
+malus_effective_weight_matches_recompute,True,True,ok: w_eff = round(w_raw * Psi) in every sample
+malus_clean_validator_has_psi_one,True,True,ok: every validator with no proved malus has Psi = 1 (the mechanism is inert on honest behaviour)
+malus_detector_no_false_positives,True,True,"ok: the detector reported no honest record (11 report(s), all against confirmed malicious actions)"
+malus_confirmed_actions_were_detected,False,True,ok: 11 of 11 confirmed malicious action(s) were recognised as malus
+at_least_one_fully_measured_epoch,True,True,"ok: 18 epoch(s) measured past setup-first-blocks ([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21])"
