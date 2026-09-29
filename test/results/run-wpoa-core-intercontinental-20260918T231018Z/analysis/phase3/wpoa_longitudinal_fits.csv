@@ -1,0 +1,13 @@
+fit,validator_address,n_pairs_total,n_pairs_informative,n_concordant,concordance_rate,sign_test_p_greater,note,beta0,beta1,beta1_se,beta1_ci_low,beta1_ci_high,beta1_consistent_with_1,deviance,n_points,converged,h0,n_pairs,slope,intercept,pearson_r,pearson_p,spearman_rho,spearman_p
+monotonicity,12RgKpQmvjSQzHNTfddeSBSPGXWoTTcmbM2KxJ,59,55,38,0.690909,0.003228,,,,,,,,,,,,,,,,,,
+monotonicity,14V6WCHmp94U6JTP9Zo91GamuCnBjUzsT6LoGM,59,54,34,0.62963,0.037952,,,,,,,,,,,,,,,,,,
+monotonicity,1BXC5fZZ4UThxeFsBqFUh8ceebDdbVHdak68JZ,59,55,27,0.490909,0.606147,,,,,,,,,,,,,,,,,,
+monotonicity,1E3qM6NJf8e38q7PEq5QkjUrc2hxgQ6JBpRAJb,59,52,23,0.442308,0.834125,,,,,,,,,,,,,,,,,,
+monotonicity,1KRrYgT2tiZqV471jYf9cmTbMyUw2g6tw5F2d6,59,53,28,0.528302,0.391923,,,,,,,,,,,,,,,,,,
+monotonicity,1M42z6mXTTtbSdtbGLjGWnVk1waVHAL3BUdEXT,59,52,35,0.673077,0.008767,,,,,,,,,,,,,,,,,,
+monotonicity,1PbfzPSC5Naensz8uRDZq3dCQLonfG85wx283k,59,54,31,0.574074,0.170445,,,,,,,,,,,,,,,,,,
+monotonicity,1Pv25KU15XzX8g4eWd813mgYHLxYtSD8D7cMAC,59,55,35,0.636364,0.029032,,,,,,,,,,,,,,,,,,
+monotonicity,1ZVx59ZM9HVFBdV2HJ3WVMmmfc2tBCkHVB1e2C,59,53,29,0.54717,0.291566,,,,,,,,,,,,,,,,,,
+monotonicity,1ZvEcQs4V6qTHfnYyV8fNa3athAc1ZjqdJo6SU,59,49,32,0.653061,0.022192,,,,,,,,,,,,,,,,,,
+binomial_logit_glm_log_weight,(pooled),,,,,,,-7.31597,0.841786,0.055002,0.733985,0.949588,False,1269.894182,600,True,beta1 = 1 (weighted sortition: odds proportional to weight),,,,,,,
+log_ratio_regression,(pairs),,,,,,H0 of proportionality: slope = 1 and intercept = 0,,,,,,,,,,,2588,0.860333,0.014596,0.44643,0.0,0.451019,0.0
