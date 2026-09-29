@@ -1,0 +1,2 @@
+n_epochs,slope,intercept,spearman_rho,spearman_p,note
+101,0.0,3.5e-05,-0.005183,0.958971,positive slope = the engine concentrates weight beyond its input inequality
