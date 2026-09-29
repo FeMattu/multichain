@@ -1,0 +1,4 @@
+source,sigma_s,n,note
+S1_topology,0.0,0,"structurally negligible: this harness runs every node as a local process with no emulated latency. Latency-driven inversion is experiments/'s subject, not this one's."
+S2_scheduler_residual_sd,2.501366,5884,PRIMARY source here: how far block spacing departs from its delay.
+S2b_inversion_gap,1.612069,5351,Spread of the margin on the rounds that actually inverted.
