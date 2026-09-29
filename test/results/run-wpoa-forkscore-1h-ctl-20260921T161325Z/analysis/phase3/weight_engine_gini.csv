@@ -1,0 +1,7 @@
+epoch,in_setup,gini_published_weight,gini_input_esg_tau,gini_delta
+1,True,0.192343,0.192343,0.0
+2,False,0.291205,0.291205,0.0
+3,False,0.316339,0.318289,-0.00195
+4,False,0.256769,0.259026,-0.002257
+5,False,0.288597,0.287935,0.000662
+6,False,0.277239,0.277333,-9.4e-05
