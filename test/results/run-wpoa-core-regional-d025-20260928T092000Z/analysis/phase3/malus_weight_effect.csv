@@ -1,0 +1,6 @@
+address,is_malicious,weight_band,w_raw_start,w_eff_start,w_eff_end,rel_change_w_eff
+17rqappxadKRidRroA8Zx3JvhHygm153G5x6EZ,False,low,10585.0,10585.0,7677.0,-0.274728
+18TjG2hGRrKDPZexL1DX1kkYKaPzdB8ipsmMoP,False,mid,24035.0,24035.0,15572.0,-0.352112
+1PY32fgWCYNVKUBRXrLtJdThSFkP7R6k6g1RoB,False,high,28425.0,28425.0,23065.0,-0.188566
+1V1vDmRerh7DhrJkKGkkGkMQqcMnKP2kt5AzH1,False,mid,22785.0,22785.0,17636.0,-0.225982
+1aRd3erLH9tqmqw6Yu6qfWLyxpf4W7tfsJARFZ,False,low,14504.0,14504.0,6164.0,-0.575014

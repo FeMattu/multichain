@@ -1,0 +1,187 @@
+{
+ "sched_lines": 16595,
+ "sched_on_final_parent": 14510,
+ "anchors": {
+  "parent": 16595
+ },
+ "rounds_full": 2900,
+ "rounds_measured": 2900,
+ "E_n": 14500,
+ "E_mean": 0.9988530260532565,
+ "E_band": 0.016276914051333035,
+ "E_sqrtnD": 0.6216158989675151,
+ "SN_n": 2900,
+ "SN_mean": 0.49285037513070706,
+ "SN_sqrtnD": 0.9348904327411892,
+ "designated_share": {
+  "miner-0": 0.1041,
+  "miner-1": 0.1321,
+  "miner-2": 0.2959,
+  "miner-3": 0.2259,
+  "miner-4": 0.2421
+ },
+ "theoretical_share": {
+  "miner-0": 0.1029,
+  "miner-1": 0.128,
+  "miner-2": 0.3106,
+  "miner-3": 0.2324,
+  "miner-4": 0.2261
+ },
+ "designated_chi2_df4": 6.244123035308068,
+ "designated_eq_incumbent": 0.24310344827586206,
+ "designated_eq_incumbent_expected": 0.24156015213947862,
+ "inv_n": 6,
+ "inv_rate": 0.0020689655172413794,
+ "inv_by_third": [
+  [
+   2,
+   966
+  ],
+  [
+   1,
+   966
+  ],
+  [
+   3,
+   968
+  ]
+ ],
+ "inv_to_incumbent": 2,
+ "inv_eligible": 5,
+ "inv_eligible_to_incumbent": 2,
+ "inv_incumbent_binom_p_vs_025": 0.3671875,
+ "inv_margin_mean": 0.09616666666666666,
+ "inv_margin_max": 0.1769999999999996,
+ "inv_winner": {
+  "miner-3": 2,
+  "miner-2": 2,
+  "miner-1": 1,
+  "miner-0": 1
+ },
+ "inv_designated": {
+  "miner-2": 2,
+  "miner-0": 3,
+  "miner-4": 1
+ },
+ "G_private_mean": 1.1924079310344828,
+ "G_private_median": 0.9325000000000001,
+ "P_G_lt": {
+  "0.1": 0.09896551724137931,
+  "0.25": 0.20413793103448277,
+  "0.5": 0.3289655172413793,
+  "1.0": 0.5248275862068965
+ },
+ "lag_incumbent": 0.5930179310344827,
+ "lag_others": 1.573528275862069,
+ "lag_by_third": [
+  [
+   0.5900372670807453,
+   1.5673118530020704
+  ],
+  [
+   0.5957732919254658,
+   1.571171066252588
+  ],
+  [
+   0.5932427685950413,
+   1.582084194214876
+  ]
+ ],
+ "fork_rounds": 930,
+ "fork_rate": 0.32068965517241377,
+ "max_blocks_per_height": 5,
+ "orphans": 1586,
+ "fork_final_is_min": 930,
+ "fork_by_third": [
+  0.33229813664596275,
+  0.3136645962732919,
+  0.31611570247933884
+ ],
+ "first_arrival_n": 930,
+ "first_arrival_ne_final": 470,
+ "first_arrival_ne_designated": 472,
+ "first_arrival_inv_rate": 0.5075268817204301,
+ "first_arrival_to_incumbent": 0.2055084745762712,
+ "first_arrival_to_incumbent_elig": [
+  97,
+  363
+ ],
+ "first_arrival_by_third": [
+  0.16873706004140787,
+  0.15113871635610765,
+  0.1683884297520661
+ ],
+ "eval_contested": 4707,
+ "eval_selected_final": 1.0,
+ "eval_legacy_final": 0.6297004461440407,
+ "eval_diverge": 1743,
+ "eval_diverge_heights": 765,
+ "eval_diverge_sel_final": 1.0,
+ "eval_diverge_leg_final": 0.0,
+ "displace": 2986,
+ "displace_heights": 934,
+ "displace_to_better": 1.0,
+ "defer": 666,
+ "defer_release": 0,
+ "retarget_abort": 238,
+ "stale_n": 2986,
+ "stale_max": 1.2330000000001746,
+ "stale_median": -0.18699999999807915,
+ "stale_p95": 0.571750000000975,
+ "reorg_depth_hist": {
+  "miner-0": {
+   "2": 665
+  },
+  "miner-1": {
+   "2": 672
+  },
+  "miner-2": {
+   "2": 536
+  },
+  "miner-3": {
+   "2": 553
+  },
+  "miner-4": {
+   "2": 560
+  }
+ },
+ "mc_sym": {
+  "0.2": [
+   0.11363793103448275,
+   0.22784256966219774,
+   0.2984304807858666
+  ],
+  "0.3": [
+   0.15506896551724142,
+   0.21211315464348277,
+   0.27524288110729295
+  ],
+  "0.35": [
+   0.17527586206896553,
+   0.21263107636884002,
+   0.27751935806887273
+  ],
+  "0.4": [
+   0.19194827586206897,
+   0.21477059406336427,
+   0.27799733286863326
+  ],
+  "0.5": [
+   0.23008620689655174,
+   0.21248770977550988,
+   0.27649280588619746
+  ]
+ },
+ "mc_adv": {
+  "0.1": [
+   0.17617241379310347,
+   0.28763808378347233,
+   0.3542400749124945
+  ],
+  "0.3": [
+   0.18494827586206894,
+   0.4573115870552761,
+   0.5149616523185233
+  ]
+ }
+}
