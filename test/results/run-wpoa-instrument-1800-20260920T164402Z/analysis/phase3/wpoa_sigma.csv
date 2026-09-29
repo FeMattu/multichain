@@ -1,0 +1,4 @@
+source,sigma_s,n,note
+S1_topology,0.0,0,"no propagation to measure: a native run has every node in one process, so there is no map and no path between validators. Reported as 0 because it is absent in this regime, not because it was measured and came out small."
+S2_scheduler_residual_sd,2.423971,1712,PRIMARY source here: how far block spacing departs from its delay.
+S2b_inversion_gap,1.589293,1579,Spread of the margin on the rounds that actually inverted.
