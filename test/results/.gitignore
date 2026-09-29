@@ -1,7 +1,7 @@
 # Run directories are evidence, not source: a single run carries node data directories,
-# per-node JSON Lines logs and the whole analysis tree, which is far too large and far too
+# per-node JSON Lines logs and chain state, which is far too large and far too
 # machine-specific to version. The directory itself is kept so a run has somewhere to land.
-*
+/*
 !.gitignore
 !.gitkeep
 # The reading guide is the exception: it is documentation that happens to live beside
@@ -9,3 +9,10 @@
 # reader from misreading a column, so they have to travel with the code that produces
 # those columns.
 !GUIDA-STATISTICHE-E-GRAFICI.md
+# Of each run only the analysis tree is versioned: it is what the thesis cites, and it
+# can be regenerated from the raw run only on the machine that still holds it. Everything
+# else in the run directory (chains/, logs/, manifests, archives) stays local. The
+# per-miner private/*.log files inside analysis/ remain excluded by the root *.log rule.
+!/run-*/
+/run-*/*
+!/run-*/analysis/
