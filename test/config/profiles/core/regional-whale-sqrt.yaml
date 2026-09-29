@@ -1,0 +1,130 @@
+# Regional, whale, damping sqrt - one validator with most of the weight, damped by g(w) = sqrt(w).
+#
+# One of three profiles (regional-whale-none, -sqrt, -log) that differ ONLY in
+# dump-function. Base: regional-long23h (seed, map, miners, traffic, weight-lambda 0.5).
+#
+# What is changed against the base: the cluster composition. miner-2, whose certified ESG
+# is the highest of the five under this seed (75), heads 18 of the 30 companies; the other
+# four head 3 each. The company count, and so the traffic and the host load, stay the same.
+# ESG scores are drawn per node from the seed, so they do not move with the clusters.
+#
+# Why: on the 23h runs the weights stay within a factor ~3, where damping is almost
+# invisible, and on long24h-large the log damping flattened ESG-sized weights to a factor
+# 1.18. This is the scenario of the thesis' reference table (one whale against four equal
+# validators). Expected shares, from W_k = ESG * (tau + sum c_i) with this seed's ESG and
+# mean activity, at the published scale (w ~ 1e4-1e6):
+#   none  whale 0.73, others 0.03-0.12   (reference table: 0.714)
+#   sqrt  whale 0.46, others 0.10-0.19   (reference table: 0.442)
+#   log   whale 0.23, others 0.18-0.20   (reference table: 0.325; flatter here because
+#         ln(1 + w) compresses harder at weights of 1e4-1e6 than at the table's 10-100)
+# The test is the per-epoch goodness of fit against the damped share g(w)/sum g(w), and
+# that the ordering is kept: under log the whale must still win most often.
+#
+# weight-lambda stays at 0.5, as in the base: rho is ~0.003, so the feedback factor is a
+# near-constant 0.50 and the whale stays a whale in every epoch.
+#
+# ETA: 50 epochs x 100 blocks x 8 s = 11h07m, plus bootstrap ~28m: ~11h35m.
+
+seed: 20260905
+chain_name: wpoa-core-regional-whale-sqrt
+
+fabric:
+  backend: core
+
+topology: topologies/regional.yaml
+
+network:
+  base_port: 7747
+  base_rpc_port: 8747
+
+# Every node names a site of the topology. A company also names the miner whose
+# cluster it belongs to: on this map the assignment is a decision, not a draw.
+nodes:
+  - {id: admin,     role: admin,   location: modena}
+  - {id: ca-0,      role: ca,      location: parma}
+  - {id: ca-1,      role: ca,      location: forli}
+  - {id: miner-0,  role: miner,   location: firenze}
+  - {id: miner-1,  role: miner,   location: genova}
+  - {id: miner-2,  role: miner,   location: bologna}
+  - {id: miner-3,  role: miner,   location: livorno}
+  - {id: miner-4,  role: miner,   location: lucca}
+  - {id: company-0, role: company, location: pisa, cluster: miner-2}
+  - {id: company-1, role: company, location: siena, cluster: miner-2}
+  - {id: company-2, role: company, location: la-spezia, cluster: miner-2}
+  - {id: company-3, role: company, location: savona, cluster: miner-2}
+  - {id: company-4, role: company, location: ravenna, cluster: miner-2}
+  - {id: company-5, role: company, location: arezzo, cluster: miner-2}
+  - {id: company-6, role: company, location: prato, cluster: miner-2}
+  - {id: company-7, role: company, location: grosseto, cluster: miner-2}
+  - {id: company-8, role: company, location: ferrara, cluster: miner-2}
+  - {id: company-9, role: company, location: rimini, cluster: miner-2}
+  - {id: company-10, role: company, location: imperia, cluster: miner-2}
+  - {id: company-11, role: company, location: parma, cluster: miner-2}
+  - {id: company-12, role: company, location: lucca, cluster: miner-2}
+  - {id: company-13, role: company, location: modena, cluster: miner-2}
+  - {id: company-14, role: company, location: reggio-emilia, cluster: miner-2}
+  - {id: company-15, role: company, location: bologna, cluster: miner-2}
+  - {id: company-16, role: company, location: firenze, cluster: miner-2}
+  - {id: company-17, role: company, location: genova, cluster: miner-2}
+  - {id: company-18, role: company, location: livorno, cluster: miner-0}
+  - {id: company-19, role: company, location: forli, cluster: miner-1}
+  - {id: company-20, role: company, location: pisa, cluster: miner-3}
+  - {id: company-21, role: company, location: siena, cluster: miner-4}
+  - {id: company-22, role: company, location: la-spezia, cluster: miner-0}
+  - {id: company-23, role: company, location: savona, cluster: miner-1}
+  - {id: company-24, role: company, location: ravenna, cluster: miner-3}
+  - {id: company-25, role: company, location: arezzo, cluster: miner-4}
+  - {id: company-26, role: company, location: prato, cluster: miner-0}
+  - {id: company-27, role: company, location: grosseto, cluster: miner-1}
+  - {id: company-28, role: company, location: ferrara, cluster: miner-3}
+  - {id: company-29, role: company, location: rimini, cluster: miner-4}
+
+epochs:
+  count: 50
+  length_blocks: 100
+
+chain:
+  target-block-time: 8
+  mining-diversity: 0.0
+  mine-empty-rounds: -1
+  mining-requires-peers: false
+  # MAX_MONEY on this chain: it caps every single output, the premine coinbase
+  # included, so it has to be raised alongside first-block-reward.
+  maximum-per-output: 400000000000000
+  first-block-reward:  350000000000000
+  initial-block-reward: 0
+  minimum-relay-fee: 20000000
+  anyone-can-connect: false
+
+wpoa:
+  dump-function: sqrt
+  wpoa-sortition-delta: 0.5
+  wpoa-sortition-lambda: 0.3
+  wpoa-malus-mu: 0.5
+  wpoa-malus-max: 4.0
+  wpoa-malus-equiv-points: 4.0
+  wpoa-malus-delay-points: 0.25
+  wpoa-malus-selfwrite-points: 1.0
+  wpoa-malus-badweight-points: 2.0
+
+weight_engine:
+  weight-kappa: 100.0
+  weight-alpha: 0.2
+  weight-lambda: 0.5
+
+traffic:
+  event_stream: supply-chain-events
+  company_tx_per_epoch_range: [30, 60]
+  miner_gas_returns_per_epoch_range: [0, 20]
+  esg_score_range: [1, 100]
+  restitution_amount_range: [50.0, 250.0]
+
+runtime:
+  api_decimal_digits: 17
+  bindir: src
+  rpc_timeout_s: 30
+  startup_timeout_s: 120
+  wpoa_debug: false
+  sortition_miner_log: true
+
+

@@ -745,7 +745,14 @@ class Aggregator:
             role = node.get("role", "")
             address = address_of.get(node_id, "")
             is_company = role == "company"
-            low, high = (tx_low, tx_high) if is_company else (ret_low, ret_high)
+            if is_company:
+                low, high = tx_low, tx_high
+            elif role == "miner" and epoch is not None:
+                # Per miner and per epoch: a profile may give a miner its own phases
+                # (traffic.miner_return_overrides). Without them this is the shared range.
+                (low, high), _ = profile.miner_return_ranges(node_id, epoch)
+            else:
+                low, high = ret_low, ret_high
             onchain_stream = by_publisher.get((epoch, address), 0) if is_company else None
             onchain_returns = sent_returns.get((epoch, node_id), 0) if role == "miner" else None
             measured = onchain_stream if is_company else onchain_returns

@@ -24,7 +24,7 @@ import random
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import yaml
 
@@ -214,6 +214,19 @@ _TRAFFIC_DEFAULTS: Dict[str, Any] = {
     "esg_score_range": [1, 100],
     "restitution_amount_range": [1.0, 9.0],
 }
+
+#: Traffic keys with NO default. Absent from a profile, they are absent from the resolved
+#: traffic mapping too — and so from the run manifest — which is what keeps every profile
+#: written before them byte-for-byte identical in what it resolves to and what it draws.
+#:
+#: ``miner_return_overrides`` gives single miners their own restitution behaviour, in
+#: phases by epoch (see ``_check_return_overrides``). It exists for the controlled
+#: experiment on rho: with one shared range, the differences in rho between miners are
+#: epoch-to-epoch noise; with a per-miner range they become a treatment.
+_TRAFFIC_OPTIONAL = frozenset({"miner_return_overrides"})
+_RETURN_OVERRIDE_KEYS = frozenset(
+    {"from_epoch", "miner_gas_returns_per_epoch_range", "restitution_amount_range"}
+)
 
 _RUNTIME_DEFAULTS: Dict[str, Any] = {
     "bindir": "src",
@@ -535,10 +548,36 @@ class Profile:
     @property
     def miner_seed_gas(self) -> float:
         """Miners earn fees, but not before they have mined: epoch 1 would otherwise
-        find them with nothing to return."""
+        find them with nothing to return.
+
+        Sized on the largest range any miner can draw from, and the SAME for every miner:
+        the seed is most of saldo_k, the denominator of rho, so an equal seed makes the
+        differences in rho between miners come from R_k alone. Without overrides the two
+        maxima are the shared ranges' and the value is the one it always was.
+        """
         ret_max = self.traffic["miner_gas_returns_per_epoch_range"][1]
         hi = self.traffic["restitution_amount_range"][1]
+        for phases in self.traffic.get("miner_return_overrides", {}).values():
+            for phase in phases:
+                ret_max = max(ret_max, phase["miner_gas_returns_per_epoch_range"][1])
+                hi = max(hi, phase["restitution_amount_range"][1])
         return round(ret_max * self.epoch_count * hi * 1.2 + 200, 4)
+
+    def miner_return_ranges(
+        self, node_id: str, epoch: int
+    ) -> Tuple[List[int], List[float]]:
+        """``(returns per epoch, amount)`` ranges in force for this miner at this epoch.
+
+        The shared ``traffic`` ranges, unless ``miner_return_overrides`` names this miner
+        and one of its phases has begun (the latest ``from_epoch <= epoch`` wins).
+        """
+        returns = self.traffic["miner_gas_returns_per_epoch_range"]
+        amounts = self.traffic["restitution_amount_range"]
+        for phase in self.traffic.get("miner_return_overrides", {}).get(node_id, ()):
+            if phase["from_epoch"] <= epoch:
+                returns = phase["miner_gas_returns_per_epoch_range"]
+                amounts = phase["restitution_amount_range"]
+        return returns, amounts
 
     @property
     def max_per_output(self) -> float:
@@ -883,6 +922,81 @@ def _check_range_pair(traffic: Dict[str, Any], key: str, numeric: str) -> None:
     if numeric == "int" and low < 0:
         raise ConfigError("traffic.%s must not be negative: %r" % (key, value))
     traffic[key] = [low, high]
+
+
+def _check_return_overrides(
+    traffic: Dict[str, Any], miner_ids: Sequence[str], epoch_count: int
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Validate ``traffic.miner_return_overrides`` and resolve it to full phases.
+
+    Form: ``{miner_id: [{from_epoch: e, <range keys>}, ...]}``. Each phase holds from
+    its ``from_epoch`` until the next one begins; before the first, the miner uses the
+    shared ranges. A phase that omits a range inherits the shared one, so the resolved
+    phase always carries both and no consumer has to know about the fallback.
+    """
+    raw = traffic["miner_return_overrides"]
+    if not isinstance(raw, dict) or not raw:
+        raise ConfigError(
+            "traffic.miner_return_overrides must be a non-empty mapping miner -> phases"
+        )
+    resolved: Dict[str, List[Dict[str, Any]]] = {}
+    for miner, phases in raw.items():
+        if miner not in miner_ids:
+            raise ConfigError(
+                "traffic.miner_return_overrides names %r, which is not a miner of this "
+                "profile (miners: %s)" % (miner, ", ".join(miner_ids))
+            )
+        if not isinstance(phases, list) or not phases:
+            raise ConfigError(
+                "traffic.miner_return_overrides.%s must be a non-empty list of phases" % miner
+            )
+        out: List[Dict[str, Any]] = []
+        previous = 0
+        for phase in phases:
+            if not isinstance(phase, dict):
+                raise ConfigError(
+                    "traffic.miner_return_overrides.%s: every phase is a mapping" % miner
+                )
+            unknown = sorted(set(phase) - _RETURN_OVERRIDE_KEYS)
+            if unknown:
+                raise ConfigError(
+                    "traffic.miner_return_overrides.%s: unknown key(s) %s"
+                    % (miner, ", ".join(unknown))
+                )
+            start = phase.get("from_epoch")
+            if isinstance(start, bool) or not isinstance(start, int) or not (
+                1 <= start <= epoch_count
+            ):
+                raise ConfigError(
+                    "traffic.miner_return_overrides.%s: from_epoch must be an integer in "
+                    "[1, %d], got %r" % (miner, epoch_count, start)
+                )
+            if start <= previous:
+                raise ConfigError(
+                    "traffic.miner_return_overrides.%s: phases must be listed with "
+                    "strictly increasing from_epoch" % miner
+                )
+            previous = start
+            entry: Dict[str, Any] = {
+                "from_epoch": start,
+                "miner_gas_returns_per_epoch_range": phase.get(
+                    "miner_gas_returns_per_epoch_range",
+                    traffic["miner_gas_returns_per_epoch_range"],
+                ),
+                "restitution_amount_range": phase.get(
+                    "restitution_amount_range", traffic["restitution_amount_range"]
+                ),
+            }
+            _check_range_pair(entry, "miner_gas_returns_per_epoch_range", "int")
+            _check_range_pair(entry, "restitution_amount_range", "float")
+            if entry["restitution_amount_range"][0] <= 0:
+                raise ConfigError(
+                    "traffic.miner_return_overrides.%s: restitution amounts must be > 0"
+                    % miner
+                )
+            out.append(entry)
+        resolved[miner] = out
+    return resolved
 
 
 # --------------------------------------------------------------------------------------
@@ -1299,7 +1413,7 @@ def load_profile(path: str | os.PathLike) -> Profile:
 
     # -- traffic -----------------------------------------------------------------------
     traffic_raw = _require_mapping(raw.get("traffic"), "traffic")
-    unknown = sorted(set(traffic_raw) - set(_TRAFFIC_DEFAULTS))
+    unknown = sorted(set(traffic_raw) - set(_TRAFFIC_DEFAULTS) - _TRAFFIC_OPTIONAL)
     if unknown:
         raise ConfigError("unknown traffic key(s): %s" % ", ".join(unknown))
     traffic = dict(_TRAFFIC_DEFAULTS)
@@ -1395,6 +1509,10 @@ def load_profile(path: str | os.PathLike) -> Profile:
         declared_clusters=declared_clusters,
     )
     profile.nodes = _build_nodes(profile, node_specs)
+    if "miner_return_overrides" in traffic:
+        traffic["miner_return_overrides"] = _check_return_overrides(
+            traffic, [n.node_id for n in profile.by_role("miner")], epoch_count
+        )
 
     # The premine has to clear MAX_MONEY first, and then cover the funding round. Both
     # failures are silent and expensive, which is why they are checked here rather than

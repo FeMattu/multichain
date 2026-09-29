@@ -92,6 +92,10 @@ DPI = 130
 #: columns. Overridable with ``--split-threshold``.
 ENTITY_SPLIT_THRESHOLD = 6
 
+#: rho_effect_election.png: a (miner, treated phase) arm with fewer rounds than this is the
+#: run-in before the first restitution reaches a weight, and is not drawn.
+RHO_MIN_ARM_ROUNDS = 90
+
 #: The three stages the protocol applies to a weight, in order. Seeing them apart is how
 #: one tells which stage moved a number, so they are named once and drawn the same way by
 #: the combined figure and by each per-miner one.
@@ -325,6 +329,14 @@ class Plotter:
         self.malus_latency = read_table(self.phase3 / "malus_latency.csv")
         self.malus_weight_effect = read_table(self.phase3 / "malus_weight_effect.csv")
         self.malus_invariants = read_table(self.phase3 / "malus_invariants.csv")
+
+        # The controlled experiment on rho. Empty unless phase 3 produced it (a run with
+        # traffic.miner_return_overrides, or phase 3 run with --rho-contrast), and then
+        # its two figures are not drawn at all, so no existing run gains a file.
+        self.rho_epoch = read_table(self.phase3 / "rho_contrast_epoch.csv")
+        self.rho_phase = read_table(self.phase3 / "rho_contrast_phase.csv")
+        self.rho_llr = read_table(self.phase3 / "rho_contrast_llr.csv")
+        self.rho_gof = read_table(self.phase3 / "rho_contrast_gof.csv")
 
         self.written: List[Path] = []
         #: subdirectory -> how many per-entity files it holds. The index lists the folder
@@ -1099,6 +1111,134 @@ class Plotter:
             "little power, so a spread around zero is the expected picture, not a finding.",
         ))
 
+    # -- the controlled experiment on rho ------------------------------------------------
+
+    def _rho_focus(self) -> List[str]:
+        """The miners the experiment is about: those with overrides, else all of them."""
+        overridden = sorted({r["validator_address"] for r in self.rho_epoch
+                             if b(r.get("overridden"))}, key=short)
+        return overridden or sorted({r["validator_address"] for r in self.rho_epoch}, key=short)
+
+    def _rho_switches(self) -> List[int]:
+        """First block-epoch of every treated phase after the first, across the miners."""
+        switches = set()
+        previous: Dict[str, int] = {}
+        for row in sorted(self.rho_epoch, key=lambda r: i(r.get("epoch")) or 0):
+            if not b(row.get("overridden")):
+                continue
+            a, ph = row["validator_address"], i(row.get("treated_phase"))
+            if a in previous and ph != previous[a]:
+                switches.add(i(row.get("epoch")))
+            previous[a] = ph
+        return sorted(switches)
+
+    def plot_rho_effect_weight(self) -> None:
+        """rho -> weight: the restitution rate in force, and the share it moves.
+
+        (a) rho in force per miner and epoch. (b) each focus miner's entitled share with
+        the feedback (solid) and with the feedback factor removed (dashed): the gap
+        between the two lines is, epoch by epoch, the part of the weight that rho sets.
+        """
+        path = self.out / "rho_effect_weight.png"
+        focus = self._rho_focus()
+        colours = colour_map([r["validator_address"] for r in self.rho_epoch])
+        switches = self._rho_switches()
+        fig, (ax, bx) = plt.subplots(2, 1, figsize=(FIGSIZE[0], 8.5), sharex=True)
+        series: Dict[str, List[Tuple[int, Dict[str, str]]]] = defaultdict(list)
+        for row in self.rho_epoch:
+            series[row["validator_address"]].append((i(row.get("epoch")), row))
+        for a in sorted(series, key=short):
+            pts = sorted(series[a], key=lambda t: t[0])
+            xs = [e for e, _ in pts]
+            strong = a in focus
+            ax.plot(xs, [f(r.get("rho_in_force")) for _, r in pts],
+                    color=colours[a], lw=2.2 if strong else 1.0, alpha=1.0 if strong else 0.45,
+                    marker="o" if strong else None, ms=3.5, label=short(a))
+            if strong:
+                bx.plot(xs, [f(r.get("p_theoretical")) for _, r in pts], color=colours[a], lw=2.2,
+                        label="%s, with rho feedback" % short(a))
+                bx.plot(xs, [f(r.get("p_raw")) for _, r in pts], color=colours[a], lw=1.4,
+                        ls="--", label="%s, feedback removed" % short(a))
+        for x in switches:
+            for axis in (ax, bx):
+                axis.axvline(x - 0.5, color="#555555", lw=1.0, ls=":")
+        ax.set_ylabel("rho in force (restitution rate)")
+        ax.set_title("(a) The restitution rate each miner's weight carries")
+        ax.legend(fontsize=8, ncol=5)
+        ax.grid(alpha=0.25)
+        bx.set_ylabel("entitled share of blocks")
+        bx.set_xlabel("epoch")
+        bx.set_title("(b) Entitled share with the rho feedback and with it removed")
+        bx.legend(fontsize=8, ncol=2)
+        bx.grid(alpha=0.25)
+        epoch_axis(bx, sorted({e for pts in series.values() for e, _ in pts}))
+        self.record(finish(
+            fig, path,
+            "rho in force is the rate that produced the weight used in each round: the "
+            "restitutions of two block-epochs earlier (engine lag). Dotted lines mark the "
+            "first epoch of a new treated phase. 'Feedback removed' is the same weight "
+            "divided by lambda*rho + (1 - lambda): ESG, tau, malus and dumping unchanged.",
+        ))
+
+    def plot_rho_effect_election(self) -> None:
+        """rho -> election: observed share against both nulls, per miner and phase."""
+        path = self.out / "rho_effect_election.png"
+        focus = set(self._rho_focus())
+        colours = colour_map([r["validator_address"] for r in self.rho_phase])
+        # An arm shorter than about one epoch is the run-in before the first restitution
+        # reaches a weight (engine lag): kept in rho_contrast_phase.csv, not drawn here.
+        arms = [r for r in self.rho_phase if (i(r.get("rounds")) or 0) >= RHO_MIN_ARM_ROUNDS]
+        skipped = len(self.rho_phase) - len(arms)
+        rows = sorted(arms, key=lambda r: (r["validator_address"] not in focus,
+                                                     short(r["validator_address"]),
+                                                     i(r.get("treated_phase")) or 0))
+        fig, ax = plt.subplots(figsize=(FIGSIZE[0], 6.2))
+        width = 0.27
+        xs = list(range(len(rows)))
+        for x, row in zip(xs, rows):
+            colour = colours[row["validator_address"]]
+            raw, theo, obs = f(row.get("p_raw")), f(row.get("p_theoretical")), f(row.get("p_hat"))
+            lo, hi = f(row.get("wilson95_low")), f(row.get("wilson95_high"))
+            ax.bar(x - width, raw, width, color="#BBBBBB", edgecolor="white")
+            ax.bar(x, theo, width, color=colour, alpha=0.45, edgecolor="white")
+            ax.bar(x + width, obs, width, color=colour, edgecolor="white")
+            if None not in (lo, hi, obs):
+                ax.errorbar(x + width, obs, yerr=[[obs - lo], [hi - obs]], color="black",
+                            capsize=3, lw=0.9)
+        ax.set_xticks(xs)
+        ax.set_xticklabels(["%s\nphase %s\nrho %s" % (short(r["validator_address"]),
+                                                      r.get("treated_phase"),
+                                                      _fmt(r.get("rho_in_force_mean"), 4))
+                            for r in rows], fontsize=8)
+        ax.set_ylabel("share of blocks")
+        ax.set_title("Observed share against the share with and without the rho feedback")
+        handles = [
+            plt.Rectangle((0, 0), 1, 1, color="#BBBBBB", label="entitled, feedback removed"),
+            plt.Rectangle((0, 0), 1, 1, color="#777777", alpha=0.45, label="entitled, with rho feedback"),
+            plt.Rectangle((0, 0), 1, 1, color="#333333", label="observed (Wilson 95%)"),
+        ]
+        ax.legend(handles=handles, fontsize=8)
+        ax.grid(axis="y", alpha=0.25)
+        llr = self.rho_llr[0] if self.rho_llr else {}
+        gof = {(r.get("scope"), r.get("null")): r for r in self.rho_gof}
+        with_fb = gof.get(("all rounds", "with rho feedback"), {})
+        without_fb = gof.get(("all rounds", "without rho feedback"), {})
+        self.record(finish(
+            fig, path,
+            "Likelihood ratio, feedback vs no feedback, over %s rounds: LLR = %s, %s sd "
+            "from the no-feedback null (p = %s); under the feedback model the observation "
+            "sits at quantile %s. Chi-square on totals: p = %s with feedback, p = %s "
+            "without. Phase = treated phase, i.e. the restitution behaviour that produced "
+            "the weight in force.%s"
+            % (llr.get("n_rounds", "-"), _fmt(llr.get("llr_observed"), 1),
+               _fmt(llr.get("z_vs_without_feedback"), 1),
+               _fmt(llr.get("p_value_without_feedback"), 5),
+               _fmt(llr.get("quantile_under_feedback"), 2),
+               _fmt(with_fb.get("p_value"), 3), _fmt(without_fb.get("p_value"), 3),
+               (" %d arm(s) under %d rounds (run-in before the first restitution reaches a "
+                "weight) not drawn." % (skipped, RHO_MIN_ARM_ROUNDS)) if skipped else ""),
+        ))
+
     def plot_longitudinal_logratio(self) -> None:
         """Observed against theoretical log-ratio, with the fitted line and the identity."""
         path = self.out / "longitudinal_logratio.png"
@@ -1676,6 +1816,10 @@ class Plotter:
         self.plot_malus_latency()
         self.plot_malus_weight_effect()
         self.plot_malus_invariant_audit()
+        # The controlled experiment on rho (only when phase 3 produced it).
+        if self.rho_epoch and self.rho_phase:
+            self.plot_rho_effect_weight()
+            self.plot_rho_effect_election()
 
         index = self.out / "README.md"
         lines = ["# Figures", "",

@@ -98,18 +98,21 @@ class MinerGasDaemon:
 
     # -- one epoch ---------------------------------------------------------------------
 
-    def plan_epoch(self) -> int:
-        low, high = self.profile.traffic["miner_gas_returns_per_epoch_range"]
+    def plan_epoch(self, epoch: int) -> int:
+        # The range in force for THIS miner at THIS epoch: the shared one, unless the
+        # profile gives the miner a phase of its own (traffic.miner_return_overrides).
+        # One randint either way, so a profile without overrides draws what it always did.
+        (low, high), _ = self.profile.miner_return_ranges(self.node_id, epoch)
         return self.rng.randint(low, high)
 
-    def distinct_amount(self, used: Set[float]) -> float:
+    def distinct_amount(self, used: Set[float], epoch: int) -> float:
         """An amount not yet used in this miner-epoch.
 
         Two decimals give enough distinct values for any plausible count; after enough
         collisions the loop gives up and returns a value anyway rather than spinning,
         because a repeated amount is a cosmetic flaw and a hung daemon is not.
         """
-        low, high = self.profile.traffic["restitution_amount_range"]
+        _, (low, high) = self.profile.miner_return_ranges(self.node_id, epoch)
         for _ in range(64):
             amount = round(self.rng.uniform(low, high), 2)
             if amount > 0 and amount not in used:
@@ -117,7 +120,7 @@ class MinerGasDaemon:
         return round(self.rng.uniform(low, high), 2)
 
     def run_epoch(self, epoch: int, tip: int) -> None:
-        planned = self.plan_epoch()
+        planned = self.plan_epoch(epoch)
         epoch_seconds = self.profile.epoch_length * self.profile.target_block_time
         budget = max(1.0, epoch_seconds * 0.85)
         mean_gap = budget / max(1, planned)
@@ -151,7 +154,7 @@ class MinerGasDaemon:
                 time.sleep(3.0)
                 continue
 
-            amount = self.distinct_amount(used)
+            amount = self.distinct_amount(used, epoch)
             if balance < amount:
                 # Never return more than is held: the ledger would refuse it, and the
                 # balance is the natural cap on R_k anyway.

@@ -56,6 +56,7 @@ from pipeline.stat import concentration as CONC  # noqa: E402
 from pipeline.stat import gof as GOF  # noqa: E402
 from pipeline.stat import longitudinal as LONG  # noqa: E402
 from pipeline.stat import malus as MALUS  # noqa: E402
+from pipeline.stat import rho_contrast as RHO  # noqa: E402
 from pipeline.stat import streak as STREAK  # noqa: E402
 from pipeline.stat import timer_race as TIMER  # noqa: E402
 from pipeline.stat import wilson as WILSON  # noqa: E402
@@ -118,8 +119,11 @@ def write_csv(path: Path, rows: Sequence[Dict[str, Any]], columns: Sequence[str]
 
 
 class Analysis:
-    def __init__(self, run_dir: Path) -> None:
+    def __init__(self, run_dir: Path, force_rho_contrast: bool = False) -> None:
         self.run_dir = Path(run_dir)
+        #: Run the rho analysis even without miner_return_overrides (``--rho-contrast``):
+        #: off by default so an existing run's phase 3 output stays exactly what it was.
+        self.force_rho_contrast = bool(force_rho_contrast)
         self.phase1 = self.run_dir / "analysis" / "phase1"
         self.phase2 = self.run_dir / "analysis" / "phase2"
         self.out = self.run_dir / "analysis" / "phase3"
@@ -144,6 +148,25 @@ class Analysis:
         self.malus_funnel = read_table(self.phase2, "malus_funnel")
         self.malus_rate = read_table(self.phase2, "malus_rate_by_miner")
         self.malus_detection_events = read_table(self.phase2, "malus_detection_events")
+
+        # The controlled experiment on rho (traffic.miner_return_overrides). Read from the
+        # run manifest; absent on every run whose profile does not set it, and then the
+        # analysis, its tables, its report and its figures are simply not produced.
+        run_manifest_path = self.run_dir / "manifest.json"
+        run_manifest = (
+            json.loads(run_manifest_path.read_text(encoding="utf-8"))
+            if run_manifest_path.is_file() else {}
+        )
+        self.return_overrides: Dict[str, List[Dict[str, Any]]] = dict(
+            (run_manifest.get("traffic") or {}).get("miner_return_overrides") or {}
+        )
+        self.lambda_w = f((run_manifest.get("weight_engine_params") or {}).get("weight-lambda"))
+        addresses_path = self.run_dir / "addresses.json"
+        self.node_of: Dict[str, str] = {}
+        if addresses_path.is_file():
+            self.node_of = {
+                v: k for k, v in json.loads(addresses_path.read_text(encoding="utf-8")).items()
+            }
 
         self.tables: Dict[str, List[Dict[str, Any]]] = {}
         self.checks: List[Dict[str, Any]] = []
@@ -2006,6 +2029,34 @@ class Analysis:
             )
             lines.append("")
 
+        if self.summary.get("rho_contrast"):
+            rc = self.summary["rho_contrast"]
+            lines.append("## 7c. Controlled experiment on rho")
+            lines.append("")
+            lines.append(
+                "> **Full detail: [`rho_contrast.md`](rho_contrast.md).** Some miners were "
+                "given their own restitution behaviour (`traffic.miner_return_overrides`); "
+                "the winners are tested against the weights WITH the rho feedback and "
+                "against the same weights with the feedback factor removed."
+            )
+            lines.append("")
+            llr = rc.get("llr") or {}
+            lines.append(
+                "- Likelihood ratio feedback vs no feedback: LLR = %s, p of 'rho has no "
+                "effect' = %s (%s sd from that null); quantile under feedback %s."
+                % (_fmt(llr.get("llr_observed"), 2), _fmt(llr.get("p_value_without_feedback"), 6),
+                   _fmt(llr.get("z_vs_without_feedback"), 1),
+                   _fmt(llr.get("quantile_under_feedback"), 3))
+            )
+            for row in rc.get("gof", []):
+                lines.append(
+                    "- Null **%s**, %s: chi-square = %s, round-by-round Monte-Carlo p = %s "
+                    "(%s rounds)."
+                    % (row["null"], row["scope"], _fmt(row["chi2"], 2),
+                       _fmt(row["p_value"], 4), row["n_rounds"])
+                )
+            lines.append("")
+
         lines.append("## 8. Method notes")
         lines.append("")
         lines.append(
@@ -2034,6 +2085,309 @@ class Analysis:
         path.write_text("\n".join(lines), encoding="utf-8")
         return path
 
+    # -- 7c. the controlled experiment on rho --------------------------------------------
+
+    def analyse_rho_contrast(self) -> None:
+        """Does the restitution rate reach the weight and the election? (RHO module doc.)
+
+        Every measured round is tested twice, round by round: against the shares WITH
+        the rho feedback (``p_theoretical``, what the election consumed) and against the
+        same weights with the feedback factor removed (``p_raw``). The treatment a round
+        carries is the restitution phase of the block-epoch whose returns produced the
+        factor in force, read from the engine row each weight traces back to.
+        """
+        lookup = RHO.engine_lookup(self.epoch_engine)
+        measured = [r for r in self.candidates if b(r.get("in_setup")) is False]
+        shares = RHO.round_shares(measured, lookup)
+        heights = sorted(shares)
+        if not heights:
+            self.summary["rho_contrast"] = {}
+            return
+        epoch_of = {i(r["height"]): i(r["epoch"]) for r in measured}
+        validators = sorted({a for h in heights for a in shares[h]})
+        node = lambda a: self.node_of.get(a, a)  # noqa: E731
+        rho_of = {
+            (r.get("cluster_head_address", ""), i(r.get("epoch"))): f(r.get("return_rate_rho"))
+            for r in self.epoch_engine
+        }
+        rho_prev_of = {
+            (r.get("cluster_head_address", ""), i(r.get("epoch"))): f(r.get("rho_prev"))
+            for r in self.epoch_engine
+        }
+
+        def treated(address: str, engine_epoch: int) -> int:
+            phases = self.return_overrides.get(node(address))
+            if not phases:
+                return 0
+            return RHO.phase_index(phases, engine_epoch - RHO.RESTITUTION_LAG)
+
+        # Per block-epoch x validator, and per validator x treated phase.
+        cell: Dict[Tuple[int, str], Dict[str, Any]] = {}
+        arm: Dict[Tuple[str, int], Dict[str, Any]] = {}
+        period_of: Dict[int, Tuple[Tuple[str, int], ...]] = {}
+        for h in heights:
+            entries = shares[h]
+            period_of[h] = tuple(
+                sorted(
+                    (node(a), treated(a, e["engine_epoch"]))
+                    for a, e in entries.items() if node(a) in self.return_overrides
+                )
+            )
+            for a, e in entries.items():
+                ph = treated(a, e["engine_epoch"])
+                rho_in_force = rho_prev_of.get((a, e["engine_epoch"]))
+                for key, store in (((epoch_of[h], a), cell), ((a, ph), arm)):
+                    acc = store.setdefault(key, {
+                        "rounds": 0, "wins": 0, "p_theo": 0.0, "p_raw": 0.0,
+                        "var_theo": 0.0, "var_raw": 0.0, "factor": 0.0, "rho_in_force": 0.0,
+                        "phases": defaultdict(int),
+                    })
+                    acc["rounds"] += 1
+                    acc["wins"] += 1 if e["is_winner"] else 0
+                    acc["p_theo"] += e["p_theoretical"]
+                    acc["p_raw"] += e["p_raw"]
+                    acc["var_theo"] += e["p_theoretical"] * (1 - e["p_theoretical"])
+                    acc["var_raw"] += e["p_raw"] * (1 - e["p_raw"])
+                    acc["factor"] += e["factor"]
+                    acc["rho_in_force"] += rho_in_force or 0.0
+                    acc["phases"][ph] += 1
+
+        epoch_rows: List[Dict[str, Any]] = []
+        for (epoch, a), acc in sorted(cell.items()):
+            n = acc["rounds"]
+            phases = self.return_overrides.get(node(a))
+            epoch_rows.append({
+                "epoch": epoch,
+                "validator_address": a,
+                "node_id": node(a),
+                "overridden": bool(phases),
+                "restitution_phase": RHO.phase_index(phases, epoch) if phases else 0,
+                "treated_phase": max(acc["phases"], key=acc["phases"].get),
+                "rho_returned_this_epoch": rho_of.get((a, epoch + 1)),
+                "rho_in_force": r6(acc["rho_in_force"] / n),
+                "feedback_factor": r6(acc["factor"] / n),
+                "rounds": n,
+                "O_i": acc["wins"],
+                "p_hat": r6(acc["wins"] / n),
+                "p_theoretical": r6(acc["p_theo"] / n),
+                "p_raw": r6(acc["p_raw"] / n),
+            })
+        self.tables["rho_contrast_epoch"] = epoch_rows
+
+        phase_rows: List[Dict[str, Any]] = []
+        for (a, ph), acc in sorted(arm.items(), key=lambda kv: (node(kv[0][0]), kv[0][1])):
+            n = acc["rounds"]
+            low, high = WILSON.wilson_interval(acc["wins"], n)
+            phase_rows.append({
+                "validator_address": a,
+                "node_id": node(a),
+                "treated_phase": ph,
+                "rounds": n,
+                "O_i": acc["wins"],
+                "p_hat": r6(acc["wins"] / n),
+                "wilson95_low": r6(low),
+                "wilson95_high": r6(high),
+                "p_theoretical": r6(acc["p_theo"] / n),
+                "p_raw": r6(acc["p_raw"] / n),
+                "z_vs_theoretical": r6((acc["wins"] - acc["p_theo"]) / math.sqrt(acc["var_theo"]))
+                if acc["var_theo"] > 0 else None,
+                "z_vs_raw": r6((acc["wins"] - acc["p_raw"]) / math.sqrt(acc["var_raw"]))
+                if acc["var_raw"] > 0 else None,
+                "rho_in_force_mean": r6(acc["rho_in_force"] / n),
+                "feedback_factor_mean": r6(acc["factor"] / n),
+                "_var_theo": acc["var_theo"], "_var_raw": acc["var_raw"],
+            })
+
+        # Within-miner contrast between consecutive treated phases: the change in observed
+        # share against the change each null predicts. Same miner, so ESG and cluster size
+        # cancel; tau is redrawn every epoch and stays as noise on both sides.
+        did_rows: List[Dict[str, Any]] = []
+        by_node: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for row in phase_rows:
+            by_node[row["node_id"]].append(row)
+        for nid in sorted(self.return_overrides):
+            arms = sorted(by_node.get(nid, []), key=lambda r: r["treated_phase"])
+            for before, after in zip(arms, arms[1:]):
+                d_obs = after["p_hat"] - before["p_hat"]
+                d_theo = after["p_theoretical"] - before["p_theoretical"]
+                d_raw = after["p_raw"] - before["p_raw"]
+                se_theo = math.sqrt(before["_var_theo"] / before["rounds"] ** 2
+                                    + after["_var_theo"] / after["rounds"] ** 2)
+                se_raw = math.sqrt(before["_var_raw"] / before["rounds"] ** 2
+                                   + after["_var_raw"] / after["rounds"] ** 2)
+                did_rows.append({
+                    "node_id": nid,
+                    "phase_from": before["treated_phase"],
+                    "phase_to": after["treated_phase"],
+                    "delta_observed": r6(d_obs),
+                    "delta_with_feedback": r6(d_theo),
+                    "delta_without_feedback": r6(d_raw),
+                    "z_vs_with_feedback": r6((d_obs - d_theo) / se_theo) if se_theo > 0 else None,
+                    "z_vs_without_feedback": r6((d_obs - d_raw) / se_raw) if se_raw > 0 else None,
+                })
+        for row in phase_rows:
+            row.pop("_var_theo")
+            row.pop("_var_raw")
+        self.tables["rho_contrast_phase"] = phase_rows
+        self.tables["rho_contrast_did"] = did_rows
+
+        # Joint round-by-round tests, over the whole run and within each treatment period.
+        periods: List[Tuple[Tuple[str, int], ...]] = []
+        for h in heights:
+            if period_of[h] not in periods:
+                periods.append(period_of[h])
+        scopes: List[Tuple[str, List[int]]] = [("all rounds", heights)]
+        for k, period in enumerate(periods):
+            label = "period %d (%s)" % (
+                k + 1, ", ".join("%s phase %d" % (n_, ph) for n_, ph in period) or "no override"
+            )
+            scopes.append((label, [h for h in heights if period_of[h] == period]))
+        gof_rows: List[Dict[str, Any]] = []
+        for label, hs in scopes:
+            observed = [sum(1 for h in hs if shares[h].get(a, {}).get("is_winner")) for a in validators]
+            for null, key in (("with rho feedback", "p_theoretical"), ("without rho feedback", "p_raw")):
+                matrix = [[shares[h].get(a, {}).get(key, 0.0) for a in validators] for h in hs]
+                p_value, statistic, _ = GOF.mc_round_by_round_pvalue(observed, matrix)
+                gof_rows.append({
+                    "scope": label, "null": null, "n_rounds": len(hs),
+                    "chi2": r6(statistic), "df": len(validators) - 1, "p_value": r6(p_value),
+                    "reject_alpha05": (p_value is not None and p_value < ALPHA),
+                })
+        self.tables["rho_contrast_gof"] = gof_rows
+
+        winners = [
+            next(k for k, a in enumerate(validators) if shares[h].get(a, {}).get("is_winner"))
+            for h in heights
+        ]
+        llr = RHO.likelihood_ratio_test(
+            [[shares[h].get(a, {}).get("p_theoretical", 0.0) for a in validators] for h in heights],
+            [[shares[h].get(a, {}).get("p_raw", 0.0) for a in validators] for h in heights],
+            winners, MC_GOF, ANALYSIS_SEED,
+        )
+        self.tables["rho_contrast_llr"] = [{k: r6(v) for k, v in llr.items()}]
+        self.summary["rho_contrast"] = {
+            "gof": gof_rows, "did": did_rows, "llr": llr, "rounds": len(heights),
+            "rounds_dropped": len({i(r["height"]) for r in measured}) - len(heights),
+        }
+
+    def write_rho_contrast_report(self) -> Optional[Path]:
+        if not self.summary.get("rho_contrast"):
+            return None
+        rc = self.summary["rho_contrast"]
+        path = self.out / "rho_contrast.md"
+        lines: List[str] = ["# Controlled experiment on rho", ""]
+        lines.append(
+            "> Some miners were given their own restitution behaviour "
+            "(`traffic.miner_return_overrides`). The question is whether the restitution "
+            "rate rho reaches the weight and, through it, the election. Each round is "
+            "tested against two nulls: the shares **with** the rho feedback (the weights "
+            "the election actually consumed) and the same weights with the feedback "
+            "factor `lambda * rho_prev + (1 - lambda)` removed, i.e. what the engine would "
+            "have published with `lambda = 0` and everything else unchanged."
+        )
+        lines.append("")
+        lines.append(
+            "**Causal lag.** Engine epoch *k* reads the blocks of block-epoch *k - 1* and is "
+            "in force from early in block-epoch *k*; its factor uses rho of engine epoch "
+            "*k - 1*, i.e. the restitutions of block-epoch *k - 2*. A round's *treated "
+            "phase* is the restitution phase of that block-epoch, traced from the engine "
+            "row its weight came from. %d round(s) measured, %d dropped because some "
+            "weight could not be traced." % (rc.get("rounds", 0), rc.get("rounds_dropped", 0))
+        )
+        lines.append("")
+        lines.append("## Overrides in this run")
+        lines.append("")
+        if not self.return_overrides:
+            lines.append(
+                "None: every miner drew its restitutions from the same range, so rho "
+                "differs between miners only by chance. The tests below still apply; the "
+                "per-phase tables have a single phase.")
+            lines.append("")
+        lines.append("| miner | from epoch | returns per epoch | amount |")
+        lines.append("|---|---:|---|---|")
+        for nid in sorted(self.return_overrides):
+            for phase in self.return_overrides[nid]:
+                lines.append("| %s | %s | %s | %s |" % (
+                    nid, phase["from_epoch"], phase["miner_gas_returns_per_epoch_range"],
+                    phase["restitution_amount_range"]))
+        lines.append("")
+        llr = rc.get("llr") or {}
+        lines.append("## Likelihood ratio: feedback against no feedback")
+        lines.append("")
+        lines.append(
+            "`LLR = sum over rounds of log(p_with[winner] / p_without[winner])`, the most "
+            "powerful test between the two nulls (Neyman-Pearson). Both are simulated round "
+            "by round with the shares in force (%s draws)." % llr.get("draws"))
+        lines.append("")
+        lines.append("| quantity | value |")
+        lines.append("|---|---:|")
+        for label, key, digits in (
+            ("rounds", "n_rounds", 0),
+            ("LLR observed", "llr_observed", 2),
+            ("LLR under no feedback: mean", "llr_mean_without_feedback", 2),
+            ("LLR under no feedback: sd", "llr_sd_without_feedback", 2),
+            ("p-value of 'rho has no effect'", "p_value_without_feedback", 6),
+            ("distance from the no-feedback null, in sd", "z_vs_without_feedback", 1),
+            ("LLR under feedback: mean", "llr_mean_with_feedback", 2),
+            ("LLR under feedback: sd", "llr_sd_with_feedback", 2),
+            ("quantile of the observation under feedback", "quantile_under_feedback", 3),
+        ):
+            lines.append("| %s | %s |" % (label, _fmt(llr.get(key), digits)))
+        lines.append("")
+        lines.append("## Joint test on totals, round by round (Monte-Carlo, %d draws)" % MC_GOF)
+        lines.append("")
+        lines.append("| scope | null | rounds | chi-square | df | p | reject at %s |" % ALPHA)
+        lines.append("|---|---|---:|---:|---:|---:|---|")
+        for row in rc.get("gof", []):
+            lines.append("| %s | %s | %s | %s | %s | %s | %s |" % (
+                row["scope"], row["null"], row["n_rounds"], _fmt(row["chi2"], 2), row["df"],
+                _fmt(row["p_value"], 4), "YES" if row["reject_alpha05"] else "no"))
+        lines.append("")
+        lines.append("## Share per miner and treated phase")
+        lines.append("")
+        lines.append("| miner | phase | rounds | rho in force | factor | p without feedback | "
+                     "p with feedback | observed | Wilson 95% | z vs with | z vs without |")
+        lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|")
+        for row in self.tables.get("rho_contrast_phase", []):
+            lines.append("| %s | %s | %s | %s | %s | %s | %s | %s | [%s, %s] | %s | %s |" % (
+                row["node_id"], row["treated_phase"], row["rounds"],
+                _fmt(row["rho_in_force_mean"], 4), _fmt(row["feedback_factor_mean"], 4),
+                _fmt(row["p_raw"], 4), _fmt(row["p_theoretical"], 4), _fmt(row["p_hat"], 4),
+                _fmt(row["wilson95_low"], 4), _fmt(row["wilson95_high"], 4),
+                _fmt(row["z_vs_theoretical"], 2), _fmt(row["z_vs_raw"], 2)))
+        lines.append("")
+        if rc.get("did"):
+            lines.append("## Within-miner change between phases")
+            lines.append("")
+            lines.append("Same miner before and after its switch, so ESG and cluster size "
+                         "cancel. The observed change is compared with the change each null "
+                         "predicts.")
+            lines.append("")
+            lines.append("| miner | phases | observed change | predicted with feedback | "
+                         "predicted without | z vs with | z vs without |")
+            lines.append("|---|---|---:|---:|---:|---:|---:|")
+            for row in rc["did"]:
+                lines.append("| %s | %s → %s | %s | %s | %s | %s | %s |" % (
+                    row["node_id"], row["phase_from"], row["phase_to"],
+                    _fmt(row["delta_observed"], 4), _fmt(row["delta_with_feedback"], 4),
+                    _fmt(row["delta_without_feedback"], 4),
+                    _fmt(row["z_vs_with_feedback"], 2), _fmt(row["z_vs_without_feedback"], 2)))
+            lines.append("")
+        lines.append("## How to read this")
+        lines.append("")
+        lines.append(
+            "- **The feedback works** if the winners are consistent with the null *with* "
+            "feedback and inconsistent with the null *without* it, and if each switching "
+            "miner's share moves by the amount the feedback predicts.")
+        lines.append(
+            "- **The counterfactual keeps everything but rho**: same ESG, same tau, same "
+            "malus and dumping. Only the factor that rho sets is removed.")
+        lines.append("")
+        lines.append("Figures: `plots/rho_effect_weight.png`, `plots/rho_effect_election.png`.")
+        lines.append("")
+        path.write_text("\n".join(lines), encoding="utf-8")
+        return path
+
     # -- driver ------------------------------------------------------------------------
 
     def run(self) -> Dict[str, Any]:
@@ -2045,6 +2399,8 @@ class Analysis:
         self.analyse_weight_engine()
         self.analyse_weight_election_diagnostics()
         self.analyse_malus()
+        if self.return_overrides or self.force_rho_contrast:
+            self.analyse_rho_contrast()
         self.run_checks()
 
         for name, rows in self.tables.items():
@@ -2065,6 +2421,7 @@ class Analysis:
         self.write_timer_race()
         self.write_longitudinal()
         self.write_malus_report()
+        self.write_rho_contrast_report()
         self.write_report()
 
         critical_failures = [c["check"] for c in self.checks if c["critical"] and c["passed"] is False]
@@ -2114,10 +2471,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--config", default=None)
     parser.add_argument("--run-dir", required=True)
+    parser.add_argument(
+        "--rho-contrast", action="store_true",
+        help="also run the rho feedback test (rho_contrast.md) on a run without "
+             "traffic.miner_return_overrides; on runs with them it always runs",
+    )
     args = parser.parse_args(argv)
 
     try:
-        manifest = Analysis(Path(args.run_dir)).run()
+        manifest = Analysis(Path(args.run_dir), force_rho_contrast=args.rho_contrast).run()
     except Phase3Error as exc:
         print("[phase3] %s" % exc, file=sys.stderr)
         return 1

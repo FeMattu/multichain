@@ -289,6 +289,38 @@ see §4.
 
 Both endpoints of every range must satisfy `low <= high`.
 
+#### `miner_return_overrides` *(optional, no default)*
+
+Gives single miners their own restitution behaviour, in phases by epoch. It exists for the
+controlled experiment on the restitution rate rho (`core/regional-rho-swap.yaml`): with one
+shared range the differences in rho between miners are epoch-to-epoch noise, with a range
+per miner they become a treatment.
+
+```yaml
+traffic:
+  miner_return_overrides:
+    miner-1:
+      - {from_epoch: 1,  miner_gas_returns_per_epoch_range: [16, 20], restitution_amount_range: [200.0, 250.0]}
+      - {from_epoch: 15, miner_gas_returns_per_epoch_range: [0, 2],   restitution_amount_range: [50.0, 100.0]}
+```
+
+- Keys are miner ids of the profile; each holds a non-empty list of phases.
+- `from_epoch` is an integer in `[1, epochs.count]`, strictly increasing within a miner. A
+  phase holds from its `from_epoch` (the harness's block-epoch, `height // length_blocks`)
+  until the next one begins; before the first, and for every miner not named, the shared
+  ranges above apply.
+- A phase may omit either range; it then inherits the shared one. Amounts must be `> 0`.
+- `miner_seed` (§3) is sized on the largest `returns` and `amount` of ANY miner and phase,
+  and is the same for every miner, so the denominator of rho is equal across miners.
+
+**Backward compatibility.** When the key is absent it is absent from the resolved traffic
+and from the run manifest, `miner_seed` is the historical formula, and the miner daemon
+makes exactly the same calls on the same random stream: every profile written before the
+option resolves, funds and draws byte-for-byte as it did (`test/unit/test_miner_return_overrides.py`).
+Phase 3 writes `rho_contrast.md` (and `rho_contrast_*.csv`) and the plots
+`rho_effect_weight.png` / `rho_effect_election.png` only for a run with overrides, or when
+`phase3_analyze.py` is given `--rho-contrast`.
+
 ### `runtime` *(optional)*
 
 | Field | Default | Note |
@@ -431,6 +463,9 @@ fit: `gas_demand <= first-block-reward / 100000000 <= maximum-per-output / 10000
 Below the demand, `seed_gas` funds the nodes it reaches and the rest come back `-704`
 ("Insufficient funds") several minutes into the run, with the fabric, the chain and every
 daemon already up. The loader checks both inequalities before anything starts.
+
+With `traffic.miner_return_overrides` the two maxima are taken over the shared ranges and
+every miner's phases, and the result is given to every miner alike.
 
 Note which term dominates: `miner_seed` is a product of three maxima, so
 `restitution_amount_range` and `miner_gas_returns_per_epoch_range` matter as much as the

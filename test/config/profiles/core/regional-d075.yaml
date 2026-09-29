@@ -1,24 +1,26 @@
-# Regional, 25 x 400 - regional-long23h-feedback with the same blocks cut into fewer,
-# longer epochs.
+# Regional, delta 0.75 - regional-long23h-feedback with the delay band set to Delta_max = 6 s.
 #
-# Same seed, map, nodes, block time and total length (10 000 blocks) as the 23h runs, and
-# the same weight parameters as regional-long23h-feedback. What changes is the epoch
-# geometry: 25 epochs of 400 blocks instead of 100 of 100. Every per-epoch traffic range
-# is scaled by 4, so the traffic PER BLOCK is the same as in the 23h runs, and the derived
-# budgets come out identical: miner_seed_gas = 80 * 25 * 250 * 1.2 + 200 = 600 200 and
-# gas_seed = 240 * 0.2 * 25 * 1.5 + 50 = 1 850, exactly as there.
+# One point of a sweep on the band half-width: delta = 0.25 / 0.5 / 0.75, i.e.
+# Delta_max = 2 / 4 / 6 s at T_block = 8 s. The delta = 0.5 point is
+# regional-long23h-feedback itself. Same seed, map, nodes, traffic and weight parameters:
+# only wpoa-sortition-delta changes, and the run is shorter (30 epochs).
 #
-# The hypothesis under test: the funding is the same, R_k per epoch is 4x larger, so
-# rho_k = R_k / saldo_k should be ~4x larger (ceiling ~1/(1.2*25) = 0.033 instead of
-# 0.008). If it is, the restitution feedback is bounded by the epoch count and not by the
-# engine. It also measures the cost of the lever: the weight -- and with it the feedback
-# and a malus -- updates 4x less often, and wpoa-randao-lookback grows to 401.
+# What it measures: Prop. 5.18 predicts inversions linear in 1 / Delta_max at first order,
+# P ~ m sigma / (2 sqrt(2) Delta_max). With the same sigma, the instantaneous inversion rate
+# (first block received is not the argmin's) should scale as 4 : 2 : 1.33 over the sweep,
+# and the fork rate with it. The final rate, after the score tie-break, should stay small.
+# Delta_max = 6 s gives a band of [2, 14] s around T_block and a feedback bound
+# M = min(0.5 * 8, 8 * (1 - 0.75) / 0.3) = 4.00 s.
 #
-# ETA: target height 20 * 500 + 20 = 10 020 blocks x 8 s = 23h09m, plus daemon
-# start-up: under 24h. (One extra epoch of 500 blocks is what the verification needs.)
+# Watch: the fastest slot opens 2 s after the parent, close to the time a node needs to
+# process a block (~1.6 s on the regional runs, 99th percentile ~2.5 s). A node that
+# processes the parent after its own slot starts late, and that reintroduces the incumbent
+# advantage in some rounds. The incumbent's share of the inversions tells whether it does.
+#
+# ETA: 30 epochs x 100 blocks x 8 s = 6h40m, plus bootstrap ~28m: ~7h10m.
 
 seed: 20260905
-chain_name: wpoa-core-regional-e400
+chain_name: wpoa-core-regional-d075
 
 fabric:
   backend: core
@@ -72,8 +74,8 @@ nodes:
   - {id: company-29, role: company, location: ravenna, cluster: miner-4}
 
 epochs:
-  count: 20
-  length_blocks: 500
+  count: 30
+  length_blocks: 100
 
 chain:
   target-block-time: 8
@@ -90,7 +92,8 @@ chain:
 
 wpoa:
   dump-function: none
-  wpoa-sortition-delta: 0.5
+  # 0.5 in regional-long23h-feedback: the only protocol change.
+  wpoa-sortition-delta: 0.75
   wpoa-sortition-lambda: 0.3
   wpoa-malus-mu: 0.5
   # 4.0 in regional-long23h. With one opportunity per miner-epoch and mu = 0.5, M can
@@ -117,9 +120,8 @@ weight_engine:
 
 traffic:
   event_stream: supply-chain-events
-  # x4 per epoch = the 23h runs' rate per block.
-  company_tx_per_epoch_range: [120, 240]
-  miner_gas_returns_per_epoch_range: [0, 80]
+  company_tx_per_epoch_range: [30, 60]
+  miner_gas_returns_per_epoch_range: [0, 20]
   esg_score_range: [1, 100]
   restitution_amount_range: [50.0, 250.0]
 

@@ -1,0 +1,128 @@
+# Intercontinental, weight feedback - regional-long23h-feedback moved onto the intercontinental map.
+#
+# Same seed, nodes (1 admin, 2 CA, 5 miners, 30 companies with the same cluster
+# assignment), epochs, block time, traffic and protocol and weight parameters as
+# regional-long23h-feedback. The ONLY difference is the map: worst one-way path 181.5 ms
+# instead of 5.1 ms (worst round trip 363 ms, within 0.25 x Delta_max = 1 s).
+#
+# What it measures: the geography, alone. The sigma of Prop. 5.18 gains a propagation term
+# of a few tens of milliseconds against ~0.35 s of local processing, so the inversion and
+# fork rates should rise only slightly; if they rise a lot, propagation is not additive
+# to processing as the model assumes. It also checks proportionality and liveness on a
+# slow map with the corrected timer race (the earlier intercontinental-28h run lost
+# liveness from local slowness before the corrections, not from latency).
+#
+# ETA: 100 epochs x 100 blocks x 8 s = 22h13m, plus bootstrap ~28m: ~23h.
+
+seed: 20260905
+chain_name: wpoa-core-ic-fb
+
+fabric:
+  backend: core
+
+topology: topologies/intercontinental.yaml
+
+network:
+  base_port: 7747
+  base_rpc_port: 8747
+
+# Every node names a site of the topology. A company also names the miner whose
+# cluster it belongs to: on this map the assignment is a decision, not a draw.
+nodes:
+  - {id: admin,     role: admin,   location: paris-i}
+  - {id: ca-0,      role: ca,      location: london-i}
+  - {id: ca-1,      role: ca,      location: dubai}
+  - {id: miner-0,   role: miner,   location: milano-i}
+  - {id: miner-1,   role: miner,   location: frankfurt-i}
+  - {id: miner-2,   role: miner,   location: new-york}
+  - {id: miner-3,   role: miner,   location: singapore}
+  - {id: miner-4,   role: miner,   location: sao-paulo}
+  - {id: company-0, role: company, location: zurich-i, cluster: miner-0}
+  - {id: company-1, role: company, location: marseille-i, cluster: miner-1}
+  - {id: company-2, role: company, location: amsterdam-i, cluster: miner-2}
+  - {id: company-3, role: company, location: warszawa-i, cluster: miner-3}
+  - {id: company-4, role: company, location: toronto, cluster: miner-4}
+  - {id: company-5, role: company, location: sydney, cluster: miner-0}
+  - {id: company-6, role: company, location: mumbai, cluster: miner-1}
+  - {id: company-7, role: company, location: los-angeles, cluster: miner-2}
+  - {id: company-8, role: company, location: seoul, cluster: miner-3}
+  - {id: company-9, role: company, location: buenos-aires, cluster: miner-4}
+  - {id: company-10, role: company, location: tokyo, cluster: miner-0}
+  - {id: company-11, role: company, location: johannesburg, cluster: miner-1}
+  - {id: company-12, role: company, location: zurich-i, cluster: miner-2}
+  - {id: company-13, role: company, location: marseille-i, cluster: miner-3}
+  - {id: company-14, role: company, location: amsterdam-i, cluster: miner-4}
+  - {id: company-15, role: company, location: warszawa-i, cluster: miner-0}
+  - {id: company-16, role: company, location: toronto, cluster: miner-1}
+  - {id: company-17, role: company, location: sydney, cluster: miner-2}
+  - {id: company-18, role: company, location: mumbai, cluster: miner-3}
+  - {id: company-19, role: company, location: los-angeles, cluster: miner-4}
+  - {id: company-20, role: company, location: seoul, cluster: miner-0}
+  - {id: company-21, role: company, location: buenos-aires, cluster: miner-1}
+  - {id: company-22, role: company, location: tokyo, cluster: miner-2}
+  - {id: company-23, role: company, location: johannesburg, cluster: miner-3}
+  - {id: company-24, role: company, location: zurich-i, cluster: miner-4}
+  - {id: company-25, role: company, location: marseille-i, cluster: miner-0}
+  - {id: company-26, role: company, location: amsterdam-i, cluster: miner-1}
+  - {id: company-27, role: company, location: warszawa-i, cluster: miner-2}
+  - {id: company-28, role: company, location: toronto, cluster: miner-3}
+  - {id: company-29, role: company, location: sydney, cluster: miner-4}
+
+epochs:
+  count: 100
+  length_blocks: 100
+
+chain:
+  target-block-time: 8
+  mining-diversity: 0.0
+  mine-empty-rounds: -1
+  mining-requires-peers: false
+  # MAX_MONEY on this chain: it caps every single output, the premine coinbase
+  # included, so it has to be raised alongside first-block-reward.
+  maximum-per-output: 400000000000000
+  first-block-reward:  350000000000000
+  initial-block-reward: 0
+  minimum-relay-fee: 20000000
+  anyone-can-connect: false
+
+wpoa:
+  dump-function: none
+  wpoa-sortition-delta: 0.5
+  wpoa-sortition-lambda: 0.3
+  wpoa-malus-mu: 0.5
+  # 4.0 in regional-long23h. With one opportunity per miner-epoch and mu = 0.5, M can
+  # never reach 4 (sup M = 2 / (1 - 0.5) = 4, not attained), so Psi = 0 is unreachable.
+  # At 3.0 two badweights in consecutive epochs (0.5 * 2 + 2 = 3) exclude, and one
+  # clean epoch clears it (3 -> 1.5).
+  # Inert on honest behaviour (no proved malus -> Psi = 1), so the feedback run carries
+  # it too and the two runs share params.dat exactly.
+  wpoa-malus-max: 3.0
+  wpoa-malus-equiv-points: 4.0
+  wpoa-malus-delay-points: 0.25
+  wpoa-malus-selfwrite-points: 1.0
+  wpoa-malus-badweight-points: 2.0
+
+weight_engine:
+  weight-kappa: 100.0
+  weight-alpha: 0.2
+  # 0.5 in regional-long23h. The feedback factor is 1 - lambda + lambda*rho and rho is
+  # structurally small here (rho <= ~1/(1.2*epochs), see the header): at 0.5 every miner
+  # sits at ~0.50 and the feedback is a uniform scaling. At 0.99 the floor drops to 0.01,
+  # so rho in [0, 0.006] moves a miner's factor between 0.010 and 0.016 -- up to ~60%
+  # between miners, epoch by epoch. lambda < 1 still guarantees w_k > 0.
+  weight-lambda: 0.99
+
+traffic:
+  event_stream: supply-chain-events
+  company_tx_per_epoch_range: [30, 60]
+  miner_gas_returns_per_epoch_range: [0, 20]
+  esg_score_range: [1, 100]
+  restitution_amount_range: [50.0, 250.0]
+
+runtime:
+  api_decimal_digits: 17
+  bindir: src
+  rpc_timeout_s: 30
+  startup_timeout_s: 120
+  wpoa_debug: false
+  sortition_miner_log: true

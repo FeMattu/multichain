@@ -1,24 +1,41 @@
-# Regional, 25 x 400 - regional-long23h-feedback with the same blocks cut into fewer,
-# longer epochs.
+# Regional, rho crossover - regional-long23h-feedback with two miners told how much to return.
 #
-# Same seed, map, nodes, block time and total length (10 000 blocks) as the 23h runs, and
-# the same weight parameters as regional-long23h-feedback. What changes is the epoch
-# geometry: 25 epochs of 400 blocks instead of 100 of 100. Every per-epoch traffic range
-# is scaled by 4, so the traffic PER BLOCK is the same as in the 23h runs, and the derived
-# budgets come out identical: miner_seed_gas = 80 * 25 * 250 * 1.2 + 200 = 600 200 and
-# gas_seed = 240 * 0.2 * 25 * 1.5 + 50 = 1 850, exactly as there.
+# The controlled experiment on the restitution rate rho. In every other run all miners draw
+# their restitutions from one shared range, so rho differs between miners only by chance and
+# its effect on the weight shows up as noise (d075: lag-1 Spearman rho -> weight 0.60). Here
+# two miners with the same ESG class and cluster size are given opposite behaviours and swap
+# them halfway, a crossover design:
 #
-# The hypothesis under test: the funding is the same, R_k per epoch is 4x larger, so
-# rho_k = R_k / saldo_k should be ~4x larger (ceiling ~1/(1.2*25) = 0.033 instead of
-# 0.008). If it is, the restitution feedback is bounded by the epoch count and not by the
-# engine. It also measures the cost of the lever: the weight -- and with it the feedback
-# and a malus -- updates 4x less often, and wpoa-randao-lookback grows to 401.
+#   miner-1 (ESG 56, 6 companies): generous in epochs 1-14, stingy from epoch 15
+#   miner-3 (ESG 55, 6 companies): stingy   in epochs 1-14, generous from epoch 15
+#   miner-0, miner-2, miner-4:      the shared range, unchanged (controls)
 #
-# ETA: target height 20 * 500 + 20 = 10 020 blocks x 8 s = 23h09m, plus daemon
-# start-up: under 24h. (One extra epoch of 500 blocks is what the verification needs.)
+#   generous: 16-20 returns per epoch of 200-250 -> E[R_k] ~ 4 050, rho ~ 0.022
+#   stingy:    0-2  returns per epoch of  50-100 -> E[R_k] ~    75, rho ~ 0.0004
+#   shared:    0-20 returns per epoch of  50-250 -> E[R_k] ~ 1 500, rho ~ 0.008
+#
+# rho = R_k / saldo_k, and saldo_k is almost exactly the miner's funding seed (restitutions
+# never leave saldo; fees add ~20 per epoch). The seed is sized on the largest range any miner
+# can draw from and is the SAME for every miner: 20 x 30 x 250 x 1.2 + 200 = 180 200, exactly
+# as in regional-d025 and regional-d075. With lambda_w = 0.99 the weight factor is
+# 0.01 + 0.99 rho: ~0.032 generous, ~0.010 stingy, ~0.018 shared, so the generous twin is
+# entitled to ~3x the weight of the stingy one, and the swap reverses it.
+#
+# Same seed, map, nodes, clusters, block time, traffic, delta (0.5) and weight parameters as
+# regional-long23h-feedback, and the same 30 x 100 geometry and funding as the delta sweep.
+# The chain parameters are those of regional-long23h-feedback: only the harness's
+# restitution behaviour of two miners differs, which is not a chain parameter.
+#
+# Causal lag (engine alignment): the restitutions of block-epoch e set rho of engine epoch
+# e + 1, whose factor is in the weight published as engine epoch e + 2 and in force from
+# early in block-epoch e + 2. The swap declared at epoch 15 therefore reaches the election at
+# epoch 17. Phase 3 traces the lag from the data (rho_contrast.md) and draws
+# plots/rho_effect_weight.png and plots/rho_effect_election.png.
+#
+# ETA: 30 epochs x 100 blocks x 8 s = 6h40m, plus bootstrap ~28m: ~7h10m.
 
 seed: 20260905
-chain_name: wpoa-core-regional-e400
+chain_name: wpoa-core-regional-rho-swap
 
 fabric:
   backend: core
@@ -72,8 +89,8 @@ nodes:
   - {id: company-29, role: company, location: ravenna, cluster: miner-4}
 
 epochs:
-  count: 20
-  length_blocks: 500
+  count: 30
+  length_blocks: 100
 
 chain:
   target-block-time: 8
@@ -117,11 +134,19 @@ weight_engine:
 
 traffic:
   event_stream: supply-chain-events
-  # x4 per epoch = the 23h runs' rate per block.
-  company_tx_per_epoch_range: [120, 240]
-  miner_gas_returns_per_epoch_range: [0, 80]
+  company_tx_per_epoch_range: [30, 60]
+  miner_gas_returns_per_epoch_range: [0, 20]
   esg_score_range: [1, 100]
   restitution_amount_range: [50.0, 250.0]
+  # The treatment. Phases hold from their from_epoch (block-epochs, the harness's own
+  # numbering) until the next; the other three miners keep the shared ranges above.
+  miner_return_overrides:
+    miner-1:
+      - {from_epoch: 1,  miner_gas_returns_per_epoch_range: [16, 20], restitution_amount_range: [200.0, 250.0]}
+      - {from_epoch: 15, miner_gas_returns_per_epoch_range: [0, 2],   restitution_amount_range: [50.0, 100.0]}
+    miner-3:
+      - {from_epoch: 1,  miner_gas_returns_per_epoch_range: [0, 2],   restitution_amount_range: [50.0, 100.0]}
+      - {from_epoch: 15, miner_gas_returns_per_epoch_range: [16, 20], restitution_amount_range: [200.0, 250.0]}
 
 runtime:
   api_decimal_digits: 17
